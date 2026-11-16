@@ -60,7 +60,7 @@ stored reports. Because it is write-only and ships in every build, it is not
 treated as a secret: when read from a repository variable, CI build logs may show it. The default host remains `https://app.supermetry.com` from
 `config/analytics.json`. A separately configured `SUPERMETRY_APP_HOST` selects
 an operator's instance. The owner-configured packaged destination is
-`https://app.voicestudio.sh/api/public/v1/app-events`, owner-set
+`https://app.supermetry.com/api/public/v1/app-events`, owner-set
 2026-11-16; any other production host needs owner approval.
 Release workflows read the repository variables `SUPERMETRY_APP_ID`,
 `SUPERMETRY_INGEST_KEY` and `SUPERMETRY_APP_HOST`, falling back to repository

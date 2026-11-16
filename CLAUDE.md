@@ -139,10 +139,9 @@ Direct repo edits are authorized (owner decision, 2026-07-08). The GSD command g
 ### Diagnostic app intake (owner task, 2026-11-15)
 
 Separately opted-in automatic failure reports may replace the public events
-request with `/api/public/v1/app-events` on the sanctioned Supermetry hosts
-`https://app.supermetry.com` (unconfigured host default) or
-`https://app.voicestudio.sh` (the owner-configured packaged app intake, owner-set
-2026-11-16). App ID and write-only ingest key come only from
+request with `/api/public/v1/app-events` on the sanctioned Supermetry host
+`https://app.supermetry.com` (the unconfigured default and the owner-configured
+packaged app intake, owner-set 2026-11-16). App ID and write-only ingest key come only from
 runtime environment or git-ignored build metadata. `SUPERMETRY_APP_HOST` is an
 explicit operator override, unset by default; any other production host must
 be recorded and approved by the owner. Product analytics and the closed failure
