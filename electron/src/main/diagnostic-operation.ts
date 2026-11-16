@@ -69,25 +69,31 @@ let stopParents: (() => void) | null = null;
 let observingParent = false;
 const observedParents = new WeakSet<Promise<unknown>>();
 function observeConsumedParent(_promise: Promise<unknown>, parent?: Promise<unknown>): void {
+  if (observingParent || !parent || observedParents.has(parent)) return;
   const current = context.getStore();
-  if (observingParent || !parent || !current || observedParents.has(parent)) return;
+  const owner =
+    owners.get(parent) ?? (current ? { reporter: current.reporter, epoch: null } : null);
+  if (!owner) return;
   if (!plainNativePromise(parent)) {
-    current.ambiguous = true;
+    (current ?? owner).ambiguous = true;
     return;
   }
-  const owner = owners.get(parent) ?? { reporter: current.reporter, epoch: null };
   observingParent = true;
   try {
     // V8 calls init before registering the actual consumer's reaction. This
     // passive rejection observer stamps an old/unknown fault before forwarding;
     // successful old data stamps nothing. Its child always fulfills, and the
     // parent was already being consumed, so fatal/unhandled policy is unchanged.
-    nativeThen.call(parent, undefined, (error: unknown) => {
-      rememberFault(error, owner);
-    });
+    nativeThen.call(
+      parent,
+      () => undefined,
+      (error: unknown) => {
+        rememberFault(error, owner);
+      },
+    );
     observedParents.add(parent);
   } catch {
-    current.ambiguous = true;
+    (current ?? owner).ambiguous = true;
   } finally {
     observingParent = false;
   }
@@ -126,23 +132,15 @@ export function runDiagnosticOperation<T>(reports: Reporter, work: () => T): T {
       rememberFault(error, owner);
       throw error;
     }
-    // Unknown work already in flight cannot be adopted by a new action. Only
-    // promises observed at their actual producer boundary receive a wrapper.
-    if (!types.isPromise(result)) return result;
-    const original = owners.get(result);
-    if (!original) return result;
-    if (!plainNativePromise(result)) {
-      original.ambiguous = true;
-      return result;
+    // Preserve the actual result/Promise. A forwarding Promise would assimilate
+    // fulfilled objects again and can invoke a newly installed then getter.
+    // Actual consumers stamp rejected faults via observeConsumedParent; a direct
+    // unhandled rejection is stamped when its existing owner is looked up.
+    if (types.isPromise(result)) {
+      const original = owners.get(result);
+      if (original && !plainNativePromise(result)) original.ambiguous = true;
     }
-    const observed = nativeThen.call(result, undefined, (error: unknown) => {
-      // A propagated/rethrown old fault keeps its first owner, including OFF.
-      // Successful old data carries no fault authority into a new operation.
-      rememberFault(error, original);
-      throw error;
-    });
-    owners.set(observed, original);
-    return observed as T;
+    return result;
   });
 }
 
@@ -158,6 +156,7 @@ export function diagnosticRejectionEpoch(
   }
   if (!promise || (typeof promise !== 'object' && typeof promise !== 'function')) return null;
   const owner = owners.get(promise);
+  if (owner && arguments.length >= 3) rememberFault(error, owner);
   return owner?.reporter === reports && !owner.ambiguous ? owner.epoch : null;
 }
 

@@ -307,3 +307,36 @@ it.each(['unknown-then', 'unknown-await', 'fresh-unknown-await'])(
     });
   },
 );
+
+
+beforeAll(async () => {
+  await writeFile(join(directory, 'fulfillment.mjs'), String.raw`
+    import assert from 'node:assert/strict';
+    import { DiagnosticReports, installDiagnosticProcessCapture, runDiagnosticOperation } from './capture.mjs';
+    import { mkdtemp, rm } from 'node:fs/promises'; import { tmpdir } from 'node:os'; import { join } from 'node:path';
+    const directory = await mkdtemp(join(tmpdir(), 'voice-fulfillment-observer-'));
+    const reports = new DiagnosticReports({directory,identity:{app_version:'1.0.0',build_commit:'0000000',platform:'linux',arch:'x64'},automatic:false,env:{},destination:{site:'fixture',host:'https://fixture.invalid',appUrl:'https://fixture.invalid'}});
+    await reports.initialize();await reports.setConsent(true);const stop=installDiagnosticProcessCapture(reports);
+    let reads=0,unhandled=0,warnings=0;const value={};
+    process.on('unhandledRejection',()=>unhandled++);process.on('warning',()=>warnings++);
+    const poison=()=>Object.defineProperty(value,'then',{get(){reads++;throw new Error('fixture unexpected assimilation');}});
+    let original,result;
+    if(process.argv[2]==='returned') {
+      result=runDiagnosticOperation(reports,()=>{original=Promise.resolve(value);poison();return original;});
+    } else {
+      original=Promise.resolve(value);await new Promise(setImmediate);poison();
+      result=runDiagnosticOperation(reports,()=>original.then(item=>{assert.equal(item,value);return 42;}));
+    }
+    let output,failed=false;
+    try {output=await result.then(item=>{if(process.argv[2]==='returned')assert.equal(item,value);return 42;});}catch {failed=true;}
+    await new Promise(setImmediate);await new Promise(setImmediate);
+    console.log(JSON.stringify({output:output??null,failed,reads,unhandled,warnings,pending:reports.status().pending_count,samePromise:process.argv[2]!=='returned'||result===original}));
+    stop();await reports.close();await rm(directory,{recursive:true,force:true});
+  `);
+});
+it.each(['returned','consumed'])(
+  'does not assimilate fulfilled objects in passive promise observation: %s', (mode) => {
+    const output=execFileSync(process.execPath,[join(directory,'fulfillment.mjs'),mode],{encoding:'utf8',timeout:15000});
+    expect(JSON.parse(output)).toEqual({output:42,failed:false,reads:0,unhandled:0,warnings:0,pending:0,samePromise:true});
+  },
+);
