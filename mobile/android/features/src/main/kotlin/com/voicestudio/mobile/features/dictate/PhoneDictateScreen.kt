@@ -34,9 +34,9 @@ internal class PhoneDictation(private val engine: LocalEngine, private val scope
     val active=mutableActive.asStateFlow()
     @Volatile private var recording=false
     private var capture: Job?=null
-    fun start(model: PhoneModel) {
+    fun start(model: PhoneModel,ownedFailure:((Throwable)->Unit)?=null) {
         if(mutableActive.value) return
-        val failure=this.failure()
+        val failure=ownedFailure ?: this.failure()
         mutableActive.value=true;mutableText.value="";recording=true
         capture=scope.launch {
             try {
@@ -69,8 +69,8 @@ internal class PhoneDictation(private val engine: LocalEngine, private val scope
         onDispose {lifecycle.lifecycle.removeObserver(observer);controller.close()}
     }
     var holding by remember {mutableStateOf(false)}
-    val start=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {if(ready&&model!=null) controller.start(model)}
-    val holdStart=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {if(holding&&ready&&model!=null) controller.start(model)}
+    val start=permissionActionWithFailure(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {failure ->if(ready&&model!=null) controller.start(model,failure)}
+    val holdStart=permissionActionWithFailure(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {failure ->if(holding&&ready&&model!=null) controller.start(model,failure)}
     DictationLayout(content={
         ScreenTitle("mobile.tabs.dictate")
         com.voicestudio.mobile.features.models.ModelRamWarning(vm,listOfNotNull(model))

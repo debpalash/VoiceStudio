@@ -274,6 +274,7 @@ class DiagnosticReports(
     private var sequence = 0L
     private var closed = false
     private var loaded = false
+    private var outboxLoaded = false
     private val intake = ArrayDeque<Pending>()
     private val records = mutableListOf<JsonObject>()
     private var autoJob: CoroutineJob? = null
@@ -415,7 +416,7 @@ class DiagnosticReports(
             sessionInvalidated=true;sessionEvent=null;sessionEpoch=null;sessionRetryAt=null
         }
         currentRunIDs.clear()
-        records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
+        records.clear();outboxLoaded=false;retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
         val result=revokeGrant(storage,hadGrant,explicit)
         synchronized(stateLock) {
             // Revocation can finish during close; publishing OFF never restores
@@ -520,18 +521,34 @@ class DiagnosticReports(
                 throw error
             }
             consentReadRetryAt=null
+            var sameGrant=false
             val applied = synchronized(stateLock) {
                 if (generation != sequence || closed) false
                 else {
+                    sameGrant=saved?.enabled==true && consent?.enabled==true && saved.epoch==consent?.epoch && saved.profile==consent?.profile
+                    if(!sameGrant)intake.clear()
                     consent = saved; loaded = true
                     state = state.copy(enabled = saved?.enabled == true && !disabled(), optedIn = saved?.enabled == true && !disabled(), prompted = saved != null)
                     true
                 }
             }
             if (!applied) return@withLock status
-            records.clear()
+            if(!sameGrant) {
+                records.clear();outboxLoaded=false;retryAt.clear();currentRunIDs.clear()
+                if(sessionStarted) {sessionInvalidated=true;sessionEvent=null;sessionEpoch=null;sessionRetryAt=null}
+            }
             if (status.enabled) {
-                try { restoreOutbox(saved!!.epoch) }
+                try {
+                    if(sameGrant && outboxLoaded) {
+                        // Already-restored memory is authoritative, including
+                        // accepted publications and ACK removals not yet on disk.
+                        records.replaceAll {sanitizeRecord(it,saved!!.epoch) ?: buildJsonObject {}}
+                        records.removeAll {it.isEmpty()}
+                    } else {
+                        restoreOutbox(saved!!.epoch)
+                        outboxLoaded=true
+                    }
+                }
                 catch (error:Exception) {
                     // An unreadable file is not proven corrupt. Preserve it and
                     // permit a later explicit load without collecting meanwhile.
@@ -553,7 +570,7 @@ class DiagnosticReports(
                 try { storage.remove("outbox.json") } catch (_: Exception) {}
             }
             updateCount()
-            if (status.enabled && records.isNotEmpty()) schedule()
+            if (status.enabled && (status.pendingCount>0 || sessionEvent!=null)) schedule()
             status
         }
     }
@@ -580,7 +597,7 @@ class DiagnosticReports(
                 }
                 if(sessionStarted) {sessionInvalidated=true;sessionEvent=null;sessionEpoch=null;currentRunIDs.clear()}
                 val fresh=Consent(true,id(),"install_${id()}",clock.nowMs())
-                records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
+                records.clear();outboxLoaded=false;retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
                 try {
                     storage.remove("outbox.json")
                     storage.write("consent.json",consentJson(fresh).toString().toByteArray())
@@ -600,7 +617,7 @@ class DiagnosticReports(
                 }
                 synchronized(stateLock) {
                     if(generation==sequence && !closed) {
-                        consent=fresh;loaded=true;revocationPending=false;revocationRetryAt=null
+                        consent=fresh;loaded=true;outboxLoaded=true;revocationPending=false;revocationRetryAt=null
                         state=state.copy(enabled=true,optedIn=true,prompted=true,pendingCount=0,consentSaveFailed=false)
                     }
                 }
@@ -828,7 +845,8 @@ class DiagnosticReports(
                     // worker's scope, even when its retry deadline is later.
                     persistRevocation(synchronized(stateLock){sequence},consent!=null,explicit=revocationPending || blocked)
                 }else consent?.let {
-                    if(!loaded) {restoreOutbox(it.epoch);loaded=true}
+                    if(!outboxLoaded) {restoreOutbox(it.epoch);outboxLoaded=true}
+                    loaded=true
                     drain(it.epoch);persist()
                 }
             } }

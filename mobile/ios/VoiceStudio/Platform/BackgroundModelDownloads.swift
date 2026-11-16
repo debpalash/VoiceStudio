@@ -12,6 +12,7 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
     private struct Pending {
         let continuation: CheckedContinuation<DownloadReply,any Error>
         let progress: @Sendable (Int64) async -> Void
+        let origin: ModelDownloadOrigin
     }
     private let root: URL
     private let lock = NSLock()
@@ -21,11 +22,11 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
     private var progressTimes: [Int:TimeInterval] = [:]
     private var eventsFinished = false
     private var completion: (@Sendable () -> Void)?
-    init(root: URL, allowMobile: Bool) throws {
+    init(root: URL, allowMobile: Bool, configuration: URLSessionConfiguration? = nil) throws {
         self.root = root.appendingPathComponent(allowMobile ? "transfers-mobile" : "transfers-wifi")
         try FileManager.default.createDirectory(at: self.root,withIntermediateDirectories: true)
         super.init()
-        let config = URLSessionConfiguration.background(withIdentifier: allowMobile ? Self.mobileIdentifier : Self.wifiIdentifier)
+        let config = configuration ?? URLSessionConfiguration.background(withIdentifier: allowMobile ? Self.mobileIdentifier : Self.wifiIdentifier)
         config.isDiscretionary = false; config.sessionSendsLaunchEvents = true; config.waitsForConnectivity = true
         config.allowsCellularAccess = allowMobile; config.allowsExpensiveNetworkAccess = allowMobile
         config.httpCookieStorage = nil; config.httpShouldSetCookies = false; config.urlCredentialStorage = nil; config.urlCache = nil
@@ -53,21 +54,25 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
         if let cached = receipt(key) { return cached }
         let tasks = await session.allTasks
         let task: URLSessionDownloadTask
-        if let existing = tasks.first(where: { $0.taskDescription == key && $0.state != .completed && $0.state != .canceling }) as? URLSessionDownloadTask { task = existing }
-        else if let data = try? Data(contentsOf: path(key,"resume")) { task = session.downloadTask(withResumeData: data) }
-        else { task = session.downloadTask(with: request) }
+        let origin: ModelDownloadOrigin
+        if let existing = tasks.first(where: { $0.taskDescription == key && $0.state != .completed && $0.state != .canceling }) as? URLSessionDownloadTask { task = existing; origin = .recovered }
+        else if let data = try? Data(contentsOf: path(key,"resume")) { task = session.downloadTask(withResumeData: data); origin = .recovered }
+        else { task = session.downloadTask(with: request); origin = .currentRequest }
         task.taskDescription = key
         let startGate = ModelDownloadStartGate()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                lock.withLock { pending[task.taskIdentifier] = Pending(continuation: continuation,progress: progress) }
+                lock.withLock { pending[task.taskIdentifier] = Pending(continuation: continuation,progress: progress,origin: origin) }
                 // Completion may have arrived between inspecting the OS queue and registering.
                 if let cached = receipt(key) {
                     task.cancel()
                     lock.withLock { pending.removeValue(forKey: task.taskIdentifier) }?.continuation.resume(returning: cached)
                 } else if let error = lock.withLock({ failures.removeValue(forKey: task.taskIdentifier) }) {
                     task.cancel()
-                    lock.withLock { pending.removeValue(forKey: task.taskIdentifier) }?.continuation.resume(throwing: error)
+                    let failure: any Error
+                    if origin == .recovered, let local = error as? ClientError { failure = HistoricalModelDownloadFailure(local) }
+                    else { failure = error }
+                    lock.withLock { pending.removeValue(forKey: task.taskIdentifier) }?.continuation.resume(throwing: failure)
                 } else if Task.isCancelled { self.stopWaiting(task) }
                 else if !startGate.start({ task.resume() }) { self.stopWaiting(task) }
             }
@@ -108,10 +113,10 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
         for file in files where file.lastPathComponent.hasPrefix(prefix) { try? FileManager.default.removeItem(at: file) }
     }
     private func path(_ key: String,_ suffix: String) -> URL { root.appendingPathComponent(key+"."+suffix) }
-    private func receipt(_ key: String) -> DownloadReply? {
+    private func receipt(_ key: String, origin: ModelDownloadOrigin = .recovered) -> DownloadReply? {
         guard FileManager.default.fileExists(atPath: path(key,"body").path),
               let data = try? Data(contentsOf: path(key,"json")),let receipt = try? JSONDecoder().decode(Receipt.self,from: data) else { return nil }
-        return DownloadReply(file: path(key,"body"),status: receipt.status,headers: receipt.headers)
+        return DownloadReply(file: path(key,"body"),status: receipt.status,headers: receipt.headers,origin: origin)
     }
     func urlSession(_ session: URLSession,downloadTask: URLSessionDownloadTask,didFinishDownloadingTo location: URL) {
         guard let key = downloadTask.taskDescription,let http = downloadTask.response as? HTTPURLResponse else { return }
@@ -144,8 +149,13 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
             return (waiting,waiting == nil ? failures[task.taskIdentifier] : failures.removeValue(forKey: task.taskIdentifier))
         }
         guard let waiting = state.0 else { return }
-        if let cached = receipt(key),state.1 == nil { waiting.continuation.resume(returning: cached) }
-        else { waiting.continuation.resume(throwing: state.1 ?? error ?? ClientError("mobile.local.download_failed")) }
+        if let cached = receipt(key,origin: waiting.origin),state.1 == nil { waiting.continuation.resume(returning: cached) }
+        else {
+            let failure = state.1 ?? error ?? ClientError("mobile.local.download_failed")
+            if waiting.origin == .recovered, let local = failure as? ClientError {
+                waiting.continuation.resume(throwing: HistoricalModelDownloadFailure(local))
+            } else { waiting.continuation.resume(throwing: failure) }
+        }
     }
     func urlSession(_ session: URLSession,downloadTask: URLSessionDownloadTask,didWriteData bytesWritten: Int64,totalBytesWritten: Int64,totalBytesExpectedToWrite: Int64) {
         guard let key = downloadTask.taskDescription else { return }

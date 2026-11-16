@@ -183,6 +183,11 @@ val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
 @Composable fun LocalAudioPlayer(file: File, failure: ()->(Throwable)->Unit) { LocalAudioPlayer(file,false,failure=failure) }
 
 @Composable fun LocalAudioPlayer(file: File, autoPlay:Boolean, playRequest:Long=0, failure: ()->(Throwable)->Unit) {
+    LocalAudioPlayer(file,autoPlay,playRequest,initialFailure=null,failure=failure)
+}
+
+/** Automatic preparation may descend from an earlier request; explicit Play stays fresh. */
+@Composable fun LocalAudioPlayer(file: File, autoPlay:Boolean, playRequest:Long=0, initialFailure:((Throwable)->Unit)?, failure: ()->(Throwable)->Unit) {
     val context=LocalContext.current
     val factory=LocalAudioPlayerFactory.current
     val player=remember(file) {factory(context)}
@@ -193,8 +198,8 @@ val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
     var duration by remember(file) {mutableLongStateOf(0)}
     var videoRatio by remember(file) {mutableFloatStateOf(16f/9)}
     var failedPreparation by remember(file) {mutableStateOf(false)}
-    fun observePlayback(preparation:Boolean=false): (Throwable)->Unit {
-        val failed=observeFailure()
+    fun observePlayback(preparation:Boolean=false,ownedFailure:((Throwable)->Unit)?=null): (Throwable)->Unit {
+        val failed=ownedFailure ?: observeFailure()
         listeners.bind(preparation) {current ->object: Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {if(current()) playing=isPlaying}
             override fun onPlaybackStateChanged(state:Int) {if(current()) listeners.stateChanged(state)}
@@ -203,20 +208,20 @@ val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
         }}
         return failed
     }
-    fun play(restart:Boolean=false) {
+    fun play(restart:Boolean=false,ownedFailure:((Throwable)->Unit)?=null) {
         val retry=failedPreparation
-        if(!listeners.preparing) observePlayback(preparation=retry)
+        if(!listeners.preparing) observePlayback(preparation=retry,ownedFailure=ownedFailure)
         if(retry) {failedPreparation=false;player.prepare()}
         if(restart || player.playbackState==Player.STATE_ENDED) player.seekTo(0)
         player.play()
     }
     DisposableEffect(player) {
-        val failed=observePlayback(preparation=true)
+        val failed=observePlayback(preparation=true,ownedFailure=initialFailure)
         try {player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)));player.prepare()}
         catch(e:Exception) {listeners.failed();failedPreparation=true;failed(e)}
         onDispose {listeners.close();player.release()}
     }
-    LaunchedEffect(player,autoPlay,playRequest) {if(autoPlay) play(restart=true)}
+    LaunchedEffect(player,autoPlay,playRequest) {if(autoPlay) play(restart=true,ownedFailure=initialFailure)}
     LaunchedEffect(player) {while(isActive) {position=player.currentPosition.coerceAtLeast(0);duration=player.duration.coerceAtLeast(0);delay(250)}}
     Group {
         Column(Modifier.fillMaxWidth().padding(VSTheme.inset)) {

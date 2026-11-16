@@ -530,9 +530,10 @@ export class DiagnosticReports {
     if (this.timer) clearInterval(this.timer);
     this.abort();
     // Retire the crash marker before teardown can wait on a slow worker.
-    // An unread previous marker belongs to the earlier crashed session. An
-    // orderly exit of this process cannot retire evidence it has not recovered.
-    if (!this.sessionRecoveryPending) await rm(this.sessionPath, { force: true }).catch(() => {});
+    // A failed publication barrier can still have renamed this process's
+    // marker. Inspect ownership rather than treating pending recovery as proof
+    // that the file still belongs to the previous crashed session.
+    await this.retireOwnedSession();
     if (killed(this.env)) this.killObserved = true;
     if (this.killObserved || this.revocationPending) {
       this.requestRevocation();
@@ -544,7 +545,34 @@ export class DiagnosticReports {
       else await this.persist();
     } finally {
       // An outbox failure must not turn an orderly exit into a crash report.
-      if (!this.sessionRecoveryPending) await rm(this.sessionPath, { force: true }).catch(() => {});
+      await this.retireOwnedSession();
+    }
+  }
+
+  private async retireOwnedSession(): Promise<void> {
+    const revision = this.revision;
+    const session = this.sessionId;
+    const epoch = this.consent?.epoch;
+    if (!epoch) return;
+    try {
+      const marker = (await readJson(this.sessionPath, 4096)) as Record<string, unknown>;
+      if (
+        !marker ||
+        typeof marker !== 'object' ||
+        Array.isArray(marker) ||
+        marker.version !== 1 ||
+        marker.active !== true ||
+        marker.session_id !== session ||
+        marker.epoch !== epoch ||
+        revision !== this.revision ||
+        this.sessionId !== session ||
+        this.consent?.epoch !== epoch
+      )
+        return;
+      await rm(this.sessionPath, { force: true });
+    } catch {
+      // Unknown, previous or unreadable evidence is never ours to retire.
+      // The independently persisted recovered record stays untouched.
     }
   }
 
@@ -713,10 +741,18 @@ export class DiagnosticReports {
         return false;
       }
       if (revision !== this.revision || !this.enabled) return false;
+      // Retiring recovered evidence while its old marker remains readable
+      // would replay the same crash with a new identity on the next launch.
+      try {
+        await this.writeSession();
+      } catch {
+        this.sessionRecoveryAt = this.now() + 60_000;
+        return false;
+      }
+      if (revision !== this.revision || !this.enabled) return false;
       this.sessionRecoveryPending = false;
       this.sessionEvidenceRecovered = false;
       this.sessionRecoveryAt = 0;
-      await this.writeSession().catch(() => {});
       return true;
     })().finally(() => {
       this.sessionRecoveryWork = null;

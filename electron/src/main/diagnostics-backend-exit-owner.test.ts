@@ -17,6 +17,7 @@ vi.mock('node:child_process', async (original) => ({
 import { BackendSupervisor } from './backend';
 import { DiagnosticReports } from './diagnostics';
 import { DiagnosticStatusObserver } from './diagnostics-capture';
+import { runDiagnosticOperation } from './diagnostic-operation';
 
 it.each(['installing', 'starting'] as const)(
   'retains the original %s attempt permission through progress, stalls and terminal failure',
@@ -217,5 +218,46 @@ it.each(['failed', 'setup_required'] as const)(
     await reports.flush();
     expect(send).toHaveBeenCalledTimes(1);
     expect(String(send.mock.calls[0][1]?.body)).not.toContain('PRIVATE_USER_KEY');
+  },
+);
+
+
+it.each(['off-to-on', 'a-to-b', 'same-grant'] as const)(
+  'retains restart ownership when its first active status follows shutdown: %s',
+  async (control) => {
+    directory = await mkdtemp(join(tmpdir(), 'voice-diagnostic-restart-owner-'));
+    fixture.root = directory;
+    const send = vi.fn(async () => new Response('', { status: 202 }));
+    reports = new DiagnosticReports({
+      directory: join(directory, 'diagnostics'),
+      identity: { app_version: '1.0.0', build_commit: '0000000', platform: 'linux', arch: 'x64' },
+      env: {}, destination: { site: 'fixture', host: 'https://fixture.invalid', appUrl: 'https://fixture.invalid' },
+      send, automatic: false,
+    });
+    await reports.initialize();
+    if (control !== 'off-to-on') await reports.setConsent(true);
+    supervisor = new BackendSupervisor();
+    const observer = new DiagnosticStatusObserver(reports);
+    supervisor.subscribe((status) => observer.observe(status));
+    const owner = supervisor as unknown as {killChild(deliberate?: boolean): Promise<void>;probe(): Promise<boolean>};
+    let release!: () => void;
+    const shutdown = new Promise<void>((resolve) => {release = resolve;});
+    vi.spyOn(owner, 'killChild').mockImplementationOnce(() => shutdown).mockResolvedValue(undefined);
+    vi.spyOn(owner, 'probe').mockRejectedValue(new Error('fixture startup failure'));
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now()); // Both attaching attempts have zero elapsed time.
+    const restarting = runDiagnosticOperation(reports, () => supervisor!.restart());
+    expect(supervisor.status.stage).toBe('idle'); // No active status before the held await.
+    if (control === 'off-to-on') await reports.setConsent(true);
+    if (control === 'a-to-b') {await reports.setConsent(false);await reports.setConsent(true);}
+    release();await restarting;
+    expect(supervisor.status.stage).toBe('failed');
+    await reports.flush();
+    expect(send).toHaveBeenCalledTimes(control === 'same-grant' ? 1 : 0);
+    observer.observe(supervisor.status);
+    await reports.flush();
+    expect(send).toHaveBeenCalledTimes(control === 'same-grant' ? 1 : 0); // Repeated publication is deduplicated.
+    await runDiagnosticOperation(reports, () => supervisor!.restart());
+    await reports.flush();
+    expect(send).toHaveBeenCalledTimes(control === 'same-grant' ? 2 : 1); // Fresh zero-elapsed attempt is eligible.
   },
 );

@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,7 +21,6 @@ import com.voicestudio.mobile.features.models.TaskModelPicker
 import com.voicestudio.mobile.local.*
 import com.voicestudio.mobile.network.ReportSubject
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.Json
 import java.io.File
 
 @Composable fun ProductionScreen(vm: StudioViewModel, kind: String) {
@@ -32,8 +30,21 @@ import java.io.File
     val scope=rememberCoroutineScope()
     val untitled=tr(if(kind=="stories") "stories.untitled" else "audiobook.untitled")
     val titleKey=if(kind=="stories") "nav.stories" else "audiobook.title"
-    val saver=remember {Saver<ProductionProject,String>(save={Json.encodeToString(ProductionProject.serializer(),it)},restore={Json.decodeFromString(ProductionProject.serializer(),it)})}
-    var project by rememberSaveable(kind,stateSaver=saver) {mutableStateOf(ProductionProject(kind=kind,title=untitled))}
+    val draft=rememberProductionProject(kind,untitled,File(context.noBackupFilesDir,"production-drafts"),vm::restoreFailure)
+    if(draft.loading) {
+        Screen {
+            ScreenTitle(titleKey)
+            if(draft.loadFailed) {
+                Secondary("common.retry") {vm.clearError();draft.retryRestore()}
+                Secondary("mobile.production.new") {vm.clearError();draft.startNew()}
+            } else {
+                CircularProgressIndicator()
+                Text(tr("common.loading"))
+            }
+        }
+        return
+    }
+    var project by draft
     var projects by remember {mutableStateOf(emptyList<ProductionProject>())}
     var output by remember {mutableStateOf<File?>(null)}
     var chapters by remember {mutableStateOf(emptyList<File>())}
@@ -174,7 +185,12 @@ import java.io.File
         }
     }
     deleting?.let {item -> AlertDialog(onDismissRequest={deleting=null},title={Text(tr("stories.deleteProjectConfirm"))},
-        confirmButton={TextButton(onClick={deleting=null;val failure=vm.failureHandler();scope.launch {try {vm.phone.production.delete(item);if(project.id==item.id) project=ProductionProject(kind=kind,title=untitled);refreshLibrary()} catch(e:Exception) {failure(e)}}}) {Text(tr("common.delete"))}},
+        confirmButton={TextButton(onClick={deleting=null;val failure=vm.failureHandler();scope.launch {try {
+            vm.phone.production.delete(item)
+            if(project.id==item.id) project=ProductionProject(kind=kind,title=untitled)
+            try {withContext(Dispatchers.IO) {ProductionDraftRepository(File(context.noBackupFilesDir,"production-drafts")).delete(item.id)}}
+            finally {refreshLibrary()}
+        } catch(e:Exception) {failure(e)}}}) {Text(tr("common.delete"))}},
         dismissButton={TextButton(onClick={deleting=null}) {Text(tr("common.cancel"))}}) }
 }
 
