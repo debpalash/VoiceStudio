@@ -169,8 +169,11 @@ Stories, books, workflows and queued dubs keep completed work on disk. Android
 keeps long Stories and Audiobook manuscripts in a scrolling editor and retains
 the complete local draft and its settings across activity recreation. Checkpoints
 are read and written off the UI thread. Rotation keeps pending edits and retries
-failed writes; after process death, the last complete checkpoint remains
-recoverable through a small local reference. New drafts save only that reference.
+failed writes. After process death, a small local reference restores that
+project's last complete checkpoint. If a new project's first checkpoint has not
+succeeded, Retry cannot restore the preceding project through the new reference;
+older files are preserved and explicit New remains available. New drafts save
+only that reference.
 An older app's existing inline recovery snapshot is retained temporarily while
 its checkpoint migration is pending, then replaced by the durable reference;
 explicitly starting or selecting a different project does not carry that old

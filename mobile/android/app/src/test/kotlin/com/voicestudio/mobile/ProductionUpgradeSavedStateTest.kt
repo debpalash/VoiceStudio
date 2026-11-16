@@ -133,6 +133,11 @@ class ProductionUpgradeSavedStateTest {
                 assertEquals("The old project value must actually be consumed",1,consumedProjects.size)
                 val old=consumedProjects.single()
                 assertEquals(kind,old.kind)
+                // Editor visibility precedes the IO checkpoint acknowledgement.
+                compose.waitUntil(5000) {
+                    compose.waitForIdle()
+                    registry.performSave().values.flatten().any {(it as? MutableState<*>)?.value==old.id}
+                }
                 val current=registry.performSave()
                 assertFalse("Legacy manuscript must not remain as an unconsumed registry entry",current.values.flatten().any {fixtureProject(it)!=null})
                 val referenceKeys=current.filterValues {values->values.any {(it as? MutableState<*>)?.value==old.id}}.keys
