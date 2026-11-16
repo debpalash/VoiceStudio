@@ -21,18 +21,70 @@ or executed.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import sys
+import time
+from collections.abc import Callable, Generator, Iterable, Iterator
+from typing import Any
 import urllib.error
 import urllib.request
 
 API = "https://api.github.com"
 UNFINISHED = ("queued", "in_progress", "waiting", "pending", "requested")
 PR_EVENTS = {"pull_request", "pull_request_target"}
+PER_PAGE = 100
+# GitHub stops a status-filtered run search at this many results, no matter how
+# many pages are requested.
+SEARCH_CAP = 1000
+# How far back a capped status is swept, one day at a time. Older unfinished runs
+# are outside the sweep's scope by design; the warning says when the cap was hit.
+LOOKBACK_DAYS = 30
+# The day-by-day re-sweep of a capped status is a lot of requests, and the job has
+# a timeout: cap the windows it will walk and say so, rather than collecting for
+# minutes and reaching the cancel loop with nothing left.
+MAX_WINDOW_REQUESTS = 45
+# A commit with more associations than this remains unknown, never eligible.
+MAX_ASSOCIATED_PR_PAGES = 10
+# A bounded independent open-PR inventory protects SHAs omitted by commit lookup.
+MAX_OPEN_PR_PAGES = 10
+MAX_OPEN_PR_SWEEPS = 3
+# Leave room for the last bounded 30-second API request and summary before the five-minute job.
+WORK_SECONDS = 240
+SKIPPED = object()
+Run = dict[str, Any]
+ApiCall = Callable[..., Any]
 
 
-def api(method: str, path: str, token: str, data: dict | None = None):
+class IncompleteDiscovery(RuntimeError):
+    """Some eligible candidates could not be inspected; never report success."""
+
+
+class SweepDeadline(RuntimeError):
+    """The bounded work budget expired before discovery/delivery completed."""
+
+
+class _BoundedCall:
+    def __init__(self, token: str) -> None:
+        self.token = token
+        self.deadline = time.monotonic() + WORK_SECONDS
+        self.cancellations = 0
+        self.skipped = 0
+
+    def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
+        if time.monotonic() >= self.deadline:
+            raise SweepDeadline("work deadline reached; discovery is incomplete")
+        result = api(method, path, self.token, data)
+        if method == "POST":
+            if result is SKIPPED:
+                self.skipped += 1
+            else:
+                self.cancellations += 1
+        return result
+
+
+def api(method: str, path: str, token: str, data: dict | None = None) -> Any:
     request = urllib.request.Request(
         f"{API}{path}",
         method=method,
@@ -48,61 +100,343 @@ def api(method: str, path: str, token: str, data: dict | None = None):
         with urllib.request.urlopen(request, timeout=30) as response:
             body = response.read()
     except urllib.error.HTTPError as error:
-        if error.code == 409:  # already finished or being cancelled
-            return None
+        if error.code == 409 and method == "POST" and path.endswith("/cancel"):
+            # This is not an accepted cancellation (including not-yet-queued runs).
+            return SKIPPED
         raise
     return json.loads(body) if body else None
 
 
-def unfinished_runs(call, repo: str, **query) -> list[dict]:
-    runs: list[dict] = []
+def _pages(call: ApiCall, repo: str, params: dict) -> Iterator[tuple[list[Run], int]]:
+    """Stream bounded pages; accepted cancellations can shift status offsets."""
+    seen: set[int] = set()
+    page = 1
+    while True:
+        query = "&".join(
+            f"{k}={v}" for k, v in {**params, "per_page": PER_PAGE, "page": page}.items()
+        )
+        response = call("GET", f"/repos/{repo}/actions/runs?{query}")
+        if not isinstance(response, dict) or not isinstance(response.get("workflow_runs"), list):
+            raise ValueError("Invalid workflow-runs response")
+        batch = response["workflow_runs"]
+        total = response.get("total_count")
+        if type(total) is not int or total < 0:
+            raise ValueError("Invalid workflow-runs total count")
+        before = getattr(call, "cancellations", 0)
+        fresh = [run for run in batch if run["id"] not in seen]
+        seen.update(run["id"] for run in fresh)
+        yield fresh, total
+        if len(batch) < PER_PAGE or len(seen) >= SEARCH_CAP:
+            break
+        # Removing earlier rows from a status-filtered search changes offsets.
+        page = 1 if getattr(call, "cancellations", 0) != before else page + 1
+        if page > SEARCH_CAP // PER_PAGE:
+            break
+
+
+def _day_windows(today: datetime.date | None = None) -> list[str]:
+    """`YYYY-MM-DD..YYYY-MM-DD` windows for the lookback this sweep covers.
+
+    The windows come from the sweep's own lookback, not from the dates the capped
+    search returned: a capped search is biased towards the newest runs, so deriving
+    the windows from it would leave older unfinished runs outside every window and
+    report success while they keep holding runner slots.
+    """
+    end = today or datetime.date.today()
+    day = end - datetime.timedelta(days=LOOKBACK_DAYS)
+    windows: list[str] = []
+    while day <= end:
+        windows.append(f"{day.isoformat()}..{day.isoformat()}")
+        day += datetime.timedelta(days=1)
+    return windows
+
+
+def unfinished_runs(call: ApiCall, repo: str, **query: Any) -> Iterator[Run]:
+    """Stream unique runs, then fail visibly if bounded discovery was incomplete.
+
+    Capped searches are re-swept over the existing 30-day lookback. No day above
+    the API cap or exhausted window budget is claimed as fully inspected.
+    """
+    seen: set[int] = set()
+    errors = 0
+
+    status_seen: set[int] = set()
+
+    def search(params: dict) -> Generator[Run, None, tuple[int, int]]:
+        nonlocal errors
+        count = total = 0
+        try:
+            for batch, reported_total in _pages(call, repo, params):
+                count += len(batch)
+                total = max(total, reported_total)
+                for run in batch:
+                    status_seen.add(run["id"])
+                    if run["id"] not in seen:
+                        seen.add(run["id"])
+                        yield run
+        except SweepDeadline:
+            raise
+        except Exception as error:  # One failed search must not strand other statuses.
+            errors += 1
+            print(f"::warning::run discovery failed: {error}", file=sys.stderr)
+        return count, total
+
     for status in UNFINISHED:
-        params = "&".join(f"{k}={v}" for k, v in {**query, "status": status, "per_page": 100}.items())
-        runs += (call("GET", f"/repos/{repo}/actions/runs?{params}") or {}).get("workflow_runs", [])
-    return runs
+        status_seen = set()
+        found, total = yield from search({**query, "status": status})
+        if found >= SEARCH_CAP or total > SEARCH_CAP:
+            print(f"::warning::{status}: {SEARCH_CAP} runs is the search cap; re-sweeping day by day", file=sys.stderr)
+            window_requests = 0
+            for window in _day_windows():
+                if window_requests >= MAX_WINDOW_REQUESTS:
+                    errors += 1
+                    print(f"::warning::{status}: stopped after {MAX_WINDOW_REQUESTS} day windows; discovery is incomplete", file=sys.stderr)
+                    break
+                params = {**query, "status": status, "created": window}
+                window_requests += 1
+                count, window_total = yield from search(params)
+                if count < window_total and count < SEARCH_CAP and window_requests < MAX_WINDOW_REQUESTS:
+                    # Status offsets can shift while accepted cancellations finish.
+                    # Check this window independently: arrivals elsewhere do not
+                    # account for a missing row within it.
+                    window_requests += 1
+                    count, window_total = yield from search(params)
+                if count < window_total:
+                    errors += 1
+                    print(f"::warning::{status} {window}: discovered {count} of {window_total} reported runs; discovery is incomplete", file=sys.stderr)
+                if count >= SEARCH_CAP:
+                    errors += 1
+                    print(f"::warning::{status} {window} also reached the search cap; discovery is incomplete", file=sys.stderr)
+        elif len(status_seen) < total:
+            # Accepted cancellation can finish after its repeated page1 read,
+            # shifting unseen rows behind the next page offset. Revisit once
+            # under the same deadline; an unresolved deficit is not success.
+            retried_count, retried_total = yield from search({**query, "status": status})
+            if retried_count < retried_total:
+                errors += 1
+                print(f"::warning::{status}: retry discovered {retried_count} of {retried_total} reported runs; discovery is incomplete", file=sys.stderr)
+            total = max(total, retried_total)
+        if len(status_seen) < total:
+            errors += 1
+            print(f"::warning::{status}: discovered {len(status_seen)} of {total} reported runs; bounded lookback is incomplete", file=sys.stderr)
+    if errors:
+        raise IncompleteDiscovery(f"{errors} search(es) could not be fully inspected")
 
 
-def stale_for_pr(call, repo: str, pr: dict, exclude_run: int = 0) -> list[dict]:
-    """Unfinished pull-request runs of a closed PR that began before it closed."""
+def stale_for_pr(call: ApiCall, repo: str, pr: dict, exclude_run: int = 0) -> Iterator[Run]:
+    """Unfinished PR runs created before this closed PR's close event."""
     if pr.get("state") != "closed" or not pr.get("closed_at"):
-        return []
+        return
     sha = pr["head"]["sha"]
-    return [
-        run
-        for run in unfinished_runs(call, repo, head_sha=sha)
-        if run["event"] in PR_EVENTS
-        and run["id"] != exclude_run
-        # ISO-8601 UTC strings from the same API compare correctly as text.
-        and run["created_at"] < pr["closed_at"]
-    ]
+    try:
+        associated_close = _commit_closed_before(
+            call, repo, sha, known_closed_at=pr["closed_at"] if pr.get("merged") is False else None,
+        )
+    except SweepDeadline:
+        raise
+    except Exception as error:
+        raise IncompleteDiscovery(f"Could not inspect associated PRs for {sha}") from error
+    if not associated_close:
+        return
+    closed_before = min(pr["closed_at"], associated_close)
+    failures = 0
+    for run in unfinished_runs(call, repo, head_sha=sha):
+        if run["event"] in PR_EVENTS and run["id"] != exclude_run and run["created_at"] < closed_before:
+            try:
+                has_open_pr = _has_open_pr(call, repo, run, requested_pr=pr.get("number"))
+            except SweepDeadline:
+                raise
+            except IncompleteDiscovery as error:
+                failures += 1
+                print(f"::warning::could not inspect run {run['id']}: {error}", file=sys.stderr)
+                continue
+            if not has_open_pr:
+                yield run
+    if failures:
+        raise IncompleteDiscovery(f"{failures} candidate ownership check(s) failed")
 
 
-def stale_in_repo(call, repo: str, exclude_run: int = 0) -> list[dict]:
-    """Every unfinished pull-request run whose pull request has been closed."""
-    stale: list[dict] = []
-    closed: dict[str, list[dict]] = {}
-    for run in unfinished_runs(call, repo):
-        if run["event"] not in PR_EVENTS or run["id"] == exclude_run:
-            continue
-        sha = run["head_sha"]
-        if sha not in closed:
-            closed[sha] = call("GET", f"/repos/{repo}/commits/{sha}/pulls") or []
-        pulls = closed[sha]
-        # Cancel only when the commit has pull requests and every one is closed.
-        if pulls and all(p["state"] == "closed" for p in pulls):
-            latest = max(p["closed_at"] or "" for p in pulls)
-            if latest and run["created_at"] < latest:
-                stale.append(run)
-    return stale
+def _read_open_prs(call: ApiCall, repo: str) -> list[dict[str, Any]]:
+    """One bounded read; copy identity immediately, never retain mutable API rows."""
+    result: list[dict[str, Any]] = []
+    numbers: set[int] = set()
+    for page in range(1, MAX_OPEN_PR_PAGES + 1):
+        try:
+            pulls = call("GET", f"/repos/{repo}/pulls?state=open&sort=created&direction=asc&per_page={PER_PAGE}&page={page}")
+        except SweepDeadline:
+            raise
+        except Exception as error:
+            raise IncompleteDiscovery("Could not refresh open pull requests") from error
+        if not isinstance(pulls, list) or len(pulls) > PER_PAGE:
+            raise IncompleteDiscovery("Invalid open-pull-request page")
+        for pr in pulls:
+            if not isinstance(pr, dict) or pr.get("state") != "open":
+                raise IncompleteDiscovery("Invalid open pull request")
+            head = pr.get("head")
+            sha = head.get("sha") if isinstance(head, dict) else None
+            merge_sha = pr.get("merge_commit_sha")
+            if not isinstance(sha, str) or not sha or (merge_sha is not None and (not isinstance(merge_sha, str) or not merge_sha)):
+                raise IncompleteDiscovery("Open pull-request SHA is unknown")
+            if type(pr.get("number")) is not int or pr["number"] <= 0:
+                raise IncompleteDiscovery("Open pull-request number is unknown")
+            number = pr["number"]
+            if number in numbers:
+                raise IncompleteDiscovery("Duplicate open pull-request number")
+            numbers.add(number)
+            repository, branch = _branch_identity(head.get("ref"), head.get("repo"))
+            result.append({"number": number, "state": "open", "merge_commit_sha": merge_sha,
+                           "head": {"sha": sha, "ref": branch, "repo": {"full_name": repository}}})
+        if len(pulls) < PER_PAGE:
+            return result
+    raise IncompleteDiscovery("Open pull-request page budget reached")
 
 
-def cancel(call, repo: str, runs: list[dict], dry_run: bool) -> int:
-    for run in runs:
-        label = f"{run['id']} {run['name']} ({run['head_branch']}, {run['status']})"
-        print(("would cancel " if dry_run else "cancelling ") + label)
-        if not dry_run:
-            call("POST", f"/repos/{repo}/actions/runs/{run['id']}/cancel")
-    return len(runs)
+def _open_prs(call: ApiCall, repo: str) -> list[dict[str, Any]]:
+    """A short page can omit shifted rows; require two complete matching reads."""
+    previous: tuple[tuple[int, str, str | None, str, str], ...] | None = None
+    for _ in range(MAX_OPEN_PR_SWEEPS):
+        current = _read_open_prs(call, repo)
+        # Only ownership matters. Cosmetic updated_at/title changes must not
+        # strand cleanup, and earlier snapshots must survive mutable fixtures.
+        fingerprint = tuple(sorted((pr["number"], pr["head"]["sha"], pr["merge_commit_sha"],
+                                    pr["head"]["repo"]["full_name"], pr["head"]["ref"])
+                                   for pr in current))
+        if fingerprint == previous:
+            return current
+        previous = fingerprint
+    raise IncompleteDiscovery("Open pull-request inventory did not stabilize")
+
+
+def _branch_identity(branch: Any, repository: Any) -> tuple[str, str]:
+    name = repository.get("full_name") if isinstance(repository, dict) else None
+    if not isinstance(branch, str) or not branch or not isinstance(name, str) or len(name.split("/")) != 2 or not all(name.split("/")):
+        raise IncompleteDiscovery("Pull-request branch ownership is unknown")
+    return name.casefold(), branch
+
+
+def _has_open_pr(call: ApiCall, repo: str, run: Run, *, requested_pr: int | None = None) -> bool:
+    """Refresh immediately before yielding each cancellation candidate.
+
+    A reopened PR may already have a newer head SHA. Match its original branch
+    and head repository, or the run's explicit PR association, as well as SHA.
+    No positive closure cache can replace this current open-state check.
+    """
+    associations = run.get("pull_requests", [])
+    if not isinstance(associations, list):
+        raise IncompleteDiscovery("Workflow-run pull requests are unknown")
+    numbers: set[int] = set()
+    for pr in associations:
+        number = pr.get("number") if isinstance(pr, dict) else None
+        if type(number) is not int or number <= 0:
+            raise IncompleteDiscovery("Workflow-run pull-request number is unknown")
+        numbers.add(number)
+    if type(requested_pr) is int and requested_pr > 0:
+        numbers.add(requested_pr)
+    inventory = _open_prs(call, repo)
+    for pr in inventory:
+        if pr["number"] in numbers or run["head_sha"] in (pr["head"]["sha"], pr.get("merge_commit_sha")):
+            return True
+    # Positive matches can safely keep an open run even without branch data.
+    # A closed PR number never proves which branch/repository the run used.
+    branch = _branch_identity(run.get("head_branch"), run.get("head_repository"))
+    for pr in inventory:
+        head = pr["head"]
+        if branch == _branch_identity(head["ref"], head["repo"]):
+            return True
+    return False
+
+
+def _commit_closed_before(call: ApiCall, repo: str, sha: str, *,
+                          known_closed_at: str | None = None) -> str | None:
+    """Find the initial associated closure; each candidate also gets a fresh open check."""
+    # Closed, unmerged PRs can have no commit-endpoint association. Only direct
+    # mode has a separately verified requested PR's closure to use in that case.
+    earliest = known_closed_at
+    for page in range(1, MAX_ASSOCIATED_PR_PAGES + 1):
+        pulls = call("GET", f"/repos/{repo}/commits/{sha}/pulls?per_page={PER_PAGE}&page={page}")
+        if not isinstance(pulls, list) or len(pulls) > PER_PAGE:
+            raise IncompleteDiscovery("Invalid associated-pull-request page")
+        for pr in pulls:
+            if not isinstance(pr, dict):
+                raise IncompleteDiscovery("Invalid associated pull request")
+            if pr.get("state") == "open":
+                return None
+            closed_at = pr.get("closed_at")
+            if pr.get("state") != "closed" or not isinstance(closed_at, str) or not closed_at:
+                raise IncompleteDiscovery("Associated pull-request closure is unknown")
+            earliest = min(earliest, closed_at) if earliest else closed_at
+        if len(pulls) < PER_PAGE:
+            return earliest
+    raise IncompleteDiscovery("Associated pull-request page budget reached")
+
+
+def stale_in_repo(call: ApiCall, repo: str, exclude_run: int = 0) -> Iterator[Run]:
+    """Inspect candidates incrementally; one failed commit lookup is isolated."""
+    closed: dict[str, str | None] = {}
+    failures = 0
+    try:
+        for run in unfinished_runs(call, repo):
+            if run["event"] not in PR_EVENTS or run["id"] == exclude_run:
+                continue
+            sha = run["head_sha"]
+            if sha not in closed:
+                try:
+                    closed[sha] = _commit_closed_before(call, repo, sha)
+                except SweepDeadline:
+                    raise
+                except Exception as error:
+                    closed[sha] = None
+                    failures += 1
+                    print(f"::warning::could not inspect commit {sha}: {error}", file=sys.stderr)
+            closed_before = closed[sha]
+            if closed_before and run["created_at"] < closed_before:
+                try:
+                    has_open_pr = _has_open_pr(call, repo, run)
+                except SweepDeadline:
+                    raise
+                except IncompleteDiscovery as error:
+                    failures += 1
+                    print(f"::warning::could not inspect run {run['id']}: {error}", file=sys.stderr)
+                    continue
+                if not has_open_pr:
+                    yield run
+    except IncompleteDiscovery:
+        failures += 1
+    if failures:
+        raise IncompleteDiscovery(f"{failures} discovery/eligibility check(s) failed")
+
+
+def cancel(call: ApiCall, repo: str, runs: Iterable[Run], dry_run: bool) -> tuple[int, int]:
+    """Return accepted requests (or dry-run candidates) and failures.
+
+    An accepted request is not proof that a run has finished cancelling. An HTTP 409
+    refusal is skipped, and neither it nor one failed POST strands later runs.
+    """
+    accepted = failed = 0
+    try:
+        for run in runs:
+            label = f"{run['id']} {run['name']} ({run['head_branch']}, {run['status']})"
+            if dry_run:
+                print("would cancel " + label)
+                accepted += 1
+                continue
+            try:
+                result = call("POST", f"/repos/{repo}/actions/runs/{run['id']}/cancel")
+            except SweepDeadline:
+                raise
+            except Exception as error:
+                failed += 1
+                print(f"could not cancel {label}: {error}", file=sys.stderr)
+                continue
+            if result is SKIPPED:
+                print("skipped " + label + ": cancellation not accepted (HTTP409)")
+                continue
+            print("cancellation requested " + label)
+            accepted += 1
+    except (IncompleteDiscovery, SweepDeadline) as error:
+        failed += 1
+        print(f"::warning::incomplete sweep: {error}", file=sys.stderr)
+    return accepted, failed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -116,16 +450,17 @@ def main(argv: list[str] | None = None) -> int:
     token = os.environ.get("GITHUB_TOKEN", "")
     if not args.repo or not token:
         parser.error("--repo (or GITHUB_REPOSITORY) and GITHUB_TOKEN are required")
-    call = lambda method, path, data=None: api(method, path, token, data)  # noqa: E731
+    call = _BoundedCall(token)
     current = int(os.environ.get("GITHUB_RUN_ID") or 0)
     if args.sweep:
         runs = stale_in_repo(call, args.repo, current)
     else:
         pr = call("GET", f"/repos/{args.repo}/pulls/{args.pr}")
         runs = stale_for_pr(call, args.repo, pr, current)
-    count = cancel(call, args.repo, runs, args.dry_run)
-    print(f"{count} run(s) {'would be ' if args.dry_run else ''}cancelled")
-    return 0
+    count, failed = cancel(call, args.repo, runs, args.dry_run)
+    summary = f"{count} run(s) would be cancelled" if args.dry_run else f"{count} cancellation request(s) accepted, {call.skipped} skipped"
+    print(summary + (f", {failed} could not be cancelled or fully inspected" if failed else ""))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
