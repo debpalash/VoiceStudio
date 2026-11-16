@@ -141,6 +141,69 @@ it('recognizes ordinary default-location saved settings under the actual launch 
   await result.internal.markReady(1, {}, false);
   expect(identity(result.supervisor)).toMatch(/^[0-9a-f-]{36}$/);
 });
+async function defaultLaunch(settings?: string) {
+  const home = join(fixture.root, 'launch-home');
+  const appData = join(fixture.root, 'app-data');
+  const data =
+    process.platform === 'darwin'
+      ? join(home, 'Library', 'Application Support', 'OmniVoice')
+      : process.platform === 'win32'
+        ? join(appData, 'OmniVoice')
+        : join(home, '.omnivoice');
+  await mkdir(data, { recursive: true });
+  if (settings !== undefined) {
+    await mkdir(join(home, '.config', 'omnivoice'), { recursive: true });
+    await writeFile(join(home, '.config', 'omnivoice', 'env'), settings);
+  }
+  const result = await launch(true, (value) => {
+    delete value.env.OMNIVOICE_DATA_DIR;
+    delete value.env.OMNIVOICE_ENV_FILE;
+    value.env.HOME = home;
+    value.env.USERPROFILE = home;
+    value.env.APPDATA = appData;
+  });
+  return { ...result, data };
+}
+it.each([
+  undefined,
+  'HF_ENDPOINT=https://hf-mirror.com\nHF_HOME=/synthetic-cache\n',
+  'OMNIVOICE_CACHE_DIR=/home/fixture/models\n',
+])(
+  'preserves the actual default owned data root across relaunch with settings=%s',
+  async (settings) => {
+    const first = await defaultLaunch(settings);
+    await first.proof;
+    await first.internal.markReady(1, {}, false);
+    expect(identity(first.supervisor)).toMatch(/^[0-9a-f-]{36}$/);
+    const metadata = JSON.parse(
+      await filesystem.readFile(join(first.data, '.voicestudio-data-identity.json'), 'utf8'),
+    );
+    expect(metadata.id).toBe(identity(first.supervisor));
+    const next = await defaultLaunch(settings);
+    await next.proof;
+    await next.internal.markReady(1, {}, false);
+    expect(identity(next.supervisor)).toBe(identity(first.supervisor));
+  },
+);
+it.each(['HOME', 'APPDATA', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH'])(
+  'does not derive a default root from settings overriding %s',
+  async (key) => {
+    const result = await defaultLaunch(`${key}=/different\n`);
+    await result.proof;
+    await result.internal.markReady(1, {}, false);
+    expect(identity(result.supervisor)).toBeUndefined();
+  },
+);
+it.each([
+  'export HOME=/different\n',
+  "'APPDATA'=/different\n",
+  'OTHER="first\nHOME=/different\nlast"\n',
+])('keeps selector assignment syntax or multiline ambiguity unknown: %s', async (settings) => {
+  const result = await defaultLaunch(settings);
+  await result.proof;
+  await result.internal.markReady(1, {}, false);
+  expect(identity(result.supervisor)).toBeUndefined();
+});
 it.each([
   "export OMNIVOICE_DATA_DIR='/different'\n",
   "'OMNIVOICE_DATA_DIR'=/different\n",

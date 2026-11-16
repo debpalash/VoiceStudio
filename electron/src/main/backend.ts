@@ -992,9 +992,15 @@ export function backendDataDir(
 /** Prove absence of root-changing keys without interpreting dotenv values.
  * Python dotenv never interpolates key names. Scan the entire bounded UTF-8
  * source, including comments/quoted text, so unsupported syntax stays unknown
- * when it mentions either key; unrelated settings cannot redirect this root.
+ * when it mentions either key (or platform selectors for a default root);
+ * unrelated settings cannot redirect this root.
  */
-async function startupEnvPreservesDataRoot(path: string): Promise<boolean> {
+const DEFAULT_DATA_SELECTOR_KEY =
+  /(?:^|[\r\n])[^\S\r\n]*(?:export[^\S\r\n]+)?(?:'(?:HOME|APPDATA|USERPROFILE|HOMEDRIVE|HOMEPATH)'|(?:HOME|APPDATA|USERPROFILE|HOMEDRIVE|HOMEPATH))[^\S\r\n]*(?:=|[\r\n#]|$)/i;
+async function startupEnvPreservesDataRoot(
+  path: string,
+  derivesDefault: boolean,
+): Promise<boolean> {
   const limit = 64 * 1024;
   let file: Awaited<ReturnType<typeof open>> | undefined;
   try {
@@ -1021,7 +1027,11 @@ async function startupEnvPreservesDataRoot(path: string): Promise<boolean> {
     }
     if (size > limit) return false;
     const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, size));
-    return !text.includes('\0') && !/OMNIVOICE_(?:DATA_DIR|ENV_FILE)/i.test(text);
+    return (
+      !text.includes('\0') &&
+      !/OMNIVOICE_(?:DATA_DIR|ENV_FILE)/i.test(text) &&
+      (!derivesDefault || !DEFAULT_DATA_SELECTOR_KEY.test(text))
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       try {
@@ -1037,11 +1047,11 @@ async function startupEnvPreservesDataRoot(path: string): Promise<boolean> {
 }
 
 /** Python loads saved settings after dotenv, overriding launcher data defaults. */
-async function launchDataRootEstablished(launch: BackendLaunchLog): Promise<boolean> {
+async function launchDataRootEstablished(launch: BackendLaunchLog): Promise<string | undefined> {
   const raw = launch.env.OMNIVOICE_DATA_DIR;
   // Python uses this string verbatim; backendDataDir's log-only trim must not
   // manufacture authority for a different directory.
-  if (!raw || raw !== raw.trim()) return false;
+  if (raw && raw !== raw.trim()) return;
   const home =
     process.platform === 'win32'
       ? launch.env.USERPROFILE ||
@@ -1051,7 +1061,20 @@ async function launchDataRootEstablished(launch: BackendLaunchLog): Promise<bool
       : launch.env.HOME;
   // A missing launch home may be filled by project dotenv before Python picks
   // its default saved-env path; the parent's home is not authority for it.
-  if (!launch.env.OMNIVOICE_ENV_FILE && !home) return false;
+  if (!launch.env.OMNIVOICE_ENV_FILE && !home) return;
+  const derivesDefault = !raw;
+  const selector = process.platform === 'win32' ? launch.env.APPDATA : home;
+  // config.py's platform defaults use only these exact child values. Neither
+  // Node's parent home nor a relative/missing selector proves Python's root.
+  if (derivesDefault && (!selector || selector !== selector.trim() || !isAbsolute(selector)))
+    return;
+  const dataDirectory =
+    raw ||
+    (process.platform === 'darwin'
+      ? join(selector!, 'Library', 'Application Support', 'OmniVoice')
+      : process.platform === 'win32'
+        ? join(selector!, 'OmniVoice')
+        : join(selector!, '.omnivoice'));
   const savedEnv = launch.env.OMNIVOICE_ENV_FILE || join(home!, '.config', 'omnivoice', 'env');
   const paths = new Set([resolve(launch.cwd, savedEnv), join(launch.cwd, 'backend', '.env')]);
   let directory = resolve(launch.cwd);
@@ -1061,11 +1084,11 @@ async function launchDataRootEstablished(launch: BackendLaunchLog): Promise<bool
     paths.add(join(directory, '.env'));
     const parent = dirname(directory);
     if (parent === directory) break;
-    if (depth === 63) return false;
+    if (depth === 63) return;
     directory = parent;
   }
-  for (const path of paths) if (!(await startupEnvPreservesDataRoot(path))) return false;
-  return true;
+  for (const path of paths) if (!(await startupEnvPreservesDataRoot(path, derivesDefault))) return;
+  return resolve(launch.cwd, dataDirectory);
 }
 
 /** Enough for LOG_TAIL_LINES lines without reading a whole rotated log. */
@@ -2582,12 +2605,13 @@ export class BackendSupervisor extends EventEmitter<{
       if (
         !app.isPackaged ||
         this.remoteUrl ||
-        parseBackendCmdOverride(launch.env.OMNIVOICE_BACKEND_CMD) ||
-        !(await launchDataRootEstablished(launch))
+        parseBackendCmdOverride(launch.env.OMNIVOICE_BACKEND_CMD)
       )
         return;
+      const directory = await launchDataRootEstablished(launch);
+      if (!directory) return;
       if (proof.frozen || this.identityProof !== proof || generation !== this.generation) return;
-      const value = await localDataIdentity(resolve(launch.cwd, launch.env.OMNIVOICE_DATA_DIR!));
+      const value = await localDataIdentity(directory);
       if (!proof.frozen && this.identityProof === proof && generation === this.generation)
         proof.value = value;
     } catch {
