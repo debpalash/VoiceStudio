@@ -26,11 +26,12 @@ def _scope(tmp_path: Path, files: Any, *, event: str = 'pull_request',
     fake = commands / 'gh'
     fake.write_text(f'''#!{sys.executable}
 import json, os, sys
+from pathlib import Path
 with open(os.environ['FIXTURE_REQUESTS'], 'a', encoding='utf-8') as output:
     output.write(json.dumps(sys.argv[1:]) + '\\n')
 if os.environ['FIXTURE_API_ERROR'] == 'true':
     sys.exit(1)
-sys.stdout.write(os.environ['FIXTURE_PAYLOAD'])
+sys.stdout.write(Path(os.environ['FIXTURE_PAYLOAD_FILE']).read_text(encoding='utf-8'))
 ''', encoding='utf-8')
     fake.chmod(0o755)
     git = commands / 'git'
@@ -43,12 +44,14 @@ sys.stdout.write(os.environ['FIXTURE_PAYLOAD'])
     event_file.write_text(json.dumps(data), encoding='utf-8')
     output = tmp_path / 'output'
     payload = [files] if event == 'pull_request' and isinstance(files, list) else files
+    payload_file = tmp_path / 'payload.json'
+    payload_file.write_text(json.dumps(payload), encoding='utf-8')
     env = dict(os.environ, PATH=f'{commands}{os.pathsep}{os.environ.get("PATH", "")}',
                EVENT=event, GITHUB_EVENT_NAME=event, GITHUB_REPOSITORY='owner/repo',
                GITHUB_EVENT_PATH=str(event_file), GITHUB_OUTPUT=str(output),
                GH_TOKEN='offline-fixture', CLA_HOLD='held' if held else 'clear',
                BASE_SHA='a' * 40, HEAD_SHA='b' * 40,
-               FIXTURE_PAYLOAD=json.dumps(payload), FIXTURE_REQUESTS=str(requests),
+               FIXTURE_PAYLOAD_FILE=str(payload_file), FIXTURE_REQUESTS=str(requests),
                FIXTURE_API_ERROR=str(api_error).lower())
     shell = shutil.which('bash')
     assert shell, 'This workflow fixture requires Bash'
