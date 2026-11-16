@@ -230,6 +230,7 @@ const initial: DubSession = {
 export const DUB_STOP_FAILED = 'DUB_STOP_FAILED';
 export const DUB_AGENT_UNAVAILABLE = 'DUB_AGENT_UNAVAILABLE';
 const AGENT_FIT_BLOCKING_ERRORS = new Set(['no-llm', 'fit-provider-failed']);
+class DubLocalValidationError extends Error {}
 class DubAsrModelMissingError extends Error {
   constructor(readonly payload: AsrModelMissing) {
     super(payload.detail || payload.error);
@@ -1164,6 +1165,7 @@ async function run(
     if (
       !active.signal.aborted &&
       !inputIssue &&
+      !(error instanceof DubLocalValidationError) &&
       !(error instanceof DubAsrModelMissingError) &&
       !(error instanceof Error && error.name === 'AbortError')
     ) {
@@ -1478,9 +1480,9 @@ export async function ingestDubUrl(value: string, cookieFile?: File, fetchSubs =
       !(window.location.protocol === 'app:' && window.location.hostname === 'voicestudio') &&
       !_cookieTransportAllowed('/api')
     )
-      throw new Error('DUB_COOKIE_TRANSPORT');
+      throw new DubLocalValidationError('DUB_COOKIE_TRANSPORT');
     if (cookieFile && cookieFile.size > MAX_COOKIE_EXPORT_BYTES)
-      throw new Error('DUB_COOKIE_TOO_LARGE');
+      throw new DubLocalValidationError('DUB_COOKIE_TOO_LARGE');
     const cookieText = cookieFile ? await cookieFile.text() : undefined;
     const consent = observeRequest();
     const job = await apiJson<{ job_id: string; task_id: string }>('/dub/ingest-url', {

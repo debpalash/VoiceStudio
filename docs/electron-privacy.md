@@ -131,6 +131,9 @@ callbacks retain the permission observed before their work starts. Restored
 callbacks without that observation stay local. Python exceptions retain their
 original permission through interpreter/thread hooks after cleanup; delayed
 desktop setup/start attempts and child-exit recovery follow the same rule.
+Restarts keep their original permission even while waiting for the previous
+backend to stop; observing failures does not change promise results or whether
+an error is handled.
 Runtime/file IPC work observes permission at entry. Its asynchronous descendants
 retain that observation through Node's fatal-error and unhandled-rejection hooks.
 Uncaught faults with unknown provenance remain in the local journal rather than
@@ -139,6 +142,16 @@ marker can still recover a coarse unclean exit, but raw journal timestamps do no
 authorize fault details or frames. Confirmation actions retain the choice
 observed at the click; an unrelated or rewrapped promise cannot acquire a newer
 grant. Seeking an existing phone playback does not renew its grant.
+Permission dialogs, voice-edit waits, gallery loading and stalled transfers do
+not renew an operation's permission. The initial phone action owns its entire
+permission rationale and OS prompt; confirmation cannot acquire a later grant,
+and cancelling or dismissing the rationale discards that action's observation.
+A cached phone download failure from an earlier transfer remains local, including
+after Pause and Resume; a genuinely new transfer retains the permission observed
+when that transfer starts.
+Temporary queue-read failures preserve current in-memory reports and completed
+delivery decisions. Crash recovery retains its report until the prior session
+marker can be replaced; orderly close removes only a marker owned by that process.
 A failed consent write is shown with Retry and leaves the current process off.
 On iOS, unread diagnostics consent also keeps reporting off and offers Retry.
 After the initial privacy check finishes, that read failure does not block
