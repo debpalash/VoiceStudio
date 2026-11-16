@@ -168,9 +168,13 @@ are limited to 30 seconds; longer design results remain playable/shareable.
 Stories, books, workflows and queued dubs keep completed work on disk. Android
 keeps long Stories and Audiobook manuscripts in a scrolling editor and retains
 the complete local draft and its settings across activity recreation. Checkpoints
-are written off the UI thread; a failed replacement keeps the last durable draft
-reachable and reports a local save error. Deleting a saved project also removes
-its draft checkpoint. Android
+are read and written off the UI thread. Rotation keeps pending edits and retries
+failed writes; after process death, the last complete checkpoint remains
+recoverable through a small local reference. A failed load offers Retry or an
+explicit new draft without deleting the unreadable checkpoint. Retired unsaved
+drafts are removed only after their known recovery references are released;
+unrecognized files are preserved. Deleting a saved project also removes its draft
+checkpoint. Android
 runs these through foreground workers with progress and Cancel. iOS owns running
 jobs independently of screens. On supported iOS 26+ devices, GPU work requests
 continued processing with the signed background GPU entitlement; the UI only

@@ -30,7 +30,21 @@ import java.io.File
     val scope=rememberCoroutineScope()
     val untitled=tr(if(kind=="stories") "stories.untitled" else "audiobook.untitled")
     val titleKey=if(kind=="stories") "nav.stories" else "audiobook.title"
-    var project by rememberProductionProject(kind,untitled,File(context.noBackupFilesDir,"production-drafts"),vm::restoreFailure)
+    val draft=rememberProductionProject(kind,untitled,File(context.noBackupFilesDir,"production-drafts"),vm::restoreFailure)
+    if(draft.loading) {
+        Screen {
+            ScreenTitle(titleKey)
+            if(draft.loadFailed) {
+                Secondary("common.retry") {vm.clearError();draft.retryRestore()}
+                Secondary("mobile.production.new") {vm.clearError();draft.startNew()}
+            } else {
+                CircularProgressIndicator()
+                Text(tr("common.loading"))
+            }
+        }
+        return
+    }
+    var project by draft
     var projects by remember {mutableStateOf(emptyList<ProductionProject>())}
     var output by remember {mutableStateOf<File?>(null)}
     var chapters by remember {mutableStateOf(emptyList<File>())}
