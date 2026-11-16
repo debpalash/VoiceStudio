@@ -94,3 +94,75 @@ def test_lifetime_dll_handles_reused_and_non_windows_noop(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime.sys, "platform", "linux")
     runtime.initialize_dll_search()
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("code", [0xC0000005, -1073741819])
+@pytest.mark.parametrize("output", ["", "not-json", "{}"])
+def test_native_access_violation_preserves_code_without_guessing_fault(monkeypatch, code, output):
+    verify = module("verify")
+    monkeypatch.setattr(verify.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, code, output, ""))
+    with pytest.raises(verify.VerificationFailure) as caught:
+        verify.verify_environment()
+    error = caught.value
+    assert error.category == "crash"
+    assert not error.repairable
+    assert str(code) in str(error)
+    assert "0xC0000005" in str(error)
+    assert "access violation" in str(error).lower()
+    assert "faulting module and cause are unknown" in str(error)
+    assert "amdhip" not in str(error).lower()
+    assert "hybrid" not in str(error).lower()
+
+
+@pytest.mark.parametrize("code", [2, -1, 0xC000001D])
+@pytest.mark.parametrize("output", ["", "not-json", "{}"])
+def test_other_failed_probe_exits_keep_their_own_code(monkeypatch, code, output):
+    verify = module("verify")
+    monkeypatch.setattr(verify.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, code, output, ""))
+    with pytest.raises(verify.VerificationFailure) as caught:
+        verify.verify_environment()
+    assert caught.value.category == "crash"
+    assert not caught.value.repairable
+    assert str(code) in str(caught.value)
+    assert f"0x{code & 0xffffffff:08X}" in str(caught.value)
+    assert "access violation" not in str(caught.value).lower()
+
+
+def test_probe_crash_code_survives_bounded_stderr(monkeypatch):
+    verify = module("verify")
+    monkeypatch.setattr(verify.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, 0xC0000005, "", "discarded-prefix-" + "x" * 4000 + "-diagnostic-tail"))
+    with pytest.raises(verify.VerificationFailure) as caught:
+        verify.verify_environment()
+    message = str(caught.value)
+    assert len(message) <= 2000
+    assert "0xC0000005" in message
+    assert "access violation" in message.lower()
+    assert "discarded-prefix" not in message
+    assert message.endswith("-diagnostic-tail")
+
+
+def test_invalid_zero_exit_is_not_a_native_crash(monkeypatch):
+    verify = module("verify")
+    monkeypatch.setattr(verify.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, 0, "not-json", "bounded diagnostic"))
+    with pytest.raises(verify.VerificationFailure) as caught:
+        verify.verify_environment()
+    assert caught.value.category == "invalid_report"
+    assert not caught.value.repairable
+    assert "access violation" not in str(caught.value).lower()
+    assert "bounded diagnostic" in str(caught.value)
+
+
+def test_structured_package_failure_remains_repairable(monkeypatch):
+    verify = module("verify")
+    report = {"ready": False, "scope": "model-free", "category": "package_missing", "error": "Pinned package is missing"}
+    monkeypatch.setattr(verify.subprocess, "run", lambda *a, **k:
+                        subprocess.CompletedProcess(a, 1, json.dumps(report), ""))
+    with pytest.raises(verify.VerificationFailure) as caught:
+        verify.verify_environment()
+    assert caught.value.category == "package_missing"
+    assert caught.value.repairable
+    assert str(caught.value) == report["error"]

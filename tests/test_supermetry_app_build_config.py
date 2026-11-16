@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -94,7 +95,17 @@ def test_release_artifact_jobs_receive_only_build_time_intake_credentials():
                 env = step["env"]
                 assert env["SUPERMETRY_APP_ID"] == "${{ secrets.SUPERMETRY_APP_ID }}"
                 assert env["SUPERMETRY_INGEST_KEY"] == "${{ secrets.SUPERMETRY_INGEST_KEY }}"
-                assert "vars.SUPERMETRY_APP_HOST" in env["SUPERMETRY_APP_HOST"]
+                assert env["SUPERMETRY_APP_HOST"] == "${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}"
                 assert "SUPERMETRY_DIAGNOSTICS_SESSION_PINGS" not in env
                 assert "bun run check:electron" not in step.get("run", "")
                 assert not any(command in step.get("run", "") for command in ("bun run test", "vp test", "pytest", "testDebugUnitTest"))
+
+
+def test_no_workflow_reads_app_credentials_from_public_repository_variables():
+    for workflow in (ROOT / ".github/workflows").glob("*.yml"):
+        source = workflow.read_text(encoding="utf-8")
+        for credential in ("SUPERMETRY_APP_ID", "SUPERMETRY_INGEST_KEY"):
+            assert not re.search(
+                rf"\bvars\s*(?:\.\s*{credential}\b|\[\s*['\"]{credential}['\"]\s*\])",
+                source,
+            ), (workflow.name, credential)

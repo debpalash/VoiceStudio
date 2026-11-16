@@ -9,7 +9,7 @@ from core import failure
 from core import run_sentinel
 
 logger = logging.getLogger("omnivoice.tasks")
-_EXPECTED_STREAM_ERRORS = ("dub_source_changed", "dub_timing_overflow")
+_EXPECTED_STREAM_ERRORS = ("dub_source_changed", "dub_timing_overflow", "model_licence_required")
 
 
 def _stream_payload(update):

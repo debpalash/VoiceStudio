@@ -77,7 +77,7 @@ For anything new: prefer what's already pinned in `pyproject.toml` / `electron/p
 
 **Release presentation and credits (owner-set 2026-09-17):** Tagged release announcements lead with the biggest user-visible change; redesigns need real UI screenshots and migrations need installer links and steps. Verify all contributor credits from the tag comparison and included PRs; list authors and bug reporters separately (see `docs/RELEASING.md`). Keep Highlights to 3–5 bullets; the release introduction can include prose, images, and a download table before the concise change entries.
 
-**Localization (hard rule):** No hardcoded non-English (CJK) **user-facing text** anywhere in the codebase except the translation layers: `electron/src/renderer/src/i18n/` (the catalog the app loads; checked by `tests/test_locale_parity.py` and Electron `locale:check`) and the legacy `electron/src/shared/i18n/` (loaded only by shared-module tests). All UI strings go through i18n (`t('...')` keys in `locales/*.json`); native language names live in `i18n/index.ts` (`LANGUAGES`). Functional CJK is allowed and tracked via the allowlist in `tests/test_no_hardcoded_cjk.py` — text-processing regexes, model/engine vocabulary & identifiers (e.g. CosyVoice speaker IDs), localized error matching, demo/eval data, and test fixtures. CI fails on any hardcoded CJK outside the allowlist; to add legitimate functional CJK, extend `_ALLOWED_FILES` there with a justification.
+**Localization (hard rule):** No hardcoded non-English (CJK) **user-facing text** anywhere in the codebase except the translation layer: `electron/src/renderer/src/i18n/` (the catalog the app loads; checked by `tests/test_locale_parity.py` and Electron `locale:check`). All UI strings go through i18n (`t('...')` keys in `locales/*.json`); native language names live in `i18n/index.ts` (`LANGUAGES`). Functional CJK is allowed and tracked via the allowlist in `tests/test_no_hardcoded_cjk.py` — text-processing regexes, model/engine vocabulary & identifiers (e.g. CosyVoice speaker IDs), localized error matching, demo/eval data, and test fixtures. CI fails on any hardcoded CJK outside the allowlist; to add legitimate functional CJK, extend `_ALLOWED_FILES` there with a justification.
 
 **Release deployment channels (hard rule, owner-set 2026-07-16):** a version bump is not "released" until **every** maintained channel ships it — the full checklist lives in `docs/RELEASING.md`. The channels are the Electron GitHub Release (Linux x64, Windows x64 + experimental ARM64, macOS arm64 + x64), GHCR and Docker Hub in CUDA and ROCm flavors, and the Docker Hub overview page synced from `deploy/dockerhub-overview.md`. The final Tauri feeds are immutable compatibility assets copied into releases for old clients; they are never rebuilt. Verify all channels after tagging. Preview/RC builds always source from `main`; never cut a side-branch build.
 
@@ -141,9 +141,12 @@ Direct repo edits are authorized (owner decision, 2026-07-08). The GSD command g
 Separately opted-in automatic failure reports may replace the public events
 request with `/api/public/v1/app-events` on the sanctioned Supermetry hosts
 `https://app.supermetry.com` (unconfigured host default) or
-`https://ana.voicestudio.sh` (the owner-configured packaged app intake, recorded
-for approval in PR #4137). App ID and write-only ingest key come only from
-runtime environment or git-ignored build metadata. `SUPERMETRY_APP_HOST` is an
+`https://app.voicestudio.sh` (the owner-configured packaged app intake, owner-set
+2026-11-16). App ID and write-only ingest key come only from
+runtime environment or git-ignored build metadata. Release CI must use GitHub
+Actions Secrets for the app ID and ingest key, never public repository variables,
+and must not log their values; fork builds receive no upstream credentials.
+`SUPERMETRY_APP_HOST` is an
 explicit operator override, unset by default; any other production host must
 be recorded and approved by the owner. Product analytics and the closed failure
 schema stay unchanged. `diagnostics.sessionPings` is default off, additionally

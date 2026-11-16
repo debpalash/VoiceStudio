@@ -2,7 +2,6 @@
 import asyncio
 import importlib
 import threading
-import time
 from types import SimpleNamespace
 
 import pytest
@@ -14,18 +13,30 @@ def test_grant_observation_uses_cached_authority_without_worker_io(reporter, mon
     reports = importlib.import_module('core.diagnostic_reports')
     assert reports.observe_grant() is None
     reporter.consent(True)
-    entered = threading.Event(); release = threading.Event()
+    entered = threading.Event(); release = threading.Event(); observed = threading.Event()
+    values = []
     def hold_worker():
         with reporter.lock:
-            entered.set(); release.wait(5)
+            entered.set(); release.wait()
+    def observe():
+        try:
+            values.append(reports.observe_grant())
+        finally:
+            observed.set()
     worker = threading.Thread(target=hold_worker)
-    worker.start(); assert entered.wait(2)
+    observer = threading.Thread(target=observe)
+    worker.start()
     try:
-        started = time.perf_counter()
-        assert reports.observe_grant() == reporter.epoch
-        assert time.perf_counter()-started < .1
+        assert entered.wait(5)
+        observer.start()
+        assert observed.wait(5), 'Grant observation blocked on the worker lock'
+        assert worker.is_alive() and not release.is_set()
+        assert values == [reporter.epoch]
     finally:
-        release.set(); worker.join(2)
+        release.set(); worker.join(5)
+        if observer.ident is not None:
+            observer.join(5)
+    assert not worker.is_alive() and not observer.is_alive()
     monkeypatch.setattr(reports, '_reporter', None)
     monkeypatch.setattr(reports, 'initialize', lambda: pytest.fail('observation initialized diagnostics'))
     assert reports.observe_grant() is None

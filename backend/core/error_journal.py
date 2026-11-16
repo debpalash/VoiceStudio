@@ -227,8 +227,13 @@ def record(exc: BaseException, route: str = "", trace: str = "") -> dict:
     Never raises — this runs inside the global exception handler, where a
     second failure would shadow the one being reported.
     """
-    from core import diagnostic_reports
-    diagnostic_reports.capture_failure(diagnostic_reports.route_stage(route), error=exc)
+    try:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure(diagnostic_reports.route_stage(route), error=exc)
+    except Exception:
+        # Optional reporting must neither replace the original fault nor
+        # prevent the independent local journal from recording it.
+        pass
     try:
         error_class = classify_exception(exc, trace)
         fp = _fingerprint(error_class, exc)
