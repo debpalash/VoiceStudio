@@ -566,10 +566,16 @@ test-only PR. Docker Hub overview edits still publish through the small
   after preserving eligible partial progress; no force-cancel is issued. Short
   searches with missing rows get one bounded rescan for delayed cancellations;
   unresolved reported totals remain incomplete rather than reporting success.
-  Both close-event cleanup and the repository sweep check every associated PR
-  through bounded pagination;
-  any open PR or incomplete closure lookup keeps the run. A run must predate the
-  earliest associated PR closure, protecting work started by either close event.
+  Each day window is checked against its own reported total, so new arrivals
+  elsewhere cannot hide a truncated window; its retry counts toward the window
+  budget. Both close-event cleanup and the repository sweep separately paginate
+  the repository's open PRs: the commit-association API can omit an open PR whose
+  SHA is already on the default branch. Any matching open head/merge SHA or
+  incomplete open/closure lookup keeps the run. A run must predate the earliest
+  known associated PR closure, protecting work started by either close event.
+  Direct cleanup of a verified closed, unmerged PR uses that PR's own closure
+  when the commit API returns no associations; an empty result alone never
+  authorizes repository-wide cleanup.
 - **Cross-platform parity (hard rule):** anything that ships in default mode
   must behave identically on macOS, Windows, and Linux. Platform-specific
   *implementation* is fine; platform-divergent *default behavior* is a P0.

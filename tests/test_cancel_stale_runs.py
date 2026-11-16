@@ -41,10 +41,13 @@ class FakeApi:
     def __init__(self, runs: list[dict[str, Any]], *, refuse: set[int] | None = None,
                  pulls: dict[str, list[dict[str, Any]]] | None = None,
                  bad_commits: set[str] | None = None, latency: float = 0,
-                 remove_cancelled: bool = False) -> None:
+                 remove_cancelled: bool = False,
+                 open_pulls: list[dict[str, Any]] | None = None, bad_open: bool = False) -> None:
         self.runs = sorted(runs, key=lambda run: (run["created_at"], run["id"]), reverse=True)
         self.refuse = refuse or set()
         self.pulls = pulls
+        self.open_pulls = open_pulls or []
+        self.bad_open = bad_open
         self.bad_commits = bad_commits or set()
         self.cancelled: list[int] = []
         self.requests: list[tuple[str, str]] = []
@@ -80,6 +83,14 @@ class FakeApi:
             assert 1 <= per_page <= 100
             start = (int(query.get("page", ["1"])[0]) - 1) * per_page
             return pulls[start:start + per_page]
+        if urlsplit(path).path.endswith("/pulls"):
+            if self.bad_open:
+                raise RuntimeError("Controlled open-PR lookup failure")
+            query = parse_qs(urlsplit(path).query)
+            assert query["state"] == ["open"]
+            assert query["per_page"] == ["100"]
+            start = (int(query["page"][0]) - 1) * 100
+            return self.open_pulls[start:start + 100]
         if "/pulls/" in path:
             return self.requested_pr
         assert "/actions/runs?" in path
@@ -151,7 +162,8 @@ def test_cancels_eligible_runs_before_finishing_capped_discovery(monkeypatch: py
     today = datetime.date.today()
     api = FakeApi([_run(i, created=f"{(today-datetime.timedelta(days=i // 500)).isoformat()}T01:00:00Z") for i in range(1001)], latency=4)
     _main(module, api, monkeypatch)
-    assert api.first_post_at is not None and api.first_post_at <= 12
+    # One run page, independent open-PR inventory, commit associations, POST.
+    assert api.first_post_at is not None and api.first_post_at <= 16
 
 
 def test_deadline_keeps_partial_progress_and_returns_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -424,3 +436,123 @@ def test_unaccounted_short_search_remains_incomplete_after_bounded_rescan(monkey
     assert set(api.cancelled) == set(range(1, 201))
     assert len(api.cancelled) == 200
     assert len([path for _, path in api.requests if "/actions/runs?" in path and "status=queued" in path]) <= 10
+
+
+@pytest.mark.parametrize("mode", [["--sweep"], ["--pr", "7"]])
+@pytest.mark.parametrize("sha_field", ["head", "merge_commit_sha"])
+def test_independent_open_inventory_protects_default_branch_shared_sha(monkeypatch, mode, sha_field):
+    module = _module()
+    sha = "a" * 40
+    open_pr = _pr(state="open", sha=sha if sha_field == "head" else "other")
+    if sha_field == "merge_commit_sha":
+        open_pr["merge_commit_sha"] = sha
+    api = FakeApi([_run(1, created="2026-10-24T11:00:00Z")],
+                  pulls={sha: [_pr()]}, open_pulls=[open_pr])
+    api.requested_pr = _pr()
+    assert _main(module, api, monkeypatch, mode) == 0
+    assert api.cancelled == []
+
+
+def test_direct_closed_unmerged_empty_associations_use_requested_closure(monkeypatch):
+    module = _module()
+    sha = "a" * 40
+    api = FakeApi([_run(1, created="2026-10-24T11:00:00Z"),
+                   _run(2, created="2026-10-24T12:00:00Z"),
+                   _run(3, created="2026-10-24T11:00:00Z", event="push")], pulls={sha: []})
+    api.requested_pr = _pr()
+    assert _main(module, api, monkeypatch, ["--pr", "7"]) == 0
+    assert api.cancelled == [1]
+
+
+@pytest.mark.parametrize("mode", [["--sweep"], ["--pr", "7"]])
+def test_unknown_open_inventory_cannot_authorize_cancellation(monkeypatch, mode):
+    module = _module()
+    api = FakeApi([_run(1, created="2026-10-24T11:00:00Z")], bad_open=True)
+    assert _main(module, api, monkeypatch, mode) == 1
+    assert api.cancelled == []
+
+
+def test_open_inventory_later_page_and_exhausted_budget_keep_runs(monkeypatch):
+    module = _module()
+    unrelated = [_pr(state="open", sha=f"{i:040x}") for i in range(100)]
+    api = FakeApi([_run(1)], open_pulls=[*unrelated, _pr(state="open")])
+    assert _main(module, api, monkeypatch) == 0
+    assert api.cancelled == []
+    assert any("state=open" in path and "page=2" in path for _, path in api.requests)
+    monkeypatch.setattr(module, "MAX_OPEN_PR_PAGES", 1, raising=False)
+    capped = FakeApi([_run(1)], open_pulls=unrelated)
+    assert _main(module, capped, monkeypatch) == 1
+    assert capped.cancelled == []
+
+
+def test_arrivals_cannot_mask_a_short_day_window(monkeypatch, capsys):
+    module = _module()
+    today = datetime.date.today().isoformat()
+    monkeypatch.setattr(module, "_day_windows", lambda: [f"{today}..{today}"])
+    class ArrivingApi(FakeApi):
+        def __call__(self, method, path, data=None):
+            query = parse_qs(urlsplit(path).query)
+            if method == "GET" and query.get("status") == ["queued"] and "created" in query:
+                self.requests.append((method, path))
+                return {"total_count": 2, "workflow_runs": [_run(2000)]}
+            return super().__call__(method, path, data)
+    api = ArrivingApi([_run(i) for i in range(1, 1002)])
+    assert _main(module, api, monkeypatch) == 1
+    assert len(set(api.cancelled)) == 1001
+    assert 1 not in api.cancelled
+    assert len([path for _, path in api.requests if "created=" in path]) == 2
+    assert "discovered 1 of 2" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("response", [{}, [None], [{"state": "closed", "head": {"sha": "a" * 40}}],
+                                      [{"state": "open", "head": None}],
+                                      [{"state": "open", "head": {"sha": "a" * 40}, "merge_commit_sha": 1}]])
+def test_malformed_independent_open_inventory_fails_closed(monkeypatch, response):
+    module = _module()
+    class MalformedApi(FakeApi):
+        def __call__(self, method, path, data=None):
+            if urlsplit(path).path.endswith("/pulls") and "/commits/" not in path:
+                return response
+            return super().__call__(method, path, data)
+    api = MalformedApi([_run(1)])
+    assert _main(module, api, monkeypatch) == 1
+    assert api.cancelled == []
+
+
+def test_short_day_window_can_complete_on_one_bounded_rescan(monkeypatch):
+    module = _module()
+    today = datetime.date.today().isoformat()
+    monkeypatch.setattr(module, "_day_windows", lambda: [f"{today}..{today}"])
+    class RecoveringApi(FakeApi):
+        attempts = 0
+        def __call__(self, method, path, data=None):
+            query = parse_qs(urlsplit(path).query)
+            if method == "GET" and query.get("status") == ["queued"] and "created" in query:
+                self.requests.append((method, path))
+                self.attempts += 1
+                # The second pass finds the previously shifted row. Earlier
+                # accepted cancellations have completed, so its total is now1.
+                return {"total_count": 2 if self.attempts == 1 else 1,
+                        "workflow_runs": [_run(2000 if self.attempts == 1 else 1)]}
+            return super().__call__(method, path, data)
+    api = RecoveringApi([_run(i) for i in range(1, 1002)])
+    assert _main(module, api, monkeypatch) == 0
+    assert api.attempts == 2
+    assert len(api.cancelled) == len(set(api.cancelled)) == 1002
+
+
+def test_short_window_retry_stays_within_window_budget(monkeypatch):
+    module = _module()
+    today = datetime.date.today().isoformat()
+    monkeypatch.setattr(module, "MAX_WINDOW_REQUESTS", 1)
+    monkeypatch.setattr(module, "_day_windows", lambda: [f"{today}..{today}"])
+    class ShortApi(FakeApi):
+        def __call__(self, method, path, data=None):
+            query = parse_qs(urlsplit(path).query)
+            if method == "GET" and query.get("status") == ["queued"] and "created" in query:
+                self.requests.append((method, path))
+                return {"total_count": 2, "workflow_runs": [_run(2000)]}
+            return super().__call__(method, path, data)
+    api = ShortApi([_run(i) for i in range(1, 1002)])
+    assert _main(module, api, monkeypatch) == 1
+    assert len([path for _, path in api.requests if "created=" in path]) == 1

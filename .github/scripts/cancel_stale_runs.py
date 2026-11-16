@@ -47,6 +47,8 @@ LOOKBACK_DAYS = 30
 MAX_WINDOW_REQUESTS = 45
 # A commit with more associations than this remains unknown, never eligible.
 MAX_ASSOCIATED_PR_PAGES = 10
+# A bounded independent open-PR inventory protects SHAs omitted by commit lookup.
+MAX_OPEN_PR_PAGES = 10
 # Leave room for the last bounded 30-second API request and summary before the five-minute job.
 WORK_SECONDS = 240
 SKIPPED = object()
@@ -181,14 +183,26 @@ def unfinished_runs(call: ApiCall, repo: str, **query: Any) -> Iterator[Run]:
     for status in UNFINISHED:
         status_seen = set()
         found, total = yield from search({**query, "status": status})
-        if found >= SEARCH_CAP:
+        if found >= SEARCH_CAP or total > SEARCH_CAP:
             print(f"::warning::{status}: {SEARCH_CAP} runs is the search cap; re-sweeping day by day", file=sys.stderr)
-            for index, window in enumerate(_day_windows()):
-                if index >= MAX_WINDOW_REQUESTS:
+            window_requests = 0
+            for window in _day_windows():
+                if window_requests >= MAX_WINDOW_REQUESTS:
                     errors += 1
                     print(f"::warning::{status}: stopped after {MAX_WINDOW_REQUESTS} day windows; discovery is incomplete", file=sys.stderr)
                     break
-                count, _ = yield from search({**query, "status": status, "created": window})
+                params = {**query, "status": status, "created": window}
+                window_requests += 1
+                count, window_total = yield from search(params)
+                if count < window_total and count < SEARCH_CAP and window_requests < MAX_WINDOW_REQUESTS:
+                    # Status offsets can shift while accepted cancellations finish.
+                    # Check this window independently: arrivals elsewhere do not
+                    # account for a missing row within it.
+                    window_requests += 1
+                    count, window_total = yield from search(params)
+                if count < window_total:
+                    errors += 1
+                    print(f"::warning::{status} {window}: discovered {count} of {window_total} reported runs; discovery is incomplete", file=sys.stderr)
                 if count >= SEARCH_CAP:
                     errors += 1
                     print(f"::warning::{status} {window} also reached the search cap; discovery is incomplete", file=sys.stderr)
@@ -211,7 +225,7 @@ def stale_for_pr(call: ApiCall, repo: str, pr: dict, exclude_run: int = 0) -> It
         return
     sha = pr["head"]["sha"]
     try:
-        associated_close = _commit_closed_before(call, repo, sha)
+        associated_close = _commit_closed_before(call, repo, sha, known_closed_at=pr["closed_at"])
     except SweepDeadline:
         raise
     except Exception as error:
@@ -224,9 +238,40 @@ def stale_for_pr(call: ApiCall, repo: str, pr: dict, exclude_run: int = 0) -> It
             yield run
 
 
-def _commit_closed_before(call: ApiCall, repo: str, sha: str) -> str | None:
-    """Prove all associations closed, protecting every PR's close-event work."""
-    earliest: str | None = None
+def _open_pr_shas(call: ApiCall, repo: str) -> set[str]:
+    """Commit lookup omits open associations once a SHA is on the default branch."""
+    shas: set[str] = set()
+    for page in range(1, MAX_OPEN_PR_PAGES + 1):
+        pulls = call("GET", f"/repos/{repo}/pulls?state=open&sort=created&direction=asc&per_page={PER_PAGE}&page={page}")
+        if not isinstance(pulls, list) or len(pulls) > PER_PAGE:
+            raise IncompleteDiscovery("Invalid open-pull-request page")
+        for pr in pulls:
+            if not isinstance(pr, dict) or pr.get("state") != "open":
+                raise IncompleteDiscovery("Invalid open pull request")
+            head = pr.get("head")
+            sha = head.get("sha") if isinstance(head, dict) else None
+            merge_sha = pr.get("merge_commit_sha")
+            if not isinstance(sha, str) or not sha or (merge_sha is not None and (not isinstance(merge_sha, str) or not merge_sha)):
+                raise IncompleteDiscovery("Open pull-request SHA is unknown")
+            shas.add(sha)
+            if merge_sha is not None:
+                shas.add(merge_sha)
+        if len(pulls) < PER_PAGE:
+            return shas
+    raise IncompleteDiscovery("Open pull-request page budget reached")
+
+
+def _commit_closed_before(call: ApiCall, repo: str, sha: str, *,
+                          open_shas: set[str] | None = None,
+                          known_closed_at: str | None = None) -> str | None:
+    """Protect independent open PRs and every known associated close-event run."""
+    if open_shas is None:
+        open_shas = _open_pr_shas(call, repo)
+    if sha in open_shas:
+        return None
+    # Closed, unmerged PRs can have no commit-endpoint association. Only direct
+    # mode has a separately verified requested PR's closure to use in that case.
+    earliest = known_closed_at
     for page in range(1, MAX_ASSOCIATED_PR_PAGES + 1):
         pulls = call("GET", f"/repos/{repo}/commits/{sha}/pulls?per_page={PER_PAGE}&page={page}")
         if not isinstance(pulls, list) or len(pulls) > PER_PAGE:
@@ -249,14 +294,22 @@ def stale_in_repo(call: ApiCall, repo: str, exclude_run: int = 0) -> Iterator[Ru
     """Inspect candidates incrementally; one failed commit lookup is isolated."""
     closed: dict[str, str | None] = {}
     failures = 0
+    open_shas: set[str] | None = None
     try:
         for run in unfinished_runs(call, repo):
             if run["event"] not in PR_EVENTS or run["id"] == exclude_run:
                 continue
+            if open_shas is None:
+                try:
+                    open_shas = _open_pr_shas(call, repo)
+                except SweepDeadline:
+                    raise
+                except Exception as error:
+                    raise IncompleteDiscovery("Could not inspect open pull requests") from error
             sha = run["head_sha"]
             if sha not in closed:
                 try:
-                    closed[sha] = _commit_closed_before(call, repo, sha)
+                    closed[sha] = _commit_closed_before(call, repo, sha, open_shas=open_shas)
                 except SweepDeadline:
                     raise
                 except Exception as error:
