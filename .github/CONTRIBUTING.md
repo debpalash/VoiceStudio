@@ -553,7 +553,10 @@ test-only PR. Docker Hub overview edits still publish through the small
   iOS, shared contracts, native pins and resource-generator inputs still
   invalidate them. This reuses a prior green result only for pull-request and
   merge-group runs; the cache never skips main pushes, manual verification or
-  release builds.
+  release builds. The iOS screenshot tour waits for a hittable native tab,
+  its selected state and its destination before capturing a screen. A failed
+  navigation records a test failure and stops that tour, rather than collecting
+  screenshots of the previous page; it never retries the tap.
   The `Security` workflow works the same way: CodeQL, bandit and the dependency
   audits are skipped for a PR that only edits files under `docs/` or `mobile/` or
   Markdown, while the secret scan always runs (rule: its own `changes` job).
