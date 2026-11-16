@@ -277,7 +277,8 @@ class MyEngineBackend(TTSBackend):
 4. Add the same id under `tts_engines` in `docs/features.yaml` with its README
    string (`readme:`) or a doc page (`doc:`) — the Python suite and relevant
    documentation PRs run `python scripts/check-docs-drift.py` to flag missing
-   registry ids; daily/manual runs also maintain the rolling docs-drift issue
+   registry ids in a read-only job; only the daily/manual maintenance job gets
+   issue-write permission to maintain the rolling docs-drift issue
 5. It then appears in Settings → TTS Engine
 
 ---

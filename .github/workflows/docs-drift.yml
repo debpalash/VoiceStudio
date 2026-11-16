@@ -30,11 +30,13 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
-  drift:
+  pull-request:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -43,7 +45,26 @@ jobs:
           python-version: "3.11"
 
       - name: Install checker deps
-        run: pip install "pyyaml>=6"
+        run: pip install "pyyaml==6.0.3"
+
+      - name: Check inventory vs README/docs/registries
+        run: python scripts/check-docs-drift.py
+
+  drift:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Install checker deps
+        run: pip install "pyyaml==6.0.3"
 
       - name: Check inventory vs README/docs/registries
         id: drift
