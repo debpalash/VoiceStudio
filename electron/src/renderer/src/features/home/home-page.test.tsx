@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
+const projects = vi.hoisted(() => ({ saved: [] as unknown[], navigate: vi.fn() }));
 const browser = vi.hoisted(() => ({ open: vi.fn(async () => {}) }));
 const files = vi.hoisted(() => ({ openExternal: vi.fn(async () => {}) }));
 vi.mock('@/components/bridge', () => ({
@@ -14,11 +15,13 @@ vi.mock('@tanstack/react-router', () => ({
       {children}
     </a>
   ),
-  useNavigate: () => vi.fn(),
+  useNavigate: () => projects.navigate,
 }));
 vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-query')>()),
-  useQuery: () => ({ data: [] }),
+  useQuery: (options: { queryKey?: readonly unknown[] }) => ({
+    data: options.queryKey?.[0] === 'longform-projects' ? projects.saved : [],
+  }),
 }));
 vi.mock('@/hooks/use-profiles', () => ({ useProfiles: () => ({ data: [] }) }));
 vi.mock('@/components/app-shell/workspace-header', () => ({
@@ -31,10 +34,14 @@ import { HomePage } from './home-page';
 import { homeContributors } from './home-contributors-data';
 import { HOME_CONTRIBUTOR_SLOTS } from './home-contributors';
 import en from '@/i18n/locales/en.json';
+import { blankLongformDraft, longformSession } from '@/features/longform/longform-session';
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  projects.saved = [];
+  projects.navigate.mockClear();
+  longformSession.setState((state) => ({ ...state, active: null }));
   vi.useRealTimers();
 });
 
@@ -209,3 +216,28 @@ it('separates three primary creation actions and describes all nine destinations
   expect(screen.queryByText('clone.history_title')).not.toBeInTheDocument();
   expect(screen.queryByText('0')).not.toBeInTheDocument();
 });
+
+it.each([true, false])(
+  'opens a saved Home project only when longform is idle: active=%s',
+  async (active) => {
+    const draft = {
+      ...blankLongformDraft(),
+      title: 'Saved synthetic book',
+      script: 'Preserved saved manuscript',
+    };
+    projects.saved = [
+      { id: 'saved', name: 'Saved synthetic book', mode: 'audiobook', updatedAt: 1, draft },
+    ];
+    longformSession.setState((state) => ({ ...state, active: active ? 'stories' : null }));
+    render(<HomePage />);
+    fireEvent.click(screen.getByRole('button', { name: /Saved synthetic book/ }));
+    if (active) {
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent('audiobook.blocked.busy'),
+      );
+      expect(projects.navigate).not.toHaveBeenCalled();
+      expect(longformSession.state.drafts.audiobook.script).not.toBe('Preserved saved manuscript');
+    } else
+      await waitFor(() => expect(projects.navigate).toHaveBeenCalledWith({ to: '/audiobook' }));
+  },
+);

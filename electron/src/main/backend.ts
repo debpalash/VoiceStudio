@@ -1,3 +1,4 @@
+import { localDataIdentity } from './local-data-identity';
 import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-rocm';
 import { runtimeProjectReady } from './runtime-readiness';
@@ -81,7 +82,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { access, open, rm, stat } from 'node:fs/promises';
+import { access, lstat, open, rm, stat } from 'node:fs/promises';
 import setupLock from '../../../uv.lock?raw';
 import { cpus, homedir, release, totalmem } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -988,6 +989,85 @@ export function backendDataDir(
   return resolve(launch.cwd || '.', dataDir);
 }
 
+/** Prove absence of root-changing keys without interpreting dotenv values.
+ * Python dotenv never interpolates key names. Scan the entire bounded UTF-8
+ * source, including comments/quoted text, so unsupported syntax stays unknown
+ * when it mentions either key; unrelated settings cannot redirect this root.
+ */
+async function startupEnvPreservesDataRoot(path: string): Promise<boolean> {
+  const limit = 64 * 1024;
+  let file: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    file = await open(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+    );
+    const info = await file.stat();
+    const entry = await lstat(path);
+    if (
+      !info.isFile() ||
+      !entry.isFile() ||
+      info.dev !== entry.dev ||
+      info.ino !== entry.ino ||
+      info.size > limit
+    )
+      return false;
+    const buffer = Buffer.alloc(limit + 1);
+    let size = 0;
+    while (size < buffer.length) {
+      const { bytesRead } = await file.read(buffer, size, buffer.length - size, size);
+      if (!bytesRead) break;
+      size += bytesRead;
+    }
+    if (size > limit) return false;
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, size));
+    return !text.includes('\0') && !/OMNIVOICE_(?:DATA_DIR|ENV_FILE)/i.test(text);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      try {
+        await lstat(path);
+      } catch (missing) {
+        return (missing as NodeJS.ErrnoException).code === 'ENOENT';
+      }
+    }
+    return false;
+  } finally {
+    await file?.close();
+  }
+}
+
+/** Python loads saved settings after dotenv, overriding launcher data defaults. */
+async function launchDataRootEstablished(launch: BackendLaunchLog): Promise<boolean> {
+  const raw = launch.env.OMNIVOICE_DATA_DIR;
+  // Python uses this string verbatim; backendDataDir's log-only trim must not
+  // manufacture authority for a different directory.
+  if (!raw || raw !== raw.trim()) return false;
+  const home =
+    process.platform === 'win32'
+      ? launch.env.USERPROFILE ||
+        (launch.env.HOMEDRIVE && launch.env.HOMEPATH
+          ? launch.env.HOMEDRIVE + launch.env.HOMEPATH
+          : undefined)
+      : launch.env.HOME;
+  // A missing launch home may be filled by project dotenv before Python picks
+  // its default saved-env path; the parent's home is not authority for it.
+  if (!launch.env.OMNIVOICE_ENV_FILE && !home) return false;
+  const savedEnv = launch.env.OMNIVOICE_ENV_FILE || join(home!, '.config', 'omnivoice', 'env');
+  const paths = new Set([resolve(launch.cwd, savedEnv), join(launch.cwd, 'backend', '.env')]);
+  let directory = resolve(launch.cwd);
+  // find_dotenv walks from backend/main.py to the filesystem root. A present
+  // file can redirect the saved-env location; never expose its values.
+  for (let depth = 0; depth < 64; depth++) {
+    paths.add(join(directory, '.env'));
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    if (depth === 63) return false;
+    directory = parent;
+  }
+  for (const path of paths) if (!(await startupEnvPreservesDataRoot(path))) return false;
+  return true;
+}
+
 /** Enough for LOG_TAIL_LINES lines without reading a whole rotated log. */
 const LOG_TAIL_BYTES = 64 * 1024;
 /** Coarse filesystem clocks (FAT: 2 s) must not make this launch's log look old. */
@@ -1187,6 +1267,16 @@ export class BackendSupervisor extends EventEmitter<{
   private launchLog: BackendLaunchLog | null = null;
   /** Bumped on every start/shutdown so stale poll loops and exit handlers no-op. */
   private generation = 0;
+  private dataIdentity: string | undefined;
+  private dataIdentityChild: ChildProcess | null = null;
+  private identityChecked = false;
+  private identityProof: {
+    generation: number;
+    launch: BackendLaunchLog;
+    settled: boolean;
+    frozen: boolean;
+    value?: string;
+  } | null = null;
   /** A generation owns at most one health loop, even if readiness is observed twice. */
   private supervisingGeneration: number | null = null;
   /**
@@ -1351,6 +1441,13 @@ export class BackendSupervisor extends EventEmitter<{
       elapsedMs: Date.now() - this.startedAt,
       logTail: this.log.slice(-LOG_TAIL_LINES),
       lastCrash: this.crashes.latest(),
+      ...(this.managed &&
+      this.child &&
+      this.child === this.dataIdentityChild &&
+      !this.remoteUrl &&
+      this.dataIdentity
+        ? { dataIdentity: this.dataIdentity }
+        : {}),
       ...(app.isPackaged
         ? {
             runtimePath: dirname(this.runtimeProject ?? join(defaultRuntimeRoot(), 'project')),
@@ -1422,6 +1519,10 @@ export class BackendSupervisor extends EventEmitter<{
   /** Attach to a backend already answering on the port, else spawn one. */
   async start(): Promise<void> {
     const gen = ++this.generation;
+    this.dataIdentity = undefined;
+    this.dataIdentityChild = null;
+    this.identityChecked = false;
+    this.identityProof = null;
     this.shuttingDown = false;
     this.startedAt = Date.now();
     this.exitCode = undefined;
@@ -2464,6 +2565,38 @@ export class BackendSupervisor extends EventEmitter<{
     return true;
   }
 
+  /** Optional proof starts before spawn and never delays readiness. */
+  private async prepareDataIdentity(launch: BackendLaunchLog, generation: number): Promise<void> {
+    const proof = {
+      generation,
+      launch,
+      settled: false,
+      frozen: false,
+      value: undefined as string | undefined,
+    };
+    this.identityProof = proof;
+    this.identityChecked = false;
+    this.dataIdentity = undefined;
+    this.dataIdentityChild = null;
+    try {
+      if (
+        !app.isPackaged ||
+        this.remoteUrl ||
+        parseBackendCmdOverride(launch.env.OMNIVOICE_BACKEND_CMD) ||
+        !(await launchDataRootEstablished(launch))
+      )
+        return;
+      if (proof.frozen || this.identityProof !== proof || generation !== this.generation) return;
+      const value = await localDataIdentity(resolve(launch.cwd, launch.env.OMNIVOICE_DATA_DIR!));
+      if (!proof.frozen && this.identityProof === proof && generation === this.generation)
+        proof.value = value;
+    } catch {
+      /* Unknown provenance must not affect backend startup. */
+    } finally {
+      proof.settled = true;
+    }
+  }
+
   private spawnChild(plan: SpawnPlan, gen: number, attempt = 0): void {
     this.crashes.startProcess();
     const [command, ...args] = plan.argv;
@@ -2484,6 +2617,12 @@ export class BackendSupervisor extends EventEmitter<{
     }
     // Per launch: a failed spawn must not leave an older launch's log in place.
     this.launchLog = null;
+    const launch: BackendLaunchLog = {
+      env: processOptions.env,
+      cwd: plan.cwd,
+      startedAt: Date.now(),
+    };
+    void this.prepareDataIdentity(launch, gen);
     try {
       child = spawn(command, args, {
         cwd: plan.cwd,
@@ -2505,7 +2644,7 @@ export class BackendSupervisor extends EventEmitter<{
     }
     this.child = child;
     this.childPid = child.pid;
-    this.launchLog = { env: processOptions.env, cwd: plan.cwd, startedAt: Date.now() };
+    this.launchLog = launch;
     if (processOptions.drainFd !== null) {
       // Python passes this child-side descriptor to every nested operation.
       // Reading the parent side keeps the ownership channel live and lets
@@ -2789,6 +2928,22 @@ export class BackendSupervisor extends EventEmitter<{
     const credentials = await this.remoteCredentials();
     if (gen !== this.generation) return false;
     if (credentials === 'valid') {
+      if (!this.identityChecked) {
+        this.identityChecked = true;
+        const proof = this.identityProof;
+        if (proof) proof.frozen = true;
+        if (
+          proof?.settled &&
+          proof.generation === gen &&
+          proof.launch === this.launchLog &&
+          this.managed &&
+          this.child &&
+          !this.remoteUrl
+        ) {
+          this.dataIdentity = proof.value;
+          this.dataIdentityChild = this.child;
+        }
+      }
       // A healthy run must not leave import errors behind: a later unrelated
       // exit would otherwise match them and be misread as a broken runtime.
       this.childErrorLog.length = 0;

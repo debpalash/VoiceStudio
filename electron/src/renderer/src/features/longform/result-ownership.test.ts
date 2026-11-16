@@ -34,6 +34,7 @@ const local = (port = 3900): BackendStatus => ({
   baseUrl: `http://127.0.0.1:${port}`,
   port,
   remote: false,
+  dataIdentity: '10000000-0000-4000-8000-000000000001',
 });
 const publish = (status: BackendStatus) => {
   fixture.status = status;
@@ -122,7 +123,11 @@ it('keeps local ownership across port churn and separates data roots', async () 
   await session.renderLongform('stories');
   publish(local(3911));
   expect(session.longformSession.state.drafts.stories.output).toBe('local.m4b');
-  publish({ ...local(3911), runtimeStorage: { data: '/other', models: '/models', temp: '/tmp' } });
+  publish({
+    ...local(3911),
+    dataIdentity: '10000000-0000-4000-8000-000000000002',
+    runtimeStorage: { data: '/other', models: '/models', temp: '/tmp' },
+  });
   expect(session.longformSession.state.drafts.stories.output).toBe('');
   publish(local(3912));
   expect(session.longformSession.state.drafts.stories.output).toBe('local.m4b');
@@ -391,4 +396,195 @@ it('does not rewrite availability-only results on unchanged-connection heartbeat
   session.flushLongformSessionPersistence();
   expect(session.longformSession.state).toBe(previous);
   expect(writes).not.toHaveBeenCalled();
+});
+
+it.each(['stories', 'audiobook'] as const)(
+  'never lets an older availability check replace a fresh %s render',
+  async (mode) => {
+    localStorage.setItem(
+      'voicestudio.longform.v1',
+      JSON.stringify({
+        [mode]: { script: 'Synthetic manuscript', lines: [], output: 'older.m4b' },
+      }),
+    );
+    const session = await load();
+    let respond!: (response: Response) => void;
+    fixture.fetch
+      .mockReturnValueOnce(
+        new Promise<Response>((resolve) => {
+          respond = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(events('new-render.m4b'));
+    const checking = session.recoverLegacyLongformResult(mode);
+    const signal = fixture.fetch.mock.calls[0][1]?.signal as AbortSignal;
+    await session.renderLongform(mode);
+    expect(session.longformSession.state.drafts[mode].output).toBe('new-render.m4b');
+    respond(new Response(null, { status: 200 }));
+    expect(await checking).toBe(false);
+    expect(signal.aborted).toBe(true);
+    expect(session.getLongformResultState(mode).recovering).toBe(false);
+    expect(session.longformSession.state.drafts[mode].output).toBe('new-render.m4b');
+  },
+);
+
+it.each(['owned', 'legacy'] as const)(
+  'actual named-project Save preserves hidden %s result metadata',
+  async (origin) => {
+    if (origin === 'legacy') seedLegacy();
+    let originalOwner: string | null = null;
+    const session = await load();
+    if (origin === 'owned') {
+      session.editLongform('stories', { title: 'Synthetic saved project' });
+      fixture.fetch.mockResolvedValue(events('original.m4b'));
+      await session.renderLongform('stories');
+      originalOwner = session.longformSession.state.drafts.stories.outputOwner;
+      publish(local());
+    } else session.editLongform('stories', { title: 'Synthetic saved project' });
+    expect(session.longformSession.state.drafts.stories.output).toBe('');
+    const { projectLibrary } = await import('./project-library');
+    vi.spyOn(projectLibrary, 'list').mockResolvedValue([]);
+    const save = vi
+      .spyOn(projectLibrary, 'save')
+      .mockImplementation(async (name, mode, draft) => ({
+        id: 'saved',
+        name,
+        mode,
+        updatedAt: 1,
+        draft: structuredClone(draft),
+      }));
+    const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
+    const { ProjectSettings } = await import('./project-settings');
+    render(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient() },
+        createElement(ProjectSettings, {
+          bare: true,
+          mode: 'stories',
+          draft: session.longformSession.state.drafts.stories,
+          disabled: false,
+          onChange: (patch) => session.editLongform('stories', patch),
+          onReplace: (draft) => session.replaceLongformDraft('stories', draft),
+          onBusy: () => {},
+        }),
+      ),
+    );
+    const button = await screen.findByRole('button', { name: 'Save' });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    const snapshot = save.mock.calls[0][2];
+    expect(snapshot.output).toBe(origin === 'owned' ? 'original.m4b' : 'older.m4b');
+    expect(snapshot.outputOwner).toBe(originalOwner);
+    expect(JSON.stringify(snapshot)).not.toContain('__resultOwnership');
+  },
+);
+
+it('rebinds preserved audio only after a valid same-backend admin session replaces the refused one', async () => {
+  const session = await load();
+  fixture.fetch.mockResolvedValue(events('original.m4b'));
+  await session.renderLongform('stories');
+  window.dispatchEvent(new CustomEvent('ov:auth-required'));
+  expect(session.longformSession.state.drafts.stories.output).toBe('');
+  const { ADMIN_SESSION_STORAGE_KEY } = await import('@shared/api/authSession');
+  for (const apiBase of ['https://other.fixture.invalid', fixture.status.baseUrl]) {
+    const value = JSON.stringify({
+      token: 'ovs_admin_session_' + 'a'.repeat(43),
+      expiresAt: Date.now() / 1000 + 3600,
+      apiBase,
+    });
+    localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, value);
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: ADMIN_SESSION_STORAGE_KEY, newValue: value }),
+    );
+    expect(session.longformSession.state.drafts.stories.output).toBe(
+      apiBase === fixture.status.baseUrl ? 'original.m4b' : '',
+    );
+  }
+});
+
+it('includes hidden audio in the real dub-to-story overwrite decision', async () => {
+  const session = await load();
+  fixture.fetch.mockResolvedValue(events('original.m4b'));
+  await session.renderLongform('stories');
+  publish(local());
+  const { storiesDraftOccupied } = await import('../dub/dub-to-story');
+  expect(session.longformSession.state.drafts.stories.lines).toEqual([]);
+  expect(storiesDraftOccupied(session.longformSession.state.drafts.stories)).toBe(true);
+});
+
+it('keeps unverified attached-local results usable only for their current observed connection', async () => {
+  publish({ ...local(), dataIdentity: undefined, runtimeStorage: undefined });
+  const session = await load();
+  fixture.fetch.mockResolvedValue(events('attached.m4b'));
+  await session.renderLongform('stories');
+  expect(session.longformSession.state.drafts.stories.output).toBe('attached.m4b');
+  publish({ ...fixture.status, stage: 'unresponsive' });
+  expect(session.longformSession.state.drafts.stories.output).toBe('attached.m4b');
+  publish({ ...fixture.status, stage: 'attaching' });
+  publish({ ...fixture.status, stage: 'attaching', elapsedMs: 1000 });
+  publish({ ...fixture.status, stage: 'ready' });
+  expect(session.longformSession.state.drafts.stories.output).toBe('');
+  expect(fixture.fetch).toHaveBeenCalledOnce();
+});
+it('does not auto-adopt unknown attached-local results across reload', async () => {
+  fixture.status = { ...local(), dataIdentity: undefined };
+  let session = await load();
+  fixture.fetch.mockResolvedValue(events('attached.m4b'));
+  await session.renderLongform('stories');
+  session.flushLongformSessionPersistence();
+  fixture.listeners.clear();
+  vi.resetModules();
+  session = await load();
+  expect(session.longformSession.state.drafts.stories.output).toBe('');
+  expect(session.getLongformResultState('stories').status).toBe('legacy');
+  expect(fixture.fetch).toHaveBeenCalledOnce();
+});
+it('never persists a local filesystem root as the ownership identity', async () => {
+  fixture.status = {
+    ...local(),
+    runtimeStorage: {
+      data: '/synthetic-private-root',
+      models: '/model-fixture',
+      temp: '/tmp-fixture',
+    },
+  };
+  const session = await load();
+  fixture.fetch.mockResolvedValue(events('local.m4b'));
+  await session.renderLongform('stories');
+  session.flushLongformSessionPersistence();
+  const saved = localStorage.getItem('voicestudio.longform.v1')!;
+  expect(saved).not.toContain('/synthetic-private-root');
+});
+it('migrates old path identities to unknown without losing either completed result', async () => {
+  const owners = [
+    ['["local","/synthetic-root-a"]', '00000000-0000-4000-8000-000000000001'],
+    ['["local","/synthetic-root-b"]', '00000000-0000-4000-8000-000000000002'],
+  ];
+  localStorage.setItem(
+    'voicestudio.longform.v1',
+    JSON.stringify({
+      stories: { script: 'Preserved', lines: [] },
+      __resultOwnership: {
+        version: 1,
+        owners,
+        stories: {
+          owned: owners.map(([, outputOwner], i) => ({
+            outputOwner,
+            output: `old-${i}.m4b`,
+            outputScript: `Details ${i}`,
+          })),
+        },
+      },
+    }),
+  );
+  const session = await load();
+  session.flushLongformSessionPersistence();
+  const saved = localStorage.getItem('voicestudio.longform.v1')!;
+  expect(saved).not.toContain('/synthetic-root-');
+  expect(saved).toContain('old-0.m4b');
+  expect(saved).toContain('old-1.m4b');
+  expect(session.longformSession.state.drafts.stories.output).toBe('');
+  expect(fixture.fetch).not.toHaveBeenCalled();
 });

@@ -10,7 +10,7 @@ import { createCoalescedJsonStorage } from '@shared/utils/coalescedJsonStorage';
 import { Store } from '@tanstack/store';
 import { useStore } from '@tanstack/react-store';
 import { absoluteApiBase, apiFetch } from '@/lib/api/client';
-import { ADMIN_SESSION_STORAGE_KEY } from '@shared/api/authSession';
+import { ADMIN_SESSION_STORAGE_KEY, getAdminSession } from '@shared/api/authSession';
 import {
   getBackendStatusSnapshot,
   isBackendReachable,
@@ -136,6 +136,7 @@ const resultSlots: Record<Mode, Map<string, CompletedResult>> = {
   audiobook: new Map(),
 };
 const legacyResults: Record<Mode, CompletedResult | null> = { stories: null, audiobook: null };
+const preferredResults: Record<Mode, CompletedResult | null> = { stories: null, audiobook: null };
 const draftGeneration: Record<Mode, number> = { stories: 0, audiobook: 0 };
 const latestRender: Record<Mode, Map<string | null, number>> = {
   stories: new Map(),
@@ -159,6 +160,10 @@ let persistenceClosed = false;
 let connectionRevision = 0;
 let connectionIdentity = '';
 let currentOwner: string | null = null;
+let ephemeralOwner: string | null = null;
+let ephemeralEndpoint = '';
+let blockedEndpoint = '';
+let ownershipMigrationRequired = false;
 const opaqueOwner = (value: unknown): value is string =>
   typeof value === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -181,16 +186,18 @@ function restoredResult(value: unknown): CompletedResult | null {
     outputFailedChapters: typeof s.outputFailedChapters === 'number' ? s.outputFailedChapters : 0,
   };
 }
-function retainResult(mode: Mode, value: unknown): void {
+function retainResult(mode: Mode, value: unknown, archived = false): void {
   const result = restoredResult(value);
   if (!result) return;
-  if (result.outputOwner && [...ownerRecords.values()].includes(result.outputOwner)) {
+  preferredResults[mode] = result;
+  if (result.outputOwner && (archived || [...ownerRecords.values()].includes(result.outputOwner))) {
     const previous = resultSlots[mode].get(result.outputOwner);
     // The public draft intentionally omits this private warning flag. Its
     // duplicate must not upgrade an availability-only check during hydration.
     if (previous?.output === result.output && previous.availabilityOnly)
       result.availabilityOnly = true;
     resultSlots[mode].set(result.outputOwner, result);
+    if (![...ownerRecords.values()].includes(result.outputOwner)) legacyResults[mode] ??= result;
   } else if (!legacyResults[mode] || legacyResults[mode]?.output !== result.output) {
     // Hydration also sees the public draft. Keep the original private legacy
     // evidence when that duplicate came from an availability-only check.
@@ -210,17 +217,20 @@ try {
         if (
           Array.isArray(pair) &&
           pair.length === 2 &&
-          typeof pair[0] === 'string' &&
+          safeStoredIdentity(pair[0]) &&
           opaqueOwner(pair[1])
         )
           ownerRecords.set(pair[0], pair[1]);
+        else ownershipMigrationRequired = true;
       }
     for (const mode of ['stories', 'audiobook'] as const) {
       const results = privateResults[mode];
       if (Array.isArray(results?.owned))
-        for (const result of results.owned) retainResult(mode, result);
+        for (const result of results.owned) retainResult(mode, result, true);
       const legacy = restoredResult(results?.legacy);
       if (legacy) legacyResults[mode] = legacy;
+      const preferred = restoredResult(results?.preferred);
+      if (preferred) preferredResults[mode] = preferred;
     }
   }
   for (const mode of ['stories', 'audiobook'] as const) {
@@ -316,18 +326,20 @@ export function editLongform(mode: Mode, value: Partial<Draft>) {
   if ('output' in value) projectResult(mode);
 }
 /** New/Open/dub replacement must never inherit a previous draft's backend slots. */
-export function replaceLongformDraft(mode: Mode, value: Draft): void {
-  if (longformSession.state.active || persistenceClosed) return;
+export function replaceLongformDraft(mode: Mode, value: Draft): boolean {
+  if (longformSession.state.active || persistenceClosed) return false;
   invalidateResults(mode);
   retainResult(mode, value);
   updateDraft(mode, { ...value, ...emptyResult() });
   projectResult(mode);
+  return true;
 }
 function invalidateResults(mode: Mode): void {
   draftGeneration[mode]++;
   latestRender[mode].clear();
   resultSlots[mode].clear();
   legacyResults[mode] = null;
+  preferredResults[mode] = null;
   cancelRecovery(mode);
 }
 function cancelRecovery(mode: Mode): void {
@@ -355,20 +367,45 @@ function normalizedEndpoint(value: string): string | null {
     return null;
   }
 }
-function backendIdentity(): { owner: string | null; connection: string } {
+/** Persist canonical destinations only; old raw local paths have unknown provenance. */
+function safeStoredIdentity(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  if (value.startsWith('local:')) return opaqueOwner(value.slice(6));
+  for (const prefix of ['remote:', 'browser:'])
+    if (value.startsWith(prefix))
+      return normalizedEndpoint(value.slice(prefix.length)) === value.slice(prefix.length);
+  return false;
+}
+function backendIdentity(): { owner: string | null; connection: string; ephemeral?: string } {
   if (typeof window === 'undefined' || authorizationBlocked) return { owner: null, connection: '' };
   if (window.voicestudio?.backend) {
     const status = getBackendStatusSnapshot();
     const endpoint = normalizedEndpoint(status.baseUrl);
-    if (!isBackendReachable(status.stage) || !endpoint) return { owner: null, connection: '' };
-    const owner = status.remote
-      ? `remote:${endpoint}`
-      : JSON.stringify(['local', status.runtimeStorage?.data ?? null]);
+    if (!isBackendReachable(status.stage) || !endpoint) {
+      ephemeralOwner = null;
+      ephemeralEndpoint = '';
+      return { owner: null, connection: '' };
+    }
+    if (!status.remote && !opaqueOwner(status.dataIdentity)) {
+      // Attached/ambiguous roots have no durable ownership proof. Fresh work
+      // remains usable for this observed connection, never after reload/restart.
+      if (!ephemeralOwner || ephemeralEndpoint !== endpoint) ephemeralOwner = crypto.randomUUID();
+      ephemeralEndpoint = endpoint;
+      return {
+        owner: null,
+        connection: JSON.stringify(['ephemeral', endpoint, ephemeralOwner]),
+        ephemeral: ephemeralOwner,
+      };
+    }
+    ephemeralOwner = null;
+    ephemeralEndpoint = '';
+    const owner = status.remote ? `remote:${endpoint}` : `local:${status.dataIdentity}`;
     return { owner, connection: JSON.stringify([owner, endpoint]) };
   }
   const endpoint = normalizedEndpoint(absoluteApiBase());
   return { owner: endpoint ? `browser:${endpoint}` : null, connection: endpoint ?? '' };
 }
+
 function synchronizeBackend(): void {
   if (persistenceClosed) return;
   const identity = backendIdentity();
@@ -379,15 +416,46 @@ function synchronizeBackend(): void {
       cancelRecovery(mode);
     }
   }
-  currentOwner = identity.owner ? (ownerRecords.get(identity.owner) ?? null) : null;
+  currentOwner =
+    identity.ephemeral ?? (identity.owner ? (ownerRecords.get(identity.owner) ?? null) : null);
   if (identity.owner && !currentOwner && !persistenceClosed) {
     currentOwner = crypto.randomUUID();
     ownerRecords.set(identity.owner, currentOwner);
   }
   for (const mode of ['stories', 'audiobook'] as const) projectResult(mode);
 }
+function recoveryResult(mode: Mode): CompletedResult | null {
+  const preferred = preferredResults[mode];
+  return preferred &&
+    (!preferred.outputOwner || ![...ownerRecords.values()].includes(preferred.outputOwner))
+    ? preferred
+    : legacyResults[mode];
+}
+/** Save/overwrite decisions retain hidden results; rendering projects only the current connection. */
+export function snapshotLongformDraft(
+  mode: Mode,
+  draft = longformSession.state.drafts[mode],
+): Draft {
+  if (draft !== longformSession.state.drafts[mode]) return draft;
+  const result =
+    (currentOwner ? resultSlots[mode].get(currentOwner) : null) ??
+    preferredResults[mode] ??
+    legacyResults[mode];
+  if (!result) return draft;
+  return {
+    ...draft,
+    ...Object.fromEntries(resultFields.map((key) => [key, result[key]])),
+    outputOwner:
+      result.availabilityOnly ||
+      !result.outputOwner ||
+      ![...ownerRecords.values()].includes(result.outputOwner)
+        ? null
+        : result.outputOwner,
+  };
+}
 function projectResult(mode: Mode): void {
   const result = currentOwner ? resultSlots[mode].get(currentOwner) : null;
+  if (result) preferredResults[mode] = result;
   const previous = resultStates[mode];
   const state: LongformResultState = {
     status: !currentOwner
@@ -396,7 +464,7 @@ function projectResult(mode: Mode): void {
         : 'none'
       : result
         ? 'available'
-        : legacyResults[mode]
+        : recoveryResult(mode)
           ? 'legacy'
           : resultSlots[mode].size
             ? 'other-backend'
@@ -414,7 +482,12 @@ function projectResult(mode: Mode): void {
   const draft = longformSession.state.drafts[mode];
   // A filename check proves availability, not render ownership. Named projects
   // must require another explicit check rather than promote that weak evidence.
-  const projectedOwner = result?.availabilityOnly ? null : (result?.outputOwner ?? null);
+  const projectedOwner =
+    result?.availabilityOnly ||
+    !result?.outputOwner ||
+    ![...ownerRecords.values()].includes(result.outputOwner)
+      ? null
+      : result.outputOwner;
   const changed = result
     ? resultFields.some(
         (key) => draft[key] !== (key === 'outputOwner' ? projectedOwner : result[key]),
@@ -443,7 +516,7 @@ export function getLongformResultState(mode: Mode): LongformResultState {
 }
 /** User-requested availability check; never contacts a saved backend or claims byte identity. */
 export async function recoverLegacyLongformResult(mode: Mode): Promise<boolean> {
-  const result = legacyResults[mode];
+  const result = recoveryResult(mode);
   if (
     !result ||
     !currentOwner ||
@@ -474,7 +547,9 @@ export async function recoverLegacyLongformResult(mode: Mode): Promise<boolean> 
       signal: request.signal,
     });
     if (!response.ok || !stillCurrent()) return false;
-    resultSlots[mode].set(owner, { ...result, outputOwner: owner, availabilityOnly: true });
+    const checked = { ...result, outputOwner: owner, availabilityOnly: true };
+    resultSlots[mode].set(owner, checked);
+    preferredResults[mode] = checked;
     // Availability is not original-byte identity. Keep the original snapshot.
     succeeded = true;
     queuePersistence();
@@ -527,7 +602,11 @@ function queuePersistence(): void {
         ...Object.fromEntries(
           (['stories', 'audiobook'] as const).map((mode) => [
             mode,
-            { owned: [...resultSlots[mode].values()], legacy: legacyResults[mode] },
+            {
+              owned: [...resultSlots[mode].values()],
+              legacy: legacyResults[mode],
+              preferred: preferredResults[mode],
+            },
           ]),
         ),
       },
@@ -536,21 +615,29 @@ function queuePersistence(): void {
 
 /** Prevent queued and pagehide writes from recreating a draft during a confirmed data reset. */
 function authRequired(): void {
+  blockedEndpoint =
+    normalizedEndpoint(
+      window.voicestudio?.backend ? getBackendStatusSnapshot().baseUrl : absoluteApiBase(),
+    ) ?? '';
   authorizationBlocked = true;
   synchronizeBackend();
 }
 function authStorageChanged(event: StorageEvent): void {
   if (event.key !== null && event.key !== ADMIN_SESSION_STORAGE_KEY) return;
+  const endpoint = normalizedEndpoint(
+    window.voicestudio?.backend ? getBackendStatusSnapshot().baseUrl : absoluteApiBase(),
+  );
+  if (authorizationBlocked && endpoint === blockedEndpoint && getAdminSession(endpoint))
+    authorizationBlocked = false;
   connectionRevision++;
-  for (const mode of ['stories', 'audiobook'] as const) {
-    cancelRecovery(mode);
-    projectResult(mode);
-  }
+  for (const mode of ['stories', 'audiobook'] as const) cancelRecovery(mode);
+  synchronizeBackend();
 }
 window.addEventListener('ov:auth-required', authRequired);
 window.addEventListener('storage', authStorageChanged);
 const unsubscribeBackend = subscribeBackendStatus(synchronizeBackend);
 synchronizeBackend();
+if (ownershipMigrationRequired) queuePersistence();
 export function clearLongformDraftForReset(): void {
   persistenceClosed = true;
   controller?.abort();
@@ -596,6 +683,8 @@ export function renderBody(mode: Mode, draft: Draft) {
 }
 export async function renderLongform(mode: Mode, resumeId?: string) {
   if (controller || persistenceClosed) return;
+  cancelRecovery(mode);
+  projectResult(mode);
   const current = new AbortController();
   controller = current;
   const owner = currentOwner;
@@ -746,6 +835,7 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
           ) {
             if (owner) resultSlots[mode].set(owner, result);
             else legacyResults[mode] = result;
+            preferredResults[mode] = result;
             projectResult(mode);
             queuePersistence();
           }

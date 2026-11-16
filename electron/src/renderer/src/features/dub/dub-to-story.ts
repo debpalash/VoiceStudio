@@ -9,6 +9,7 @@
 import { dubToStory } from '@shared/utils/dubToStory';
 import {
   replaceLongformDraft,
+  snapshotLongformDraft,
   longformSession,
   storiesImportEpoch,
   type Draft,
@@ -49,11 +50,12 @@ export function canCreateStoryFromDub(session: { phase: string; segments: unknow
  * the dub replaces the draft, even if the current script has no lines.
  */
 export function storiesDraftOccupied(draft: Draft): boolean {
+  const saved = snapshotLongformDraft('stories', draft);
   return (
     scriptSize('stories', draft) > 0 ||
     draft.cast.length > 0 ||
     Object.keys(draft.voiceCast).length > 0 ||
-    Boolean(draft.output || draft.outputScript || draft.outputChapters.length)
+    Boolean(saved.output || saved.outputScript || saved.outputChapters.length)
   );
 }
 

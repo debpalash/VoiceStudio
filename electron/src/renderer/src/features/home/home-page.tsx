@@ -23,7 +23,11 @@ import { useProfiles } from '@/hooks/use-profiles';
 import { brandArtwork } from '@/lib/brand';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { selectCloneProfile } from '@/lib/store/reference';
-import { blankLongformDraft, replaceLongformDraft } from '@/features/longform/longform-session';
+import {
+  blankLongformDraft,
+  replaceLongformDraft,
+  longformSession,
+} from '@/features/longform/longform-session';
 import { projectLibrary, type LongformProject } from '@/features/longform/project-library';
 import { openDubProject } from '@/features/dub/dub-session';
 import type { DubProject } from '@/features/projects/project-format';
@@ -87,6 +91,7 @@ export function HomePage() {
   const version = appVersion();
   const season = currentHomeSeason();
   const [heroHidden, setHeroHidden] = useState(() => heroHiddenFor(version));
+  const [projectError, setProjectError] = useState<string | null>(null);
   const [profileClicks, setProfileClicks] = useState(() => clickedProfiles().length);
   const { data: profiles = [] } = useProfiles();
   const { data: exports = [] } = useQuery({
@@ -174,11 +179,19 @@ export function HomePage() {
       if (openDubProject(project)) await navigate({ to: '/dub' });
       return;
     }
-    replaceLongformDraft(item.project.mode, {
-      ...blankLongformDraft(),
-      ...structuredClone(item.project.draft),
-      projectId: item.project.id,
-    });
+    if (longformSession.state.active) {
+      setProjectError(t('audiobook.blocked.busy'));
+      return;
+    }
+    if (
+      !replaceLongformDraft(item.project.mode, {
+        ...blankLongformDraft(),
+        ...structuredClone(item.project.draft),
+        projectId: item.project.id,
+      })
+    )
+      return;
+    setProjectError(null);
     await navigate({
       to: item.project.mode === 'stories' ? '/stories' : '/audiobook',
     });
@@ -207,6 +220,11 @@ export function HomePage() {
   };
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {projectError && (
+        <p role="alert" className="text-sm text-destructive">
+          {projectError}
+        </p>
+      )}
       <WorkspaceHeader>
         <h1 className="text-sm font-medium">{t('nav.home')}</h1>
         <Link

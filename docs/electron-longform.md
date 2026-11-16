@@ -30,8 +30,12 @@ Draft writes reuse the coalesced persistence helper and flush on lifecycle event
 Completed Stories and Audiobook results stay with the VoiceStudio connection
 that rendered them. Switching to another local data directory or remote computer
 keeps the editable text and each connection's latest result; its player appears
-only when that connection is selected and ready. Local port changes retain the
-same local result. Opening or starting another project replaces the current
+only when that connection is selected and ready. A verified, app-managed local
+data directory has an opaque identifier, so local port changes retain its
+result. Attached or otherwise unverified local directories use the current
+connection only: a fresh render remains usable, while a restart or reload needs
+an explicit check for older audio. Identity discovery never delays backend
+readiness. Opening or starting another project replaces the current
 workspace's result slots without deleting saved projects or rendered files.
 
 Older results and imported projects whose connection is unknown keep their
@@ -40,10 +44,18 @@ this connection** to check that filename through the current authenticated
 connection. This checks availability only: a matching filename may contain a
 different file. The warning and original saved details remain available after a
 successful check, including after reopening the app. No request goes directly
-to a previous connection. A connection change, authentication reset, new project
-or data reset cancels a pending check, and its late reply cannot adopt the result.
+to a previous connection. A connection change, authentication reset, new render,
+new project or data reset cancels a pending check, and its late reply cannot adopt
+the result. Restoring a valid session for the same connection makes its saved
+result available again.
 
-Connection records stay in private local draft persistence. Named projects carry
+Connection records stay in private local draft persistence without local data
+paths or credentials. Older path-based records lose their automatic association
+but retain their saved result details for an explicit availability check. Saving
+a named project retains its result details even when another connection hides
+the player; replacing that workspace from a dub still asks before discarding it.
+Home does not open a project over an active Stories or Audiobook render.
+Named projects carry
 only an opaque result-owner token, not connection endpoints, local data paths,
 credentials or other connections' cached results. Availability-only results carry
 no ownership token in a named project; reopening that project requires another
