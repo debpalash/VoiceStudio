@@ -41,6 +41,33 @@ def test_build_number_comes_from_the_environment(tmp_path, monkeypatch):
     assert prepare_resources.re.fullmatch(r"\d+\.\d+\.\d+", info["CFBundleShortVersionString"])
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX bundle permission bits are not available on Windows")
+@pytest.mark.parametrize("previous_mode", [None, 0o600])
+def test_packaged_intake_metadata_is_readable_without_widening_build_source(tmp_path, monkeypatch, previous_mode):
+    env = {
+        "SUPERMETRY_APP_ID": "modeproof1",
+        "SUPERMETRY_INGEST_KEY": "smk_" + "c" * 39,
+        "SUPERMETRY_APP_HOST": "https://collector.example",
+        "SUPERMETRY_DIAGNOSTICS_SESSION_PINGS": "0",
+    }
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    intake = prepare_resources.runpy.run_path(str(ROOT / "scripts/generate_supermetry_config.py"))
+    source = tmp_path / "source/supermetry-app.generated.json"
+    intake["write_config"](source, env)
+    assert source.stat().st_mode & 0o777 == 0o600
+    output = tmp_path / "VoiceStudio.app"
+    packaged = output / "Catalogs/supermetry-app.generated.json"
+    if previous_mode is not None:
+        packaged.parent.mkdir(parents=True)
+        packaged.write_text("{}", encoding="utf-8")
+        packaged.chmod(previous_mode)
+    prepare_resources.prepare(output, tmp_path / "Info.plist")
+    assert packaged.stat().st_mode & 0o777 == 0o644
+    assert source.stat().st_mode & 0o777 == 0o600
+    assert packaged.read_bytes() == source.read_bytes()
+
+
 def test_resource_catalogs_keep_utf8_under_a_windows_default_codec(tmp_path, monkeypatch):
     read_text, write_text = Path.read_text, Path.write_text
 

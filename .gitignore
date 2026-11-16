@@ -31,6 +31,7 @@ native/**/target*/
 .env
 .env.local
 .env.*.local
+**/supermetry-app.generated.json
 
 # ─────────────────────────────────────────────────────────────────────────
 #  OS junk

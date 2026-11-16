@@ -287,3 +287,22 @@ def test_every_locale_translates_the_user_facing_status_keys(locale, key):
     assert key in {"settings.hf_source_cli_label"} or value != english, (
         f"{locale}.json copies the English {key!r} verbatim ({english!r}); translate it"
     )
+
+
+def test_the_contract_does_not_name_a_removed_catalog() -> None:
+    """The localization contract must only exempt catalogs that exist.
+
+    CLAUDE.md and AGENTS.md used to exempt a legacy `electron/src/shared/i18n/`
+    catalog as a second translation layer. That directory is gone, so the
+    exemption pointed reviewers at a path nobody can check; a doc that names a
+    removed catalog is worse than no sentence at all.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    assert not (root / "electron" / "src" / "shared" / "i18n").exists(), (
+        "the legacy shared i18n catalog is back: document it again in CLAUDE.md and AGENTS.md"
+    )
+    for name in ("CLAUDE.md", "AGENTS.md"):
+        text = (root / name).read_text(encoding="utf-8")
+        assert "shared/i18n" not in text, f"{name} still exempts the removed legacy i18n catalog"

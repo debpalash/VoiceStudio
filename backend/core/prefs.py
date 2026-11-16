@@ -11,6 +11,7 @@ explicit override that the UI cannot silently undo.
 """
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
@@ -33,14 +34,24 @@ _PREFS_PATH = os.path.join(DATA_DIR, "prefs.json")
 _MUTATE_LOCK = threading.RLock()
 
 
-def _load() -> dict:
+def _load(*, strict: bool = False) -> dict:
     try:
         with open(_PREFS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f) or {}
+            value = json.load(f)
+            return value if isinstance(value, dict) else {}
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+    except (UnicodeError, RecursionError) as e:
+        if strict:
+            # The file may be readable by another tool/version. A mutation
+            # must not replace undecodable or unbounded existing preferences.
+            raise OSError(errno.EILSEQ, "Preferences could not be decoded") from e
+        return {}
     except Exception as e:
-        logger.warning("prefs.json unreadable (%s); treating as empty", e)
+        if strict:
+            # Mutation must not replace unread existing settings with defaults.
+            raise
+        logger.warning("prefs.json unreadable (%s); treating as empty", type(e).__name__)
         return {}
 
 
@@ -76,7 +87,7 @@ def get(key: str, default: Any = None) -> Any:
 
 def set_(key: str, value: Any) -> None:
     with _MUTATE_LOCK:
-        data = _load()
+        data = _load(strict=True)
         data[key] = value
         _save(data)
     _announce(key)
@@ -85,7 +96,7 @@ def set_(key: str, value: Any) -> None:
 def update_mapping(key: str, changes: dict, *, replace: bool = False) -> None:
     """Atomically update one preference object without losing concurrent edits."""
     with _MUTATE_LOCK:
-        data = _load()
+        data = _load(strict=True)
         current = data.get(key)
         value = dict(current) if isinstance(current, dict) and not replace else {}
         value.update(changes)
@@ -96,7 +107,7 @@ def update_mapping(key: str, changes: dict, *, replace: bool = False) -> None:
 
 def delete(key: str) -> None:
     with _MUTATE_LOCK:
-        data = _load()
+        data = _load(strict=True)
         data.pop(key, None)
         _save(data)
     _announce(key)

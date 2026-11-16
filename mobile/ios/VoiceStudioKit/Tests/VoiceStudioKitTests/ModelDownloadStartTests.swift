@@ -17,12 +17,15 @@ import Testing
     let cancelling = DispatchSemaphore(value: 0)
     let stopped = DispatchSemaphore(value: 0)
     let started = DispatchSemaphore(value: 0)
-    DispatchQueue.global().async {
+    // These workers deliberately block on a lock/semaphore. Give them owned
+    // threads so parallel tests cannot starve the shared GCD worker pool and
+    // turn a dispatch delay into a failure of the ordering being verified.
+    Thread.detachNewThread {
         _ = gate.start { entered.signal(); _ = release.wait(timeout: .now()+30) }
         started.signal()
     }
     #expect(entered.wait(timeout: .now()+5) == .success)
-    DispatchQueue.global().async {
+    Thread.detachNewThread {
         cancelling.signal()
         gate.cancel { stopped.signal() }
     }
