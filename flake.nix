@@ -860,6 +860,7 @@
             install -Dm644 electron/T3CODE-LICENSE.txt "$resources/electron/T3CODE-LICENSE.txt"
             install -Dm644 config/app.json "$resources/config/app.json"
             install -Dm644 config/analytics.json "$resources/config/analytics.json"
+            install -Dm644 config/diagnostics.json "$resources/config/diagnostics.json"
             # stageRuntimeSources (runtime-project.ts SOURCES) copies these on
             # every platform and fails setup when one is missing.
             install -Dm644 scripts/windows-rocm-recipe.json "$resources/scripts/windows-rocm-recipe.json"
@@ -1109,6 +1110,7 @@
               electron/T3CODE-LICENSE.txt \
               config/app.json \
               config/analytics.json \
+              config/diagnostics.json \
               scripts/windows-rocm-recipe.json \
               scripts/smoke_windows_rocm.py \
               brand/icon.png \

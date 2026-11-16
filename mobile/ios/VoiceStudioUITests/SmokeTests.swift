@@ -62,6 +62,23 @@ extension XCUIApplication {
         let symbols = ["Home": "house", "Voices": "person.wave.2", "Dub": "film", "Dictate": "mic", "Settings": "gearshape"]
         return buttons.matching(NSPredicate(format: "label == %@ AND identifier == %@", label, symbols[label] ?? label)).firstMatch
     }
+    /// A tab can exist before its native hit target is ready. Activate it once,
+    /// then confirm selection and arrival before recording or using the page.
+    @MainActor @discardableResult func selectTab(_ label: String, timeout: TimeInterval = uiReadyTimeout, file: StaticString = #filePath, line: UInt = #line) -> Bool {
+        let tab = tabButton(label)
+        guard tab.waitReady(timeout: timeout, file: file, line: line) else { return false }
+        guard tab.wait(for: \.isHittable, toEqual: true, timeout: timeout) else {
+            XCTFail("Tab \(label) did not become hittable", file: file, line: line); return false
+        }
+        tab.tap()
+        guard tab.wait(for: \.isSelected, toEqual: true, timeout: timeout) else {
+            XCTFail("Tab \(label) was not selected", file: file, line: line); return false
+        }
+        guard navigationBars[label].wait(for: \.isHittable, toEqual: true, timeout: timeout) else {
+            XCTFail("Destination \(label) did not appear", file: file, line: line); return false
+        }
+        return true
+    }
     /// Scrolls until `element` sits wholly between the navigation bar and the tab bar.
     /// Content scrolled under those translucent bars can still report `isHittable`,
     /// and a tap there lands on the bar instead of the element. Once the element is on
@@ -172,7 +189,7 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(no.label, "No thanks")
         XCTAssertEqual(yes.frame.width, no.frame.width, accuracy: 1)
         XCTAssertFalse(app.buttons["consent.dismiss"].exists)
-        XCTAssertTrue(app.staticTexts["This companion app records your choice on this phone. It sends no analytics."].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Usage analytics are not sent from this phone; your choice is stored locally. Automatic diagnostic reports have a separate opt-in.")).firstMatch.exists)
         // First opt in, then prove passive dismissal replaces a prior Yes with No.
         yes.tap()
         XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: uiReadyTimeout))

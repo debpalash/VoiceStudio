@@ -11,6 +11,7 @@ import {
 } from '../config/app-config.mjs';
 import { DISTRIBUTION_TARGET } from '../config/distributions.mjs';
 import { buildCommit } from '../config/build-commit.mjs';
+import { writeSupermetryConfig } from '../config/supermetry-app.mjs';
 
 // The app version is single-sourced from the root package.json (CLAUDE.md,
 // Versioning). Nothing in electron/ mirrors it: the renderer reads it through
@@ -35,7 +36,7 @@ const rendererPort =
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
-    define,
+    define: { ...define, __SUPERMETRY_APP_CONFIG__: JSON.stringify(writeSupermetryConfig()) },
     build: {
       rollupOptions: {
         input: {

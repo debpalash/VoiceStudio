@@ -31,14 +31,14 @@ import kotlinx.coroutines.*
     var copying by remember {mutableStateOf(false)}
     var copyJob by remember {mutableStateOf<Job?>(null)}
     var audio by remember(host.connectionId) {mutableStateOf<String?>(null)}
-    suspend fun load() {
+    suspend fun load(failure:(Throwable)->Unit=vm.failureHandler()) {
         val api=vm.api ?: return
         if(loading) return
         loading=true
         try {
             val page=api.community(items.size)
             if(vm.api===api) {items=items+page.items;total=page.total}
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {loading=false}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {loading=false}
     }
     LaunchedEffect(location,host.connectionId) {if(location=="computer"&&items.isEmpty()) load() else vm.phone.refresh()}
     Screen {
@@ -94,9 +94,9 @@ import kotlinx.coroutines.*
             if(copying) {InlineLoading();Secondary("common.cancel") {copyJob?.cancel()}}
             copied?.let {voice->Secondary("mobile.galleryCopy.ready") {navigate("voice/"+android.net.Uri.encode(voice.id))}}
             if(items.isEmpty()&&!loading) EmptyState("gallery.community_empty")
-            if(items.size<total) Secondary("common.more_info",!loading) {scope.launch {load()}}
+            if(items.size<total) Secondary("common.more_info",!loading) {val failure=vm.failureHandler();scope.launch {load(failure)}}
             if(loading) InlineLoading()
-            audio?.let {path ->vm.api?.let {HostPlayer(it,path,vm::fail)}}
+            audio?.let {path ->vm.api?.let {HostPlayer(it,path,vm::failureHandler)}}
         }
     }
     DisposableEffect(host.connectionId) {onDispose {copyJob?.cancel()}}
@@ -104,6 +104,7 @@ import kotlinx.coroutines.*
         confirmButton={TextButton(onClick={
             copyTarget=null;val api=vm.api;val profile=imported[item.id]
             if(api!=null&&profile!=null&&!copying) {
+                val failure=vm.failureHandler()
                 copying=true;copyJob=scope.launch {try {
                     val file=File.createTempFile("voice-copy-",".omnivoice",context.cacheDir)
                     try {
@@ -112,7 +113,7 @@ import kotlinx.coroutines.*
                         val attribution=mapOf("source" to "community","id" to item.id,"name" to item.name)+listOfNotNull(item.author?.let {"author" to it},item.license?.let {"license" to it},item.language?.let {"language" to it}).toMap()
                         copied=PhoneVoiceBundle.install(file,vm.phone.voices,attribution,true);vm.phone.refresh()
                     } finally {file.delete()}
-                } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {copying=false;copyJob=null}}
+                } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {copying=false;copyJob=null}}
             }
         }) {Text(tr("mobile.galleryCopy.action"))}},dismissButton={TextButton(onClick={copyTarget=null}) {Text(tr("common.cancel"))}})}
 

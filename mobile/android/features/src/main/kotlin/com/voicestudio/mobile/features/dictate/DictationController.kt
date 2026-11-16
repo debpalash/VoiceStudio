@@ -10,7 +10,7 @@ import kotlinx.serialization.decodeFromString
 import okhttp3.*
 import okio.ByteString.Companion.toByteString
 
-class DictationController(private val api:VoiceStudioApi,private val scope:CoroutineScope,private val failure:(Throwable)->Unit,
+class DictationController(private val api:VoiceStudioApi,private val scope:CoroutineScope,private val failure:()->(Throwable)->Unit,
     private val audio: DictationAudioSource = MicrophoneSource(), private val completed: (String)->Unit = {}) : AutoCloseable {
     private val mutableText=MutableStateFlow("")
     val text=mutableText.asStateFlow()
@@ -22,8 +22,9 @@ class DictationController(private val api:VoiceStudioApi,private val scope:Corou
     private var committed=""
     @Volatile private var generation=0L
     @Suppress("MissingPermission")
-    fun start() {
+    fun start(ownedFailure:((Throwable)->Unit)?=null) {
         if(mutableActive.value) return
+        val failure=ownedFailure ?: this.failure()
         val session=++generation
         mutableActive.value=true;committed="";mutableText.value="";recording=true
         capture=scope.launch {

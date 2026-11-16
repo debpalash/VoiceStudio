@@ -15,19 +15,19 @@ it('registers every Python runtime IPC handler exactly once', () => {
     'backendPlanPythonRepair',
     'backendInstallPythonRepair',
   ]) {
-    expect(source.match(new RegExp(`ipcMain\\.handle\\(CHANNELS\\.${name}\\b`, 'g')) ?? [], name).toHaveLength(1);
+    expect(source.match(new RegExp(`handle\\(CHANNELS\\.${name}\\b`, 'g')) ?? [], name).toHaveLength(1);
   }
 });
 
 it('keeps confirmation and repair side effects behind trusted staged tokens', () => {
   const source = readFileSync(resolve(__dirname, 'ipc.ts'), 'utf8');
   const confirm = source.slice(
-    source.indexOf('ipcMain.handle(CHANNELS.backendConfirmPythonRuntime'),
-    source.indexOf('ipcMain.handle(CHANNELS.backendPlanPythonRepair'),
+    source.indexOf('handle(CHANNELS.backendConfirmPythonRuntime'),
+    source.indexOf('handle(CHANNELS.backendPlanPythonRepair'),
   );
   const repair = source.slice(
-    source.indexOf('ipcMain.handle(CHANNELS.backendInstallPythonRepair'),
-    source.indexOf('ipcMain.handle(CHANNELS.backendHostSnapshot'),
+    source.indexOf('handle(CHANNELS.backendInstallPythonRepair'),
+    source.indexOf('handle(CHANNELS.backendHostSnapshot'),
   );
 
   expect(confirm).toContain('assertTrustedMainFrame(event, owner)');

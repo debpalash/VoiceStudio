@@ -57,4 +57,33 @@ class L10nTest {
         assertEquals(reads.distinct(),reads)
     }
 
+    @Test fun bundledCatalogsKeepRendererPrivacyAuthoritative() {
+        val repository=generateSequence(java.io.File(System.getProperty("user.dir"))) { it.parentFile }
+            .first { java.io.File(it,"mobile/contract/strings.mobile.en.json").isFile }
+        fun readFile(path:String)=obj(java.io.File(repository,path).readText(Charsets.UTF_8))
+        val english=readFile("electron/src/renderer/src/i18n/locales/en.json")
+        val french=readFile("electron/src/renderer/src/i18n/locales/fr.json")
+        fun privacy(catalog:JsonObject)=catalog.getValue("mobile").jsonObject
+            .getValue("local").jsonObject.getValue("privacy").jsonPrimitive.content
+        val shared=JsonObject(readFile("mobile/contract/strings.mobile.en.json").toMutableMap().apply {
+            put("diagnostic_fixture_shared",JsonPrimitive("Shared fallback retained"))
+        })
+        val loader=L10n.Companion.CatalogLoader(read={name ->
+            when(name) {
+                "locales/en.json" -> english
+                "locales/fr.json" -> french
+                "strings.mobile.en.json" -> shared
+                "strings.android-additions.en.json" -> obj("""{"mobile":{"local":{"privacy":"Obsolete platform privacy"}},"diagnostic_fixture_platform":"Platform fallback retained"}""")
+                else -> error("Unexpected catalog read: $name")
+            }
+        },additions=listOf("strings.mobile.en.json","strings.android-additions.en.json"))
+        for(locale in listOf("en","en-US","zz-ZZ")) {
+            val loaded=loader.load(locale)
+            assertEquals(locale,privacy(english),loaded.t("mobile.local.privacy"))
+            assertEquals("Shared fallback retained",loaded.t("diagnostic_fixture_shared"))
+            assertEquals("Platform fallback retained",loaded.t("diagnostic_fixture_platform"))
+        }
+        assertEquals(privacy(french),loader.load("fr-CA").t("mobile.local.privacy"))
+    }
+
 }

@@ -1,6 +1,13 @@
 import type { CrashContext } from '../shared/utils/crashContext';
 import type { HostSnapshotLike } from '../shared/utils/hostSnapshot';
 import type { InstallFailure } from '../shared/utils/installFailure';
+import type { DiagnosticInput, DiagnosticState } from './diagnostics';
+export type {
+  DiagnosticInput,
+  DiagnosticState,
+  DiagnosticCategory,
+  DiagnosticStage,
+} from './diagnostics';
 /**
  * The contextBridge surface exposed to the renderer as `window.voicestudio`.
  *
@@ -424,6 +431,11 @@ export interface SetupConnectionCheck {
 }
 
 export interface VoiceStudioBridge {
+  diagnostics: {
+    getStatus(): Promise<DiagnosticState>;
+    setConsent(enabled: boolean): Promise<DiagnosticState>;
+    capture(event: DiagnosticInput, expectedEpoch: string): Promise<void>;
+  };
   /** VoiceStudio Cloud account; never carries a token. */
   account: {
     get(): Promise<AccountPublicState>;

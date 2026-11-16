@@ -10,6 +10,7 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import com.voicestudio.mobile.data.ModelDownloadJobs
 import com.voicestudio.mobile.local.ModelCatalog
 import com.voicestudio.mobile.local.PhoneModel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import org.junit.*
 import org.junit.Assert.*
@@ -269,6 +270,62 @@ class ModelDownloadJobsTest {
         } finally {release.countDown()}
         work.join()
         assertTrue("Pause must cancel a worker still loading the catalogue",work.isCancelled)
+    }
+
+    private suspend fun catalogueFailureReport(startEnabled:Boolean,changeGrant:Boolean,expected:Int,cancel:Boolean=false)=kotlinx.coroutines.coroutineScope {
+        val directory=java.nio.file.Files.createTempDirectory("download-grant").toFile()
+        val bodies=java.util.concurrent.CopyOnWriteArrayList<String>()
+        val transport=object:com.voicestudio.mobile.network.DiagnosticTransport {
+            override suspend fun send(destination:com.voicestudio.mobile.network.DiagnosticDestination,body:ByteArray,allowed:()->Boolean):Int {
+                check(allowed());bodies.add(body.toString(Charsets.UTF_8));return 201
+            }
+            override fun cancelAll()=Unit
+        }
+        val policy=app.assets.open("diagnostics.json").bufferedReader(Charsets.UTF_8).use {com.voicestudio.mobile.network.DiagnosticPolicy(it.readText())}
+        val reporter=com.voicestudio.mobile.network.DiagnosticReports(directory,policy,
+            com.voicestudio.mobile.network.DiagnosticDestination("fixture","https://collector.invalid","https://app.invalid"),"1.0.0",transport=transport)
+        val field=com.voicestudio.mobile.data.AutomaticDiagnostics::class.java.getDeclaredField("reporter").apply {isAccessible=true}
+        val previous=field.get(com.voicestudio.mobile.data.AutomaticDiagnostics)
+        val entered=java.util.concurrent.CountDownLatch(1);val release=java.util.concurrent.CountDownLatch(1)
+        reporter.load();field.set(com.voicestudio.mobile.data.AutomaticDiagnostics,reporter)
+        try {
+            if(startEnabled)reporter.setConsent(true)
+            ModelDownloadJobs.enqueue(app,model,false)
+            val context=object:android.content.ContextWrapper(app) {
+                override fun getApplicationContext():android.content.Context=this
+                override fun getAssets():android.content.res.AssetManager {
+                    if(Thread.currentThread().stackTrace.any {it.className.contains("ModelDownloadJobs\$run")}) {
+                        entered.countDown();check(release.await(10,java.util.concurrent.TimeUnit.SECONDS))
+                        if(cancel)throw kotlinx.coroutines.CancellationException("controlled cancellation")
+                        throw java.io.IOException("private catalogue detail")
+                    }
+                    return app.assets
+                }
+            }
+            val worker=androidx.work.testing.TestListenableWorkerBuilder<com.voicestudio.mobile.data.ModelDownloadWorker>(context)
+                .setInputData(androidx.work.workDataOf("model" to model.id))
+                .setForegroundUpdater {_,_,_->androidx.concurrent.futures.CallbackToFutureAdapter.getFuture<Void> {it.set(null);"promoted"}}.build()
+            val work=async(kotlinx.coroutines.Dispatchers.Default) {runCatching {worker.doWork()}}
+            try {
+                assertTrue("Download did not reach the controlled catalogue boundary",entered.await(10,java.util.concurrent.TimeUnit.SECONDS))
+                if(changeGrant) {if(startEnabled)reporter.setConsent(false);reporter.setConsent(true)}
+            }finally{release.countDown()}
+            val result=work.await()
+            if(cancel)assertTrue(result.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+            else assertTrue(result.getOrThrow() is androidx.work.ListenableWorker.Result.Failure)
+            reporter.flush()
+            assertEquals("A terminal download must retain its starting consent",expected,bodies.size)
+            assertTrue(bodies.none {it.contains("private catalogue detail")})
+        }finally{
+            release.countDown();field.set(com.voicestudio.mobile.data.AutomaticDiagnostics,previous)
+            reporter.close();directory.deleteRecursively()
+        }
+    }
+    @Test @Config(sdk=[33]) fun downloadStartedOffCannotBorrowLaterOptIn()=kotlinx.coroutines.runBlocking {catalogueFailureReport(false,true,0)}
+    @Test @Config(sdk=[33]) fun downloadStartedUnderPriorGrantCannotBorrowReplacement()=kotlinx.coroutines.runBlocking {catalogueFailureReport(true,true,0)}
+    @Test @Config(sdk=[33]) fun freshDownloadFailureReportsUnderItsStartingGrant()=kotlinx.coroutines.runBlocking {catalogueFailureReport(true,false,1)}
+    @Test @Config(sdk=[33]) fun downloadFailureWhileOffAndCancellationStayUnreported()=kotlinx.coroutines.runBlocking {
+        catalogueFailureReport(false,false,0);catalogueFailureReport(true,false,0,cancel=true)
     }
 
 }

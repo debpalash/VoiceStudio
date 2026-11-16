@@ -61,6 +61,7 @@ class DubEditorSession: ViewModel() {
     var previewLabel by remember {mutableStateOf("mobile.editing.original")}
     var previewSegmentID by remember {mutableStateOf<String?>(null)}
     var pendingImport by remember {mutableStateOf<DubEditorSnapshot?>(null)}
+    var importFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
     fun selection(segment: DubSegmentState)=voices[segment.id.orEmpty()].orEmpty().ifEmpty {if(voices.containsKey(segment.id.orEmpty())) "" else if(segment.referenceFile==null) "" else "__keep__"}
     fun rememberEdit(key: String? = null) {
         if(key==null||mutationKey!=key) undo=(undo+DubEditorSnapshot(segments,voices)).takeLast(50)
@@ -75,22 +76,26 @@ class DubEditorSession: ViewModel() {
         }
     }
     fun previewSegment(segment: DubSegmentState,generated: Boolean) {
+        val failure=vm.failureHandler()
         previewing=true
         scope.launch {
             try {preview=vm.phone.dubs.preview(id,segment,target,generated);previewSegmentID=segment.id;previewLabel=if(generated) "mobile.editing.generated" else "mobile.editing.original"}
-            catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {previewing=false}
+            catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {previewing=false}
         }
     }
     fun export(vtt: Boolean) {
+        val failure=vm.failureHandler()
         scope.launch {
             try {
                 val text=DubSubtitles.export(segments,target,vtt)
                 val file=withContext(Dispatchers.IO) {File(context.cacheDir,"dub-subtitles-${UUID.randomUUID()}.${if(vtt) "vtt" else "srt"}").apply {writeText(text)}}
                 try {shareLocalFile(context,file,if(vtt) "text/vtt" else "application/x-subrip")} finally {file.delete()}
-            } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
         }
     }
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->
+        val failure=importFailure ?: vm::restoreFailure
+        importFailure=null
         if(uri!=null) scope.launch {
             try {
                 val text=withContext(Dispatchers.IO) {
@@ -108,7 +113,7 @@ class DubEditorSession: ViewModel() {
                     requireNotNull(cue.id) to selections.single()
                 }
                 pendingImport=DubEditorSnapshot(imported,importedVoices)
-            } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(if(e is ClientFailure) e else ClientFailure("mobile.editing.subtitle_invalid"))}
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(if(e is ClientFailure) e else ClientFailure("mobile.editing.subtitle_invalid"))}
         }
     }
     DisposableEffect(preview) {val old=preview;onDispose {old?.file?.delete()}}
@@ -122,7 +127,7 @@ class DubEditorSession: ViewModel() {
             Box(Modifier.weight(1f)) {Secondary("mobile.editing.undo",undo.isNotEmpty()&&!saving&&!previewing) {restore(true)}}
             Box(Modifier.weight(1f)) {Secondary("mobile.editing.redo",redo.isNotEmpty()&&!saving&&!previewing) {restore(false)}}
         }
-        Secondary("mobile.editing.import_subtitles",!saving&&!previewing) {importer.launch(arrayOf("text/*","application/x-subrip","application/octet-stream"))}
+        Secondary("mobile.editing.import_subtitles",!saving&&!previewing) {importFailure=vm.failureHandler();importer.launch(arrayOf("text/*","application/x-subrip","application/octet-stream"))}
         Row(horizontalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
             Box(Modifier.weight(1f)) {Secondary("mobile.editing.export_srt",!saving) {export(false)}}
             Box(Modifier.weight(1f)) {Secondary("mobile.editing.export_vtt",!saving) {export(true)}}
@@ -176,7 +181,7 @@ class DubEditorSession: ViewModel() {
             Canvas(Modifier.fillMaxWidth().height(64.dp).semantics {contentDescription=label}) {
                 clip.peaks.forEachIndexed {index,value ->val x=size.width*index/clip.peaks.size;val height=value*size.height/2;drawLine(color,Offset(x,size.height/2-height),Offset(x,size.height/2+height),2f)}
             }
-            LocalAudioPlayer(clip.file,vm::fail)
+            LocalAudioPlayer(clip.file,vm::failureHandler)
         }
                 if(segment.speech.start.isFinite()&&segment.speech.end.isFinite()&&segment.speech.end-segment.speech.start>.1) {
                     val position=(splitPositions[segmentID] ?: ((segment.speech.start+segment.speech.end)/2).toFloat()).coerceIn((segment.speech.start+.05).toFloat(),(segment.speech.end-.05).toFloat())
@@ -185,12 +190,14 @@ class DubEditorSession: ViewModel() {
                     Slider(position,{splitPositions=splitPositions+(segmentID to it)},valueRange=(segment.speech.start+.05).toFloat()..(segment.speech.end-.05).toFloat(),enabled=!saving&&!previewing,modifier=Modifier.semantics {contentDescription=splitLabel})
                     Row(horizontalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
                         Box(Modifier.weight(1f)) {Secondary("mobile.editing.split",!saving&&!previewing) {
+                            val failure=vm.failureHandler()
                             try {val result=DubEditing.split(segments,index,position.toDouble());rememberEdit();voices=voices+(requireNotNull(result[index+1].id) to selection(segment));segments=result;timingText=emptyMap()}
-                            catch(e:Exception) {vm.fail(ClientFailure("mobile.editing.split_invalid"))}
+                            catch(e:Exception) {failure(ClientFailure("mobile.editing.split_invalid"))}
                         }}
                         Box(Modifier.weight(1f)) {Secondary("mobile.editing.merge",!saving&&!previewing&&index+1<segments.size) {
+                            val failure=vm.failureHandler()
                             try {if(selection(segment)!=selection(segments[index+1])) throw ClientFailure("mobile.editing.merge_invalid");val result=DubEditing.merge(segments,index);rememberEdit();segments=result;timingText=emptyMap()}
-                            catch(e:Exception) {vm.fail(if(e is ClientFailure) e else ClientFailure("mobile.editing.merge_invalid"))}
+                            catch(e:Exception) {failure(if(e is ClientFailure) e else ClientFailure("mobile.editing.merge_invalid"))}
                         }}
                     }
                 }
@@ -198,6 +205,7 @@ class DubEditorSession: ViewModel() {
         }
     }
         Box(Modifier.fillMaxWidth().padding(VSTheme.inset)) { Action("dub.generate_dub",!saving&&!previewing&&segments.isNotEmpty()) {
+            val failure=vm.failureHandler()
             saving=true;preview=null
             scope.launch {
                 try {
@@ -212,7 +220,7 @@ class DubEditorSession: ViewModel() {
                     val edits=segments.map {segment ->if(selection(segment)=="") segment.copy(referenceFile=null,referenceText=if(segment.referenceFile!=null) null else segment.referenceText) else segment}
                     vm.phone.dubs.edit(id,edits,references)
                     vm.phone.refresh();PhoneDubWorker.enqueue(context,id);onSaved()
-                } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {saving=false}
+                } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {saving=false}
             }
         } }
     }

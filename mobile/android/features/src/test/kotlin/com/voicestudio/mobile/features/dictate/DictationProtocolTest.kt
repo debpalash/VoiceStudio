@@ -24,7 +24,7 @@ class DictationProtocolTest {
         val errors=java.util.concurrent.CopyOnWriteArrayList<Throwable>()
         val captureCycles=java.util.concurrent.atomic.AtomicInteger()
         val saved=java.util.concurrent.CopyOnWriteArrayList<String>()
-        val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{errors.add(it)},
+        val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{{error ->errors.add(error)}},
             DictationAudioSource {keepRecording,_ -> while(keepRecording()) {captureCycles.incrementAndGet();delay(5)}},completed={saved.add(it)})
         try {
             controller.start()
@@ -64,7 +64,7 @@ class DictationProtocolTest {
             }))
             server.start()
             val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
-            val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{},
+            val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{{_ ->}},
                 DictationAudioSource {keepRecording,_ -> while(keepRecording()) delay(5)})
             try {
                 controller.start()
@@ -96,7 +96,7 @@ class DictationProtocolTest {
         val oldCaptureEnded=CompletableDeferred<Unit>()
         val captures=java.util.concurrent.atomic.AtomicInteger()
         val errors=java.util.concurrent.CopyOnWriteArrayList<Throwable>()
-        val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{errors.add(it)},
+        val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{{error ->errors.add(error)}},
             DictationAudioSource {keepRecording,_ ->
                 val first=captures.incrementAndGet()==1
                 try {while(keepRecording()) delay(5)}
@@ -123,6 +123,44 @@ class DictationProtocolTest {
             assertTrue(controller.active.value)
             assertTrue(errors.toString(),errors.isEmpty())
         } finally {releaseOldCapture.complete(Unit);controller.close();scope.cancel();server.shutdown()}
+    }
+
+    @Test fun permissionOwnerSurvivesRemoteReadinessAndExplicitLaterStartIsFresh() = runBlocking {
+        for(original in listOf<String?>(null,"grant-a")) {
+            val server=MockWebServer()
+            repeat(2) {server.enqueue(MockResponse().setResponseCode(503).setBody("{}"))}
+            server.start()
+            val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
+            val current=java.util.concurrent.atomic.AtomicReference<String?>(original)
+            val observations=java.util.concurrent.atomic.AtomicInteger()
+            val feedback=java.util.concurrent.CopyOnWriteArrayList<String?>()
+            val reports=java.util.concurrent.CopyOnWriteArrayList<String>()
+            val observe:()->(Throwable)->Unit={
+                observations.incrementAndGet()
+                val owner=current.get();
+                {_:Throwable ->
+                    feedback.add(owner)
+                    if(owner!=null && owner==current.get()) reports.add(owner)
+                }
+            }
+            val originalFailure=observe()
+            current.set("grant-b")
+            val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,observe,
+                DictationAudioSource {_,_ ->error("unready backend must not record")})
+            try {
+                controller.start(originalFailure)
+                awaitCondition {!controller.active.value && feedback.size==1}
+                assertEquals(1,observations.get())
+                assertEquals(listOf(original),feedback.toList())
+                assertTrue(reports.isEmpty())
+                controller.start()
+                awaitCondition {!controller.active.value && feedback.size==2}
+                assertEquals(2,observations.get())
+                assertEquals(listOf(original,"grant-b"),feedback.toList())
+                assertEquals(listOf("grant-b"),reports.toList())
+                assertEquals(2,server.requestCount)
+            } finally {controller.close();scope.cancel();server.shutdown()}
+        }
     }
 
 }
