@@ -669,7 +669,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                     token = save_preview(os.path.dirname(dub_seg_path(job_id, "preview")), preview_render, str(sid), path)
                 return f"data: {json.dumps({'type': 'segment_ready', 'current': index + 1, 'total': total, 'segment': index, 'segment_id': str(sid), 'language_code': lang_code, 'preview_url': f'/dub/speech-preview/{job_id}/{preview_render}/{token}'})}\n\n"
             except OSError as error:
-                logger.warning("could not save speech preview: %s", error)
+                logger.warning("could not save speech preview: %s", type(error).__name__)
                 return None
         all_segment_wavs = []
         sync_scores = []
@@ -863,18 +863,10 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
         # `seg_i.wav` on disk and slot into the final mix unchanged.
         regen_only = set(req.regen_only or []) if req.regen_only is not None else None
         forced_speech_ids = set(req.regen_only or [])
-        from core import prefs
-        checkpoint_context = {"track_language": lang_code, "voice_match": req.voice_match, "preferences": prefs._load(), "model_env": {
-            key: value for key, value in os.environ.items()
-            if key.startswith(("OMNIVOICE_MODEL", "OMNIVOICE_TTS", "OMNIVOICE_CHECKPOINT"))
-        }}
-        try:
-            with db_conn() as connection:
-                checkpoint_context["pronunciations"] = [dict(row) for row in connection.execute(
-                    "SELECT * FROM pronunciation_entries ORDER BY id").fetchall()]
-        except Exception:
-            # Older databases can lack the optional pronunciation dictionary.
-            checkpoint_context["pronunciations"] = None
+        # Pronunciation is already applied to prepared text. Immutable model
+        # proof and resolved synthesis inputs account for output-affecting
+        # preferences without invalidating every voice for unrelated DB edits.
+        checkpoint_context = {"track_language": lang_code, "voice_match": req.voice_match}
         checkpoints = SpeechCheckpoints(os.path.dirname(dub_seg_path(job_id, "checkpoint")),
                                         engine_id, backend.sample_rate, checkpoint_context,
                                         marker=lambda audio: mark_synthetic(audio, backend.sample_rate, context="dub_generate.segment"))
@@ -1601,6 +1593,11 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                         if candidate_index == first_index:
                             raise
                         break
+                    if reuse_checkpoints and str(candidate_id) not in forced_speech_ids:
+                        recovered = await _run_journal_io(checkpoints.read, prepared)
+                        if recovered is not None:
+                            _batched_audio[candidate_index] = recovered
+                            continue
                     # A finished segment recovered from an earlier run is not
                     # re-rendered; the main loop reuses it.
                     if journal is not None:

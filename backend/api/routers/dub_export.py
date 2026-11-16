@@ -1760,7 +1760,8 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     if track_lang is None:
         raise HTTPException(status_code=400, detail="No dubbed audio track generated yet")
     wav_path = _dub_artifact(tracks[track_lang].get("path"), job_id, missing_detail="Dubbed audio file not found")
-    segments = _speech_segments(job, track_lang)
+    script = (job.get("narration_scripts") or {}).get(track_lang)
+    segments = script["blocks"] if script else (job.get("segments") or [])
     if not segments:
         raise HTTPException(status_code=400, detail="Job has no segments")
     # Score the recognized audio against THAT track's text. `job["segments"]`

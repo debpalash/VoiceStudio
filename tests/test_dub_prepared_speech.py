@@ -94,7 +94,9 @@ def test_dub_whole_line_deletion_publishes_silence_and_a_current_fingerprint(
     events = dub.run(segments=segments, segment_ids=ids, language="English")
     assert any(event["type"] == "done" for event in events), events
     actual = [text for batch in batches for text in batch] + [text for text, _kw in fake_engine.calls]
-    assert actual == ["dogs", "birds"]
+    # Only the deleted row changed; unchanged resolved speech is reusable in
+    # both serial and native-batch paths. Empty text never reaches the engine.
+    assert actual == []
     from services.audio_io import load_audio
 
     silent, _ = load_audio(str(dub.path / "seg_en_delete.wav"))

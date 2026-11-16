@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -15,6 +16,9 @@ from pathlib import Path
 import torch
 
 from services.audio_io import atomic_save_wav, load_audio
+
+
+logger = logging.getLogger("omnivoice.dub")
 
 
 class SpeechCheckpoints:
@@ -30,7 +34,11 @@ class SpeechCheckpoints:
         self.saved = 0
 
     def _path(self, prepared: dict) -> Path | None:
-        proof = self.key_proof(prepared) if self.key_proof else None
+        try:
+            proof = self.key_proof(prepared) if self.key_proof else None
+        except Exception as error:
+            logger.debug("speech checkpoint identity unavailable: %s", type(error).__name__)
+            return None
         if self.key_proof and proof is None:
             return None
         args = dict(prepared)
@@ -88,21 +96,28 @@ class SpeechCheckpoints:
         path = self._path(prepared)
         if path is None:
             return audio
-        # Never recreate a deleted project's directory while a render winds down.
-        if not self.root.parent.is_dir():
-            raise FileNotFoundError('The dubbing project was removed')
-        self.root.mkdir(exist_ok=True)
-        atomic_save_wav(str(path), audio, self.sample_rate)
-        checksum = hashlib.sha256(path.read_bytes()).hexdigest()
-        fd, temporary = tempfile.mkstemp(dir=self.root, suffix='.checksum')
+        # A cache failure must not discard usable speech. Never recreate a
+        # withdrawn project's parent directory while rendering winds down.
+        temporary = None
         try:
+            if not self.root.parent.is_dir():
+                return audio
+            self.root.mkdir(exist_ok=True)
+            atomic_save_wav(str(path), audio, self.sample_rate)
+            checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+            fd, temporary = tempfile.mkstemp(dir=self.root, suffix='.checksum')
             with os.fdopen(fd, 'w') as stream:
                 stream.write(checksum)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, path.with_suffix('.sha256'))
+            self.saved += 1
+        except OSError as error:
+            logger.warning("speech checkpoint unavailable, keeping rendered audio: %s", type(error).__name__)
         finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
-        self.saved += 1
+            if temporary:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
         return audio

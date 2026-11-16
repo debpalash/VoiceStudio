@@ -43,3 +43,18 @@ def test_unproven_or_changed_model_never_reuses_speech(tmp_path):
     before = cache.saved
     assert torch.equal(cache.write(prepared, speech), speech)
     assert cache.saved == before
+
+
+def test_cache_write_and_identity_failures_keep_the_working_render(tmp_path, monkeypatch, caplog):
+    import services.dub_speech_checkpoints as module
+    cache = SpeechCheckpoints(str(tmp_path), 'test', 24000, {})
+    speech = torch.ones(1, 2400) * .1
+    def unavailable(*args, **kwargs):
+        raise OSError('/home/private-voice/sample.wav')
+    monkeypatch.setattr(module, 'atomic_save_wav', unavailable)
+    assert torch.equal(cache.write({'text': 'hello'}, speech), speech)
+    assert cache.saved == 0
+    assert 'private-voice' not in caplog.text
+    cache.key_proof = unavailable
+    assert cache.read({'text': 'hello'}) is None
+    assert torch.equal(cache.write({'text': 'hello'}, speech), speech)
