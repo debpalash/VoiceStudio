@@ -127,8 +127,8 @@ def test_full_dub_uses_one_saved_dictionary_snapshot_for_keys_and_inference(
     assert any(event["type"] == "done" for event in events), events
     assert len(loaded_on) == 2  # the next render sees the edited saved rows
     actual = batches[0] if native else [text for text, _ in fake_engine.calls]
-    assert actual == ["puppies cats"] * 2
-    assert keyed_texts and set(keyed_texts) == {"puppies cats"}
+    assert actual == ["puppies cats", "puppies again"]
+    assert keyed_texts and set(keyed_texts) == {"puppies cats", "puppies again"}
 
 
 def test_dub_preview_uses_saved_voice_entries_and_inline_precedence(
