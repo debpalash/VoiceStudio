@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import torch
@@ -62,6 +63,7 @@ def dub(monkeypatch, tmp_path):
     monkeypatch.setattr(dg, "task_manager", Tasks())
     monkeypatch.setattr(dg, "rvc_is_enabled", lambda: False)
     monkeypatch.setattr(dg, "mark_synthetic", lambda a, *args, **kw: a)
+    monkeypatch.setattr(dg, "mark_synthetic_async", AsyncMock(side_effect=lambda a, *args, **kw: a))
     monkeypatch.setattr(dg, "get_effect_chain", lambda _: None)
     monkeypatch.setattr(dg, "normalize_audio", lambda a, **kw: a)
 
@@ -116,6 +118,25 @@ def test_reused_segment_is_byte_identical_to_what_was_rendered(dub):
     _crash_after(dub, 2)
     recovered = (dub.journal / "seg_a.wav").read_bytes()
     dub.run()
+    assert (dub.path / "seg_en_a.wav").read_bytes() == recovered
+
+
+def test_recovered_speech_is_not_watermarked_again(dub, monkeypatch):
+    marks = []
+
+    async def mark(audio, sr, *, context):
+        marks.append(context)
+        return audio + 0.02
+
+    monkeypatch.setattr(dub.dg, "mark_synthetic_async", mark)
+    _crash_after(dub, 2)
+    assert marks == ["dub_generate.segment"] * 2
+    recovered = (dub.journal / "seg_a.wav").read_bytes()
+
+    events = dub.run()
+    assert any(event["type"] == "done" for event in events)
+    assert [g["text"] for g in dub.generated] == ["line 2", "line 3"]
+    assert marks == ["dub_generate.segment"] * 4
     assert (dub.path / "seg_en_a.wav").read_bytes() == recovered
 
 

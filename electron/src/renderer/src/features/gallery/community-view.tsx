@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from 'react';
 import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +16,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { AudioPreviewButton } from '@/components/audio-preview-button';
+import { VirtualGrid } from '@/components/virtual-list';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query';
@@ -33,6 +34,21 @@ export const communityKey = (item: CommunityItem) =>
   'community:' + (item._source_repo || item.source || 'default') + ':' + item.id;
 
 const ALL = '*';
+const COLUMN_QUERIES = ['(min-width: 48rem)', '(min-width: 80rem)'];
+function galleryColumns() {
+  if (typeof window.matchMedia !== 'function') return 1;
+  return window.matchMedia(COLUMN_QUERIES[1]!).matches
+    ? 3
+    : window.matchMedia(COLUMN_QUERIES[0]!).matches
+      ? 2
+      : 1;
+}
+function subscribeColumns(notify: () => void) {
+  if (typeof window.matchMedia !== 'function') return () => {};
+  const queries = COLUMN_QUERIES.map((query) => window.matchMedia(query));
+  queries.forEach((query) => query.addEventListener('change', notify));
+  return () => queries.forEach((query) => query.removeEventListener('change', notify));
+}
 
 /**
  * One card per voice: the same voice can arrive from two catalogue sources or
@@ -96,6 +112,14 @@ export function CommunityView({
   const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLElement>(null);
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const [playingKey, setPlayingKey] = useState<string | null>(null);
+  const pinnedKeys = useMemo(
+    () => [...new Set([playingKey, previewKey].filter((key): key is string => key !== null))],
+    [playingKey, previewKey],
+  );
+  const columns = useSyncExternalStore(subscribeColumns, galleryColumns, () => 1);
   const active = useRef(false);
   const mounted = useRef(false);
   useEffect(() => {
@@ -213,11 +237,15 @@ export function CommunityView({
       setError(describeError(cause));
     }
   };
-  const items = uniqueCommunityItems(
-    catalogue.data?.pages.flatMap((page) => page.items) || [],
-  ).filter((item) => matchesCommunitySearch(item, search));
+  const items = useMemo(
+    () =>
+      uniqueCommunityItems(catalogue.data?.pages.flatMap((page) => page.items) || []).filter(
+        (item) => matchesCommunitySearch(item, search),
+      ),
+    [catalogue.data?.pages, search],
+  );
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto p-6">
+    <section ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-6xl space-y-5">
         <div className="flex flex-wrap items-center gap-3">
           <p className="min-w-64 flex-1 text-sm leading-6 text-muted-foreground">
@@ -302,12 +330,15 @@ export function CommunityView({
             {t(search.trim() ? 'gallery.no_matches' : 'gallery.community_empty')}
           </p>
         )}
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => (
-            <article
-              key={communityKey(item)}
-              className="flex flex-col gap-3 rounded-xl border border-border/50 p-4"
-            >
+        <VirtualGrid
+          aria-label={t('gallery.zone_community')}
+          items={items}
+          scrollRef={scrollRef}
+          getKey={communityKey}
+          columnCount={columns}
+          pinnedKeys={pinnedKeys}
+          renderCard={(item) => (
+            <article className="flex h-full flex-col gap-3 rounded-xl border border-border/50 p-4">
               <div className="flex items-center gap-2">
                 <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{item.name}</h2>
                 {isNewItem(item) && <Badge variant="secondary">{t('gallery.community_new')}</Badge>}
@@ -332,6 +363,8 @@ export function CommunityView({
 
               <div className="flex flex-wrap items-center gap-2">
                 <AudioPreviewButton
+                  onInteract={() => setPreviewKey(communityKey(item))}
+                  onPlaying={() => setPlayingKey(communityKey(item))}
                   src={apiPath('/community/items/' + encodeURIComponent(item.id) + '/preview')}
                   fallbackSrc={
                     item.type === 'preset'
@@ -366,8 +399,8 @@ export function CommunityView({
                 />
               </div>
             </article>
-          ))}
-        </div>
+          )}
+        />
         {catalogue.hasNextPage && (
           <Button
             variant="outline"

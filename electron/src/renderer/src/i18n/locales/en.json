@@ -1528,6 +1528,9 @@
     "terminal_command_added": "Added. Open a new terminal window to use voicestudio.",
     "terminal_command_failed": "Couldn't add voicestudio to your terminal. Check that your home folder isn't read-only, then try again.",
     "terminal_command_conflict": "{{path}} belongs to another installation, so VoiceStudio left it unchanged.",
+    "close_to_tray": "Keep running in the tray when closed",
+    "close_to_tray_desc": "Closing the window hides VoiceStudio to the tray instead of quitting, so running jobs keep going. Reopen it from the tray icon and choose Quit there to exit. On some Linux desktops the tray icon needs AppIndicator support; opening VoiceStudio again also reopens the window.",
+    "close_to_tray_failed": "Couldn't save this setting. Try again.",
     "review_mode_on": "Pause for review",
     "review_mode_off": "Run straight through",
     "translate_agent": "Agent fit",
@@ -2048,7 +2051,12 @@
     "untitled": "No title",
     "recovery_busy": "Another render is running. Resume when it finishes.",
     "cast_note_one": "{{names}} isn’t cast yet, so it reads in the main voice. Pick a voice for it under Cast.",
-    "cast_note_other": "{{names}} aren’t cast yet, so they read in the main voice. Pick voices for them under Cast."
+    "cast_note_other": "{{names}} aren’t cast yet, so they read in the main voice. Pick voices for them under Cast.",
+    "result_other_connection": "This saved audio belongs to another VoiceStudio connection. Switch back to that connection to play it.",
+    "result_connection_unknown": "Connect your local engine or remote computer to show saved audio.",
+    "result_legacy": "This older saved result has no connection record. Check for its filename on this connection; it may be a different file.",
+    "result_check_audio": "Check saved audio on this connection",
+    "result_recovery_failed": "The saved audio is not available on this connection. Switch back to its original connection or generate it again."
   },
   "credentials": {
     "microsoft_key": "Microsoft Translator key",

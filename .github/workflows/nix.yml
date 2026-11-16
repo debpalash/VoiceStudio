@@ -144,7 +144,7 @@ jobs:
           sudo apt-get clean
           df -h /
 
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
         if: steps.scope.outputs.run == 'true'
         with:
           extra_nix_config: |

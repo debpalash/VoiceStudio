@@ -49,10 +49,10 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { SyncedAudiobookPlayer } from './synced-audiobook-player';
 import { GeneratePanel } from './generate-panel';
+import { LongformResultRecovery } from './result-recovery';
 import { generateBlocker } from './generate-blocker';
 import { EngineNotice } from '@/components/engine-notice';
 import { ValidationWarnings, type ScriptWarning } from './validation-warnings';
-import { getBridge } from '@/components/bridge';
 import { useProfiles } from '@/hooks/use-profiles';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
 import { RenderRecovery } from './render-recovery';
@@ -63,6 +63,9 @@ import {
   editLongform,
   dismissLongformError,
   renderLongform,
+  getLongformResultState,
+  recoverLegacyLongformResult,
+  replaceLongformDraft,
   stopLongform,
   useLongformSession,
   storiesImportEpoch,
@@ -147,6 +150,11 @@ export function LongformPage({ mode }: { mode: Mode }) {
   // One element, rendered either pinned in the setup pane or, once that is folded away, over the editor.
   const generatePanel = (
     <div className="flex min-h-0 flex-col gap-2">
+      <LongformResultRecovery
+        state={getLongformResultState(mode)}
+        disabled={locked}
+        onRecover={() => void recoverLegacyLongformResult(mode)}
+      />
       <RenderRecovery
         mode={mode}
         active={session.active !== null}
@@ -196,14 +204,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
     setLocalError(null);
     try {
       const url = apiPath('/audio/' + encodeURIComponent(draft.output));
-      const bridge = getBridge();
-      if (bridge) await saveExport(url, draft.output.split('/').pop() || 'audiobook.m4b');
-      else {
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = draft.output;
-        link.click();
-      }
+      await saveExport(url, draft.output.split('/').pop() || 'audiobook.m4b');
     } catch (cause) {
       setLocalError(describeError(cause));
     } finally {
@@ -253,6 +254,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
                 draft={draft}
                 disabled={locked}
                 onChange={set}
+                onReplace={(draft) => replaceLongformDraft(mode, draft)}
                 onBusy={setImporting}
               />
             </div>

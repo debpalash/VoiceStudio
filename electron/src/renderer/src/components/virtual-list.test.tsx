@@ -129,3 +129,25 @@ it('grid: renders every card of a short list', () => {
   render(<GridHarness count={20} onPick={vi.fn()} />);
   expect(screen.getAllByRole('listitem')).toHaveLength(20);
 });
+
+it('grid: keeps the full height spacer when the virtualizer has no rows yet', () => {
+  function Detached() {
+    const ref = useRef<HTMLDivElement>(null); // never attached: no scroll element
+    return (
+      <VirtualGrid
+        aria-label="cards"
+        items={Array.from({ length: 1000 }, (_, id) => id)}
+        scrollRef={ref}
+        getKey={(id) => id}
+        columnCount={2}
+        estimateRowSize={100}
+        renderCard={(id) => <span>Card {id}</span>}
+      />
+    );
+  }
+  render(<Detached />);
+  const spacer = document.querySelector<HTMLElement>('[role="list"] > [aria-hidden="true"]');
+  expect(spacer).not.toBeNull();
+  // 500 rows of 100px + 499 gaps of 12px.
+  expect(parseFloat(spacer!.style.height)).toBeGreaterThan(50000);
+});

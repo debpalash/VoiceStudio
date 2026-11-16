@@ -79,5 +79,5 @@ test('renderer smokes do not depend on a live backend', () => {
 test('renderer smoke count is deliberate', () => {
   // Update on purpose when a renderer smoke is added or removed.
   const renderer = listSmokes(dir).filter((smoke) => smoke.kind === 'renderer');
-  assert.equal(renderer.length, 40);
+  assert.equal(renderer.length, 41);
 });

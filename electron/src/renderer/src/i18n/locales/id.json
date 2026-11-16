@@ -1337,6 +1337,9 @@
     "terminal_command_added": "Ditambahkan. Buka jendela terminal baru untuk memakai voicestudio.",
     "terminal_command_failed": "Tidak dapat menambahkan voicestudio ke terminal. Pastikan folder home Anda tidak hanya-baca, lalu coba lagi.",
     "terminal_command_conflict": "{{path}} milik instalasi lain, jadi VoiceStudio tidak mengubahnya.",
+    "close_to_tray": "Tetap berjalan di baki saat ditutup",
+    "close_to_tray_desc": "Menutup jendela akan menyembunyikan VoiceStudio ke baki alih-alih keluar, sehingga tugas yang berjalan tetap lanjut. Buka lagi dari ikon baki dan pilih Keluar di sana untuk menutup. Di beberapa desktop Linux, ikon baki memerlukan dukungan AppIndicator; membuka VoiceStudio lagi juga membuka kembali jendela.",
+    "close_to_tray_failed": "Pengaturan ini tidak dapat disimpan. Coba lagi.",
     "review_mode_on": "Ulasan",
     "review_mode_off": "Tembakan cepat",
     "translate_agent": "Agen cocok",
@@ -1870,7 +1873,12 @@
     "cast_note_other": "{{names}} belum diberi suara, jadi dibacakan dengan suara utama. Pilih suara di Pemeran.",
     "line_gap": "Durasi jeda antarbaris",
     "paragraph_gap": "Durasi jeda antarparagraf",
-    "trim_edges": "Hapus bagian senyap dari mesin"
+    "trim_edges": "Hapus bagian senyap dari mesin",
+    "result_other_connection": "Audio tersimpan ini berasal dari koneksi VoiceStudio lain. Kembali ke koneksi tersebut untuk memutarnya.",
+    "result_connection_unknown": "Hubungkan mesin lokal atau komputer jarak jauh Anda untuk menampilkan audio tersimpan.",
+    "result_legacy": "Hasil tersimpan lama ini tidak memiliki informasi koneksi. Cari nama filenya pada koneksi ini; file tersebut mungkin berbeda.",
+    "result_check_audio": "Periksa audio tersimpan pada koneksi ini",
+    "result_recovery_failed": "Audio tersimpan tidak tersedia pada koneksi ini. Kembali ke koneksi asalnya atau buat ulang audio tersebut."
   },
   "credentials": {
     "microsoft_key": "Kunci Penerjemah Microsoft",

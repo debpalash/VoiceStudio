@@ -545,6 +545,11 @@ test-only PR. Docker Hub overview edits still publish through the small
   runs the build. Merge groups retain the package's mobile and unrelated
   `.github/` exclusions; the Nix workflow itself always qualifies. Explicit
   manual/release events remain full, and the existing unsigned-CLA hold remains.
+- **Mobile artifacts:** uploads retry once after ten seconds when the first
+  attempt fails and the run is not cancelled. Both attempts use the same
+  artifact name and inputs; a failed retry still fails the job, and pass-cache
+  markers remain after the terminal upload. Native tests are never skipped
+  because an upload failed.
 - **Pass cache:** the heavy jobs in `ci.yml` (Python tests, the Electron jobs,
   UI crawler, Desktop UI, release smoke, smokes) and in `mobile.yml` (iOS, Android and their
   inference tests) skip their steps, and still pass, when their exact inputs

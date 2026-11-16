@@ -407,18 +407,16 @@ it('reads Smart App Control from the registry output', () => {
 it('names Smart App Control when it blocked the runtime (#3224)', () => {
   const python = String.raw`C:\Users\u\VoiceStudio\.venv\Scripts\python.exe`;
   const blocked = Object.assign(new Error('spawn UNKNOWN'), { code: 'UNKNOWN' });
-  for (const smartAppControl of ['on', 'evaluation'] as const) {
+  const enforcedMessage = spawnFailureMessage(python, blocked, { smartAppControl: 'on' });
+  expect(enforcedMessage).toContain(python);
+  expect(enforcedMessage).toContain('spawn UNKNOWN');
+  expect(enforcedMessage).toContain('Windows Smart App Control blocked it');
+  expect(enforcedMessage).not.toContain('repair the local runtime');
+  // Without enforcement, keep the OS refusal without recommending reinstallation.
+  for (const smartAppControl of ['evaluation', 'off', 'unknown'] as const) {
     const message = spawnFailureMessage(python, blocked, { smartAppControl });
-    expect(message).toContain(python);
-    expect(message).toContain('spawn UNKNOWN');
-    expect(message).toContain('Windows Smart App Control blocked it');
+    expect(message).not.toContain('Smart App Control');
     expect(message).not.toContain('repair the local runtime');
-  }
-  // Off or unreadable: keep the OS refusal without recommending reinstallation.
-  for (const smartAppControl of ['off', 'unknown'] as const) {
-    expect(spawnFailureMessage(python, blocked, { smartAppControl })).not.toContain(
-      'repair the local runtime',
-    );
   }
   // Only the bare Windows UNKNOWN is attributed to it, never a missing file.
   const missing = Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' });
@@ -557,6 +555,9 @@ it('names Smart App Control when it refused a runtime DLL, and other blockers ot
       `Windows Smart App Control blocked it. Last output: ${last}`,
   );
   expect(loadBlockMessage('exit code 1', last, 'application_control', 'off')).toContain(
+    'A Windows application control policy blocked it.',
+  );
+  expect(loadBlockMessage('exit code 1', last, 'application_control', 'evaluation')).toContain(
     'A Windows application control policy blocked it.',
   );
   expect(loadBlockMessage('exit code 1', '', 'group_policy', 'on')).toContain(

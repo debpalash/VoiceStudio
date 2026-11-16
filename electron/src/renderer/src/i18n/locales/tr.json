@@ -1337,6 +1337,9 @@
     "terminal_command_added": "Eklendi. voicestudio kullanmak için yeni bir terminal penceresi açın.",
     "terminal_command_failed": "voicestudio terminale eklenemedi. Ana klasörünüzün salt okunur olmadığını kontrol edip yeniden deneyin.",
     "terminal_command_conflict": "{{path}} başka bir kuruluma ait, bu yüzden VoiceStudio onu değiştirmedi.",
+    "close_to_tray": "Kapatınca tepside çalışmaya devam et",
+    "close_to_tray_desc": "Pencereyi kapatmak VoiceStudio’yu çıkmak yerine tepsiye gizler, böylece süren işler devam eder. Tepsi simgesinden yeniden açın ve kapatmak için orada Çık’ı seçin. Bazı Linux masaüstlerinde tepsi simgesi AppIndicator desteği gerektirir; VoiceStudio’yu yeniden açmak da pencereyi geri getirir.",
+    "close_to_tray_failed": "Bu ayar kaydedilemedi. Lütfen tekrar deneyin.",
     "review_mode_on": "İncele",
     "review_mode_off": "Hızlı ateş",
     "translate_agent": "Ajanla uyarlama",
@@ -1870,7 +1873,12 @@
     "cast_note_other": "{{names}} için henüz ses seçilmedi, ana sesle okunurlar. Oyuncular bölümünden ses seçin.",
     "line_gap": "Satırların arasındaki duraklama",
     "paragraph_gap": "Paragrafların arasındaki duraklama",
-    "trim_edges": "Motorun sessiz kısımlarını kes"
+    "trim_edges": "Motorun sessiz kısımlarını kes",
+    "result_other_connection": "Bu kayıtlı ses başka bir VoiceStudio bağlantısına aittir. Oynatmak için o bağlantıya geri dönün.",
+    "result_connection_unknown": "Kayıtlı sesi göstermek için yerel motorunuza veya uzak bilgisayarınıza bağlanın.",
+    "result_legacy": "Bu eski kayıtlı sonuçta bağlantı bilgisi yok. Bu bağlantıda dosya adını arayın; farklı bir dosya olabilir.",
+    "result_check_audio": "Bu bağlantıda kayıtlı sesi kontrol et",
+    "result_recovery_failed": "Kayıtlı ses bu bağlantıda kullanılamıyor. Özgün bağlantısına geri dönün veya sesi yeniden oluşturun."
   },
   "credentials": {
     "microsoft_key": "Microsoft Çevirmen Anahtarı",

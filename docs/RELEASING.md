@@ -3,6 +3,11 @@
 Electron is the only maintained desktop distribution. Tauri ended at v0.5.3;
 its signed updater feeds and installers are immutable compatibility assets.
 
+Electron release retries replace same-named assets with `gh release upload
+--clobber`. The workflow checks the resulting draft with
+`scripts/check_electron_release_assets.py --foreign-feeds` to reject stale feeds;
+keep the retired Tauri cleanup path removed.
+
 Shared store inputs and platform handoffs are defined in
 [`STORE-PUBLISHING.md`](STORE-PUBLISHING.md). Microsoft Store, Snap Store and
 Mac App Store are not maintained release channels until each has completed its

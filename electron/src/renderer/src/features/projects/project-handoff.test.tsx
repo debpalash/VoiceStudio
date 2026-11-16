@@ -9,10 +9,12 @@ const mocks = vi.hoisted(() => ({
   download: vi.fn(),
 }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('@/lib/api/client', () => ({
+vi.mock('@/lib/api/client', async (original) => ({
+  ...(await original<object>()),
   apiJson: mocks.json,
   apiFetch: mocks.fetch,
-  describeError: (error: unknown) => (error as { message?: string } | null | undefined)?.message ?? '',
+  describeError: (error: unknown) =>
+    (error as { message?: string } | null | undefined)?.message ?? '',
 }));
 vi.mock('@/lib/local-export', () => ({ saveLocalFile: mocks.download }));
 vi.mock('../longform/project-library', () => ({

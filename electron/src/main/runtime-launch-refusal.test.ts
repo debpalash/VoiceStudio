@@ -80,8 +80,8 @@ function failProbe(mode: 'sync' | 'callback', code: string | number, stderr = ''
 it.each([
   ['sync', 'UNKNOWN', 1, true],
   ['callback', 'UNKNOWN', 1, true],
-  ['sync', 'UNKNOWN', 2, true],
-  ['callback', 'UNKNOWN', 2, true],
+  ['sync', 'UNKNOWN', 2, false],
+  ['callback', 'UNKNOWN', 2, false],
   ['sync', 'UNKNOWN', 0, false],
   ['callback', 'UNKNOWN', 0, false],
   ['sync', 'EACCES', 0, false],
