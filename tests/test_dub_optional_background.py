@@ -11,8 +11,8 @@ import soundfile as sf
 from services import dub_pipeline as dp
 
 
-@pytest.mark.parametrize('separate', [False, True])
-def test_ingest_respects_background_choice(monkeypatch, tmp_path, separate):
+@pytest.mark.parametrize('separate,failure', [(False, False), (True, False), (True, True)])
+def test_ingest_respects_background_choice(monkeypatch, tmp_path, separate, failure):
     commands, cache_keys, separations = [], [], []
     source = tmp_path / 'input.wav'
     sf.write(source, np.ones(16000, dtype=np.float32) * .05, 16000)
@@ -27,6 +27,8 @@ def test_ingest_respects_background_choice(monkeypatch, tmp_path, separate):
         return SimpleNamespace(returncode=0), b'', b''
     async def separate_audio(jid, audio, directory, **kwargs):
         separations.append(audio)
+        if failure:
+            raise RuntimeError('separation fixture failure')
         stems = Path(directory) / 'htdemucs' / Path(audio).stem
         stems.mkdir(parents=True)
         for name in ['vocals.wav', 'no_vocals.wav']:
@@ -46,10 +48,12 @@ def test_ingest_respects_background_choice(monkeypatch, tmp_path, separate):
         assert any(e['type'] == 'demucs_start' for e in events) is separate
         assert any('44100' in cmd for cmd in commands) is separate
         job = dp.get_job('roadmap')
-        assert job['background_separation'] == ('ok' if separate else 'skipped')
-        assert bool(job['no_vocals_path']) is separate
+        assert job['background_separation'] == (('failed' if failure else 'ok') if separate else 'skipped')
+        assert bool(job['no_vocals_path']) is (separate and not failure)
         assert cache_keys[0].endswith(':voice-only') is (not separate)
         done = next(e for e in events if e['type'] == 'demucs_done')
         assert done['skipped'] is (not separate)
+        if failure:
+            assert any(e['type'] == 'warning' for e in events)
     finally:
         dp._dub_jobs.pop('roadmap', None)

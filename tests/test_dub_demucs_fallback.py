@@ -158,7 +158,7 @@ def test_ingest_falls_back_with_a_clear_notice_and_status():
     src = inspect.getsource(dp.ingest_pipeline)
     assert "_separate_background(" in src
     assert "_BACKGROUND_LOST_NOTICE" in src
-    assert '"background_separation": "ok" if has_bg else "failed"' in src
+    assert '"background_separation": ("ok" if has_bg else "failed") if separate_background else "skipped"' in src
     assert "speech only" in dp._BACKGROUND_LOST_NOTICE
 
 
