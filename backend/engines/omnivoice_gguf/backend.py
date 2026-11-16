@@ -1379,6 +1379,23 @@ def _make_backend_class():
                 # first — the conversion reads the file.
                 if ref_audio:
                     prompt = _validated_reference(ref_audio)
+                    if not (ref_text or "").strip():
+                        # The pinned CLI hard-requires --ref-text next to
+                        # --ref-wav ("[CLI] ERROR: --ref-wav / --ref-rvq
+                        # requires --ref-text <path>", exit 1), and this
+                        # engine has no fallback of its own: the route's
+                        # auto-transcribe is best-effort and can leave the
+                        # transcript missing, while the in-process OmniVoice
+                        # model transcribes or picks its own passage. Refuse
+                        # with the remedy, instead of failing inside the
+                        # binary as an unrecognized subprocess error.
+                        raise ValueError(
+                            "omnivoice-gguf needs a transcript to clone from a "
+                            "reference: add the words spoken in the clip to the "
+                            "voice profile, or pick an ASR model in Model "
+                            "Catalogue so the clip can be transcribed "
+                            "automatically."
+                        )
                     if not _is_cli_readable_wav(prompt):
                         converted_prompt = _convert_reference_to_wav(prompt)
                         ref_audio = str(converted_prompt)

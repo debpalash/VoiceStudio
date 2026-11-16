@@ -372,11 +372,16 @@ def test_speech_payload_forwards_steps():
     assert payload["steps"] == 32
 
 
-def test_a_reference_without_a_transcript_takes_the_cli(rig, tmp_path):
+def test_a_reference_without_a_transcript_is_refused_before_the_cli(rig, tmp_path):
+    """The resident server refuses transcript-less clones ("tts-server needs
+    a transcript to register a cloned voice"), and the CLI they used to fall
+    back to dies on "--ref-wav requires --ref-text" (exit 1) — so the engine
+    refuses with the remedy and never spawns anything."""
     clip = tmp_path / "ref.wav"
     _write_wav(clip, 2400)
-    rig.instance.generate("x", ref_audio=str(clip))
-    assert len(rig.cli_argvs) == 1 and rig.events("start") == []
+    with pytest.raises(ValueError, match="transcript"):
+        rig.instance.generate("x", ref_audio=str(clip))
+    assert rig.cli_argvs == [] and rig.events("start") == []
 
 
 # ── release ───────────────────────────────────────────────────────────────
