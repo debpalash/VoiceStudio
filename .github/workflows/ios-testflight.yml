@@ -91,8 +91,8 @@ jobs:
       # uses Apple's cloud-managed Distribution certificate and App Store profile.
       - name: Archive signed app
         env:
-          SUPERMETRY_APP_ID: ${{ vars.SUPERMETRY_APP_ID || secrets.SUPERMETRY_APP_ID }}
-          SUPERMETRY_INGEST_KEY: ${{ vars.SUPERMETRY_INGEST_KEY || secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
           SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
