@@ -8,6 +8,20 @@ metadata and the backend fallback mirror it.
 
 ## [Unreleased]
 
+## [0.5.9-beta.5] — 2026-11-16
+
+This beta adds separately opted-in automatic error reports, so failures can reach the maintainers without a manual bug report. Reports stay off unless you allow them, and never include audio, text, files, names, credentials or logs.
+
+**Highlights**
+
+- Optional automatic error reports stay off until separately allowed in Privacy
+- Android Stories and Audiobook keep long manuscripts scrollable and recover drafts through activity recreation
+- Stories can merge adjacent lines with compatible speaker and voice settings
+- Linux ROCm setup preserves its installed PyTorch stack, and GPU readiness reflects failed self-tests
+- Phone dub exports check available space and avoid false low-space errors on iOS
+
+**Upgrading:** install over the existing app or use Settings → Updates → Beta. Voices, projects, settings and installed models stay in place.
+
 ### Changed
 
 - Removed an unused legacy update-busy helper while retaining active restart protection (#4149) — thanks @themrbeasley!
@@ -40,6 +54,7 @@ metadata and the backend fallback mirror it.
 
 ### Docs
 
+- The localization contract no longer exempts the removed legacy shared i18n catalog, which pointed reviewers at a path that does not exist (#4186) — thanks @DeryFerd!
 - Document the enforced up-to-date merge gate while the repository cannot use GitHub merge queues (#4165)
 - Track the unresolved VoxCPM2 installation report separately from GPU fallback fixes, reported by [vinhson](https://discord.com/users/1025270992882376704) (#4154)
 - Track the unresolved Windows model-loading crash and distinguish merged installer repairs from released fixes (#4146) — thanks @renaldyramadani123-code!
@@ -48,6 +63,13 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Desktop failure observers retain the original consent during backend restarts and preserve normal Promise behavior. (#4209)
+- CosyVoice catalogue downloads skip unused alternative model files and use the same required assets as managed installs. (#4207)
+- Android keeps large manuscripts editable and recoverable, and retains reporting consent through permission prompts. (#4206) — thanks @gaino-svg!
+- The closed-PR CI sweep requests cancellations incrementally, preserves partial progress and reports incomplete searches or skipped requests accurately (#4189) — thanks @DeryFerd!
+- Kept automatic error reports bound to original consent through delayed work and recovery, and preserved native CI verification (#4184) — thanks @DeryFerd!
+- Windows ROCm setup preserves working-install stamps, verifies the pinned interpreter, and reports native crash exit codes (#4182) — thanks @DeryFerd!
+- Windows checkouts no longer fail the CLI packaging tests: the Debian maintainer-script cases skip when the host has no POSIX shell or symlink privileges (#4178) — thanks @DeryFerd!
 - Phone dubbing clip/stem exports check output space on both platforms and avoid false low-space errors on iOS (#4168)
 - Linux ROCm setup skips CUDA downloads and preserves its installed PyTorch stack on resume (#4167) — thanks @khryztiam!
 - GPU readiness and in-process routing reflect completed self-test failures (#4166) — thanks @khryztiam!
@@ -104,7 +126,9 @@ metadata and the backend fallback mirror it.
 
 ### CI
 
-- Release workflows read Supermetry app-intake settings from repository variables, with secrets as fallback (#4204)
+- CI reuses unchanged iOS checks, rechecks shared diagnostic inputs and skips Nix builds for documentation and test changes. (#4208)
+- Windows release and optional-engine tests use portable text fixtures, native Bash and normalized cache paths (#4197) — thanks @swax!
+- Release builds load app-intake credentials from GitHub Actions Secrets without public-variable fallbacks (#4204, #4205)
 - Fixed Android screenshot capture waiting behind the optional error-report prompt (#4202) — thanks @velixio!
 - Keep iOS voice-search and download checks reliable across saved model choices (#4171)
 - The iPhone smoke test waits for typed text to reach the editor instead of reading it once, removing a CI flake (#4100)
@@ -113,44 +137,6 @@ metadata and the backend fallback mirror it.
 - Docker's web build no longer fails the unused-key check when only `electron/` is copied, and the iPhone CI job allows for a native-runtime cache miss (#4052)
 - Removed unused scripts, the old Tauri MSI tooling and leftover Turborepo ignore lines (#4046)
 - Accessibility smoke timeouts now name the requests still pending, so a flaky CI failure points at its cause (#4036)
-
-## [0.5.9-beta.5] — 2026-11-16
-
-This beta adds separately opted-in automatic error reports, so failures can reach the maintainers without a manual bug report. Reports stay off unless you allow them, and never include audio, text, files, names, credentials or logs.
-
-**Highlights**
-
-- Optional automatic error reports on desktop, phones and server installs, asked once with equal Allow / Keep off choices and switchable any time in Privacy
-- Stories can merge adjacent lines that share a speaker and compatible voice settings
-- Linux ROCm setup no longer downloads CUDA packages and keeps its installed PyTorch when resuming
-- GPU readiness reflects a failed self-test instead of reporting the GPU ready
-- Phone dub exports check free space first, avoiding false low-space errors on iOS
-
-**Upgrading:** install over the existing app or use Settings → Updates → Beta. Voices, projects, settings and installed models stay in place.
-
-### Added
-
-- Stories can merge adjacent lines with the same speaker and compatible voice/speed settings while preserving text and inline directions — thanks [cvak on Discord](https://discord.com/channels/1497926884707799144/1497926886020354102/1566929293853073429)! (#4161)
-- Added separately opted-in failure reporting through Supermetry app intake across desktop, mobile and server installs, with private metadata and consent-controlled retries (#4137)
-
-### Docs
-
-- Document the enforced up-to-date merge gate while the repository cannot use GitHub merge queues (#4165)
-
-### Fixed
-
-- Phone dubbing clip/stem exports check output space on both platforms and avoid false low-space errors on iOS (#4168)
-- Linux ROCm setup skips CUDA downloads and preserves its installed PyTorch stack on resume (#4167) — thanks @khryztiam!
-- GPU readiness and in-process routing reflect completed self-test failures (#4166) — thanks @khryztiam!
-- CLA audits keep exempt accounts visible for provenance review without reporting a missing required signature (#4164)
-- Release rehearsals show measured Android APK signing, and tagged downloads require matching signature evidence (#4163)
-- Manual Windows crash reports retain the faulting thread ahead of verbose status tails — thanks @renaldyramadani123-code and @freemood36-svg! (#4162)
-
-### CI
-
-- Release workflows read Supermetry app-intake settings from repository variables, with secrets as fallback (#4204)
-- Fixed Android screenshot capture waiting behind the optional error-report prompt (#4202) — thanks @velixio!
-- Keep iOS voice-search and download checks reliable across saved model choices (#4171)
 
 ## [0.5.9-beta.4] — 2026-11-16
 
