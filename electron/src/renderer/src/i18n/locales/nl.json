@@ -878,8 +878,7 @@
     "glossary_label": "Woordenlijst",
     "set_speaker": "Spreker instellen…",
     "new_speaker": "Nieuwe spreker",
-    "speaker_label": "Spreker",
-    "delete_project_hint": "Alleen het opgeslagen project wordt uit de lijst verwijderd. Mediabestanden en stemmen blijven behouden."
+    "speaker_label": "Spreker"
   },
   "dub_workflow": {
     "transcribing_audio": "Audio transcriberen…",
@@ -1620,7 +1619,8 @@
     "open": "‘{{name}}’ openen en het huidige concept vervangen? Sla je werk eerst op.",
     "save_copy": "Kopie opslaan",
     "new": "Nieuw project",
-    "new_confirm": "Een nieuw, leeg project beginnen? Opgeslagen projecten blijven ongewijzigd; niet-opgeslagen wijzigingen in het huidige concept gaan verloren."
+    "new_confirm": "Een nieuw, leeg project beginnen? Opgeslagen projecten blijven ongewijzigd; niet-opgeslagen wijzigingen in het huidige concept gaan verloren.",
+    "delete_hint": "Alleen het opgeslagen project wordt uit de lijst verwijderd. Mediabestanden en stemmen blijven behouden."
   },
   "sidebar": {
     "save_project": "Dub-project opslaan",

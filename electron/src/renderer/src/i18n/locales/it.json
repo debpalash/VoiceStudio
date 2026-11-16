@@ -880,8 +880,7 @@
     "glossary_label": "Glossario",
     "set_speaker": "Imposta parlante…",
     "new_speaker": "Nuovo parlante",
-    "speaker_label": "Parlante",
-    "delete_project_hint": "Viene rimosso solo il progetto salvato dalla lista. I file multimediali e le voci vengono conservati."
+    "speaker_label": "Parlante"
   },
   "dub_workflow": {
     "transcribing_audio": "Trascrizione dell'audio…",
@@ -1622,7 +1621,8 @@
     "open": "Aprire “{{name}}” e sostituire la bozza attuale? Salva prima il tuo lavoro.",
     "save_copy": "Salva una copia",
     "new": "Nuovo progetto",
-    "new_confirm": "Iniziare un nuovo progetto vuoto? I progetti salvati restano invariati; le modifiche non salvate alla bozza attuale andranno perse."
+    "new_confirm": "Iniziare un nuovo progetto vuoto? I progetti salvati restano invariati; le modifiche non salvate alla bozza attuale andranno perse.",
+    "delete_hint": "Viene rimosso solo il progetto salvato dalla lista. I file multimediali e le voci vengono conservati."
   },
   "sidebar": {
     "save_project": "Salva progetto doppiato",

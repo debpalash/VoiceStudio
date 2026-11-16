@@ -265,7 +265,7 @@ export function DubProjects({ active = true }: { active?: boolean }) {
         <DialogContent initialFocus={cancelDelete}>
           <DialogHeader>
             <DialogTitle>{t('common.delete') + ' ' + (deleting?.name || '')}</DialogTitle>
-            <DialogDescription>{t('dub.delete_project_hint')}</DialogDescription>
+            <DialogDescription>{t('projectActions.delete_hint')}</DialogDescription>
           </DialogHeader>
           {error && (
             <p role="alert" className="text-sm text-destructive">

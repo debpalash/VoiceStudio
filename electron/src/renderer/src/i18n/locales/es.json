@@ -880,8 +880,7 @@
     "glossary_label": "Glosario",
     "set_speaker": "Asignar hablante…",
     "new_speaker": "Nuevo hablante",
-    "speaker_label": "Hablante",
-    "delete_project_hint": "Solo se elimina el proyecto guardado de la lista. Se conservan los archivos de audio y vídeo y las voces."
+    "speaker_label": "Hablante"
   },
   "dub_workflow": {
     "transcribing_audio": "Transcribiendo audio…",
@@ -1622,7 +1621,8 @@
     "open": "¿Abrir «{{name}}» y reemplazar el borrador actual? Guarda tu trabajo primero.",
     "save_copy": "Guardar una copia",
     "new": "Nuevo proyecto",
-    "new_confirm": "¿Empezar un proyecto nuevo y vacío? Los proyectos guardados no cambian; los cambios sin guardar del borrador actual se perderán."
+    "new_confirm": "¿Empezar un proyecto nuevo y vacío? Los proyectos guardados no cambian; los cambios sin guardar del borrador actual se perderán.",
+    "delete_hint": "Solo se elimina el proyecto guardado de la lista. Se conservan los archivos de audio y vídeo y las voces."
   },
   "sidebar": {
     "save_project": "Guardar proyecto de doblaje",

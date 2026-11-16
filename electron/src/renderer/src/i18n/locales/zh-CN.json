@@ -892,8 +892,7 @@
     "translate_all": "翻译所有片段",
     "translating": "正在翻译…",
     "upload_transcribe": "上传并转写",
-    "video_dubbing_studio": "视频配音工作室",
-    "delete_project_hint": "仅从列表中移除已保存的项目。媒体文件和声音均保留。"
+    "video_dubbing_studio": "视频配音工作室"
   },
   "dub_workflow": {
     "transcribing_audio": "正在转录音频...",
@@ -1620,7 +1619,8 @@
     "open": "打开“{{name}}”并替换当前草稿？请先保存当前工作。",
     "save_copy": "保存副本",
     "new": "新建项目",
-    "new_confirm": "新建一个空白项目？已保存的项目保持不变；当前草稿中未保存的更改将会丢失。"
+    "new_confirm": "新建一个空白项目？已保存的项目保持不变；当前草稿中未保存的更改将会丢失。",
+    "delete_hint": "仅从列表中移除已保存的项目。媒体文件和声音均保留。"
   },
   "sidebar": {
     "save_project": "保存配音项目",

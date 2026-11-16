@@ -1121,8 +1121,7 @@
     "glossary_label": "Glossary",
     "set_speaker": "Set speaker…",
     "new_speaker": "New speaker",
-    "speaker_label": "Speaker",
-    "delete_project_hint": "Only the saved project is removed from the list. Media files and voices are kept."
+    "speaker_label": "Speaker"
   },
   "dub_workflow": {
     "transcribing_audio": "Transcribing audio…",
@@ -1811,7 +1810,8 @@
     "open": "Open “{{name}}” and replace the current draft? Save your current work first.",
     "save_copy": "Save a copy",
     "new": "New project",
-    "new_confirm": "Start a new, empty project? Saved projects stay as they are; unsaved changes to the current draft are lost."
+    "new_confirm": "Start a new, empty project? Saved projects stay as they are; unsaved changes to the current draft are lost.",
+    "delete_hint": "Only the saved project is removed from the list. Media files and voices are kept."
   },
   "sidebar": {
     "save_project": "Save Dubbing Project",

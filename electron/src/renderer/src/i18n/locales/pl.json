@@ -892,8 +892,7 @@
     "glossary_label": "Słowniczek",
     "set_speaker": "Ustaw mówcę…",
     "new_speaker": "Nowy mówca",
-    "speaker_label": "Mówca",
-    "delete_project_hint": "Z listy usuwany jest tylko zapisany projekt. Pliki multimedialne i głosy są zachowane."
+    "speaker_label": "Mówca"
   },
   "dub_workflow": {
     "transcribing_audio": "Transkrypcja dźwięku…",
@@ -1634,7 +1633,8 @@
     "open": "Otworzyć „{{name}}” i zastąpić bieżący szkic? Najpierw zapisz swoją pracę.",
     "save_copy": "Zapisz kopię",
     "new": "Nowy projekt",
-    "new_confirm": "Rozpocząć nowy, pusty projekt? Zapisane projekty pozostaną bez zmian; niezapisane zmiany w bieżącym szkicu zostaną utracone."
+    "new_confirm": "Rozpocząć nowy, pusty projekt? Zapisane projekty pozostaną bez zmian; niezapisane zmiany w bieżącym szkicu zostaną utracone.",
+    "delete_hint": "Z listy usuwany jest tylko zapisany projekt. Pliki multimedialne i głosy są zachowane."
   },
   "sidebar": {
     "save_project": "Zapisz projekt dubowy",

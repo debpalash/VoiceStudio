@@ -878,8 +878,7 @@
     "glossary_label": "Glosarium",
     "set_speaker": "Atur pembicara…",
     "new_speaker": "Pembicara baru",
-    "speaker_label": "Pembicara",
-    "delete_project_hint": "Hanya proyek tersimpan yang dihapus dari daftar. Berkas media dan suara tetap disimpan."
+    "speaker_label": "Pembicara"
   },
   "dub_workflow": {
     "transcribing_audio": "Mentranskripsikan audio…",
@@ -1620,7 +1619,8 @@
     "open": "Buka “{{name}}” dan ganti draf saat ini? Simpan pekerjaan Anda terlebih dahulu.",
     "save_copy": "Simpan salinan",
     "new": "Proyek baru",
-    "new_confirm": "Mulai proyek baru yang kosong? Proyek tersimpan tetap utuh; perubahan yang belum disimpan pada draf saat ini akan hilang."
+    "new_confirm": "Mulai proyek baru yang kosong? Proyek tersimpan tetap utuh; perubahan yang belum disimpan pada draf saat ini akan hilang.",
+    "delete_hint": "Hanya proyek tersimpan yang dihapus dari daftar. Berkas media dan suara tetap disimpan."
   },
   "sidebar": {
     "save_project": "Simpan Proyek Dub",

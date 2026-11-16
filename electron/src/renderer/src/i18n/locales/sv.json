@@ -878,8 +878,7 @@
     "glossary_label": "Ordlista",
     "set_speaker": "Ange talare…",
     "new_speaker": "Ny talare",
-    "speaker_label": "Talare",
-    "delete_project_hint": "Bara det sparade projektet tas bort från listan. Mediefiler och röster behålls."
+    "speaker_label": "Talare"
   },
   "dub_workflow": {
     "transcribing_audio": "Transkriberar ljud...",
@@ -1620,7 +1619,8 @@
     "open": "Öppna ”{{name}}” och ersätta det aktuella utkastet? Spara ditt arbete först.",
     "save_copy": "Spara en kopia",
     "new": "Nytt projekt",
-    "new_confirm": "Starta ett nytt, tomt projekt? Sparade projekt förblir oförändrade; osparade ändringar i det aktuella utkastet går förlorade."
+    "new_confirm": "Starta ett nytt, tomt projekt? Sparade projekt förblir oförändrade; osparade ändringar i det aktuella utkastet går förlorade.",
+    "delete_hint": "Bara det sparade projektet tas bort från listan. Mediefiler och röster behålls."
   },
   "sidebar": {
     "save_project": "Spara Dub Project",
