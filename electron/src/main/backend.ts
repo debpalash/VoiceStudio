@@ -876,7 +876,7 @@ export function spawnFailureMessage(
   if (!launchRejected) return `Could not start ${command}: ${detail}`;
   if (runtimeOwned && code === 'UNKNOWN') {
     const control = smartAppControl ?? readSmartAppControl();
-    if (control === 'on' || control === 'evaluation') {
+    if (control === 'on') {
       return `Could not start ${command}: ${detail}. Windows Smart App Control blocked it.`;
     }
   }
@@ -911,8 +911,7 @@ export function loadBlockMessage(
   const who =
     block === 'antivirus'
       ? 'Your antivirus blocked it.'
-      : block === 'application_control' &&
-          (smartAppControl === 'on' || smartAppControl === 'evaluation')
+      : block === 'application_control' && smartAppControl === 'on'
         ? 'Windows Smart App Control blocked it.'
         : 'A Windows application control policy blocked it.';
   return (
@@ -2620,7 +2619,7 @@ export class BackendSupervisor extends EventEmitter<{
       !/the specified module could not be found|could not find module/i.test(
         this.childErrorLog.slice(-20).join('\n'),
       ) &&
-      ['on', 'evaluation'].includes(readSmartAppControl())
+      readSmartAppControl() === 'on'
         ? 'application_control'
         : null);
     if (loadBlock) {

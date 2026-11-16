@@ -12,10 +12,11 @@ const mocks = vi.hoisted(() => ({
   promoteCaches: vi.fn(),
   stage: vi.fn(),
   spawn: vi.fn(),
+  spawnSync: vi.fn(),
 }));
 
 vi.mock('electron', () => ({ app: { isPackaged: true, getPath: () => '/private/voicestudio' } }));
-vi.mock('node:child_process', () => ({ spawn: mocks.spawn, spawnSync: vi.fn() }));
+vi.mock('node:child_process', () => ({ spawn: mocks.spawn, spawnSync: mocks.spawnSync }));
 vi.mock('node:fs/promises', () => ({ rm: vi.fn() }));
 vi.mock('./runtime-project', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./runtime-project')>()),
@@ -248,6 +249,35 @@ it('names a Windows load block instead of rebuilding a runtime that cannot help 
   expect(supervisor.status.message).toContain("Windows refused to load one of the engine's files");
   expect(supervisor.status.message).toContain('application control policy');
   await supervisor.shutdown();
+});
+
+it('repairs a broken DLL instead of blaming Smart App Control in evaluation mode (#4213)', async () => {
+  const restore = pinHost('win32', 'x64');
+  const reg = (v: string) => ({
+    stdout: `    VerifiedAndReputablePolicyState    REG_DWORD    ${v}\n`,
+  });
+  mocks.spawnSync.mockReturnValue(reg('0x2'));
+  try {
+    const supervisor = new BackendSupervisor();
+    const { child, internal } = launch(supervisor);
+    internal.runtimeProject = OWN_PROJECT;
+    internal.pushLog(
+      'err',
+      'ImportError: DLL load failed while importing torch: The specified procedure could not be found.',
+      true,
+    );
+
+    child.emit('exit', 1, null);
+    await vi.advanceTimersByTimeAsync(11_000);
+
+    expect(mocks.install).toHaveBeenCalled();
+    expect(supervisor.status.stage).not.toBe('crashed');
+    expect(supervisor.status.message ?? '').not.toContain('Windows refused to load');
+    await supervisor.shutdown();
+  } finally {
+    mocks.spawnSync.mockReset();
+    restore();
+  }
 });
 
 it('quotes a bounded stderr tail, not only the last line, on an unexpected exit (#3887)', async () => {
