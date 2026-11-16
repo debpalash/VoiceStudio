@@ -131,6 +131,8 @@ export interface BackendStatus {
   runtimeRegion?: RuntimeRegion;
   /** Where data, models and temp files go when the location was chosen during setup. */
   runtimeStorage?: { data: string; models: string; temp: string };
+  /** Opaque identity of a proven owned data root; absent means unknown. */
+  dataIdentity?: string;
 }
 
 export type RuntimeRegion = 'auto' | 'global' | 'china' | 'russia' | 'restricted';
@@ -510,6 +512,9 @@ export interface VoiceStudioBridge {
     /** Native fullscreen state (macOS hides the traffic lights there); the callback fires on every change. */
     isFullScreen(): Promise<boolean>;
     onFullScreen(callback: (fullscreen: boolean) => void): () => void;
+    /** Whether closing the window hides it to the system tray instead of quitting (off by default). */
+    getCloseToTray(): Promise<boolean>;
+    setCloseToTray(enabled: boolean): Promise<boolean>;
     onPersistenceFlush(callback: () => void | Promise<void>): () => void;
   };
   backend: {

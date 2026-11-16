@@ -1,3 +1,4 @@
+import { HomeRecentProjects, type HomeRecentProject } from './home-recent-projects';
 import { HomeFeatureIcon } from './home-feature-icon';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { getBridge } from '@/components/bridge';
@@ -15,6 +16,7 @@ import { ExternalLink } from '@/components/external-link';
 import { releaseNotesUrl } from '@/components/setup-extras';
 import { appVersion } from '@/components/bridge';
 import { useState } from 'react';
+import { ConfirmDialog } from '@/features/clone/confirm-dialog';
 import './home-page.css';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { ProfileAvatar } from '@/components/profile-avatar';
@@ -23,8 +25,12 @@ import { useProfiles } from '@/hooks/use-profiles';
 import { brandArtwork } from '@/lib/brand';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { selectCloneProfile } from '@/lib/store/reference';
-import { blankLongformDraft, editLongform } from '@/features/longform/longform-session';
-import { projectLibrary, type LongformProject } from '@/features/longform/project-library';
+import {
+  blankLongformDraft,
+  replaceLongformDraft,
+  longformSession,
+} from '@/features/longform/longform-session';
+import { projectLibrary } from '@/features/longform/project-library';
 import { openDubProject } from '@/features/dub/dub-session';
 import type { DubProject } from '@/features/projects/project-format';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -36,15 +42,7 @@ import {
   restoreDesignProfile,
   writeDraft,
 } from '@/features/design/design-draft';
-import {
-  ArrowRightIcon,
-  ArrowUpRightIcon,
-  AudioLinesIcon,
-  BookOpenIcon,
-  EyeOffIcon,
-  FilmIcon,
-  FolderOpenIcon,
-} from 'lucide-react';
+import { ArrowRightIcon, ArrowUpRightIcon, EyeOffIcon, FolderOpenIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface Destination {
@@ -81,12 +79,16 @@ const iconTones: Record<string, string> = {
     'bg-slate-100 text-slate-700 ring-slate-300/60 dark:bg-slate-300/15 dark:text-slate-200 dark:ring-slate-300/30',
 };
 
+type LongformRecent = Extract<HomeRecentProject, { kind: 'longform' }>;
+
 export function HomePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const version = appVersion();
   const season = currentHomeSeason();
   const [heroHidden, setHeroHidden] = useState(() => heroHiddenFor(version));
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [pendingLongform, setPendingLongform] = useState<LongformRecent | null>(null);
   const [profileClicks, setProfileClicks] = useState(() => clickedProfiles().length);
   const { data: profiles = [] } = useProfiles();
   const { data: exports = [] } = useQuery({
@@ -166,19 +168,34 @@ export function HomePage() {
   ]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 4);
-  const openProject = async (
-    item: { kind: 'dub'; project: DubProject } | { kind: 'longform'; project: LongformProject },
-  ) => {
+  const openProject = async (item: HomeRecentProject) => {
     if (item.kind === 'dub') {
       const project = await apiJson<DubProject>('/projects/' + encodeURIComponent(item.project.id));
       if (openDubProject(project)) await navigate({ to: '/dub' });
       return;
     }
-    editLongform(item.project.mode, {
-      ...blankLongformDraft(),
-      ...structuredClone(item.project.draft),
-      projectId: item.project.id,
-    });
+    if (longformSession.state.active) {
+      setProjectError(t('audiobook.blocked.busy'));
+      return;
+    }
+    // Same rule as the Stories/Audiobook project list: opening replaces the
+    // working draft, so ask first. Cancelling leaves the draft untouched.
+    setPendingLongform(item);
+  };
+  const openLongformProject = async (item: LongformRecent) => {
+    if (longformSession.state.active) {
+      setProjectError(t('audiobook.blocked.busy'));
+      return;
+    }
+    if (
+      !replaceLongformDraft(item.project.mode, {
+        ...blankLongformDraft(),
+        ...structuredClone(item.project.draft),
+        projectId: item.project.id,
+      })
+    )
+      return;
+    setProjectError(null);
     await navigate({
       to: item.project.mode === 'stories' ? '/stories' : '/audiobook',
     });
@@ -207,6 +224,21 @@ export function HomePage() {
   };
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {projectError && (
+        <p role="alert" className="text-sm text-destructive">
+          {projectError}
+        </p>
+      )}
+      <ConfirmDialog
+        open={pendingLongform !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingLongform(null);
+        }}
+        title={pendingLongform?.project.name ?? ''}
+        description={t('projectActions.open', { name: pendingLongform?.project.name ?? '' })}
+        destructive
+        onConfirm={() => (pendingLongform ? openLongformProject(pendingLongform) : undefined)}
+      />
       <WorkspaceHeader>
         <h1 className="text-sm font-medium">{t('nav.home')}</h1>
         <Link
@@ -403,55 +435,7 @@ export function HomePage() {
             </section>
           )}
 
-          {recentProjects.length > 0 && (
-            <section className="mt-8">
-              <div className="mb-2 flex items-center justify-between px-1">
-                <h2 className="flex items-center gap-2 text-sm font-medium">
-                  <FolderOpenIcon className="size-4 text-muted-foreground" />
-                  {t('projects.title')}
-                </h2>
-                <Link
-                  to="/projects"
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {t('projects.all')}
-                </Link>
-              </div>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-2">
-                {recentProjects.map((item) => {
-                  const Icon =
-                    item.kind === 'dub'
-                      ? FilmIcon
-                      : item.project.mode === 'stories'
-                        ? AudioLinesIcon
-                        : BookOpenIcon;
-                  const label =
-                    item.kind === 'dub'
-                      ? t('projects.dub_projects')
-                      : t(item.project.mode === 'stories' ? 'nav.stories' : 'audiobook.title');
-                  return (
-                    <button
-                      key={item.kind + ':' + item.project.id}
-                      type="button"
-                      className="group flex min-w-0 items-center gap-3 rounded-xl border border-border/50 bg-card/20 px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={() => void openProject(item)}
-                    >
-                      <Icon className="size-4 shrink-0 text-primary" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">
-                          {item.project.name}
-                        </span>
-                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                          {label}
-                        </span>
-                      </span>
-                      <ArrowRightIcon className="size-3.5 shrink-0 text-muted-foreground opacity-60 transition-opacity group-hover:opacity-100" />
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+          <HomeRecentProjects items={recentProjects} onOpen={openProject} />
 
           {profiles.length > 0 && (
             <section className="mt-8">

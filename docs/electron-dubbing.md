@@ -85,6 +85,10 @@ also answer metadata-only `HEAD` requests, including after backend restart, with
 reading the source body or starting a preview mux. Local NLLB batches scale with available accelerator memory while
 bounding batch multiplied by beam count.
 
+Fresh dub segments use the existing watermark worker before they enter recovery
+storage or the published track, keeping API requests responsive while marking runs.
+Recovered segments retain their existing mark and are not marked a second time.
+
 The backend remains responsible for separation, ASR, speaker cloning, translation,
 TTS, fitting, mixing and export. When the vocals were separated, each line starts on
 detected speech and ends after its last spoken sound (#3419): a sigh, breath, footstep

@@ -1339,6 +1339,9 @@
     "terminal_command_added": "Adicionado. Abra uma nova janela de terminal para usar voicestudio.",
     "terminal_command_failed": "Não foi possível adicionar voicestudio ao terminal. Verifique se a sua pasta pessoal não é só de leitura e tente novamente.",
     "terminal_command_conflict": "{{path}} pertence a outra instalação, então o VoiceStudio não o alterou.",
+    "close_to_tray": "Continuar em execução na bandeja ao fechar",
+    "close_to_tray_desc": "Ao fechar a janela, o VoiceStudio é ocultado na bandeja em vez de sair, e as tarefas em andamento continuam. Reabra pelo ícone da bandeja e escolha Sair lá para encerrar. Em alguns desktops Linux, o ícone precisa de suporte a AppIndicator; abrir o VoiceStudio novamente também reabre a janela.",
+    "close_to_tray_failed": "Não foi possível salvar esta configuração. Tente novamente.",
     "review_mode_on": "Revisão",
     "review_mode_off": "Fogo rápido",
     "translate_agent": "Ajuste do agente",
@@ -1872,7 +1875,12 @@
     "cast_note_one": "{{names}} ainda não tem voz e será lido com a voz principal. Escolha uma em Elenco.",
     "cast_note_other": "{{names}} ainda não têm voz e serão lidos com a voz principal. Escolha vozes em Elenco.",
     "line_gap": "Intervalo entre linhas",
-    "paragraph_gap": "Intervalo entre parágrafos"
+    "paragraph_gap": "Intervalo entre parágrafos",
+    "result_other_connection": "Este áudio guardado pertence a outra ligação do VoiceStudio. Volte a essa ligação para o reproduzir.",
+    "result_connection_unknown": "Ligue o seu motor local ou computador remoto para mostrar o áudio guardado.",
+    "result_legacy": "Este resultado guardado mais antigo não tem informações sobre a ligação. Procure o nome do ficheiro nesta ligação; poderá ser um ficheiro diferente.",
+    "result_check_audio": "Verificar o áudio guardado nesta ligação",
+    "result_recovery_failed": "O áudio guardado não está disponível nesta ligação. Volte à ligação original ou gere-o novamente."
   },
   "credentials": {
     "microsoft_key": "Chave do Microsoft Tradutor",

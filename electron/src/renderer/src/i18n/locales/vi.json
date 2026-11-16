@@ -1337,6 +1337,9 @@
     "terminal_command_added": "Đã thêm. Mở cửa sổ terminal mới để dùng voicestudio.",
     "terminal_command_failed": "Không thể thêm voicestudio vào terminal. Hãy kiểm tra thư mục home của bạn không ở chế độ chỉ đọc, rồi thử lại.",
     "terminal_command_conflict": "{{path}} thuộc về một bản cài đặt khác nên VoiceStudio không thay đổi nó.",
+    "close_to_tray": "Tiếp tục chạy trong khay hệ thống khi đóng",
+    "close_to_tray_desc": "Đóng cửa sổ sẽ ẩn VoiceStudio vào khay hệ thống thay vì thoát, nên các tác vụ đang chạy vẫn tiếp tục. Mở lại từ biểu tượng khay và chọn Thoát tại đó để đóng hẳn. Trên một số máy tính Linux, biểu tượng khay cần hỗ trợ AppIndicator; mở lại VoiceStudio cũng sẽ mở lại cửa sổ.",
+    "close_to_tray_failed": "Không thể lưu cài đặt này. Hãy thử lại.",
     "review_mode_on": "Xem lại",
     "review_mode_off": "Bắn nhanh",
     "translate_agent": "Điều chỉnh bằng tác nhân",
@@ -1870,7 +1873,12 @@
     "cast_note_one": "{{names}} chưa được chọn giọng nên sẽ đọc bằng giọng chính. Hãy chọn giọng trong mục Vai.",
     "cast_note_other": "{{names}} chưa được chọn giọng nên sẽ đọc bằng giọng chính. Hãy chọn giọng trong mục Vai.",
     "line_gap": "Độ ngắt giữa các dòng",
-    "paragraph_gap": "Độ ngắt giữa các đoạn"
+    "paragraph_gap": "Độ ngắt giữa các đoạn",
+    "result_other_connection": "Âm thanh đã lưu này thuộc một kết nối VoiceStudio khác. Hãy quay lại kết nối đó để phát âm thanh.",
+    "result_connection_unknown": "Kết nối với bộ máy cục bộ hoặc máy tính từ xa của bạn để hiển thị âm thanh đã lưu.",
+    "result_legacy": "Kết quả cũ đã lưu này không có thông tin kết nối. Hãy tìm tên tệp trên kết nối này; đó có thể là một tệp khác.",
+    "result_check_audio": "Kiểm tra âm thanh đã lưu trên kết nối này",
+    "result_recovery_failed": "Âm thanh đã lưu không có trên kết nối này. Hãy quay lại kết nối ban đầu hoặc tạo lại âm thanh."
   },
   "credentials": {
     "microsoft_key": "Khóa dịch của Microsoft",

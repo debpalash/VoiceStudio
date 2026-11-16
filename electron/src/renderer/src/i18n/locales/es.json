@@ -1339,6 +1339,9 @@
     "terminal_command_added": "Añadido. Abre una nueva ventana de terminal para usar voicestudio.",
     "terminal_command_failed": "No se pudo añadir voicestudio a la terminal. Comprueba que tu carpeta personal no sea de solo lectura e inténtalo de nuevo.",
     "terminal_command_conflict": "{{path}} pertenece a otra instalación, así que VoiceStudio no lo modificó.",
+    "close_to_tray": "Seguir en ejecución en la bandeja al cerrar",
+    "close_to_tray_desc": "Al cerrar la ventana, VoiceStudio se oculta en la bandeja en lugar de cerrarse, y las tareas en curso continúan. Vuelve a abrirlo desde el icono de la bandeja y elige Salir allí para cerrarlo. En algunos escritorios Linux el icono necesita compatibilidad con AppIndicator; abrir VoiceStudio de nuevo también reabre la ventana.",
+    "close_to_tray_failed": "No se pudo guardar este ajuste. Inténtalo de nuevo.",
     "review_mode_on": "Revisión",
     "review_mode_off": "Fuego rápido",
     "translate_agent": "Agente apto",
@@ -1872,7 +1875,12 @@
     "cast_note_one": "{{names}} aún no tiene voz asignada, así que se lee con la voz principal. Elige una en Reparto.",
     "cast_note_other": "{{names}} aún no tienen voz asignada, así que se leen con la voz principal. Elige voces en Reparto.",
     "line_gap": "Pausa al cambiar de línea",
-    "paragraph_gap": "Pausa al cambiar de párrafo"
+    "paragraph_gap": "Pausa al cambiar de párrafo",
+    "result_other_connection": "Este audio guardado pertenece a otra conexión de VoiceStudio. Vuelve a esa conexión para reproducirlo.",
+    "result_connection_unknown": "Conecta tu motor local o tu ordenador remoto para mostrar el audio guardado.",
+    "result_legacy": "Este resultado guardado antiguo no tiene información de conexión. Busca su nombre de archivo en esta conexión; podría ser un archivo diferente.",
+    "result_check_audio": "Comprobar el audio guardado en esta conexión",
+    "result_recovery_failed": "El audio guardado no está disponible en esta conexión. Vuelve a su conexión original o genéralo de nuevo."
   },
   "credentials": {
     "microsoft_key": "Clave del traductor de Microsoft",
