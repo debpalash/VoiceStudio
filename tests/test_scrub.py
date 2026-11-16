@@ -39,6 +39,9 @@ from core.scrub import REDACTED, scrub_provider_error, scrub_text
         (r"C:\\Users\\Mary Jane Smith\\models", r"~\\models"),
         (r"[Errno 2] No such file: 'C:\\Users\\Mary Jane'", r"[Errno 2] No such file: '~'"),
         ('"/home/Mary Jane Smith" is read-only', '"~" is read-only'),
+        ("/Users/Mary\u00a0Jane/file", "~/file"),
+        (r"C:\\Users\\O'Brien\\x", r"~\\x"),
+        ("'/home/o'brien'", "'~'"),
         # A line break ends the name, so the next log line keeps its start.
         ("/home/bob\nRetry/path", "~\nRetry/path"),
         # The words after a short path stay: only the path is redacted.
