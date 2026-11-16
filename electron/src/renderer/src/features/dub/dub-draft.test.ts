@@ -366,3 +366,62 @@ it('keeps a healthy restored language clear when an empty saved error map overri
   expect(getDubTranslationError(restored, 'fr')).toBeUndefined();
   expect(getDubTranslationError(restored, 'de')).toBeUndefined();
 });
+
+it('keeps subtitle-only and skip-ASR state when an interrupted draft is restored', () => {
+  const restored = restoreDubDraft(
+    JSON.stringify({
+      ...defaults,
+      jobId: 'subtitle-job',
+      taskId: 'prep',
+      phase: 'preparing',
+      inputType: 'audio',
+      subtitleOnly: true,
+      skipTranscription: true,
+    }),
+    defaults,
+  );
+  expect(restored).toMatchObject({
+    jobId: 'subtitle-job',
+    recovery: 'preparing',
+    inputType: 'audio',
+    subtitleOnly: true,
+    skipTranscription: true,
+  });
+});
+
+it('restores voice-only prep and the imported subtitle language', () => {
+  const restored = restoreDubDraft(
+    JSON.stringify({
+      segments: [],
+      separateBackground: false,
+      subtitleTargetLang: 'fr',
+      skipTranscription: true,
+    }),
+    defaults,
+  );
+  expect(restored).toMatchObject({
+    separateBackground: false,
+    subtitleTargetLang: 'fr',
+    skipTranscription: true,
+  });
+});
+
+it('retains an identified generation error across reload rather than losing its repair link', () => {
+  const lastGenerationError = {
+    segment_id: '992',
+    code: 'dub_speech_missing',
+    reason: 'A speech segment is silent',
+    language: 'English',
+    revision: 'abc',
+  };
+  const result = restoreDubDraft(
+    JSON.stringify({
+      ...defaults,
+      jobId: 'job',
+      segments: [{ id: '992', start: 0, end: 1, text: 'Right?' }],
+      lastGenerationError,
+    }),
+    defaults,
+  );
+  expect(result.lastGenerationError).toEqual(lastGenerationError);
+});

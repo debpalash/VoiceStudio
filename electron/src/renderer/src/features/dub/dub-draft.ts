@@ -112,6 +112,49 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
           ? value.project
           : undefined,
       jobId,
+      narration: (() => {
+        const raw = value.narration;
+        if (
+          !raw ||
+          typeof raw.language !== 'string' ||
+          !Array.isArray(raw.captions) ||
+          !Array.isArray(raw.blocks)
+        )
+          return undefined;
+        const restore = (rows: unknown[]) =>
+          restoreDubDraft(JSON.stringify({ segments: rows, target }), {
+            ...defaults,
+            narration: undefined,
+          }).segments;
+        const captions = restore(raw.captions),
+          blocks = restore(raw.blocks);
+        if (
+          !captions.length ||
+          !blocks.length ||
+          captions.length !== raw.captions.length ||
+          blocks.length !== raw.blocks.length
+        )
+          return undefined;
+        return {
+          enabled: raw.enabled === true,
+          language: raw.language,
+          captions,
+          blocks,
+          sourceKey: typeof raw.sourceKey === 'string' ? raw.sourceKey : '',
+          previousTiming: typeof raw.previousTiming === 'string' ? raw.previousTiming : undefined,
+        };
+      })(),
+      subtitleOnly: value.subtitleOnly === true,
+      skipTranscription: value.skipTranscription === true,
+      narrationWanted: value.narrationWanted === true,
+      listenedRequestKeys:
+        value.listenedRequestKeys && typeof value.listenedRequestKeys === 'object'
+          ? value.listenedRequestKeys
+          : undefined,
+      separateBackground:
+        typeof value.separateBackground === 'boolean' ? value.separateBackground : undefined,
+      subtitleTargetLang:
+        typeof value.subtitleTargetLang === 'string' ? value.subtitleTargetLang : undefined,
       taskId,
       phase,
       recovery,
@@ -135,6 +178,7 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
       )
         ? value.timingStrategy
         : 'strict_slot',
+      autoFitOverflow: value.autoFitOverflow !== false,
       voiceMatch: value.voiceMatch === 'consistent' ? 'consistent' : 'per_line',
       generatedTiming: ['concise', 'smart_fit', 'stretch_video', 'strict_slot'].includes(
         value.generatedTiming,
@@ -146,6 +190,51 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
       )
         ? value.pendingTiming
         : undefined,
+      lastGenerationError:
+        value.lastGenerationError &&
+        typeof value.lastGenerationError === 'object' &&
+        typeof value.lastGenerationError.code === 'string' &&
+        typeof value.lastGenerationError.reason === 'string' &&
+        typeof value.lastGenerationError.language === 'string' &&
+        typeof value.lastGenerationError.revision === 'string'
+          ? {
+              code: value.lastGenerationError.code.slice(0, 100),
+              reason: value.lastGenerationError.reason.slice(0, 2000),
+              language: value.lastGenerationError.language.slice(0, 100),
+              revision: value.lastGenerationError.revision.slice(0, 100),
+              segment_id:
+                typeof value.lastGenerationError.segment_id === 'string'
+                  ? value.lastGenerationError.segment_id.slice(0, 200)
+                  : undefined,
+            }
+          : undefined,
+      lastExport:
+        value.lastExport &&
+        typeof value.lastExport.path === 'string' &&
+        value.lastExport.path.length < 8192 &&
+        typeof value.lastExport.savedAt === 'number'
+          ? { path: value.lastExport.path, savedAt: value.lastExport.savedAt }
+          : undefined,
+      exportedRequestKeys:
+        value.exportedRequestKeys && typeof value.exportedRequestKeys === 'object'
+          ? Object.fromEntries(
+              Object.entries(value.exportedRequestKeys).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[1] === 'string' && entry[1].length < 3000,
+              ),
+            )
+          : {},
+      pendingRequestKey:
+        typeof value.pendingRequestKey === 'string' ? value.pendingRequestKey : undefined,
+      generatedRequestKeys:
+        value.generatedRequestKeys && typeof value.generatedRequestKeys === 'object'
+          ? Object.fromEntries(
+              Object.entries(value.generatedRequestKeys).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[1] === 'string' && entry[1].length < 100,
+              ),
+            )
+          : {},
       fingerprintsByLang:
         value.fingerprintsByLang &&
         typeof value.fingerprintsByLang === 'object' &&

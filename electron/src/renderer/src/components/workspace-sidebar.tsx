@@ -98,6 +98,8 @@ export function SecondarySidebar({
   libraryLabel,
   collapsed: controlledCollapsed,
   onCollapsedChange,
+  view: controlledView,
+  onViewChange,
   tabsInHeader = false,
 }: {
   title: string;
@@ -106,6 +108,9 @@ export function SecondarySidebar({
   className?: string;
   size?: 'default' | 'wide' | 'spacious';
   variant?: 'controls' | 'navigation' | 'library';
+  /** Allows guided actions to reveal controls without discarding saved-pane state. */
+  view?: 'controls' | 'library';
+  onViewChange?: (view: 'controls' | 'library') => void;
   meta?: ReactNode;
   /** Pinned below the scrolling content; hidden while collapsed or on the library tab. */
   footer?: ReactNode;
@@ -129,12 +134,17 @@ export function SecondarySidebar({
   // Collapsed, the header row is an empty drag strip, so nothing needs to clear the lights.
   const [headerRef, lightsInset] = useTrafficLightInset(isMac() && !fullscreen && !collapsed);
   const titleInShell = useTitleInShell(headerRef, title);
-  const [view, setView] = useState<'controls' | 'library'>('controls');
-  const [libraryVisited, setLibraryVisited] = useState(false);
+  const [uncontrolledView, setView] = useState<'controls' | 'library'>('controls');
+  const view = controlledView ?? uncontrolledView;
+  const [libraryVisited, setLibraryVisited] = useState(controlledView === 'library');
+  useLayoutEffect(() => {
+    if (view === 'library') setLibraryVisited(true);
+  }, [view]);
   const tabsId = useId();
   const chooseView = (next: 'controls' | 'library') => {
     if (next === 'library') setLibraryVisited(true);
-    setView(next);
+    if (controlledView === undefined) setView(next);
+    onViewChange?.(next);
   };
   const showLibrary = library != null && view === 'library';
   const setCollapsed = (next: boolean | ((current: boolean) => boolean)) => {
@@ -314,7 +324,7 @@ export function SecondarySidebar({
           hidden={!showLibrary || collapsed}
           className={cn('flex min-h-0 flex-1 flex-col', (!showLibrary || collapsed) && 'hidden')}
         >
-          {libraryVisited
+          {libraryVisited || view === 'library'
             ? typeof library === 'function'
               ? library(showLibrary && !collapsed)
               : library
