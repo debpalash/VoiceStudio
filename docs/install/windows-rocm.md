@@ -134,6 +134,11 @@ processes only. They do not change the system environment. Existing models,
 voices and projects stay in place. Changing the recipe or Python ABI invalidates
 the runtime readiness stamp and requires verification/repair.
 
+Readiness also compares the verifier's reported Python ABI and architecture with
+the staged recipe; missing reports or recipe pins cannot certify the runtime.
+The existing dependency-stamp salt stays unchanged so this verification change
+alone does not require working installations to repeat setup.
+
 This feature must be present in the installed build; older releases do not gain
 it from an environment variable. See the
 [Releases page](https://github.com/debpalash/VoiceStudio/releases) for available builds.

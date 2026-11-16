@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { fixture, interpreter, runner, recipe, report } from './runtime-windows-rocm.fixture';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { windowsRocmStamp } from './runtime-windows-rocm';
@@ -10,6 +10,8 @@ import {
   RUNTIME_NATIVE_IMPORT_PROBE,
   resolveTorchVariant,
   runtimePython,
+  runtimeCompatible,
+  runtimeDependenciesReady,
   runtimeReady,
 } from './runtime-project';
 
@@ -174,3 +176,60 @@ it('does not certify an interpreter the recipe does not pin', async () => {
     )) as never);
   expect(await runtimeReady(bundle, project)).toBe(false);
 });
+
+it.each([
+  ['missing ABI', { ready: true, scope: 'model-free', architecture: 'win-amd64' }],
+  ['missing architecture', { ready: true, scope: 'model-free', abi: 'cp312' }],
+  [
+    'wrong architecture',
+    { ready: true, scope: 'model-free', abi: 'cp312', architecture: 'win-arm64' },
+  ],
+])('rejects %s in every readiness entry point', async (_name, verification) => {
+  const { bundle, project } = await fixture();
+  await installRuntime(
+    bundle,
+    project,
+    'uv',
+    runner(project),
+    new AbortController().signal,
+    undefined,
+    'global',
+  );
+  expect(await runtimeReady(bundle, project)).toBe(true);
+  expect(await runtimeCompatible(bundle, project)).toBe(true);
+  expect(await runtimeDependenciesReady(project)).toBe(true);
+  vi.mocked(execFile).mockImplementation(((
+    _command: unknown,
+    _args: unknown,
+    _options: unknown,
+    callback: (error: Error | null, out: string, err: string) => void,
+  ) => callback(null, JSON.stringify(verification), '')) as never);
+  expect(await runtimeReady(bundle, project)).toBe(false);
+  expect(await runtimeCompatible(bundle, project)).toBe(false);
+  expect(await runtimeDependenciesReady(project)).toBe(false);
+});
+
+it.each(['missing', 'malformed', 'missing pin'] as const)(
+  'does not certify an interpreter against a %s recipe',
+  async (state) => {
+    const { bundle, project } = await fixture();
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      runner(project),
+      new AbortController().signal,
+      undefined,
+      'global',
+    );
+    const stagedRecipe = join(project, 'scripts/windows-rocm-recipe.json');
+    if (state === 'missing') await unlink(stagedRecipe);
+    else await writeFile(stagedRecipe, state === 'malformed' ? '{' : '{}');
+    // The native verifier still returns its matching positive report. Neither
+    // direct dependency checks nor the installed-runtime paths may use it as
+    // authority when the staged recipe cannot identify its interpreter.
+    expect(await runtimeReady(bundle, project)).toBe(false);
+    expect(await runtimeCompatible(bundle, project)).toBe(false);
+    expect(await runtimeDependenciesReady(project)).toBe(false);
+  },
+);

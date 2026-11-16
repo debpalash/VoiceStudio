@@ -45,20 +45,6 @@ export async function windowsRocmInstalled(project: string): Promise<boolean> {
 }
 
 /**
- * Hash input identifying the Windows ROCm recipe a project was installed from:
- * the exact recipe bytes.
- *
- * It used to prepend a hardcoded `:python=cp312:win-amd64:` triple, which read
- * as if the interpreter were being verified. Both sides of
- * {@link windowsRocmRecipeMatches} call this function, so that constant appeared
- * on both sides and cancelled out: a recipe bumped to another CPython ABI still
- * compared equal, and nothing could detect it. Whether the staged interpreter
- * really is the pinned one is settled by the backend's own verification
- * (`backend.core.windows_rocm.install --verify-only`, reached through
- * {@link windowsRocmReady}), which fails closed; this stamp only answers "same
- * recipe bytes as the bundle?".
- */
-/**
  * Stable salt for the dependency stamp of a Windows ROCm install.
  *
  * `dependencyStamp` folds `windowsRocmStamp` into the hash that
@@ -73,6 +59,7 @@ export async function windowsRocmInstalled(project: string): Promise<boolean> {
  */
 const WINDOWS_ROCM_STAMP_SALT = ':python=cp312:win-amd64:';
 
+/** Recipe bytes plus the frozen compatibility salt, not interpreter proof. */
 export async function windowsRocmStamp(bundle: string): Promise<Buffer> {
   return Buffer.concat([
     Buffer.from(WINDOWS_ROCM_STAMP_SALT),
