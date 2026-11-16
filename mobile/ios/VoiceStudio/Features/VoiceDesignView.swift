@@ -119,7 +119,7 @@ struct VoiceDesignView: View {
         running = true; progress = 0; take = nil; savedVoice = nil; player.clear()
         work = Task {
             defer { running = false; work = nil }
-            await model.performPhone {
+            await model.performPhone(diagnosticStage: "generation") {
                 let audio = try await engine.design(model: item,text: text,instruction: direction,seed: selectedSeed,progress: { value in await MainActor.run { progress = value.fraction } })
                 let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".wav")
                 try audio.markSynthetic().write(to: file,options: .atomic)

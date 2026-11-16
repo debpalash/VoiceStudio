@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,7 +21,6 @@ import com.voicestudio.mobile.features.models.TaskModelPicker
 import com.voicestudio.mobile.local.*
 import com.voicestudio.mobile.network.ReportSubject
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.Json
 import java.io.File
 
 @Composable fun ProductionScreen(vm: StudioViewModel, kind: String) {
@@ -32,8 +30,21 @@ import java.io.File
     val scope=rememberCoroutineScope()
     val untitled=tr(if(kind=="stories") "stories.untitled" else "audiobook.untitled")
     val titleKey=if(kind=="stories") "nav.stories" else "audiobook.title"
-    val saver=remember {Saver<ProductionProject,String>(save={Json.encodeToString(ProductionProject.serializer(),it)},restore={Json.decodeFromString(ProductionProject.serializer(),it)})}
-    var project by rememberSaveable(kind,stateSaver=saver) {mutableStateOf(ProductionProject(kind=kind,title=untitled))}
+    val draft=rememberProductionProject(kind,untitled,File(context.noBackupFilesDir,"production-drafts"),vm::restoreFailure)
+    if(draft.loading) {
+        Screen {
+            ScreenTitle(titleKey)
+            if(draft.loadFailed) {
+                Secondary("common.retry") {vm.clearError();draft.retryRestore()}
+                Secondary("mobile.production.new") {vm.clearError();draft.startNew()}
+            } else {
+                CircularProgressIndicator()
+                Text(tr("common.loading"))
+            }
+        }
+        return
+    }
+    var project by draft
     var projects by remember {mutableStateOf(emptyList<ProductionProject>())}
     var output by remember {mutableStateOf<File?>(null)}
     var chapters by remember {mutableStateOf(emptyList<File>())}
@@ -58,11 +69,14 @@ import java.io.File
     val voices=(0 until speakers).map {Choice("preset:$it",tr("mobile.local.preset_voice",mapOf("number" to it+1)))}+phone.voices.map {Choice("phone:"+it.id,it.name)}
     val valid=plan!=null&&selections.all {selection->voices.any {it.id==selection}}&&needed.isNotEmpty()&&needed.all {phone.canRun(it)}
     suspend fun refreshLibrary() {projects=vm.phone.production.list()}
-    fun switchProject(next: ProductionProject) {val previous=project;scope.launch {try {if(previous.title.isNotBlank()) vm.phone.production.save(previous);project=next} catch(e:Exception) {vm.fail(e)}}}
+    fun switchProject(next: ProductionProject) {val previous=project;val failure=vm.failureHandler();scope.launch {try {if(previous.title.isNotBlank()) vm.phone.production.save(previous);project=next} catch(e:Exception) {failure(e)}}}
     fun fresh() {switchProject(ProductionProject(kind=kind,title=untitled))}
     val latestProject by rememberUpdatedState(project)
     DisposableEffect(Unit) {onDispose {if(latestProject.title.isNotBlank()) vm.phone.saveProductionDraft(latestProject)}}
-    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri -> if(uri!=null) scope.launch {
+    var importFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
+    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->
+        val failure=importFailure ?: vm::restoreFailure;importFailure=null
+        if(uri!=null) scope.launch {
         try {
             val text=withContext(Dispatchers.IO) {
                 val type=context.contentResolver.getType(uri)
@@ -78,10 +92,11 @@ import java.io.File
                 } finally {source.delete()}
             }
             project=project.copy(script=text)
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
     }}
-    LaunchedEffect(Unit) {try {vm.phone.refresh();refreshLibrary()} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}}
+    LaunchedEffect(Unit) {val failure=vm.failureHandler();try {vm.phone.refresh();refreshLibrary()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}
     LaunchedEffect(project,configuration) {
+        val failure=vm.failureHandler()
         output=null;chapters=emptyList()
         if(project.title.isBlank()) return@LaunchedEffect
         delay(350)
@@ -90,7 +105,7 @@ import java.io.File
             output=vm.phone.production.output(project,configuration)
             if(output!=null) chapters=vm.phone.production.chapterOutputs(project,configuration)
             refreshLibrary()
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
     }
     LaunchedEffect(jobs,configuration) {
         val done=jobs.firstOrNull {it.state==WorkInfo.State.SUCCEEDED}
@@ -99,7 +114,7 @@ import java.io.File
             if(output!=null) chapters=vm.phone.production.chapterOutputs(project,configuration)
             refreshLibrary()
         }
-        jobs.firstOrNull {it.state==WorkInfo.State.FAILED}?.outputData?.getString("error")?.let {vm.fail(com.voicestudio.mobile.network.ClientFailure(it))}
+        jobs.firstOrNull {it.state==WorkInfo.State.FAILED}?.outputData?.getString("error")?.let {vm.restoreFailure(com.voicestudio.mobile.network.ClientFailure(it))}
     }
     Screen {
         ScreenTitle(titleKey)
@@ -110,7 +125,7 @@ import java.io.File
                 Field("stories.projectName",project.title,{if(!running) project=project.copy(title=it)},multiline=false)
                 Text(tr("mobile.production.script_hint"),style=MaterialTheme.typography.bodySmall,color=role("textMuted"))
                 Field("audiobook.script",project.script,{if(!running) project=project.copy(script=it)},multiline=true)
-                Secondary("audiobook.import",!running) {importer.launch(arrayOf("text/plain","application/epub+zip","application/pdf"))}
+                Secondary("audiobook.import",!running) {importFailure=vm.failureHandler();importer.launch(arrayOf("text/plain","application/epub+zip","application/pdf"))}
                 if(!running) {
                     Text(tr("mobile.books.controls_hint"),style=MaterialTheme.typography.bodySmall,color=role("textMuted"))
                     Row {TextButton(onClick={project=project.copy(script=project.script+"\n[pause:0.5]\n")}) {Text(tr("stories.insertPause"))};TextButton(onClick={project=project.copy(script=project.script+"\n[speed:1.25] ")}) {Text(tr("mobile.books.line_speed"))}}
@@ -136,24 +151,26 @@ import java.io.File
             Secondary("audiobook.stop") {active?.let {manager.cancelWorkById(it.id)}}
         } else Action("stories.generateAll",valid&&project.title.isNotBlank()) {
             val snapshot=project
-            scope.launch {try {PhoneProductionWorker.enqueue(context,snapshot,tts,clone)} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}}
+            val failure=vm.failureHandler()
+            scope.launch {try {PhoneProductionWorker.enqueue(context,snapshot,tts,clone)} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}
         }
 
         output?.let {file ->
-            LocalAudioPlayer(file,vm::fail)
+            LocalAudioPlayer(file,vm::failureHandler)
             ChoicePicker("audiobook.format",exportFormat,listOf(Choice("wav","WAV"),Choice("m4a","AAC / M4A"),Choice("mp3","MP3"),Choice("m4b",tr("audiobook.format_m4b")))) {exportFormat=it}
             Secondary("mobile.speak.share",!exporting) {
                 val format=exportFormat;val snapshot=project;val exportConfiguration=configuration
+                val failure=vm.failureHandler()
                 exporting=true
                 exportJob=scope.launch {try {
                     val exported=if(format=="wav") file else BookExport.encode(file,format,vm.phone.production.chapterCues(snapshot,exportConfiguration))
                     shareLocalFile(context,exported,when(format) {"wav"->"audio/wav";"mp3"->"audio/mpeg";else->"audio/mp4"})
-                } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {exporting=false;exportJob=null}}
+                } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {exporting=false;exportJob=null}}
             }
             if(exporting) {CircularProgressIndicator();Secondary("common.cancel") {exportJob?.cancel()}}
             ReportButton(vm) {ReportSubject("speak:phone:"+file.absolutePath,"speak","phone",needed.singleOrNull()?.repo ?: "unknown",needed.singleOrNull()?.revision,project.script)}
             chapters.forEachIndexed {index,chapter ->
-                TextButton(onClick={scope.launch {try {shareLocalFile(context,chapter,"audio/wav")} catch(e:Exception) {vm.fail(e)}}}) {Text(tr("audiobook.chapter_n",mapOf("n" to index+1)))}
+                TextButton(onClick={val failure=vm.failureHandler();scope.launch {try {shareLocalFile(context,chapter,"audio/wav")} catch(e:Exception) {failure(e)}}}) {Text(tr("audiobook.chapter_n",mapOf("n" to index+1)))}
             }
         }
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
@@ -168,7 +185,12 @@ import java.io.File
         }
     }
     deleting?.let {item -> AlertDialog(onDismissRequest={deleting=null},title={Text(tr("stories.deleteProjectConfirm"))},
-        confirmButton={TextButton(onClick={deleting=null;scope.launch {try {vm.phone.production.delete(item);if(project.id==item.id) project=ProductionProject(kind=kind,title=untitled);refreshLibrary()} catch(e:Exception) {vm.fail(e)}}}) {Text(tr("common.delete"))}},
+        confirmButton={TextButton(onClick={deleting=null;val failure=vm.failureHandler();scope.launch {try {
+            vm.phone.production.delete(item)
+            if(project.id==item.id) project=ProductionProject(kind=kind,title=untitled)
+            try {withContext(Dispatchers.IO) {ProductionDraftRepository(File(context.noBackupFilesDir,"production-drafts")).delete(item.id)}}
+            finally {refreshLibrary()}
+        } catch(e:Exception) {failure(e)}}}) {Text(tr("common.delete"))}},
         dismissButton={TextButton(onClick={deleting=null}) {Text(tr("common.cancel"))}}) }
 }
 

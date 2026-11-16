@@ -35,6 +35,9 @@ def test_workflow_enforces_compliance_signing_and_provenance():
     assert "Save private App Store handoff" in names
     build = next(step for step in package["steps"] if step.get("name") == "Build signed sandbox packages")
     assert set(build["env"]) == {
+        "SUPERMETRY_APP_ID",
+        "SUPERMETRY_INGEST_KEY",
+        "SUPERMETRY_APP_HOST",
         "CSC_LINK",
         "CSC_KEY_PASSWORD",
         "CSC_INSTALLER_LINK",
