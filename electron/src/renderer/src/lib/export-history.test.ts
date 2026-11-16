@@ -26,8 +26,8 @@ afterEach(() => {
 });
 
 it('downloads through the authenticated API client when there is no desktop bridge (#4222)', async () => {
-  const blob = new Blob(['RIFF']);
-  mocks.apiFetch.mockResolvedValue(new Response(blob));
+  // A string body: jsdom's Blob lacks stream(), which undici's Response needs.
+  mocks.apiFetch.mockResolvedValue(new Response('RIFF'));
   mocks.saveLocalFile.mockResolvedValue({ canceled: false });
 
   const saved = await saveExport('/api/audio/ab12cd34.mp3', 'take.mp3');
