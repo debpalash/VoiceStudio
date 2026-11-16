@@ -56,8 +56,6 @@ _REF_ALLOWLIST = (
     # owner-authored download hardening, no public issue
     "Model downloads keep every file inside the model cache",
     # owner-authored entries without a public reference
-    "Remote workers open only the files a task sends as inputs",
-    "Remote worker registration signs a fresh single-use challenge",
     "The desktop app attaches only to a local backend that identifies itself",
     "Dubbing and batch jobs accept only plain language codes",
     "Saved voice, gallery and call-recording files are read only from inside",
@@ -350,4 +348,22 @@ def test_unreleased_may_grow_without_highlights_until_the_release_is_cut():
     assert lint_changelog(unreleased) == []
     released = unreleased.replace("[Unreleased]", "[9.9.9] — 2099-01-01")
     assert any("**Highlights**" in v for v in lint_changelog(released))
+
+
+def test_reference_allowlist_entries_still_exist():
+    """Every grandfathered entry must still be in `CHANGELOG.md`.
+
+    `_REF_ALLOWLIST` exempts owner-authored entries that never had a public issue.
+    Nothing pruned it, so an entry whose line is later reworded, folded into a
+    release or deleted keeps exempting future entries from needing a reference —
+    the exemption outlives the reason it was granted. Delete the entry when its
+    line goes; this test says which ones.
+    """
+    with open(_REPO_CHANGELOG, encoding="utf-8") as handle:
+        text = handle.read()
+    stale = [entry for entry in _REF_ALLOWLIST if entry not in text]
+    assert not stale, (
+        "these _REF_ALLOWLIST entries no longer match a CHANGELOG.md line — delete them "
+        "from tests/test_changelog_style.py:\n  " + "\n  ".join(stale)
+    )
 
