@@ -270,6 +270,8 @@ it('repairs a broken DLL instead of blaming Smart App Control in evaluation mode
     child.emit('exit', 1, null);
     await vi.advanceTimersByTimeAsync(11_000);
 
+    expect(mocks.install).toHaveBeenCalled();
+    expect(supervisor.status.stage).not.toBe('crashed');
     expect(supervisor.status.message ?? '').not.toContain('Windows refused to load');
     await supervisor.shutdown();
   } finally {
