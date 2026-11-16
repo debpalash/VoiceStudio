@@ -233,10 +233,21 @@ def stale_for_pr(call: ApiCall, repo: str, pr: dict, exclude_run: int = 0) -> It
     if not associated_close:
         return
     closed_before = min(pr["closed_at"], associated_close)
+    failures = 0
     for run in unfinished_runs(call, repo, head_sha=sha):
         if run["event"] in PR_EVENTS and run["id"] != exclude_run and run["created_at"] < closed_before:
-            if not _has_open_pr(call, repo, run, requested_pr=pr.get("number")):
+            try:
+                has_open_pr = _has_open_pr(call, repo, run, requested_pr=pr.get("number"))
+            except SweepDeadline:
+                raise
+            except IncompleteDiscovery as error:
+                failures += 1
+                print(f"::warning::could not inspect run {run['id']}: {error}", file=sys.stderr)
+                continue
+            if not has_open_pr:
                 yield run
+    if failures:
+        raise IncompleteDiscovery(f"{failures} candidate ownership check(s) failed")
 
 
 def _open_prs(call: ApiCall, repo: str) -> list[dict[str, Any]]:
@@ -351,7 +362,15 @@ def stale_in_repo(call: ApiCall, repo: str, exclude_run: int = 0) -> Iterator[Ru
                     print(f"::warning::could not inspect commit {sha}: {error}", file=sys.stderr)
             closed_before = closed[sha]
             if closed_before and run["created_at"] < closed_before:
-                if not _has_open_pr(call, repo, run):
+                try:
+                    has_open_pr = _has_open_pr(call, repo, run)
+                except SweepDeadline:
+                    raise
+                except IncompleteDiscovery as error:
+                    failures += 1
+                    print(f"::warning::could not inspect run {run['id']}: {error}", file=sys.stderr)
+                    continue
+                if not has_open_pr:
                     yield run
     except IncompleteDiscovery:
         failures += 1

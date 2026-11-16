@@ -619,3 +619,26 @@ def test_missing_run_ownership_cannot_authorize_cancellation(monkeypatch: pytest
     api = FakeApi([row])
     assert _main(module, api, monkeypatch) == 1
     assert api.cancelled == []
+
+
+@pytest.mark.parametrize("mode, problem", [
+    (["--sweep"], "repository"), (["--sweep"], "branch"),
+    (["--sweep"], "associations"), (["--sweep"], "number"),
+    (["--pr", "7"], "associations"), (["--pr", "7"], "number"),
+])
+def test_unknown_candidate_does_not_strand_later_eligible_runs(
+    monkeypatch: pytest.MonkeyPatch, mode: list[str], problem: str,
+) -> None:
+    module = _module()
+    unknown = _run(2)
+    if problem == "repository":
+        unknown.pop("head_repository")
+    elif problem == "branch":
+        unknown.pop("head_branch")
+    elif problem == "associations":
+        unknown["pull_requests"] = "unknown"
+    else:
+        unknown["pull_requests"] = [{"number": "unknown"}]
+    api = FakeApi([unknown, _run(1)])
+    assert _main(module, api, monkeypatch, mode) == 1
+    assert api.cancelled == [1]
