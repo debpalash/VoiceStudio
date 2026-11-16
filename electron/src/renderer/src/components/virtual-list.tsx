@@ -322,7 +322,9 @@ export function VirtualGrid<T>({
       previousRow = row.index;
       previousEnd = row.end - margin;
     }
-    if (virtual && rows.length && previousRow < rowCount - 1)
+    // With no rows yet (scroll element not resolved on first render) the tail
+    // spacer alone holds the full height so the scroll position is not clamped.
+    if (virtual && previousRow < rowCount - 1)
       children.push(
         <div
           key="gap-tail"
@@ -330,7 +332,10 @@ export function VirtualGrid<T>({
           aria-hidden="true"
           style={{
             gridColumn: '1 / -1',
-            height: Math.max(0, virtualizer.getTotalSize() - previousEnd - gap),
+            height: Math.max(
+              0,
+              virtualizer.getTotalSize() - previousEnd - (rows.length ? gap : 0),
+            ),
           }}
         />,
       );

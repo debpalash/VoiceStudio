@@ -237,7 +237,25 @@ it.each([true, false])(
       );
       expect(projects.navigate).not.toHaveBeenCalled();
       expect(longformSession.state.drafts.audiobook.script).not.toBe('Preserved saved manuscript');
-    } else
+    } else {
+      // Opening replaces the working draft, so nothing changes until confirmed.
+      expect(await screen.findByText('projectActions.open')).toBeInTheDocument();
+      expect(longformSession.state.drafts.audiobook.script).not.toBe('Preserved saved manuscript');
+      fireEvent.click(screen.getByRole('button', { name: 'common.confirm' }));
       await waitFor(() => expect(projects.navigate).toHaveBeenCalledWith({ to: '/audiobook' }));
+      expect(longformSession.state.drafts.audiobook.script).toBe('Preserved saved manuscript');
+    }
   },
 );
+
+it('keeps the working draft and stays on Home when the project open is cancelled', async () => {
+  const draft = { ...blankLongformDraft(), script: 'Saved manuscript' };
+  projects.saved = [{ id: 'saved', name: 'Saved book', mode: 'audiobook', updatedAt: 1, draft }];
+  const before = longformSession.state.drafts.audiobook.script;
+  render(<HomePage />);
+  fireEvent.click(screen.getByRole('button', { name: /Saved book/ }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.cancel' }));
+  await waitFor(() => expect(screen.queryByText('projectActions.open')).toBeNull());
+  expect(projects.navigate).not.toHaveBeenCalled();
+  expect(longformSession.state.drafts.audiobook.script).toBe(before);
+});

@@ -16,6 +16,7 @@ import { ExternalLink } from '@/components/external-link';
 import { releaseNotesUrl } from '@/components/setup-extras';
 import { appVersion } from '@/components/bridge';
 import { useState } from 'react';
+import { ConfirmDialog } from '@/features/clone/confirm-dialog';
 import './home-page.css';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { ProfileAvatar } from '@/components/profile-avatar';
@@ -78,6 +79,8 @@ const iconTones: Record<string, string> = {
     'bg-slate-100 text-slate-700 ring-slate-300/60 dark:bg-slate-300/15 dark:text-slate-200 dark:ring-slate-300/30',
 };
 
+type LongformRecent = Extract<HomeRecentProject, { kind: 'longform' }>;
+
 export function HomePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -85,6 +88,7 @@ export function HomePage() {
   const season = currentHomeSeason();
   const [heroHidden, setHeroHidden] = useState(() => heroHiddenFor(version));
   const [projectError, setProjectError] = useState<string | null>(null);
+  const [pendingLongform, setPendingLongform] = useState<LongformRecent | null>(null);
   const [profileClicks, setProfileClicks] = useState(() => clickedProfiles().length);
   const { data: profiles = [] } = useProfiles();
   const { data: exports = [] } = useQuery({
@@ -174,6 +178,15 @@ export function HomePage() {
       setProjectError(t('audiobook.blocked.busy'));
       return;
     }
+    // Same rule as the Stories/Audiobook project list: opening replaces the
+    // working draft, so ask first. Cancelling leaves the draft untouched.
+    setPendingLongform(item);
+  };
+  const openLongformProject = async (item: LongformRecent) => {
+    if (longformSession.state.active) {
+      setProjectError(t('audiobook.blocked.busy'));
+      return;
+    }
     if (
       !replaceLongformDraft(item.project.mode, {
         ...blankLongformDraft(),
@@ -216,6 +229,16 @@ export function HomePage() {
           {projectError}
         </p>
       )}
+      <ConfirmDialog
+        open={pendingLongform !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingLongform(null);
+        }}
+        title={pendingLongform?.project.name ?? ''}
+        description={t('projectActions.open', { name: pendingLongform?.project.name ?? '' })}
+        destructive
+        onConfirm={() => (pendingLongform ? openLongformProject(pendingLongform) : undefined)}
+      />
       <WorkspaceHeader>
         <h1 className="text-sm font-medium">{t('nav.home')}</h1>
         <Link

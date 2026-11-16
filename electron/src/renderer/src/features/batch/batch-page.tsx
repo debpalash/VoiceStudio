@@ -39,9 +39,12 @@ import { announceModelLicenceRequired } from '@/features/settings/model-license-
 import type { BatchJob } from '@shared/api/batch-types';
 import { BatchJobFailure } from './batch-job-failure';
 import { enqueueVideos } from './enqueue';
+import { usePendingKeys } from './use-pending-keys';
 import { cachedTtsLanguagesSupported } from '@/lib/language-options';
 import { useTranslationEngines } from '@/features/settings/translation-settings';
 const languageOptions = TRANSLATION_TARGET_LABELS;
+const exportKey = (job: BatchJob, lang: string) => `${job.id}:${lang}`;
+
 export function BatchPage() {
   const { t } = useTranslation();
   const client = useQueryClient();
@@ -62,6 +65,7 @@ export function BatchPage() {
   const [tab, setTab] = useState('active');
   const [deleting, setDeleting] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
+  const exports = usePendingKeys();
   const addFiles = (selected: File[]) =>
     setFiles((current) => [
       ...current,
@@ -170,17 +174,18 @@ export function BatchPage() {
       setActing(null);
     }
   };
-  const download = async (job: BatchJob, lang: string) => {
-    setError(null);
-    const url = apiPath(
-      '/batch/download/' + encodeURIComponent(job.id) + '/' + encodeURIComponent(lang),
-    );
-    try {
-      await saveExport(url, job.filename.replace(/\.[^.]+$/, '') + '_' + lang + '.mp4');
-    } catch (cause) {
-      setError(t('clone.download_failed', { message: describeError(cause) }));
-    }
-  };
+  const download = (job: BatchJob, lang: string) =>
+    exports.run(exportKey(job, lang), async () => {
+      setError(null);
+      const url = apiPath(
+        '/batch/download/' + encodeURIComponent(job.id) + '/' + encodeURIComponent(lang),
+      );
+      try {
+        await saveExport(url, job.filename.replace(/\.[^.]+$/, '') + '_' + lang + '.mp4');
+      } catch (cause) {
+        setError(t('clone.download_failed', { message: describeError(cause) }));
+      }
+    });
   return (
     <div className="flex h-full min-h-0 flex-col">
       <WorkspaceHeader>
@@ -477,6 +482,7 @@ export function BatchPage() {
                 act={act}
                 recover={recover}
                 download={download}
+                exporting={exports.pending}
               />
             ))}
           </div>
@@ -502,6 +508,7 @@ function BatchJobCard({
   act,
   recover,
   download,
+  exporting,
 }: {
   job: BatchJob;
   acting: string | null;
@@ -510,6 +517,7 @@ function BatchJobCard({
   act(job: BatchJob, remove: boolean): Promise<void>;
   recover(job: BatchJob): Promise<void>;
   download(job: BatchJob, lang: string): Promise<void>;
+  exporting: ReadonlySet<string>;
 }) {
   const { t, i18n } = useTranslation();
   const appearance = statusAppearance[job.status];
@@ -586,7 +594,13 @@ function BatchJobCard({
       <div className="mt-3 flex flex-wrap justify-end gap-2">
         {job.status === 'done' &&
           Object.keys(job.outputs || {}).map((lang) => (
-            <Button key={lang} variant="ghost" size="sm" onClick={() => void download(job, lang)}>
+            <Button
+              key={lang}
+              variant="ghost"
+              size="sm"
+              disabled={exporting.has(exportKey(job, lang))}
+              onClick={() => void download(job, lang)}
+            >
               <DownloadIcon />
               {t('dub.export')} {lang}
             </Button>
