@@ -35,6 +35,10 @@ from core.scrub import REDACTED, scrub_provider_error, scrub_text
         # A Windows account name can contain a space.
         (r"C:\Users\Mary Jane\Documents\out.wav", r"~\Documents\out.wav"),
         ("/Users/Mary Jane/Library/Logs/app.log", "~/Library/Logs/app.log"),
+        # ...or several, and an escaped OSError path can end at the home itself.
+        (r"C:\\Users\\Mary Jane Smith\\models", r"~\\models"),
+        (r"[Errno 2] No such file: 'C:\\Users\\Mary Jane'", r"[Errno 2] No such file: '~'"),
+        ('"/home/Mary Jane Smith" is read-only', '"~" is read-only'),
         # The words after a short path stay: only the path is redacted.
         ("/home/bob: Permission denied", "~: Permission denied"),
         (r"C:\Users\Mary was not found", r"~ was not found"),

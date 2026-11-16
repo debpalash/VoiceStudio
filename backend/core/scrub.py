@@ -200,10 +200,11 @@ def _scrub_url_queries(text: str) -> str:
 # IGNORECASE because Windows is case-insensitive and tools routinely emit the
 # lowercase `c:\users\<name>` form, which the CLAUDE.md redaction spec still
 # requires to become `~`. `Users`/`users`, `Home`/`home` all match.
-# A home-directory name. It may contain a space (`C:\Users\Mary Jane`), but only
-# when another separator follows, so the match cannot run into the sentence after
-# a path: `/home/bob: Permission denied` keeps its words and redacts `/home/bob`.
-_HOME_NAME = r"(?:[^\\/\s\"':]+(?:\s[^\\/\s\"':]+)?(?=[\\/])|[^\\/\s\"':]+)"
+# A home-directory name. It may contain spaces (`C:\Users\Mary Jane Smith`), but
+# only when a separator or a closing quote follows (`'C:\\Users\\Mary Jane'` in an
+# OSError), so the match cannot run into the sentence after a path:
+# `/home/bob: Permission denied` keeps its words and redacts `/home/bob`.
+_HOME_NAME = r"(?:[^\\/\s\"':]+(?:\s[^\\/\s\"':]+)*(?=[\\/\"'])|[^\\/\s\"':]+)"
 
 _HOME_PATTERNS = (
     # repr() and JSON escape the separators, so an OSError or a log line can carry
