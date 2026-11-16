@@ -51,11 +51,11 @@ data class PhoneIncoming(val text: String?=null,val file: File?=null,val route: 
             Text(incoming.text ?: incoming.file?.name.orEmpty())
             Text(tr("mobile.integration.review"))
             if(incoming.text!=null) Action("mobile.tabs.speak") {target="speak"}
-            Action("workflows.title") {scope.launch {try {
+            Action("workflows.title") {val failure=vm.failureHandler();scope.launch {try {
                 val draft=PhoneWorkflow(name=title,steps=(if(incoming.file!=null) listOf("transcribe","normalize") else listOf("normalize","speak")).map {PhoneWorkflowStep(kind=it)},inputText=incoming.text)
                 workflow=incoming.file?.let {vm.phone.workflows.importAudio(it,draft)} ?: draft
                 target="workflows"
-            } catch(e:Exception) {vm.fail(e)}}}
+            } catch(e:Exception) {failure(e)}}}
         }
     }
 }

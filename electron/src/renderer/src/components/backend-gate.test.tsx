@@ -1146,3 +1146,42 @@ it('keeps an in-flight interpreter check and its result across closing and reope
   expect(screen.getByTestId('python-runtime-confirm')).toBeEnabled();
   expect(choosePythonRuntime).toHaveBeenCalledOnce();
 });
+
+it('offers independent diagnostic consent before setup and keeps the choice through failures', async () => {
+  const setConsent = vi.fn(async () => ({
+    enabled: false, opted_in: false, available: true, prompted: true,
+  }));
+  bridgeStub.current = {
+    backend: {},
+    diagnostics: {
+      getStatus: vi.fn(async () => ({
+        enabled: false, opted_in: false, available: true, prompted: false,
+      })),
+      setConsent,
+      capture: vi.fn(async () => {}),
+    },
+  };
+  localStorage.setItem(
+    'voicestudio.setup.analytics-consent.v1',
+    JSON.stringify({ enabled: true, settled: true }),
+  );
+  const tree = <BackendGate><div>workspace</div></BackendGate>;
+  try {
+    const view = render(tree);
+    expect(await screen.findByRole('button', { name: i18n.t('diagnostics.allow') })).toBeEnabled();
+    for (const stage of ['installing', 'crashed'] as const) {
+      backendStatus.stage = stage;
+      view.rerender(<BackendGate><div>workspace</div></BackendGate>);
+      expect(await screen.findByRole('button', { name: i18n.t('diagnostics.allow') })).toBeEnabled();
+    }
+    expect(setConsent).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('diagnostics.keep_off') }));
+    await waitFor(() => expect(setConsent).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(
+      screen.queryByRole('button', { name: i18n.t('diagnostics.allow') }),
+    ).not.toBeInTheDocument());
+    expect(screen.getByRole('switch', { name: i18n.t('diagnostics.title') })).not.toBeChecked();
+  } finally {
+    localStorage.removeItem('voicestudio.setup.analytics-consent.v1');
+  }
+});

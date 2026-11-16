@@ -1,6 +1,9 @@
 package com.voicestudio.mobile
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
@@ -9,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -22,6 +27,7 @@ import org.junit.Assert.*
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.util.ReflectionHelpers
 import org.robolectric.util.ReflectionHelpers.ClassParameter
 
@@ -109,5 +115,66 @@ class KeyboardRegressionTest {
         search.performClick().assertIsFocused()
         compose.onNode(hasText("Engine") and hasAnyAncestor(isDialog())).performTouchInput {click()}
         search.assertIsNotFocused()
+    }
+    @Test @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun largeManuscriptStaysEditableInsideScrollingScreen() {
+        val manuscript="A manuscript line with complete text.\n".repeat(12_000)+"Original ending"
+        assertTrue(manuscript.length>100_000)
+        var draft=manuscript
+        var generated=false
+        content {
+            Box(Modifier.width(360.dp).height(640.dp)) {
+                Screen {
+                    var text by remember {mutableStateOf(manuscript)}
+                    Field("audiobook.script",text,{text=it;draft=it},multiline=true)
+                    Action("mobile.speak.generate") {generated=true}
+                }
+            }
+        }
+        val editor=compose.onNode(hasSetTextAction())
+        val stored=editor.fetchSemanticsNode().config[SemanticsProperties.EditableText].text
+        assertTrue("The complete imported manuscript must remain in the editor",stored==manuscript)
+        val bounds=editor.getUnclippedBoundsInRoot()
+        assertTrue("The editor must have a finite viewport inside Screen",bounds.bottom-bounds.top<400.dp)
+        editor.performClick().performTextInputSelection(TextRange(manuscript.length))
+        editor.performTextInput("\nAn edited ending")
+        compose.runOnIdle {assertTrue("Editing must preserve every original character",draft==manuscript+"\nAn edited ending")}
+        val ending=manuscript.length+"\nAn edited ending".length
+        assertEquals(TextRange(ending),editor.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+        compose.onNodeWithText("Done").performClick()
+        editor.assertIsNotFocused()
+        // No blinking caret or focused-border animation: compare the actual
+        // rendered text before/after dragging, while its viewport stays fixed.
+        compose.waitForIdle()
+        val viewport=editor.getUnclippedBoundsInRoot()
+        fun renderedPixels():IntArray {
+            val area=editor.fetchSemanticsNode().boundsInRoot
+            val width=kotlin.math.ceil(area.width).toInt()
+            val height=kotlin.math.ceil(area.height).toInt()
+            val pixels=IntArray(width*height)
+            compose.runOnIdle {
+                // Robolectric renders real Compose drawing to a native Canvas,
+                // but does not dispatch PixelCopy's window-redraw callbacks.
+                val host=compose.activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+                val bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888)
+                try {
+                    val canvas=Canvas(bitmap)
+                    canvas.translate(-area.left,-area.top)
+                    host.draw(canvas)
+                    bitmap.getPixels(pixels,0,width,0,0,width,height)
+                } finally {bitmap.recycle()}
+            }
+            return pixels
+        }
+        val tailPixels=renderedPixels()
+        editor.performTouchInput {swipeDown()}
+        compose.waitForIdle()
+        editor.assertIsNotFocused()
+        assertEquals(viewport,editor.getUnclippedBoundsInRoot())
+        val scrolledPixels=renderedPixels()
+        assertFalse("Dragging must move the full manuscript within the fixed editor",tailPixels.contentEquals(scrolledPixels))
+        compose.runOnIdle {assertTrue(draft==manuscript+"\nAn edited ending")}
+        compose.onNodeWithText("Generate").performScrollTo().assertIsDisplayed().performClick()
+        assertTrue(generated)
     }
 }

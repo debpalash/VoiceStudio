@@ -139,8 +139,9 @@ struct ComputerDubView: View {
                 try await upload.start(source: file.url, api: api, languages: targets, profile: profile, audioOnly: type?.conforms(to: .audio) == true, filename: file.uploadName)
                 selectedFile = nil
             } else {
+                let submission=model.diagnostics.failureObservation
                 let result = try await api.ingest(url: sourceURL, jobID: UUID().uuidString)
-                try model.dub.begin(result, api: api, languages: targets, profile: profile)
+                try model.dub.begin(result, api: api, languages: targets, profile: profile,diagnosticSubmission:submission)
                 sourceURL = ""; model.monitor()
             }
         }

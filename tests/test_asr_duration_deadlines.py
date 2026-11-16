@@ -33,7 +33,22 @@ def _recording(seconds):
 def test_long_upload_reaches_the_guard_with_a_duration_budget(monkeypatch, endpoint, field):
     from fastapi.testclient import TestClient
     from services import asr_backend as asr
-    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", lambda path: 1500, raising=False)
+    from services import asr_timing
+    import time
+    clock = [100.0]
+    class ExecutionClock:
+        def __getattr__(self, name):
+            return getattr(time, name)
+        def monotonic(self):
+            return clock[0]
+    def probe_duration(path):
+        clock[0] += 7.0  # Probe/queue time must consume the shared budget.
+        return 1500
+    # Keep asyncio's real scheduler clock intact. This assertion measures the
+    # execution deadline, independently of runner load and import overhead.
+    monkeypatch.setattr(asr, 'time', ExecutionClock())
+    monkeypatch.setattr(asr_timing, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", probe_duration, raising=False)
 
     class Backend:
         id = "test-asr"
@@ -58,7 +73,7 @@ def test_long_upload_reaches_the_guard_with_a_duration_budget(monkeypatch, endpo
     client = TestClient(app, client=("127.0.0.1", 50000))
     response = client.post(endpoint, files={field: ("meeting.wav", _recording(1500), "audio/wav")})
     assert response.status_code == 200, response.text
-    assert waits[-1] == pytest.approx(3000, abs=1)
+    assert waits[-1] == 2993
 
 
 def test_isolated_engine_does_not_keep_its_old_ten_minute_ceiling(tmp_path, monkeypatch):

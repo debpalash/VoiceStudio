@@ -229,6 +229,8 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
     immediately; running work calls it from the worker finalizer. Normal
     completion leaves cleanup with the caller.
     """
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     from services.inference_cancellation import InferenceCancellation
     from services.asr_timing import remaining_s
 
@@ -282,7 +284,7 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
             if abandoned:
                 _fire_abandon_callback()
 
-    concurrent_fut = executor.submit(_job)
+    concurrent_fut = executor.submit(diagnostic_reports.bind_callable(_job, diagnostic_epoch))
     fut = asyncio.wrap_future(concurrent_fut, loop=loop)
 
     def _abandon() -> None:
@@ -321,7 +323,15 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
         hint = _isolated_engine_hint(streak)
         if hint:
             msg += " " + hint
-        raise ASRTimeoutError(msg)
+        failure = ASRTimeoutError(msg)
+        # This is a local compute deadline, not a transport timeout.
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("transcription", error=failure, error_code="UNKNOWN", expected_epoch=diagnostic_epoch)
+        raise failure
+    except Exception as exc:
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("transcription", error=exc, expected_epoch=diagnostic_epoch)
+        raise
     # A completed transcribe (even a failed-but-returned one) proves the pool
     # isn't hung — only genuine timeouts count toward the consecutive streak.
     _note_transcribe_success()

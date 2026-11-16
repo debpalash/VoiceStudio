@@ -118,6 +118,7 @@ struct DictateView: View {
         listening = true; previousText = text; transcript = DictationTranscript(); sessionID = UUID().uuidString.lowercased(); sessionText = ""
         if route == .phone { startLocal(); return }
         let id = sessionID
+        let reportFailure = model.diagnostics.failureHandler(stage: "transcription")
         capturing = Task {
             // Per session: a finished `receiving` from an earlier session must not count.
             var receiverCreated = false
@@ -138,7 +139,7 @@ struct DictateView: View {
                             text = [previousText, transcript.text].filter { !$0.isEmpty }.joined(separator: "\n")
                             if transcript.finished { audio.stop(); listening = false; finalizing = false }
                         }
-                    } catch { audio.stop(); listening = false; finalizing = false; if !Task.isCancelled && scope == model.hostState.scopeID { model.error = error as? ClientError ?? ClientError("mobile.errors.dictation") } }
+                    } catch { audio.stop(); listening = false; finalizing = false; if !Task.isCancelled && scope == model.hostState.scopeID { reportFailure(error); model.error = error as? ClientError ?? ClientError("mobile.errors.dictation") } }
                 }
                 receiverCreated = true
                 let chunks = try await audio.start()
@@ -147,12 +148,13 @@ struct DictateView: View {
                 try await stream.finish()
             } catch is CancellationError { if !receiverCreated { finalizing = false } } catch {
                 audio.stop(); listening = false; finalizing = false; await stream.close()
-                if scope == model.hostState.scopeID { model.error = error as? ClientError ?? ClientError("mobile.errors.audio") }
+                if scope == model.hostState.scopeID { reportFailure(error); model.error = error as? ClientError ?? ClientError("mobile.errors.audio") }
             }
         }
     }
     private func startLocal() {
         let id = sessionID
+        let reportFailure = model.diagnostics.failureHandler(stage: "transcription")
         capturing = Task {
             defer { audio.stop(); listening = false; finalizing = false }
             do {
@@ -175,7 +177,7 @@ struct DictateView: View {
                             latest = update.text; sessionText = latest
                             text = [previousText, update.text].filter { !$0.isEmpty }.joined(separator: "\n")
                         }
-                    } catch is CancellationError {} catch { model.error = error as? ClientError ?? ClientError("mobile.local.inference_failed") }
+                    } catch is CancellationError {} catch { reportFailure(error); model.error = error as? ClientError ?? ClientError("mobile.local.inference_failed") }
                     audio.stop()
                 }
                 do {
@@ -186,7 +188,7 @@ struct DictateView: View {
                     continuation.finish()
                 } catch { continuation.finish(throwing: error); throw error }
                 await receiving?.value
-            } catch is CancellationError {} catch { model.error = error as? ClientError ?? ClientError("mobile.errors.audio") }
+            } catch is CancellationError {} catch { reportFailure(error); model.error = error as? ClientError ?? ClientError("mobile.errors.audio") }
         }
     }
     private func saveTranscript() {
