@@ -350,12 +350,12 @@ def test_unreleased_may_grow_without_highlights_until_the_release_is_cut():
     assert any("**Highlights**" in v for v in lint_changelog(released))
 
 
-def test_reference_allowlist_entries_still_exist():
+def test_reference_allowlist_entries_still_exist() -> None:
     """Every grandfathered entry must still be in `CHANGELOG.md`.
 
     `_REF_ALLOWLIST` exempts owner-authored entries that never had a public issue.
-    Nothing pruned it, so an entry whose line is later reworded, folded into a
-    release or deleted keeps exempting future entries from needing a reference —
+    Nothing pruned it, so an entry whose line is later reworded or deleted
+    keeps exempting future entries from needing a reference —
     the exemption outlives the reason it was granted. Delete the entry when its
     line goes; this test says which ones.
     """
