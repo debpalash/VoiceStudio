@@ -16,7 +16,7 @@ beforeAll(async () => {
     [
       `export { DiagnosticReports } from ${modulePath('diagnostics.ts')};`,
       `export { installDiagnosticProcessCapture } from ${modulePath('diagnostics-capture.ts')};`,
-      `export { runDiagnosticOperation } from ${modulePath('diagnostic-operation.ts')};`,
+      `export { runDiagnosticOperation, diagnosticOperationOwner } from ${modulePath('diagnostic-operation.ts')};`,
     ].join('\n'),
   );
   await build({
@@ -361,7 +361,7 @@ beforeAll(async () => {
       console.log(JSON.stringify({ fatal: origin }));
     });
     original = runDiagnosticOperation(reports, async () => {
-      await 0;
+      await 0; await null; await undefined;
       throw new Error('SYNTHETIC_UNCONSUMED_FAILURE');
     });
     // Deliberately never attach a Promise consumer. A timer keeps the process
@@ -389,4 +389,75 @@ it('preserves strict-mode fatal policy for an unconsumed non-Promise await', () 
   expect(child.status).toBe(1);
   expect(child.stdout.trim()).toBe(JSON.stringify({ fatal: 'unhandledRejection' }));
   expect(child.stderr).toContain('SYNTHETIC_UNCONSUMED_FAILURE');
+});
+
+
+beforeAll(async () => {
+  await writeFile(join(directory, 'caught-inner.mjs'), String.raw`
+    import { DiagnosticReports, installDiagnosticProcessCapture, runDiagnosticOperation, diagnosticOperationOwner } from './capture.mjs';
+    import { AsyncResource } from 'node:async_hooks';
+    import { join } from 'node:path';
+    const [transition, mode] = process.argv[2].split(':');
+    const reports = new DiagnosticReports({
+      directory: join(import.meta.dirname, 'caught-' + transition + '-' + mode + '-' + (process.execArgv.includes('--unhandled-rejections=strict') ? 'strict' : 'normal')),
+      identity: { app_version: '1.0.0', build_commit: '0000000', platform: 'linux', arch: 'x64' },
+      automatic: false, env: {}, destination: { site: 'fixture', host: 'https://fixture.invalid', appUrl: 'https://fixture.invalid' },
+    });
+    await reports.initialize(); if (transition !== 'off-on') await reports.setConsent(true);
+    const stop = installDiagnosticProcessCapture(reports);
+    const outside = new AsyncResource('fixture-outside-owner');
+    let release, saved, unhandled = 0, fatal = 0, earlyLocal = true;
+    const held = new Promise(resolve => { release = resolve; });
+    process.on('unhandledRejection', () => unhandled++);
+    // Test-only listener observes strict escalation while keeping the child alive
+    // for the pending-count assertion. The separate strict test proves exit.
+    process.on('uncaughtException', (_error, origin) => { if (origin !== 'unhandledRejection') process.exit(91); fatal++; });
+    const delivered = new Promise(resolve => process.once('unhandledRejection', () => setImmediate(resolve)));
+    const original = runDiagnosticOperation(reports, async () => {
+      try {
+        await runDiagnosticOperation(reports, async () => {
+          await held; await 0; await null;
+          if (mode !== 'successful-data') throw new Error('SYNTHETIC_OLD_FAILURE');
+          return 42;
+        });
+      } catch (error) {
+        if (mode === 'synchronous-escape') outside.runInAsyncScope(() => {
+          try { runDiagnosticOperation(reports, () => { throw error; }); }
+          catch (escaped) {
+            // Check the synchronous handoff before any observer microtask can
+            // run; it must not grant permission merely because B is current.
+            earlyLocal = diagnosticOperationOwner(reports, escaped)?.epoch === null;
+            throw escaped;
+          }
+        });
+        saved = error;
+      }
+    });
+    if (transition === 'off-on') await reports.setConsent(true);
+    if (transition === 'a-b') { await reports.setConsent(false); await reports.setConsent(true); }
+    release();
+    if (mode !== 'synchronous-escape') {
+      await original;
+      runDiagnosticOperation(reports, async () => { throw mode === 'successful-data' ? new Error('SYNTHETIC_NEW_FAILURE') : saved; });
+    }
+    await delivered; await new Promise(setImmediate);
+    console.log(JSON.stringify({ pending: reports.status().pending_count, unhandled, fatal, earlyLocal }));
+    outside.emitDestroy(); stop(); await reports.close();
+  `);
+});
+
+it.each(['off-on', 'a-b', 'same-grant'].flatMap(transition =>
+  ['caught-later', 'synchronous-escape', 'successful-data'].flatMap(mode =>
+    [false, true].map(strict => ({ transition, mode, strict }))),
+))('retains caught inner ownership without suppressing fresh data failures: $transition/$mode/strict=$strict', ({ transition, mode, strict }) => {
+  const output = execFileSync(process.execPath, [
+    ...(strict ? ['--unhandled-rejections=strict'] : []),
+    join(directory, 'caught-inner.mjs'), `${transition}:${mode}`,
+  ], { encoding: 'utf8', timeout: 15_000 });
+  expect(JSON.parse(output)).toEqual({
+    pending: transition === 'same-grant' || mode === 'successful-data' ? 1 : 0,
+    unhandled: 1,
+    fatal: strict ? 1 : 0,
+    earlyLocal: true,
+  });
 });
