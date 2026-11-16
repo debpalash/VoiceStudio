@@ -135,6 +135,9 @@ jobs:
 
       - name: Build signed APK and AAB
         env:
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
           VOICESTUDIO_ANDROID_KEYSTORE: ${{ runner.temp }}/release.keystore
           VOICESTUDIO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
           VOICESTUDIO_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
@@ -271,6 +274,10 @@ jobs:
       # (the store IPA above is signed for App Store Connect and will not install
       # outside TestFlight).
       - name: Unsigned iPhone build for sideloading
+        env:
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
         run: |
           xcodebuild -project mobile/ios/VoiceStudio/VoiceStudio.xcodeproj \
             -scheme VoiceStudio -configuration Release -sdk iphoneos \
@@ -326,6 +333,9 @@ jobs:
       - name: Archive
         if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         env:
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

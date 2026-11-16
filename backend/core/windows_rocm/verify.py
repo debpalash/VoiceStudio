@@ -47,6 +47,18 @@ def validate_report(report, recipe):
     return report
 
 
+def _native_failure_message(returncode, details):
+    """Keep the exit evidence ahead of the bounded native diagnostic tail."""
+    status = returncode & 0xFFFFFFFF
+    summary = f"Windows ROCm probe failed (exit {returncode}, status 0x{status:08X}): "
+    if status == 0xC0000005:
+        summary += "native access violation; faulting module and cause are unknown."
+    else:
+        summary += "probe process failure; cause is unknown."
+    prefix = summary + " Diagnostic: "
+    return prefix + details[-(2000 - len(prefix)):]
+
+
 def verify_environment(timeout=90):
     """Run native validation without keeping package DLLs loaded in installer."""
     try:
@@ -69,8 +81,9 @@ def verify_environment(timeout=90):
         if not isinstance(report, dict):
             raise TypeError("Expected probe object")
     except (ValueError, IndexError, TypeError) as exc:
-        category = "crash" if result.returncode else "invalid_report"
-        raise VerificationFailure(category, f"Windows ROCm probe returned invalid diagnostics: {details}") from exc
+        if result.returncode:
+            raise VerificationFailure("crash", _native_failure_message(result.returncode, details)) from exc
+        raise VerificationFailure("invalid_report", f"Windows ROCm probe returned invalid diagnostics: {details}") from exc
     if result.returncode:
         if (
             result.returncode == 1
@@ -79,7 +92,7 @@ def verify_environment(timeout=90):
             and isinstance(report.get("error"), str)
         ):
             raise VerificationFailure(report.get("category", "unknown"), report["error"])
-        raise VerificationFailure("crash", f"Windows ROCm probe failed (exit {result.returncode}): {details}")
+        raise VerificationFailure("crash", _native_failure_message(result.returncode, details))
     try:
         return validate_report(report, load_recipe())
     except (ValueError, TypeError, KeyError) as exc:

@@ -26,6 +26,7 @@ omnivoice_data/
 frontend/dist/
 electron/out/
 electron/release/
+config/supermetry-app.generated.json
 
 # Git internals
 .git/

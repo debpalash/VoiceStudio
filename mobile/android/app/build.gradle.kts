@@ -1,10 +1,35 @@
 import groovy.json.JsonSlurper
+import java.net.URI
+import java.security.MessageDigest
 plugins {
     alias(libs.plugins.android.app)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 val repository = rootDir.resolve("../..")
+// Generated resources are rebuilt when intake configuration changes. Only a
+// digest participates in Gradle's input diagnostics; never print a write key.
+val supermetryAppConfig = linkedMapOf<String, Any>("diagnostics" to mapOf(
+    "sessionPings" to (providers.environmentVariable("SUPERMETRY_DIAGNOSTICS_SESSION_PINGS").orNull == "1")
+))
+for ((variable, field, pattern) in listOf(
+    Triple("SUPERMETRY_APP_ID", "app_id", "[a-z0-9]{6,32}"),
+    Triple("SUPERMETRY_INGEST_KEY", "ingest_key", "smk_[a-z2-7]{39}")
+)) {
+    val value = providers.environmentVariable(variable).orNull.orEmpty().trim()
+    if (Regex(pattern).matches(value)) supermetryAppConfig[field] = value
+}
+val supermetryHost = providers.environmentVariable("SUPERMETRY_APP_HOST").orNull.orEmpty().trim().trimEnd('/')
+runCatching {
+    val url = URI(supermetryHost)
+    val secure = url.scheme == "https" || (url.scheme == "http" && url.host?.lowercase() in listOf("localhost", "127.0.0.1", "[::1]"))
+    if (secure && !url.host.isNullOrEmpty() && url.rawUserInfo == null && url.rawQuery == null &&
+        url.rawFragment == null && url.path.orEmpty().isEmpty() && url.port in -1..65535 && supermetryHost.toByteArray().size <= 1988 &&
+        !Regex("[\\x00-\\x20]").containsMatchIn(supermetryHost)) supermetryAppConfig["host"] = supermetryHost
+}
+val supermetryAppJson = groovy.json.JsonOutput.toJson(supermetryAppConfig)
+val supermetryAppDigest = MessageDigest.getInstance("SHA-256")
+    .digest(supermetryAppJson.toByteArray()).joinToString("") { "%02x".format(it) }
 val appVersion = (JsonSlurper().parse(repository.resolve("package.json")) as Map<*, *>)["version"].toString()
 // Play accepts any versionName, but the code must be numeric; a beta's -beta.N maps to its X.Y.Z.
 val (major, minor, patch) = Regex("""(\d+)\.(\d+)\.(\d+)(?:-beta\.\d+)?""").matchEntire(appVersion)?.destructured
@@ -65,6 +90,8 @@ val bundleCatalogs by tasks.registering {
     inputs.file(contracts.resolve("support.json"))
     inputs.dir(contracts.resolve("support-artwork"))
     inputs.dir(catalogs)
+    inputs.files(repository.resolve("config/diagnostics.json"), repository.resolve("config/analytics.json"))
+    inputs.property("supermetryAppConfigDigest", supermetryAppDigest)
     inputs.file(repository.resolve("electron/public/signal-field.webp"))
     inputs.file(repository.resolve("electron/src/shared/languages.json"))
     inputs.file(repository.resolve("LICENSE"))
@@ -76,6 +103,9 @@ val bundleCatalogs by tasks.registering {
         val assets = layout.buildDirectory.dir("generated/catalogs").get().asFile
         assets.deleteRecursively()
         assets.mkdirs()
+        repository.resolve("config/diagnostics.json").copyTo(assets.resolve("diagnostics.json"), overwrite=true)
+        repository.resolve("config/analytics.json").copyTo(assets.resolve("diagnostics-destination.json"), overwrite=true)
+        assets.resolve("supermetry-app.generated.json").writeText(supermetryAppJson)
         repository.resolve("electron/public/signal-field.webp").copyTo(assets.resolve("signal-field.webp"), overwrite=true)
         repository.resolve("electron/src/shared/languages.json").copyTo(assets.resolve("languages.json"), overwrite=true)
         val avatars = repository.resolve("electron/src/renderer/src/features/home/contributors")

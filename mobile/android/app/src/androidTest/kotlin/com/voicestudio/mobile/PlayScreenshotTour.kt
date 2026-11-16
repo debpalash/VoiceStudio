@@ -2,6 +2,7 @@ package com.voicestudio.mobile
 
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
+import com.voicestudio.mobile.data.AutomaticDiagnostics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -124,6 +125,12 @@ class PlayScreenshotTour {
             compose.waitForIdle()
             if(exists(no)) compose.onNode(no).performClick()
             compose.waitUntil(10_000) {!exists(hasText(l.t("consent.no")))}
+            // The error-report question follows once its saved choice has loaded; decline it too.
+            compose.waitUntil(30_000) {AutomaticDiagnostics.state.value.let {it.ready&&!it.saving}}
+            compose.waitForIdle()
+            val keepOff=hasText(l.t("diagnostics.keep_off")) and hasClickAction()
+            if(exists(keepOff)) compose.onNode(keepOff).performClick()
+            compose.waitUntil(10_000) {!exists(isDialog())}
             shot("01-home")
 
             compose.onNodeWithTag("home.speak").performScrollTo().performClick()

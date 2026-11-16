@@ -341,8 +341,19 @@ models:
     label: "CosyVoice 3 0.5B (multilingual zero-shot)"
     role: TTS
     engines: [cosyvoice]
-    size_gb: 9.8
+    size_gb: 5.4
     curated_on: [cuda]
+    # Match the managed recipe; RL and alternate export weights are unused.
+    allow_patterns:
+      - "cosyvoice3.yaml"
+      - "config.json"
+      - "configuration.json"
+      - "campplus.onnx"
+      - "speech_tokenizer_v3.onnx"
+      - "llm.pt"
+      - "flow.pt"
+      - "hift.pt"
+      - "CosyVoice-BlankEN/*"
     # The files the cosyvoice engine loads (its sidecar weights_allow_patterns). Without them an
     # interrupted download that kept any one large file read as installed (#3112).
     required_files:

@@ -20,14 +20,19 @@ import java.util.Date
     var manual by rememberSaveable {mutableStateOf(false)}
     var more by rememberSaveable {mutableStateOf(false)}
     var scanner by remember {mutableStateOf(false)}
-    val camera=permissionAction(Manifest.permission.CAMERA,"mobile.permissions.camera",vm::fail) {scanner=true}
+    var scannerFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
+    val cameraPermission=permissionAction(Manifest.permission.CAMERA,"mobile.permissions.camera",vm::failureHandler,vm::restoreFailure) {scanner=true}
+    val camera:()->Unit={scannerFailure=vm.failureHandler();cameraPermission()}
     Screen {
         ScreenTitle("mobile.connect.title")
         Action("mobile.connect.scan_qr",!state.busy,onClick=camera)
-        if(scanner) scanContent({raw ->
+        if(scanner) {
+        val failure=scannerFailure ?: vm::restoreFailure
+        scanContent({raw ->
             try {val address=PairingAddress.parse(raw);url=address.baseUrl.toString();pin=address.pin.orEmpty();scanner=false;manual=true}
-            catch(e:Exception) {scanner=false;vm.fail(e)}
-        },{scanner=false},{scanner=false;vm.fail(it)})
+            catch(e:Exception) {scanner=false;failure(e)}
+        },{scanner=false},{scanner=false;failure(it)})
+        }
         Secondary("mobile.simple.address") {manual=!manual}
         if(manual) {
         Field("mobile.connect.url_label",url,{url=it})

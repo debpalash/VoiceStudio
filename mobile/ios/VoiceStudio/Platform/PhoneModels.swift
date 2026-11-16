@@ -32,8 +32,18 @@ final class WifiState: @unchecked Sendable {
     private(set) var modelBytes: [String: Int64] = [:]
     var error: ClientError?
     var allowMobileData: Bool { didSet { UserDefaults.standard.set(allowMobileData, forKey: "models.mobile-data") } }
+    @ObservationIgnored var diagnosticObservation: (@MainActor () -> (enabled: Bool, revision: Int64, thresholdMs: Int64))?
+    @ObservationIgnored var onDiagnosticStall: (@MainActor (CompanionDiagnosticObservation) -> Void)?
+    @ObservationIgnored private var diagnosticForeground = true
+    @ObservationIgnored private var diagnosticActivityRevision: Int64 = 0
+    func diagnosticsActivityChanged(active: Bool) { diagnosticForeground = active; diagnosticActivityRevision += 1 }
+    @ObservationIgnored var diagnosticFailureObservation: (@MainActor () -> CompanionDiagnosticObservation?)?
+    @ObservationIgnored var onFailure: (@MainActor (String, any Error, CompanionDiagnosticObservation?) -> Void)?
     @ObservationIgnored private var downloads: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var downloadTokens: [String: UUID] = [:]
+    @ObservationIgnored private let suppliedDownloadTransport: (any HTTPTransport)?
+    @ObservationIgnored private let downloadMonitorSample: (@MainActor () -> (nowMs: Int64, connected: Bool, wifi: Bool))?
+    @ObservationIgnored private let downloadMonitorSleep: (@MainActor () async throws -> Void)?
     @ObservationIgnored private let wifi = WifiState()
     private(set) var store: ModelStore?
     private(set) var dubs: [PhoneDubRecord] = []
@@ -71,11 +81,16 @@ final class WifiState: @unchecked Sendable {
             self.error = ClientError("mobile.simple.checkpoint_failed"); return false
         }
     }
-    init(bundle: Bundle = .main) {
+    init(bundle: Bundle = .main, modelStore suppliedStore: (root: URL, store: ModelStore)? = nil, downloadTransport: (any HTTPTransport)? = nil,
+         downloadMonitorSample: (@MainActor () -> (nowMs: Int64, connected: Bool, wifi: Bool))? = nil,
+         downloadMonitorSleep: (@MainActor () async throws -> Void)? = nil) {
+        suppliedDownloadTransport = downloadTransport
+        self.downloadMonitorSample = downloadMonitorSample; self.downloadMonitorSleep = downloadMonitorSleep
         allowMobileData = UserDefaults.standard.bool(forKey: "models.mobile-data")
         pendingDubs = (UserDefaults.standard.stringArray(forKey: "dub.queue") ?? []).compactMap(UUID.init(uuidString:))
         do {
             let root: URL = try {
+                if let suppliedStore { return suppliedStore.root }
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--ui-smoke") {
                     return FileManager.default.temporaryDirectory.appendingPathComponent("PhoneModels-smoke-" + UUID().uuidString, isDirectory: true)
@@ -84,7 +99,7 @@ final class WifiState: @unchecked Sendable {
                 return try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("PhoneModels", isDirectory: true)
             }()
             queueURL = root.appendingPathComponent(".download-queue.json")
-            let store = try ModelStore(root: root)
+            let store = try suppliedStore?.store ?? ModelStore(root: root)
             self.store = store; engine = NativeLocalEngine(store: store)
             guard let url = bundle.url(forResource: "models", withExtension: "json", subdirectory: "Catalogs") else { throw ClientError("mobile.local.catalogue_failed") }
             models = try ModelCatalogue.decode(Data(contentsOf: url)).models
@@ -119,7 +134,7 @@ final class WifiState: @unchecked Sendable {
                     if await store?.installed(model) == true {
                         intents.removeAll { $0.id == item.id }; saveIntents()
                         await ModelDownloadSessions.remove(modelID: model.id)
-                    } else { startDownload(model,mobile: item.mobile) }
+                    } else { startDownload(model,mobile: item.mobile,observation: nil) }
                 }
             }
         }
@@ -160,6 +175,7 @@ final class WifiState: @unchecked Sendable {
     }
     func download(_ model: PhoneModel) {
         guard downloads[model.id] == nil else { return }
+        let observation = diagnosticFailureObservation?()
         guard let pin = try? phoneModelPin(model) else { error = ClientError("mobile.local.catalogue_failed"); return }
         intents.removeAll { $0.id == model.id }
         intents.append(DownloadIntent(id: model.id,pin: pin,mobile: allowMobileData,paused: false))
@@ -171,9 +187,9 @@ final class WifiState: @unchecked Sendable {
         paused.remove(model.id)
         if error == downloadFailures[model.id] { error = nil }
         downloadFailures.removeValue(forKey: model.id)
-        startDownload(model,mobile: allowMobileData)
+        startDownload(model,mobile: allowMobileData,observation: observation)
     }
-    private func startDownload(_ model: PhoneModel,mobile: Bool) {
+    private func startDownload(_ model: PhoneModel,mobile: Bool,observation: CompanionDiagnosticObservation?) {
         // The restored-intent loop can race an explicit pause between its snapshot and this call.
         guard downloads[model.id] == nil,let store,!paused.contains(model.id) else { return }
         progress[model.id] = 0
@@ -181,18 +197,36 @@ final class WifiState: @unchecked Sendable {
         let policy = DownloadPolicy(allowMobileData: mobile); let wifi = wifi
         downloads[model.id] = Task {
             let monitor = Task {
+                var stall = AppDiagnosticDownloadStall()
+                var consentRevision: Int64 = -1
+                var activityRevision: Int64 = -1
                 while !Task.isCancelled {
-                    if !wifi.connected || (!mobile && !wifi.wifi),var value = downloadDetails[model.id] {
+                    let sample = downloadMonitorSample?() ?? (nowMs: Int64(ProcessInfo.processInfo.systemUptime * 1000), connected: wifi.connected, wifi: wifi.wifi)
+                    if !sample.connected || (!mobile && !sample.wifi),var value = downloadDetails[model.id] {
                         value.stage = mobile ? "waiting_network" : "waiting"; value.bytesPerSecond = 0; value.etaSeconds = nil
                         downloadDetails[model.id] = value
                     }
-                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                    let current = diagnosticObservation?() ?? (enabled: false, revision: 0, thresholdMs: 600_000)
+                    if current.revision != consentRevision || diagnosticActivityRevision != activityRevision {
+                        stall.reset(); consentRevision = current.revision; activityRevision = diagnosticActivityRevision
+                    }
+                    if let value = downloadDetails[model.id] {
+                        let ownsPermission = observation != nil && observation == diagnosticFailureObservation?()
+                        let active = ownsPermission && current.enabled && diagnosticForeground && downloadTokens[model.id] == token && !paused.contains(model.id) && value.total > 0 && value.received < value.total
+                        if stall.observe(received: value.received, stage: value.stage, active: active, waiting: !sample.connected || (!mobile && !sample.wifi) || value.retrySeconds > 0, nowMs: sample.nowMs, thresholdMs: current.thresholdMs),let observation { onDiagnosticStall?(observation) }
+                    } else { stall.reset() }
+                    do {
+                        if let downloadMonitorSleep { try await downloadMonitorSleep() }
+                        else { try await Task.sleep(for: .seconds(1)) }
+                    } catch { return }
                 }
             }
             defer { monitor.cancel() }
             defer { downloads[model.id] = nil; progress[model.id] = nil; downloadDetails[model.id] = nil; downloadTokens.removeValue(forKey: model.id) }
             do {
-                let transport = try ModelDownloadSessions.transport(allowMobile: mobile)
+                let transport: any HTTPTransport
+                if let suppliedDownloadTransport { transport = suppliedDownloadTransport }
+                else { transport = try ModelDownloadSessions.transport(allowMobile: mobile) }
                 while true {
                     try Task.checkCancellation()
                     if !mobile && !wifi.wifi {
@@ -215,7 +249,10 @@ final class WifiState: @unchecked Sendable {
                 }
             } catch is CancellationError {} catch {
                 if !Task.isCancelled {
-                    let failure = error as? ClientError ?? ClientError("mobile.local.download_failed")
+                    let historical = error as? HistoricalModelDownloadFailure
+                    let failure = historical?.failure ?? (error as? ClientError) ?? ClientError("mobile.local.download_failed")
+                    if let historical { onFailure?("download", historical.failure, nil) }
+                    else { onFailure?("download", error, observation) }
                     self.error = failure; downloadFailures[model.id] = failure
                     for index in intents.indices where intents[index].id == model.id {
                         intents[index].paused = true; intents[index].failure = failure.key
