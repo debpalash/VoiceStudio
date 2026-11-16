@@ -35,6 +35,16 @@ struct SettingsView: View {
             Section {
                 InfoButton(title: model.t("mobile.simple.privacy"), detail: model.t("mobile.local.privacy"), row: true, icon: "shield")
                 Toggle(isOn: $model.analytics) { Label(model.t("mobile.simple.analytics"),systemImage: "chart.bar") }.frame(minHeight: 44).accessibilityIdentifier("settings.analytics")
+                Toggle(isOn: Binding(get: { model.diagnostics.enabled }, set: { value in Task { await model.diagnostics.setConsent(value) } })) {
+                    Label(model.t("diagnostics.title"), systemImage: "exclamationmark.bubble")
+                }.frame(minHeight: 44).disabled(!model.diagnostics.ready || !model.diagnostics.available || model.diagnostics.saving).accessibilityIdentifier("settings.diagnostics")
+                Text(model.t("diagnostics.body")).font(.footnote).foregroundStyle(theme.color("textMuted"))
+                if model.diagnostics.ready && !model.diagnostics.available { Text(model.t("diagnostics.unavailable")).font(.footnote).foregroundStyle(theme.color("textMuted")) }
+                if let key = model.diagnostics.errorKey {
+                    Text(model.t(key)).foregroundStyle(theme.color("error"))
+                    Button(model.t("mobile.simple.retry")) { Task { await model.diagnostics.retryConsent() } }.disabled(model.diagnostics.saving)
+                }
+
             }
             Section(model.t("donate.title")) {
                 NavigationLink { DonateView() } label: { Label(model.t("mobile.support.donate"), systemImage: "heart") }

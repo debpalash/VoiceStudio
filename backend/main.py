@@ -1060,6 +1060,20 @@ async def _await_profile_reconcile(app: FastAPI) -> None:
             raise asyncio.CancelledError
 
 
+def _start_tts_preload(app: FastAPI) -> None:
+    """Own this boot's TTS warm-up, including its reconciliation dependency."""
+    from core import diagnostic_reports
+
+    epoch = diagnostic_reports.inherited_grant()
+
+    async def _preload_after_reconcile():
+        with diagnostic_reports.grant_scope(epoch):
+            await _await_profile_reconcile(app)
+            await preload_model()
+
+    app.state.preload_task = asyncio.create_task(_preload_after_reconcile())
+
+
 async def _phase_b(app: FastAPI) -> None:
     """The old lifespan startup body: DB init + background services. Handles
     land on app.state so the shutdown block (which may run after a startup
@@ -1143,11 +1157,7 @@ async def _phase_b(app: FastAPI) -> None:
     app.state.idle_task = asyncio.create_task(idle_worker())
     app.state.worker_task = asyncio.create_task(task_manager.worker())
     # Warm the TTS model in the background so first /generate is instant.
-    async def _preload_after_reconcile():
-        await _await_profile_reconcile(app)
-        await preload_model()
-
-    app.state.preload_task = asyncio.create_task(_preload_after_reconcile())
+    _start_tts_preload(app)
     # Dictation v2: capture ASR warms in the background BY DEFAULT (~30s
     # post-boot, skipped under 4 GB free RAM at warm time).
     app.state.capture_preload_task = None  # only assigned when it runs (#1000 class)
@@ -1304,11 +1314,78 @@ async def _wait_for_analytics_thread(app: FastAPI) -> None:
         await asyncio.wait({worker}, timeout=20.0)
 
 
+async def _finalize_diagnostics(callback, timeout=2.5):
+    """Bound private diagnostic IO independently of saturated inference executors."""
+    loop = asyncio.get_running_loop()
+    finished = loop.create_future()
+    def complete():
+        if not finished.done():
+            finished.set_result(None)
+    def run():
+        try:
+            callback()
+        except Exception:
+            # Keep filesystem details private while making failed withdrawal
+            # persistence visible in local logs without preventing teardown.
+            logger.warning('Automatic failure-report cleanup could not be saved during shutdown.')
+        finally:
+            try:
+                loop.call_soon_threadsafe(complete)
+            except RuntimeError:
+                pass  # A timed-out daemon may finish after its loop closes.
+    try:
+        threading.Thread(target=run, name='diagnostic-finalize', daemon=True).start()
+    except RuntimeError:
+        return  # Thread exhaustion must not turn optional cleanup into a hang.
+    try:
+        await asyncio.wait_for(finished, timeout=timeout)
+    except asyncio.TimeoutError:
+        pass  # The owned daemon may finish after the bounded shutdown deadline.
+
+
+@asynccontextmanager
+async def _diagnostic_lifespan():
+    from core import diagnostic_reports
+    _diagnostic_loop = asyncio.get_running_loop()
+    _previous_loop_handler = _diagnostic_loop.get_exception_handler()
+    _previous_task_factory = _diagnostic_loop.get_task_factory()
+    def _diagnostic_task_factory(loop, coro, **kwargs):
+        # Only cached grant control is attached; neither task results nor raw
+        # exceptions are retained by the reporter. Preserve framework factories.
+        authority_context = kwargs.get('context')
+        epoch = (authority_context.run(diagnostic_reports.inherited_grant) if authority_context
+                 is not None else diagnostic_reports.inherited_grant())
+        task = (_previous_task_factory(loop, coro, **kwargs) if _previous_task_factory
+                else asyncio.Task(coro, loop=loop, **kwargs))
+        try:
+            task._voicestudio_diagnostic_epoch = epoch
+        except (AttributeError, TypeError):
+            pass  # A foreign task without attributes remains local-only.
+        return task
+    def _diagnostic_loop_error(loop, context):
+        task = context.get('task') or context.get('future')
+        epoch = getattr(task, '_voicestudio_diagnostic_epoch', None)
+        if epoch is not None:
+            diagnostic_reports.capture("operation_failed", stage="other", error=context.get("exception"), reason="unhandled_rejection", _expected_epoch=epoch)
+        if _previous_loop_handler is not None:
+            _previous_loop_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
+    try:
+        diagnostic_reports.initialize()
+        _diagnostic_loop.set_task_factory(_diagnostic_task_factory)
+        _diagnostic_loop.set_exception_handler(_diagnostic_loop_error)
+        yield
+    finally:
+        if _diagnostic_loop.get_exception_handler() is _diagnostic_loop_error:
+            _diagnostic_loop.set_exception_handler(_previous_loop_handler)
+        if _diagnostic_loop.get_task_factory() is _diagnostic_task_factory:
+            _diagnostic_loop.set_task_factory(_previous_task_factory)
+        await _finalize_diagnostics(diagnostic_reports.shutdown)
+
+
 @asynccontextmanager
 async def _application_lifespan(app: FastAPI):
-    from api.dependencies import validate_server_admin_key
-
-    validate_server_admin_key()
     # Startup watchdog (#632): a silent hang during startup (e.g. a model-load /
     # MCP deadlock on some platforms) means "Application startup complete" never
     # logs and the app sits forever with no error. If startup hasn't finished
@@ -1535,8 +1612,26 @@ async def lifespan(app: FastAPI):
     # recovery and model files. Held through teardown, where workers can still
     # write. The short wait covers a restart whose predecessor is still exiting.
     with DataDirectoryLease(DATA_DIR, timeout=15):
-        async with _application_lifespan(app):
-            yield
+        from api.dependencies import validate_server_admin_key
+
+        validate_server_admin_key()
+        async with _diagnostic_lifespan():
+            application_started = False
+            try:
+                async with _application_lifespan(app):
+                    application_started = True
+                    try:
+                        yield
+                    finally:
+                        # Retire before application teardown can block. The outer
+                        # reporter remains active for errors during that teardown.
+                        from core import diagnostic_reports
+                        await _finalize_diagnostics(diagnostic_reports.prepare_shutdown)
+            except Exception as error:
+                if not application_started:
+                    from core import diagnostic_reports
+                    diagnostic_reports.capture("backend_crash", stage="startup", error=error, reason="launch_failed")
+                raise
 
 
 app = FastAPI(
@@ -1559,9 +1654,10 @@ def prepare_deliberate_shutdown_during_startup(request: Request):
     from socket bind; its authorization remains identical to the system router.
     """
     from api.dependencies import check_admin
-    from core import run_sentinel
+    from core import diagnostic_reports, run_sentinel
 
     check_admin(request)
+    diagnostic_reports.prepare_shutdown()
     return {"prepared": run_sentinel.clear_sentinel()}
 
 
@@ -1775,9 +1871,14 @@ async def global_exception_handler(request: Request, exc: Exception):
     # recent, the diagnostic bundle, and the bug-report pipeline. record()
     # never raises; a journal failure must not shadow the real error.
     from core import error_journal
-    _entry = error_journal.record(
-        exc, route=str(request.url.path), trace=traceback.format_exc()
-    )
+    from core import diagnostic_reports
+    # Starlette handles an unhandled exception outside user middleware, after
+    # its context scope has unwound. Only our private request observation may
+    # authorize this delayed capture; headers and the now-current grant cannot.
+    with diagnostic_reports.grant_scope(request.scope.get(_DIAGNOSTIC_REQUEST_EPOCH)):
+        _entry = error_journal.record(
+            exc, route=str(request.url.path), trace=traceback.format_exc()
+        )
     headers: dict[str, str] = _cors_headers_for(request)
     # #874: a model download that failed because the CONFIGURED Hugging Face
     # mirror (HF_ENDPOINT) is unreachable used to leak the raw transformers
@@ -1825,6 +1926,23 @@ def _is_public_path(path: str) -> bool:
 # signal must exist before the ordinary system router so a bounded Windows
 # process-tree stop cannot leave a false crash sentinel.
 _STARTUP_EXEMPT = {"/health", "/startup/progress", "/system/shutdown-intent"}
+_DIAGNOSTIC_REQUEST_EPOCH = '_voicestudio_diagnostic_request_epoch'
+
+
+class DiagnosticRequestAuthorityMiddleware:
+    """Keep local request ownership through awaits and outer error handling."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http':
+            return await self.app(scope, receive, send)
+        from core import diagnostic_reports
+        epoch = diagnostic_reports.inherited_grant()
+        scope[_DIAGNOSTIC_REQUEST_EPOCH] = epoch
+        with diagnostic_reports.grant_scope(epoch):
+            return await self.app(scope, receive, send)
 
 
 class StartupGateMiddleware:
@@ -2113,11 +2231,14 @@ app.add_middleware(
     expose_headers=[*CORS_EXPOSED_HEADERS, BACKEND_MARKER_HEADER],
 )
 
-# Registered LAST, which in Starlette means OUTERMOST — so the marker lands on
-# every response. CORS is immediately inside it and outside both auth gates, so
+# Outside the response-producing middleware, so the marker lands on every
+# response. CORS is immediately inside it and outside both auth gates, so
 # preflights and gate-generated 401s retain the browser contract. The marker's
 # absence lets a client conclude that the responder is not VoiceStudio (#1385).
 app.add_middleware(BackendMarkerMiddleware)
+# No responses or network work: snapshot before any request middleware awaits.
+# The private ASGI scope value also outlives this middleware's exception unwind.
+app.add_middleware(DiagnosticRequestAuthorityMiddleware)
 
 # Register canonical audio MIME types before any StaticFiles mount.
 # Python's `mimetypes.guess_type()` returns `audio/x-wav` for `.wav` and

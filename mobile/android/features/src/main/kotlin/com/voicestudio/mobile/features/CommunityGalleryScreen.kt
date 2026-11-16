@@ -14,10 +14,18 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 
+/** Constructed only when the user opens the community gallery. */
+val LocalCommunityGalleryFactory=staticCompositionLocalOf<(android.content.Context)->CommunityGallery> {
+    {context -> CommunityGallery(File(context.cacheDir,"CommunityGallery"))}
+}
+
+private data class GalleryPreview(val id:String,val file:File,val failure:(Throwable)->Unit)
+
 @Composable internal fun CommunityGalleryContent(vm:StudioViewModel,query:String,navigate:(String)->Unit) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
-    val client=remember {CommunityGallery(File(context.cacheDir,"CommunityGallery"))}
+    val factory=LocalCommunityGalleryFactory.current
+    val client=remember(context,factory) {factory(context)}
     var catalogue by remember {mutableStateOf<CommunityCatalogue?>(null)}
     var pack by rememberSaveable {mutableStateOf("")}
     var language by rememberSaveable {mutableStateOf("")}
@@ -26,7 +34,7 @@ import java.io.File
     var active by remember {mutableStateOf<String?>(null)}
     var work by remember {mutableStateOf<Job?>(null)}
     var playRequest by remember {mutableLongStateOf(0)}
-    var audio by remember {mutableStateOf<Pair<String,File>?>(null)}
+    var audio by remember {mutableStateOf<GalleryPreview?>(null)}
     var target by remember {mutableStateOf<GalleryEntry?>(null)}
     suspend fun refresh() {
         if(loading) return
@@ -34,10 +42,11 @@ import java.io.File
         try {catalogue=client.refresh();failed=false} catch(e:CancellationException) {throw e} catch(_:Exception) {failed=true} finally {loading=false}
     }
     LaunchedEffect(Unit) {
+        val failure=vm.failureHandler()
         try {
             val seed=withContext(Dispatchers.IO) {context.assets.open("community-gallery.json").use {it.readBytes()}}
             catalogue=client.cached(seed);refresh()
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
     }
     DisposableEffect(Unit) {onDispose {work?.cancel()}}
     Text(tr("gallery.community_explainer"),color=role("textMuted"))
@@ -61,10 +70,10 @@ import java.io.File
                 Text(tr("gallery.no_preview"),color=role("textMuted"),style=MaterialTheme.typography.bodySmall)
                 TextButton(modifier=Modifier.testTag("gallery.community.use.${item.id}"),onClick={navigate("community-design/"+android.net.Uri.encode(Json.encodeToString(item)))}) {Text(tr("gallery.use_voice"))}
             } else {
-                Secondary("common.play",active==null) {active=item.id;work=scope.launch {try {audio=item.id to client.recording(item);playRequest++} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {active=null;work=null}}}
+                Secondary("common.play",active==null) {val failure=vm.failureHandler();active=item.id;work=scope.launch {try {audio=GalleryPreview(item.id,client.recording(item),failure);playRequest++} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {active=null;work=null}}}
                 Secondary("gallery.use_voice",active==null) {target=item}
             }
-            audio?.takeIf {it.first==item.id}?.let {LocalAudioPlayer(it.second,autoPlay=true,playRequest=playRequest,failure=vm::fail)}
+            audio?.takeIf {it.id==item.id}?.let {LocalAudioPlayer(it.file,autoPlay=true,playRequest=playRequest,initialFailure=it.failure,failure=vm::failureHandler)}
             if(active==item.id) {InlineLoading();Secondary("common.cancel") {work?.cancel()}}
         }}
     }
@@ -72,9 +81,9 @@ import java.io.File
     target?.let {item ->AlertDialog(onDismissRequest={target=null},title={Text(tr("mobile.voices.consent_title"))},text={Text(tr("mobile.voices.consent_body")+"\n"+listOfNotNull(item.author,item.license).joinToString(" · "))},
         confirmButton={TextButton(onClick={
             target=null
-            if(active==null) {active=item.id;work=scope.launch {try {
+            if(active==null) {val failure=vm.failureHandler();active=item.id;work=scope.launch {try {
                 val file=client.recording(item);ensureActive()
                 val voice=vm.phone.voices.importCommunity(item,file,true);vm.phone.refresh();navigate("voice/"+android.net.Uri.encode(voice.id))
-            } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {active=null;work=null}}}
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {active=null;work=null}}}
         }) {Text(tr("mobile.voices.consent_confirm"))}},dismissButton={TextButton(onClick={target=null}) {Text(tr("common.cancel"))}})}
 }

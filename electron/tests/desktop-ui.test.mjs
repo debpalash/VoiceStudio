@@ -345,3 +345,59 @@ test('reload keeps the bridge working', async (t) => {
     assert.equal(facts.saveData, 'function');
   });
 });
+
+// Install logs use the real native status channel. This once exhausted React's
+// nested-update budget because every elapsedMs change also queued passive state.
+test('runtime install status bursts keep the renderer and lifecycle usable', async (t) => {
+  await withApp(t, { seed: false }, async ({ app, page }) => {
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    const ready = await page.evaluate(() => window.voicestudio.backend.getStatus());
+    const installing = {
+      ...ready,
+      stage: 'installing',
+      managed: false,
+      elapsedMs: 80_000,
+      setupPhase: 'installing_deps',
+      logTail: [],
+    };
+    // Override only this owned test app's getter before remounting its real UI.
+    await app.evaluate(({ ipcMain }, status) => {
+      globalThis.__installStatusFixture = status;
+      ipcMain.removeHandler('backend:getStatus');
+      ipcMain.handle('backend:getStatus', () => globalThis.__installStatusFixture);
+    }, installing);
+    await page.context().addInitScript(() => localStorage.setItem('voicestudio.locale', 'en'));
+    await page.reload();
+    await page.getByText('80s elapsed', { exact: true }).waitFor();
+    await app.evaluate(async ({ BrowserWindow }, initial) => {
+      const contents = BrowserWindow.getAllWindows()[0].webContents;
+      for (let i = 0; i < 4000; i += 1) {
+        const status = {
+          ...initial,
+          elapsedMs: 80_000 + i * 7,
+          setupPhase: i % 73 === 0 ? 'downloading_uv' : 'installing_deps',
+          logTail: Array.from({ length: 30 }, (_, j) => `Fixture ${i}-${j}`),
+        };
+        globalThis.__installStatusFixture = status;
+        contents.send('backend:status', status);
+        if (i % 50 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }, installing);
+    const send = (status) =>
+      app.evaluate(({ BrowserWindow }, next) => {
+        globalThis.__installStatusFixture = next;
+        BrowserWindow.getAllWindows()[0].webContents.send('backend:status', next);
+      }, status);
+    await send({ ...ready, stage: 'starting', elapsedMs: 1000 });
+    await page
+      .getByTestId('backend-status-pill')
+      .getByText('1s elapsed', { exact: true })
+      .waitFor();
+    await send({ ...ready, stage: 'crashed', message: 'Fixture process exited', exitCode: 1 });
+    await page.locator('[data-testid="backend-status-pill"][data-state="failed"]').waitFor();
+    await send(ready);
+    await page.getByTestId('backend-gate-scroll').waitFor({ state: 'hidden' });
+    assert.deepEqual(errors, [], 'status burst must not crash the real renderer');
+  });
+});

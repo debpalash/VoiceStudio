@@ -208,6 +208,36 @@ def events_since(job_id: str, after_seq: int = 0, limit: int = 1000) -> list[dic
     return [dict(r) for r in rows]
 
 
+def event_page(job_id: str, after_seq: int = 0, limit: int = 500) -> Optional[dict]:
+    """One bounded ascending page plus the true retained tail in one read snapshot.
+
+    Old/imported histories may exceed today's append retention. The tail is an
+    indexed lookup, not the last row of the limited ascending page.
+    """
+    limit = max(1, min(2000, int(limit)))
+    with db_conn() as conn:
+        # SELECTs otherwise run independently in sqlite3's default mode. A
+        # concurrent append must not give the page and watermark different eras.
+        conn.execute("BEGIN")
+        job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if job is None:
+            return None
+        tail = conn.execute(
+            "SELECT seq, created_at FROM job_events WHERE job_id = ? ORDER BY seq DESC LIMIT 1",
+            (job_id,),
+        ).fetchone()
+        events = conn.execute(
+            "SELECT seq, created_at, payload FROM job_events "
+            "WHERE job_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?",
+            (job_id, after_seq, limit),
+        ).fetchall()
+    return {
+        "job": dict(job),
+        "events": [dict(event) for event in events],
+        "event_watermark": dict(tail) if tail else {"seq": 0, "created_at": None},
+    }
+
+
 # ── Queries ────────────────────────────────────────────────────────────────
 
 

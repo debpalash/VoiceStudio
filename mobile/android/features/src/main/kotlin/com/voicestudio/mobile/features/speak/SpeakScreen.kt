@@ -25,16 +25,18 @@ import kotlinx.coroutines.*
     var voice by rememberSaveable(initialVoiceID) {mutableStateOf(initialVoiceID.orEmpty())}
     var engine by rememberSaveable {mutableStateOf("")}
     var language by rememberSaveable {mutableStateOf("Auto")}
-    val catalog=rememberLanguageCatalog(vm::fail)
+    val catalog=rememberLanguageCatalog(vm::failureHandler)
     val l=LocalL10n.current
     val profile=state.profiles.firstOrNull {it.id==voice}
     val engines=engineChoices(state.engines,profile) {l.t(it)}
     var savePath by rememberSaveable {mutableStateOf<String?>(null)}
+    var saveFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
     val save=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) {uri ->
         val path=savePath;savePath=null
+        val failure=saveFailure ?: vm::restoreFailure;saveFailure=null
         if(uri!=null && path!=null) scope.launch {
             try {val file=sharedDownload(context,vm.api!!,path,"wav");withContext(Dispatchers.IO) {context.contentResolver.openOutputStream(uri)!!.use {out -> file.inputStream().use {it.copyTo(out)}}};file.delete()}
-            catch(e:Exception) {vm.fail(e)}
+            catch(e:Exception) {failure(e)}
         }
     }
     LaunchedEffect(state.profiles) {if(voice.isNotBlank() && profile==null) voice=""}
@@ -59,9 +61,9 @@ import kotlinx.coroutines.*
         }
         val audio=state.audio;val api=vm.api
         if(audio!=null && api!=null) {
-            HostPlayer(api,audio,vm::fail)
+            HostPlayer(api,audio,vm::failureHandler)
             Secondary("mobile.speak.share",!state.busy) {vm.run {shareFile(context,sharedDownload(context,api,audio,"wav"),"audio/wav")}}
-            Secondary("common.save",!state.busy) {savePath=audio;save.launch("${java.util.UUID.randomUUID()}.wav")}
+            Secondary("common.save",!state.busy) {savePath=audio;saveFailure=vm.failureHandler();save.launch("${java.util.UUID.randomUUID()}.wav")}
             ReportButton(vm) {vm.computerSpeakSubject(audio)}
         }
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
@@ -112,22 +114,25 @@ internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,ch
             var exporting by remember {mutableStateOf(false)}
             var exportJob by remember {mutableStateOf<Job?>(null)}
             var saveSource by remember {mutableStateOf<File?>(null)}
+            var saveFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
             val save=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/*")) {uri ->
                 val source=saveSource;saveSource=null
+                val failure=saveFailure ?: vm::restoreFailure;saveFailure=null
                 if(uri!=null&&source!=null) scope.launch {
                     try {withContext(Dispatchers.IO) {context.contentResolver.openOutputStream(uri)!!.use {out -> source.inputStream().use {it.copyTo(out)}}}}
-                    catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
+                    catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
                 }
             }
             fun export(source: File,saveFile: Boolean) {
                 val format=exportFormat
+                val failure=vm.failureHandler()
                 exporting=true
                 exportJob=scope.launch {
                     try {
                         val file=BookExport.encode(source,format)
-                        if(saveFile) {saveSource=file;save.launch(file.name)}
+                        if(saveFile) {saveSource=file;saveFailure=failure;save.launch(file.name)}
                         else shareLocalFile(context,file,when(format) {"mp3"->"audio/mpeg";"m4a"->"audio/mp4";else->"audio/wav"})
-                    } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {exporting=false;exportJob=null}
+                    } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {exporting=false;exportJob=null}
                 }
             }
             DisposableEffect(Unit) {onDispose {vm.phone.cancelInference()}}
@@ -170,7 +175,7 @@ internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,ch
                     Secondary("common.cancel") {vm.phone.cancelInference()}
                 }
                 phone.audio?.let {file ->
-                    LocalAudioPlayer(file,vm::fail)
+                    LocalAudioPlayer(file,vm::failureHandler)
                     ChoicePicker("audiobook.format",exportFormat,listOf(Choice("wav","WAV"),Choice("m4a","AAC / M4A"),Choice("mp3","MP3"))) {exportFormat=it}
                     Secondary("mobile.speak.share",!exporting) {export(file,false)}
                     Secondary("common.save",!exporting) {export(file,true)}
