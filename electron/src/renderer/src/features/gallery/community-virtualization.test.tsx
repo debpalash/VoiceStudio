@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   live: null as Player | null,
   players: new Map<string, { token: object; props: Player }>(),
 }));
-vi.mock('@/lib/api/client', () => ({
+vi.mock('@/lib/api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/client')>()),
   apiJson: mocks.api,
   apiPath: (path: string) => '/api' + path,
 }));
