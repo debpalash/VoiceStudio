@@ -570,7 +570,7 @@ class DiagnosticReports(
                 try { storage.remove("outbox.json") } catch (_: Exception) {}
             }
             updateCount()
-            if (status.enabled && records.isNotEmpty()) schedule()
+            if (status.enabled && (status.pendingCount>0 || sessionEvent!=null)) schedule()
             status
         }
     }
