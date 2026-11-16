@@ -536,6 +536,15 @@ test-only PR. Docker Hub overview edits still publish through the small
   `docs/RELEASING.md` → Merge queue), a queue run applies the same rule to the
   queue commit against its base (300 files or more run everything). The rule is
   the `changes` job in `.github/workflows/ci.yml`.
+- **Nix build scope:** the optional flake workflow uses the shared
+  `.github/scripts/ci_scope.py` detector on pull requests, main pushes and merge
+  groups. Documentation and test-only edits, including inline tests and
+  `docs/install/nix.md`, produce an explicit successful skip. Runtime/mixed
+  changes, flake/config/lockfiles, bundled logos, license data and the shared
+  runtime CI harness still build; unknown, failed or truncated change detection
+  runs the build. Merge groups retain the package's mobile and unrelated
+  `.github/` exclusions; the Nix workflow itself always qualifies. Explicit
+  manual/release events remain full, and the existing unsigned-CLA hold remains.
 - **Pass cache:** the heavy jobs in `ci.yml` (Python tests, the Electron jobs,
   UI crawler, Desktop UI, release smoke, smokes) and in `mobile.yml` (iOS, Android and their
   inference tests) skip their steps, and still pass, when their exact inputs
@@ -547,7 +556,16 @@ test-only PR. Docker Hub overview edits still publish through the small
   `main`'s runs save the markers pull requests reuse. Each job lists its
   inputs next to its `ci-pass` step; when a job starts reading a new file
   outside them, add it there. To force a full run, use **Run workflow** on the
-  branch. `tests/test_ci_pass_cache.py` checks the gating.
+  branch. `tests/test_ci_pass_cache.py` checks the gating. Mobile pass keys also
+  include the shared diagnostics policy, destination and golden event fixture.
+  The two iOS pass keys exclude only Android implementation/build subtrees;
+  iOS, shared contracts, native pins and resource-generator inputs still
+  invalidate them. This reuses a prior green result only for pull-request and
+  merge-group runs; the cache never skips main pushes, manual verification or
+  release builds. The iOS screenshot tour waits for a hittable native tab,
+  its selected state and its destination before capturing a screen. A failed
+  navigation records a test failure and stops that tour, rather than collecting
+  screenshots of the previous page; it never retries the tap.
   The `Security` workflow works the same way: CodeQL, bandit and the dependency
   audits are skipped for a PR that only edits files under `docs/` or `mobile/` or
   Markdown, while the secret scan always runs (rule: its own `changes` job).
