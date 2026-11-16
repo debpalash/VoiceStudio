@@ -1042,6 +1042,31 @@
     "title": "Body_detect_audio_watermark_watermark_detect_post",
     "type": "object"
    },
+   "Body_dub_from_srt_dub_from_srt_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     },
+     "source_lang": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Lang"
+     }
+    },
+    "required": [
+     "file"
+    ],
+    "title": "Body_dub_from_srt_dub_from_srt_post",
+    "type": "object"
+   },
    "Body_dub_import_srt_dub_import_srt__job_id__post": {
     "properties": {
      "file": {
@@ -1095,6 +1120,20 @@
      "video"
     ],
     "title": "Body_dub_upload_dub_upload_post",
+    "type": "object"
+   },
+   "Body_dub_validate_srt_dub_validate_srt_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file"
+    ],
+    "title": "Body_dub_validate_srt_dub_validate_srt_post",
     "type": "object"
    },
    "Body_enqueue_batch_job_batch_enqueue_post": {
@@ -12500,6 +12539,43 @@
     "summary": "Dub Export Stems"
    }
   },
+  "/dub/from-srt": {
+   "post": {
+    "description": "Create a speech-only project, with no media preparation or ASR.",
+    "operationId": "dub_from_srt_dub_from_srt_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_dub_from_srt_dub_from_srt_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dub From Srt"
+   }
+  },
   "/dub/generate/{job_id}": {
    "post": {
     "description": "Adds a dub generation job to the async batch task pool.",
@@ -13773,6 +13849,43 @@
      }
     },
     "summary": "Dub Use Downloaded Captions"
+   }
+  },
+  "/dub/validate-srt": {
+   "post": {
+    "description": "Validate a selected subtitle file without starting or changing a job.",
+    "operationId": "dub_validate_srt_dub_validate_srt_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_dub_validate_srt_dub_validate_srt_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dub Validate Srt"
    }
   },
   "/dub/vtt/{job_id}": {
