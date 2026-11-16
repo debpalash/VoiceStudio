@@ -10,6 +10,7 @@ func catalogs() throws -> [String: Data] {
     var catalogs: [String: Data] = [:]
     for path in try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) where path.pathExtension == "json" { catalogs[path.deletingPathExtension().lastPathComponent] = try Data(contentsOf: path) }
     var en = try JSONSerialization.jsonObject(with: #require(catalogs["en"])) as! [String: Any]
+    let rendererEnglish = en
     func merge(_ lhs: inout [String: Any], _ rhs: [String: Any]) {
         for (k,v) in rhs { if var nested = lhs[k] as? [String: Any], let incoming = v as? [String: Any] { merge(&nested, incoming); lhs[k] = nested } else { lhs[k] = v } }
     }
@@ -17,6 +18,7 @@ func catalogs() throws -> [String: Data] {
         let incoming = try JSONSerialization.jsonObject(with: Data(contentsOf: repository.appendingPathComponent("mobile/contract/" + name))) as! [String: Any]
         merge(&en, incoming)
     }
+    merge(&en, rendererEnglish)
     catalogs["en"] = try JSONSerialization.data(withJSONObject: en)
     return catalogs
 }
@@ -77,6 +79,8 @@ func catalogs() throws -> [String: Data] {
         let source = try String(contentsOf: file, encoding: .utf8)
         for match in regex.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
             let key = String(source[Range(match.range(at: 1), in: source)!])
+            // Private diagnostics storage uses this filename, not a UI key.
+            if key == "consent.json" { continue }
             if let suffixes = dynamic[key] { for suffix in suffixes { #expect(l10n.contains(key + suffix), "Missing \(key + suffix)") } }
             else {
                 let exists = l10n.contains(key) || (l10n.contains(key + "_one") && l10n.contains(key + "_other"))
@@ -138,4 +142,39 @@ func publicCleartext(_ host: String) { #expect(!CleartextPolicy.permits(host: ho
     #expect(String(decoding: staged.prefix(512), as: UTF8.self).contains("name=\"video\""))
     var form = Multipart(); form.file("ref_audio", filename: "bad\r\nheader.wav", bytes: data("x"), mime: "audio/wav"); form.finish()
     #expect(!String(decoding: form.data, as: UTF8.self).contains("bad\r\nheader.wav"))
+}
+
+@Test func bundledCatalogsKeepRendererPrivacyAuthoritative() throws {
+    let fileManager = FileManager.default
+    let root = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bundle")
+    let assets = root.appendingPathComponent("Catalogs")
+    try fileManager.createDirectory(at: assets, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: root) }
+    let info: [String: Any] = ["CFBundleIdentifier": "test.voicestudio.catalogs." + UUID().uuidString, "CFBundlePackageType": "BNDL"]
+    try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: root.appendingPathComponent("Info.plist"))
+    let locales = repository.appendingPathComponent("electron/src/renderer/src/i18n/locales")
+    let englishData = try Data(contentsOf: locales.appendingPathComponent("en.json"))
+    let english = try JSONSerialization.jsonObject(with: englishData)
+    let expectedPrivacy = try #require(L10n.flatten(english)["mobile.local.privacy"])
+    try englishData.write(to: assets.appendingPathComponent("en.json"))
+    let frenchData = try Data(contentsOf: locales.appendingPathComponent("fr.json"))
+    let french = try JSONSerialization.jsonObject(with: frenchData)
+    let translatedPrivacy = try #require(L10n.flatten(french)["mobile.local.privacy"])
+    try frenchData.write(to: assets.appendingPathComponent("fr.json"))
+    let sharedURL = repository.appendingPathComponent("mobile/contract/strings.mobile.en.json")
+    var shared = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: sharedURL)) as? [String: Any])
+    shared["diagnostic_fixture_shared"] = "Shared fallback retained"
+    try JSONSerialization.data(withJSONObject: shared).write(to: assets.appendingPathComponent("strings.mobile.en.json"))
+    // Even a platform addition may only supply missing renderer keys.
+    try data(#"{"mobile":{"local":{"privacy":"Obsolete platform privacy"}},"diagnostic_fixture_platform":"Platform fallback retained"}"#)
+        .write(to: assets.appendingPathComponent("strings.ios-additions.en.json"))
+    let bundle = try #require(Bundle(url: root))
+    #expect(bundle.url(forResource: "en", withExtension: "json", subdirectory: "Catalogs") != nil)
+    for locale in ["en", "en-US", "zz-ZZ"] {
+        let loaded = L10n(bundle: bundle, locale: locale)
+        #expect(loaded.t("mobile.local.privacy") == expectedPrivacy)
+        #expect(loaded.t("diagnostic_fixture_shared") == "Shared fallback retained")
+        #expect(loaded.t("diagnostic_fixture_platform") == "Platform fallback retained")
+    }
+    #expect(L10n(bundle: bundle, locale: "fr-CA").t("mobile.local.privacy") == translatedPrivacy)
 }

@@ -19,6 +19,7 @@ struct PhoneJobState: Sendable {
     var error: ClientError?
     var paused = false
     var phase: PhoneJobPhase = .foreground
+    var engineStage: EngineProgress.Stage = .loading
 }
 /// Owns user-started inference independently of screens. Saved steps, rather than an OS grant, provide durability.
 @MainActor @Observable final class PhoneJobs {
@@ -36,6 +37,8 @@ struct PhoneJobState: Sendable {
     var allowCPUFallback = UserDefaults.standard.bool(forKey: "jobs.cpu-fallback") {
         didSet { UserDefaults.standard.set(allowCPUFallback,forKey: "jobs.cpu-fallback") }
     }
+    @ObservationIgnored var diagnosticFailureObservation: (@MainActor () -> CompanionDiagnosticObservation?)?
+    @ObservationIgnored var onFailure: (@MainActor (String, any Error, CompanionDiagnosticObservation?) -> Void)?
     @ObservationIgnored private var tasks: [String:Task<Void,Never>] = [:]
     @ObservationIgnored private var recipes: [String:Recipe] = [:]
     @ObservationIgnored private var modes: [String:NativeComputeMode] = [:]
@@ -82,28 +85,36 @@ struct PhoneJobState: Sendable {
         guard UIApplication.shared.applicationState != .background else {
             states[id] = PhoneJobState(running: false,error: ClientError("mobile.jobs.background_paused"),paused: true,phase: .paused); return false
         }
+        let observation = diagnosticFailureObservation?()
         states[id] = PhoneJobState(); stops[id] = PhoneJobRestartGate(); modes[id] = .automatic
         grants[id] = UIApplication.shared.beginBackgroundTask(withName: id) { Task { @MainActor in self.expireGrant(id: id) } }
         // Foreground acceleration remains the default. A CPU grant can be held ready
         // for the explicit fallback without allowing foreground GPU work in background.
-        launch(id: id,mode: .automatic)
+        launch(id: id,mode: .automatic,observation: observation)
         if recipe.requiresGPU && supportsGPU { requestContinuation(id: id,gpu: true) }
         else if !recipe.requiresGPU || (recipe.allowCPU && recipe.cpuAvailable) { requestContinuation(id: id,gpu: false) }
         return true
     }
-    private func launch(id: String,mode: NativeComputeMode) {
+    private func launch(id: String,mode: NativeComputeMode,observation: CompanionDiagnosticObservation?) {
         guard let recipe = recipes[id] else { return }
         modes[id] = mode
+        // Automatic CPU handoff belongs to the same user-started job. Only an
+        // explicit start/resume in begin observes a new diagnostic grant.
         tasks[id] = Task {
             var cancelled = false
             do {
                 let result = try await NativeExecutionContext.$compute.withValue(mode) {
-                    try await recipe.operation { value in await self.report(id: id,fraction: value.fraction) }
+                    try await recipe.operation { value in await self.report(id: id,fraction: value.fraction,stage: value.stage) }
                 }
                 try Task.checkCancellation()
                 states[id]?.result = result; states[id]?.progress = 1; states[id]?.phase = .completed
             } catch is CancellationError { cancelled = true }
-            catch { states[id]?.error = error as? ClientError ?? ClientError("mobile.errors.file") }
+            catch {
+                let head = id.split(separator: ":", maxSplits: 1).first
+                let stage = states[id]?.engineStage == .loading ? "model_load" : (head == "dub" ? "dub" : (head == "transcript" ? "transcription" : (head == "production" ? "batch" : "generation")))
+                onFailure?(stage, error, observation)
+                states[id]?.error = error as? ClientError ?? ClientError("mobile.errors.file")
+            }
             // NativeLocalEngine waits for the detached worker and its leases to be
             // released before returning cancellation. Only then can a fresh task run.
             let restart = stops[id]?.workerFinished() == true
@@ -111,7 +122,7 @@ struct PhoneJobState: Sendable {
             if cancelled && restart && safePower && grant(id: id) != .none {
                 states[id]?.paused = false; states[id]?.error = nil
                 states[id]?.phase = continued[id] == nil ? .foreground : .continuedCPU
-                launch(id: id,mode: .cpuOnly)
+                launch(id: id,mode: .cpuOnly,observation: observation)
                 return
             }
             if cancelled { states[id]?.paused = true; states[id]?.phase = .paused }
@@ -156,7 +167,8 @@ struct PhoneJobState: Sendable {
         states[id]?.phase = .foreground
         if gpu,let recipe = recipes[id],recipe.allowCPU,recipe.cpuAvailable { requestContinuation(id: id,gpu: false) }
     }
-    private func report(id: String,fraction: Double) {
+    private func report(id: String,fraction: Double,stage: EngineProgress.Stage) {
+        states[id]?.engineStage = stage
         guard fraction.isFinite else { return }
         states[id]?.progress = min(1,max(states[id]?.progress ?? 0,fraction))
         #if compiler(>=6.2)

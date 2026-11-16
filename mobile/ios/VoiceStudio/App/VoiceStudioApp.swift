@@ -12,6 +12,8 @@ import VoiceStudioKit
                 .environment(\.locale, Locale(identifier: model.language.isEmpty ? Locale.current.identifier : model.language))
                 .preferredColorScheme(model.theme.mode == .system ? nil : (model.theme.mode == .light ? .light : .dark))
                 .task {
+                    Task { await model.diagnostics.load() }
+                    model.phone.diagnosticsActivityChanged(active: phase == .active)
                     BackgroundUpload.shared.onReceipt = { model.acceptUpload() }
                     BackgroundMonitor.model = model
                     await model.connection.restore()
@@ -19,13 +21,15 @@ import VoiceStudioKit
                     model.acceptUpload()
                 }
                 .onChange(of: phase) { _, phase in
+                    model.phone.diagnosticsActivityChanged(active: phase == .active)
                     if phase == .active {
                         model.acceptUpload()
                         PhoneInbox.shared.collect()
                         model.monitor()
+                        Task { await model.diagnostics.flush() }
                         Task { await model.phone.refresh() }
                     } else if phase == .inactive { PhoneJobs.shared.enteredInactive() }
-                    else if phase == .background { PhoneJobs.shared.enteredBackground(); BackgroundMonitor.schedule() }
+                    else if phase == .background { PhoneJobs.shared.enteredBackground(); BackgroundMonitor.schedule(); Task { await model.diagnostics.flush() } }
                 }
         }
     }

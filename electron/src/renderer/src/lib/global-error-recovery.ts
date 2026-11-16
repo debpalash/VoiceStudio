@@ -2,13 +2,17 @@ import { isBenignWindowError } from '@shared/utils/foreignErrors';
 import { scrubText } from '@shared/utils/scrub';
 import { openRepairAgent } from '@/lib/repair-agent-events';
 import {
-  captureException,
-  type AnalyticsExceptionStage,
-} from '@shared/utils/analytics';
+  captureDiagnosticException,
+  initializeDiagnosticReporting,
+  observeDiagnosticConsent,
+  type DiagnosticConsentObservation,
+} from './diagnostic-reports';
+import { captureException, type AnalyticsExceptionStage } from '@shared/utils/analytics';
 
 const THROTTLE_MS = 30_000;
 const lastOpened = new Map<string, number>();
 let installed = false;
+const taskObservations = new WeakMap<Promise<unknown>, DiagnosticConsentObservation | null>();
 
 interface EarlyRendererFault {
   kind: 'error' | 'rejection';
@@ -36,7 +40,17 @@ function repair(
   error: unknown,
   filename = '',
   stage: AnalyticsExceptionStage = 'renderer:task',
+  reportDiagnostics = true,
+  observation: DiagnosticConsentObservation | null = null,
 ): void {
+  if (isBenignWindowError(message, error, filename)) return;
+  if (reportDiagnostics)
+    captureDiagnosticException(
+      error,
+      stage === 'renderer:task' ? 'operation_failed' : 'renderer_crash',
+      stage === 'renderer:task' ? 'other' : 'render',
+      observation,
+    );
   if (!shouldRepair(message, error, filename)) return;
   captureException(error, stage);
   const detail = error instanceof Error ? error.stack || error.message : String(error ?? message);
@@ -53,14 +67,40 @@ function repair(
   );
 }
 
+/**
+ * Start a new semantic action under its observed grant and bind its returned promise.
+ * The factory must start the work, not return unknown work already in flight.
+ * Known promises keep their first owner (including OFF); derived promises need
+ * their own producer-bound wrapper, never authority inferred from delivery time.
+ */
+export function rendererTask<T>(task: () => T | PromiseLike<T>): Promise<T> {
+  const observation = observeDiagnosticConsent();
+  let promise: Promise<T>;
+  try {
+    promise = Promise.resolve(task());
+  } catch (error) {
+    promise = Promise.reject(error);
+  }
+  // Weak keys retain no completed work, Error objects, or guessed temporal context.
+  if (!taskObservations.has(promise)) taskObservations.set(promise, observation);
+  return promise;
+}
+
 /** Run an event-triggered task without letting sync throws or promise rejections escape React. */
 export function runRendererTask(label: string, task: () => void | Promise<void>): void {
+  const observation = observeDiagnosticConsent();
   try {
     const result = task();
-    if (result)
-      void Promise.resolve(result).catch((error) => repair(label, error, '', 'renderer:task'));
+    if (result) {
+      const owner = taskObservations.has(result)
+        ? (taskObservations.get(result) ?? null)
+        : observation;
+      void Promise.resolve(result).catch((error) =>
+        repair(label, error, '', 'renderer:task', true, owner),
+      );
+    }
   } catch (error) {
-    repair(label, error, '', 'renderer:task');
+    repair(label, error, '', 'renderer:task', true, observation);
   }
 }
 
@@ -70,6 +110,10 @@ export function installGlobalErrorRecovery(): void {
   installed = true;
   const target = window as EarlyErrorWindow;
   const earlyFaults = target.__voicestudioEarlyFaults?.splice(0) ?? [];
+  // The bootstrap queue predates any observed grant. A later ON response may
+  // reflect another client's new choice, so it cannot authorize this history.
+  // Initialize for subsequent live faults without retaining early Error objects.
+  void initializeDiagnosticReporting();
   target.__voicestudioStopEarlyErrorCapture?.();
   delete target.__voicestudioEarlyFaults;
   window.addEventListener('error', (event) => {
@@ -78,14 +122,25 @@ export function installGlobalErrorRecovery(): void {
     // The fault is now captured in the frontend log and repair-agent report.
     // Mark it handled so Chromium does not add a second noisy "Uncaught" entry.
     event.preventDefault();
-    repair(message, event.error, event.filename, 'renderer:uncaught');
+    // ErrorEvent has no producer identity. A delayed timer/callback fault
+    // cannot acquire current permission merely because it reached this hook.
+    repair(message, event.error, event.filename, 'renderer:uncaught', true, null);
   });
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
     const message = reason?.message || String(reason);
     if (isBenignWindowError(message, reason)) return;
     event.preventDefault();
-    repair(message, reason, '', 'renderer:rejection');
+    // Rejection delivery can follow arbitrary asynchronous cleanup. Only this
+    // exact producer promise can authorize it; an unknown origin stays local.
+    repair(
+      message,
+      reason,
+      '',
+      'renderer:rejection',
+      true,
+      taskObservations.get(event.promise) ?? null,
+    );
   });
   for (const fault of earlyFaults)
     repair(
@@ -93,5 +148,6 @@ export function installGlobalErrorRecovery(): void {
       fault.error,
       fault.filename,
       fault.kind === 'rejection' ? 'renderer:rejection' : 'renderer:uncaught',
+      false,
     );
 }

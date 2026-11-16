@@ -22,6 +22,7 @@ import java.util.UUID
     val workspace=remember {File(context.cacheDir,"dub-exports/${UUID.randomUUID()}")}
     DisposableEffect(Unit) {onDispose {val running=job;running?.cancel();if(running?.isCompleted!=false) workspace.deleteRecursively() else running.invokeOnCompletion {workspace.deleteRecursively()}}}
     Screen(bottomBar={Action("mobile.speak.share",!busy&&target.isNotEmpty()) {
+        val failure=vm.failureHandler()
         val selected=target;val mode=kind;val subtitleStyle=style
         job=scope.launch {
             try {
@@ -34,7 +35,7 @@ import java.util.UUID
                     }
                 }
                 ensureActive();shareLocalFile(context,file,when(mode) {"ass" -> "text/plain";"video" -> "video/mp4";else -> "application/zip"})
-            } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {job=null}
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {job=null}
         }
     }}) {
         Secondary("common.back",!busy,onClose);ScreenTitle("mobile.dub_advanced.exports")

@@ -32,8 +32,9 @@ class AudioEditorSession(application: Application): AndroidViewModel(application
     internal var result by mutableStateOf<AudioEditResult?>(null)
     internal var progress by mutableStateOf(0f)
     internal var work by mutableStateOf<Job?>(null)
-    internal fun perform(fail: (Throwable)->Unit,action: suspend CoroutineScope.()->Unit) {
-        progress=0f;work=viewModelScope.launch {try {action()} catch(e:CancellationException) {throw e} catch(e:Exception) {fail(e)} finally {work=null}}
+    internal fun perform(failure: ()->(Throwable)->Unit,action: suspend CoroutineScope.()->Unit) {
+        val fail=failure()
+        progress=0f;work=viewModelScope.launch {try {action()} catch(e:CancellationException) {throw e} catch(e:Exception) {ensureActive();fail(e)} finally {work=null}}
     }
     override fun onCleared() {val active=work;active?.cancel();if(active?.isCompleted!=false) workspace.deleteRecursively() else active.invokeOnCompletion {workspace.deleteRecursively()};super.onCleared()}
 }
@@ -47,7 +48,8 @@ class AudioEditorSession(application: Application): AndroidViewModel(application
     var format by remember {mutableStateOf("wav")}
     var preview by remember {mutableStateOf<File?>(null)}
     var previewIsTemporary by remember {mutableStateOf(false)}
-    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->if(uri!=null) editor.perform(vm::fail) {
+    var importFailure by remember {mutableStateOf<(Throwable)->Unit>(vm::restoreFailure)}
+    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->if(uri!=null) editor.perform({importFailure}) {
         val source=copyMedia(context,uri,"audio")
         try {
             val fresh=PhoneAudioProcessing.open(source,editor.workspace) {editor.progress=it}
@@ -61,7 +63,7 @@ class AudioEditorSession(application: Application): AndroidViewModel(application
         Secondary("common.back",!running,onBack)
         ScreenTitle("mobile.processing.audio_editor")
         Text(tr("mobile.processing.hint"),color=role("textMuted"))
-        Secondary("mobile.processing.select_audio",!running) {importer.launch(arrayOf("audio/*"))}
+        Secondary("mobile.processing.select_audio",!running) {importFailure=vm.failureHandler();importer.launch(arrayOf("audio/*"))}
         if(document!=null) {
             Text(editor.sourceName)
             val color=role("messageAction");val waveform=tr("mobile.editing.waveform")
@@ -81,14 +83,14 @@ class AudioEditorSession(application: Application): AndroidViewModel(application
             if(options.normalize) AudioSlider("mobile.processing.target_peak",options.targetDB,-24f..-1f,!running) {editor.options=options.copy(targetDB=it)}
             Toggle("mobile.processing.noise_gate",options.noiseGate) {if(!running) editor.options=options.copy(noiseGate=it)}
             if(options.noiseGate) AudioSlider("mobile.processing.gate_threshold",options.gateDB,-80f..-10f,!running) {editor.options=options.copy(gateDB=it)}
-            Secondary("mobile.editing.original",!running) {editor.perform(vm::fail) {
+            Secondary("mobile.editing.original",!running) {editor.perform(vm::failureHandler) {
                 val clip=PhoneAudioProcessing.process(document,AudioEditOptions(start=options.start,end=minOf(options.end ?: document.duration,options.start+30)),editor.workspace)
                 previewIsTemporary=true;preview=clip.file
             }}
             Text(tr("mobile.processing.preview_hint"),style=MaterialTheme.typography.bodySmall,color=role("textMuted"))
         }
         if(running) {LinearProgressIndicator(progress={editor.progress},modifier=Modifier.fillMaxWidth());Secondary("common.cancel") {editor.work?.cancel()}}
-        Action("mobile.processing.process",document!=null&&!running) {editor.perform(vm::fail) {
+        Action("mobile.processing.process",document!=null&&!running) {editor.perform(vm::failureHandler) {
             val fresh=PhoneAudioProcessing.process(requireNotNull(document),options,editor.workspace) {editor.progress=it}
             preview=null
             withContext(Dispatchers.IO) {editor.result?.file?.parentFile?.deleteRecursively()}
@@ -100,12 +102,12 @@ class AudioEditorSession(application: Application): AndroidViewModel(application
             if(editor.rendered!=options) Text(tr("mobile.processing.changed_settings"),color=role("textMuted"))
             Secondary("common.play",!running) {previewIsTemporary=false;preview=result.file}
             if(!running) ChoicePicker("audiobook.format",format,listOf(Choice("wav","WAV"),Choice("m4a","AAC / M4A"),Choice("mp3","MP3"))) {format=it}
-            Secondary("mobile.speak.share",!running&&editor.rendered==options) {editor.perform(vm::fail) {
+            Secondary("mobile.speak.share",!running&&editor.rendered==options) {editor.perform(vm::failureHandler) {
                 val file=BookExport.encode(result.file,format,synthetic=result.synthetic)
                 shareLocalFile(context,file,when(format) {"mp3" -> "audio/mpeg";"m4a" -> "audio/mp4";else -> "audio/wav"})
             }}
         }
-        preview?.let {LocalAudioPlayer(it,vm::fail)}
+        preview?.let {LocalAudioPlayer(it,vm::failureHandler)}
     }
 }
 @Composable private fun AudioNumberField(key: String,value: Double,enabled: Boolean,onChange: (Double)->Unit) {

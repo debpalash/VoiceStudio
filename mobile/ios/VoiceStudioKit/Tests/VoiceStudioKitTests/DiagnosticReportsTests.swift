@@ -1,0 +1,1655 @@
+import Foundation
+import Testing
+@testable import VoiceStudioKit
+
+private final class DiagnosticTestStore: DiagnosticStorage, @unchecked Sendable {
+    let lock = NSLock()
+    private var files: [String: Data] = [:]
+    private var failWrite = false
+    private var failOutboxWrite = false
+    private var failOutboxRemove = false
+    private var attemptedOutbox: Data?
+    private var failOutboxRead = false
+    private var consentReadError: Int?
+    private var consentReads = 0
+    private var revocationReads = 0
+    private var outboxWrites = 0
+    private var failConsentChanges = false
+    private var failRevocationRemoval = false
+    private var failRevocationRead = false
+    private var outboxCommitted: (@Sendable () -> Void)?
+    var blockOutbox = false
+    let entered = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    func waitForEntry() async -> Bool {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { continuation.resume(returning: self.entered.wait(timeout: .now() + 2) == .success) }
+        }
+    }
+    func read(_ name: String, maxBytes: Int) throws -> Data? {
+        try lock.withLock {
+            if name == "consent.json" {
+                consentReads += 1
+                if let consentReadError { throw NSError(domain: NSPOSIXErrorDomain, code: consentReadError) }
+            }
+            if name == "outbox.json" && failOutboxRead { throw DiagnosticFailure.storageUnavailable }
+            if name == "revoked.json" {
+                revocationReads += 1
+                if failRevocationRead { throw DiagnosticFailure.storageUnavailable }
+            }
+            guard let value = files[name] else { return nil }; guard value.count <= maxBytes else { throw DiagnosticFailure.corruptStore }; return value
+        }
+    }
+    func write(_ name: String, data: Data) throws {
+        let blocked = try lock.withLock {
+            if name == "outbox.json" { outboxWrites += 1; attemptedOutbox = data }
+            if failWrite || name == "outbox.json" && failOutboxWrite { throw DiagnosticFailure.storageUnavailable }
+            if name == "consent.json" && failConsentChanges { throw DiagnosticFailure.storageUnavailable }
+            return blockOutbox && name == "outbox.json"
+        }
+        if blocked { entered.signal(); _ = release.wait(timeout: .now() + 5) }
+        let committed = lock.withLock { files[name] = data; return name == "outbox.json" ? outboxCommitted : nil }
+        committed?()
+    }
+    func remove(_ name: String) throws {
+        try lock.withLock {
+            if name == "outbox.json" && failOutboxRemove { throw DiagnosticFailure.storageUnavailable }
+            if name == "consent.json" && failConsentChanges || name == "revoked.json" && failRevocationRemoval { throw DiagnosticFailure.storageUnavailable }
+            files.removeValue(forKey: name)
+        }
+    }
+    func set(_ name: String, _ data: Data) { lock.withLock { files[name] = data } }
+    func failing(_ value: Bool) { lock.withLock { failWrite = value } }
+    func failingOutboxWrites(_ value: Bool) { lock.withLock { failOutboxWrite = value } }
+    func failingOutboxRemovals(_ value: Bool) { lock.withLock { failOutboxRemove = value } }
+    var lastOutboxAttempt: Data? { lock.withLock { attemptedOutbox } }
+    func failingOutboxReads(_ value: Bool) { lock.withLock { failOutboxRead = value } }
+    func failingConsentReads(_ code: Int?) { lock.withLock { consentReadError = code } }
+    var consentReadAttempts: Int { lock.withLock { consentReads } }
+    var revocationReadAttempts: Int { lock.withLock { revocationReads } }
+    var outboxWriteAttempts: Int { lock.withLock { outboxWrites } }
+    func failingConsentChanges(_ value: Bool) { lock.withLock { failConsentChanges = value } }
+    func failingRevocationRemoval(_ value: Bool) { lock.withLock { failRevocationRemoval = value } }
+    func failingRevocationReads(_ value: Bool) { lock.withLock { failRevocationRead = value } }
+    func observeOutboxCommit(_ observer: @escaping @Sendable () -> Void) { lock.withLock { outboxCommitted = observer } }
+    func has(_ name: String) -> Bool { lock.withLock { files[name] != nil } }
+    func data(_ name: String) -> Data? { lock.withLock { files[name] } }
+}
+private final class DiagnosticTestClock: DiagnosticClock, @unchecked Sendable {
+    let lock = NSLock()
+    private var time: Int64 = 1_794_640_000_000
+    func nowMs() -> Int64 { lock.withLock { time } }
+    func advance(_ ms: Int64) { lock.withLock { time += ms } }
+    func sleep(milliseconds: Int) async throws {
+        if milliseconds >= 1000 { try await Task.sleep(for: .milliseconds(milliseconds)) }
+        else { await Task.yield() }
+    }
+}
+private final class DiagnosticTestTransport: DiagnosticTransport, @unchecked Sendable {
+    let lock = NSLock()
+    private let entered = DispatchSemaphore(value: 0)
+    private var sent: [Data] = []
+    private var code = 503
+    private var hold = false
+    private var cancellations = 0
+    private var ignoreCancellation = false
+    var cancellationCount: Int { lock.withLock { cancellations } }
+    private var continuation: CheckedContinuation<Int, any Error>?
+    func set(code: Int) { lock.withLock { self.code = code } }
+    func setHolding(_ hold: Bool) { lock.withLock { self.hold = hold } }
+    func setIgnoringCancellation(_ value: Bool) { lock.withLock { ignoreCancellation = value } }
+    func bodies() -> [Data] { lock.withLock { sent } }
+    func waitForEntry() async -> Bool {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { continuation.resume(returning: self.entered.wait(timeout: .now() + 2) == .success) }
+        }
+    }
+    func send(destination: DiagnosticDestination, body: Data, allowed: @escaping @Sendable () -> Bool) async throws -> Int {
+        try await withCheckedThrowingContinuation { continuation in
+            lock.withLock {
+                guard allowed() else { continuation.resume(throwing: DiagnosticFailure.cancelled); return }
+                sent.append(body)
+                entered.signal()
+                if hold { self.continuation = continuation } else { continuation.resume(returning: code) }
+            }
+        }
+    }
+    func finishHolding(keepHolding: Bool = false) {
+        let result = lock.withLock { hold = keepHolding; let result = (continuation, code); continuation = nil; return result }
+        result.0?.resume(returning: result.1)
+    }
+    func cancelAll() {
+        let pending = lock.withLock { cancellations += 1; let result = ignoreCancellation ? nil : continuation; if !ignoreCancellation { continuation = nil }; return result }
+        pending?.resume(throwing: DiagnosticFailure.cancelled)
+    }
+}
+private func diagnosticTestPolicy() throws -> DiagnosticPolicy {
+    var root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    for _ in 0..<10 {
+        let file = root.appendingPathComponent("config/diagnostics.json")
+        if FileManager.default.fileExists(atPath: file.path) { return try DiagnosticPolicy(data: Data(contentsOf: file)) }
+        root.deleteLastPathComponent()
+    }
+    throw DiagnosticFailure.invalidPolicy
+}
+private final class DiagnosticTestKill: @unchecked Sendable {
+    private let lock=NSLock()
+    private var killed=false
+    var value: Bool { lock.withLock { killed } }
+    func set(_ value: Bool) { lock.withLock { killed=value } }
+}
+private func diagnosticTestReporter(_ store: any DiagnosticStorage, _ transport: any DiagnosticTransport, _ clock: DiagnosticTestClock = DiagnosticTestClock(), appVersion: String = "0.5.9-beta.2", buildCommit: String = String(repeating: "a", count: 40), disabled: @escaping @Sendable () -> Bool = { false }, observation: (@Sendable (DiagnosticWorkerObservation) -> Void)? = nil) throws -> DiagnosticReports {
+    try DiagnosticReports(directory: URL(fileURLWithPath: "/unused-test-diagnostics"), policy: diagnosticTestPolicy(), destination: DiagnosticDestination(site: "localtest123", host: "http://127.0.0.1:1", appUrl: "https://app.test.invalid"), appVersion: appVersion, buildCommit: buildCommit, transport: transport, clock: clock, storage: store, disabled: disabled, observation: observation)
+}
+private func diagnosticObject(_ data: Data) throws -> [String: Any] { try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]) }
+private func diagnosticRecords(_ store: DiagnosticTestStore) throws -> [[String: Any]] {
+    guard let data = store.data("outbox.json") else { return [] }
+    return try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+}
+private func diagnosticEvent() -> DiagnosticInput { DiagnosticInput(category: "generation_failed", stage: "generation", errorType: "TypeError") }
+
+private final class DiagnosticExpiryTransport: DiagnosticTransport, @unchecked Sendable {
+    private let clock: DiagnosticTestClock
+    private let lock = NSLock(); private var calls = 0
+    init(_ clock: DiagnosticTestClock) { self.clock = clock }
+    var count: Int { lock.withLock { calls } }
+    func send(destination: DiagnosticDestination, body: Data, allowed: @escaping @Sendable () -> Bool) async throws -> Int {
+        let first = lock.withLock { calls += 1; return calls == 1 }
+        if first { clock.advance(604800001) }
+        return 503
+    }
+    func cancelAll() {}
+}
+
+extension DiagnosticReportsTests {
+    @Test func expiryIsRecheckedForRetriesAndLaterRecordsInOneBurst() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticTestClock()
+        _ = try await diagnosticSeedSavedOutbox(store)
+        let original = try #require(diagnosticRecords(store).first)
+        var second = original; second["id"] = String(repeating: "b", count: 32)
+        store.set("outbox.json", try JSONSerialization.data(withJSONObject: [original, second]))
+        let transport = DiagnosticExpiryTransport(clock), reports = try diagnosticTestReporter(store, transport, clock)
+        await reports.load(); await reports.flush()
+        #expect(transport.count == 1)
+        #expect(reports.status.pendingCount == 0); #expect(!store.has("outbox.json"))
+        await reports.close()
+    }
+}
+
+private func diagnosticBlockedIntake(recovered: Bool) async throws -> (DiagnosticTestStore, DiagnosticTestTransport, DiagnosticTestClock, DiagnosticReports, Int64) {
+    let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+    transport.set(code: 201)
+    let first = try diagnosticTestReporter(store, transport, clock)
+    try await first.setConsent(true); await first.close()
+    store.failingOutboxReads(true)
+    let reports = try diagnosticTestReporter(store, transport, clock)
+    await reports.load()
+    let stamp = clock.nowMs()
+    if recovered {
+        let context = try #require(reports.recoveryContext)
+        #expect(reports.captureRecovered(DiagnosticInput(category: "app_crash", reason: "crashed"), occurredAtMs: stamp,
+            consentEpoch: context.epoch, recoveryKey: "ios:\(stamp):crashed", reportedAppVersion: "0.5.8-beta.1"))
+    } else { #expect(reports.capture(diagnosticEvent())) }
+    await reports.flush()
+    #expect(reports.status.pendingCount == 1)
+    #expect(transport.bodies().isEmpty)
+    return (store, transport, clock, reports, stamp)
+}
+
+private final class DiagnosticFileCommitProbe: DiagnosticFileSynchronizing, @unchecked Sendable {
+    let directory: URL
+    private let lock = NSLock()
+    private var paths: [String] = []
+    private var failure: String?
+    init(directory: URL) { self.directory = directory }
+    func fail(_ name: String?) { lock.withLock { failure = name } }
+    var commits: [String] { lock.withLock { paths } }
+    func synchronize(_ url: URL) throws {
+        try lock.withLock {
+            paths.append(url.lastPathComponent)
+            if failure == url.lastPathComponent { throw DiagnosticFailure.storageUnavailable }
+        }
+        try SystemDiagnosticFileSynchronizer().synchronize(url)
+    }
+}
+
+@Suite("DiagnosticReports") struct DiagnosticReportsTests {
+    @Test(arguments: [false, true], [false, true]) func pendingIntakeHonorsTTLBeforePublicationAndDelivery(_ recovered: Bool, _ expired: Bool) async throws {
+        let (store, transport, clock, reports, stamp) = try await diagnosticBlockedIntake(recovered: recovered)
+        let writes = store.outboxWriteAttempts
+        clock.advance(604800000 + (expired ? 1 : 0))
+        store.failingOutboxReads(false)
+        await reports.flush()
+        #expect(transport.bodies().count == (expired ? 0 : 1))
+        #expect(store.outboxWriteAttempts == writes + (expired ? 0 : 1))
+        #expect(!store.has("outbox.json")); #expect(reports.status.pendingCount == 0)
+        if !expired {
+            let body = try #require(transport.bodies().first)
+            #expect(try diagnosticObject(body)["ts"] as? Int64 == stamp)
+        }
+        await reports.close()
+    }
+    @Test(arguments: [false, true]) func expiredPendingIntakeCannotBePersistedDuringClose(_ recovered: Bool) async throws {
+        let (store, transport, clock, reports, _) = try await diagnosticBlockedIntake(recovered: recovered)
+        let writes = store.outboxWriteAttempts
+        clock.advance(604800001)
+        store.failingOutboxReads(false)
+        await reports.close()
+        #expect(transport.bodies().isEmpty)
+        #expect(store.outboxWriteAttempts == writes)
+        #expect(!store.has("outbox.json")); #expect(reports.status.pendingCount == 0)
+    }
+    @Test func defaultOffIndependentAndNoPreConsentPersistence() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticTestReporter(store, transport)
+        #expect(!reports.capture(diagnosticEvent(), error: URLError(.timedOut)))
+        #expect(!store.has("consent.json")); #expect(!store.has("outbox.json"))
+        await reports.load()
+        #expect(!reports.status.enabled); #expect(transport.bodies().isEmpty)
+        try await reports.setConsent(true)
+        #expect(reports.capture(diagnosticEvent())); await reports.flush()
+        #expect(!transport.bodies().isEmpty); await reports.close()
+    }
+    @Test func captureDoesNotWaitForBlockedPersistence() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticTestReporter(store, transport); try await reports.setConsent(true)
+        store.lock.withLock { store.blockOutbox = true }
+        #expect(reports.capture(diagnosticEvent()))
+        #expect(await store.waitForEntry())
+        let start = ContinuousClock.now
+        #expect(reports.capture(diagnosticEvent()))
+        #expect(start.duration(to: .now) < .milliseconds(100))
+        store.lock.withLock { store.blockOutbox = false }; store.release.signal()
+        await reports.close()
+    }
+    @Test func projectsClosedMetadataAndReleasesErrorPayload() async throws {
+        final class Payload {}
+        final class SecretError: Error, @unchecked Sendable { let payload: Payload; init(_ payload: Payload) { self.payload = payload } }
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticTestReporter(store, transport); try await reports.setConsent(true)
+        weak var weakPayload: Payload?
+        autoreleasepool {
+            let payload = Payload(); weakPayload = payload
+            #expect(reports.capture(DiagnosticInput(category: "hf_secret", stage: "/home/private", errorType: "private voice", engineID: "secret model", frames: [DiagnosticFrame(path: "/home/secret.swift", line: 1)], reason: "private"), error: SecretError(payload)))
+        }
+        #expect(weakPayload == nil)
+        await reports.flush(); await reports.close()
+        let saved = try #require(diagnosticRecords(store).first)
+        let props = try #require(saved["props"] as? [String: Any])
+        #expect(props["category"] as? String == "operation_failed"); #expect(props["error_type"] as? String == "OtherError")
+        #expect(props["engine_id"] as? String == "unknown"); #expect(props["frames"] == nil)
+        #expect(!String(decoding: try #require(store.data("outbox.json")), as: UTF8.self).contains("secret"))
+    }
+    @Test func durableReplayPreservesIdentityAndTimestamp() async throws {
+        let store = DiagnosticTestStore(), first = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+        let reports = try diagnosticTestReporter(store, first, clock); try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); await reports.flush(); await reports.close()
+        let saved = try #require(diagnosticRecords(store).first)
+        let delivery = DiagnosticTestTransport(); delivery.set(code: 201)
+        let next = try diagnosticTestReporter(store, delivery, clock); await next.load(); await next.flush()
+        let body = try diagnosticObject(#require(delivery.bodies().first))
+        #expect(body["id"] as? String == saved["id"] as? String); #expect(body["ts"] as? Int64 == saved["timestamp_ms"] as? Int64)
+        #expect(!store.has("outbox.json")); await next.close()
+    }
+    @Test func withdrawalCancelsInFlightPurgesAndMintsNewEpoch() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(); transport.setHolding(true)
+        let reports = try diagnosticTestReporter(store, transport); try await reports.setConsent(true)
+        let old = try #require(reports.recoveryContext?.epoch)
+        reports.capture(diagnosticEvent())
+        #expect(await transport.waitForEntry())
+        #expect(transport.bodies().count == 1)
+        try await reports.setConsent(false); await reports.flush()
+        #expect(!reports.status.enabled); #expect(reports.recoveryContext == nil); #expect(!store.has("outbox.json"))
+        #expect(!reports.capture(diagnosticEvent())); #expect(transport.bodies().count == 1)
+        try await reports.setConsent(true); #expect(reports.recoveryContext?.epoch != old); await reports.close()
+    }
+    @Test func recoveredCrashRequiresEpochTimeAndCanonicalHistoricalVersion() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock(); transport.set(code: 201)
+        let reports = try diagnosticTestReporter(store, transport, clock); try await reports.setConsent(true)
+        let context = try #require(reports.recoveryContext); clock.advance(1000)
+        let occurred = clock.nowMs(), key = "ios:\(clock.nowMs()):crashed", input = DiagnosticInput(category: "app_crash", reason: "crashed")
+        #expect(!reports.captureRecovered(input, occurredAtMs: context.enabledAtMs - 1, consentEpoch: context.epoch, recoveryKey: "ios:\(context.enabledAtMs - 1):crashed", reportedAppVersion: "0.5.8-beta.1"))
+        #expect(!reports.captureRecovered(input, occurredAtMs: occurred, consentEpoch: String(repeating: "f", count: 32), recoveryKey: key, reportedAppVersion: "0.5.8-beta.1"))
+        #expect(!reports.captureRecovered(input, occurredAtMs: occurred, consentEpoch: context.epoch, recoveryKey: key, reportedAppVersion: "0.5.8-secret-token"))
+        for _ in 0..<2 {
+            #expect(reports.captureRecovered(input, occurredAtMs: occurred, consentEpoch: context.epoch, recoveryKey: key, reportedAppVersion: "0.5.8-beta.1")); await reports.flush()
+        }
+        let bodies = try transport.bodies().map(diagnosticObject)
+        #expect(Set(bodies.compactMap { $0["id"] as? String }).count == 1)
+        let props = try #require(bodies.first?["props"] as? [String: Any])
+        #expect(props["app_version"] as? String == "0.5.8-beta.1"); #expect(props["build_commit"] == nil)
+        #expect(reports.captureRecovered(DiagnosticInput(category: "app_crash", reason: "killed"), occurredAtMs: occurred, consentEpoch: context.epoch, recoveryKey: "ios:\(occurred):killed", reportedAppVersion: "0.5.8b1")); await reports.flush()
+        #expect(try diagnosticObject(#require(transport.bodies().last))["props"].flatMap { $0 as? [String: Any] }?["app_version"] as? String == "0.5.8b1")
+        #expect(reports.captureRecovered(input, occurredAtMs: occurred, consentEpoch: context.epoch, recoveryKey: "ios:\(occurred):oom")); await reports.flush()
+        #expect(try diagnosticObject(#require(transport.bodies().last))["props"].flatMap { $0 as? [String: Any] }?["app_version"] == nil)
+        await reports.close()
+    }
+    @Test func legacyConsentCannotRecoverHistoryAndExpiredRecordsAreDropped() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+        let reports = try diagnosticTestReporter(store, transport, clock); try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); await reports.flush(); await reports.close()
+        var consent = try diagnosticObject(#require(store.data("consent.json"))); consent.removeValue(forKey: "enabled_at_ms")
+        store.set("consent.json", try JSONSerialization.data(withJSONObject: consent))
+        let legacy = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock); await legacy.load(); #expect(legacy.recoveryContext == nil); await legacy.close()
+        clock.advance(604800001)
+        let expired = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock); await expired.load(); await expired.flush(); #expect(!store.has("outbox.json")); await expired.close()
+        store.set("consent.json", Data("{broken".utf8)); store.set("outbox.json", Data("[]".utf8))
+        let broken = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock); await broken.load(); #expect(!broken.status.enabled); #expect(!store.has("outbox.json")); await broken.close()
+    }
+    @Test func boundedQueueExpectedCancellationAndConsentWriteFailure() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticTestReporter(store, transport); try await reports.setConsent(true)
+        #expect(!reports.capture(diagnosticEvent(), error: CancellationError()))
+        for line in 1...100 { reports.capture(DiagnosticInput(category: "generation_failed", frames: [DiagnosticFrame(path: "backend/core/tasks.py", line: line)])) }
+        await reports.close()
+        #expect(try diagnosticRecords(store).count <= 64); #expect((store.data("outbox.json")?.count ?? 0) <= 524288)
+        let next = try diagnosticTestReporter(store, DiagnosticTestTransport()); await next.load(); store.failing(true)
+        do { try await next.setConsent(false); Issue.record("Expected unavailable consent storage") } catch {}
+        #expect(!next.capture(diagnosticEvent())); store.failing(false); await next.close()
+    }
+    #if os(macOS)
+    @Test(arguments: [false, true]) func realLocalHTTPUsesPublicEndpointAndDoesNotFollowRedirect(_ appIntake: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-http-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = directory.appendingPathComponent("requests.json")
+        let script = """
+import http.server,json,sys,socket
+socket.getfqdn=lambda host:host
+requests=[]
+class Handler(http.server.BaseHTTPRequestHandler):
+ def do_POST(self):
+  requests.append({'path':self.path,'headers':dict(self.headers),'body':self.rfile.read(int(self.headers['Content-Length'])).decode()})
+  with open(sys.argv[1],'w',encoding='utf-8') as f:json.dump(requests,f)
+  self.send_response((202 if self.path.endswith('/app-events') else 201) if len(requests)==1 else 302)
+  if len(requests)>1:self.send_header('Location','http://127.0.0.1:'+str(self.server.server_port)+'/private')
+  self.end_headers()
+  self.wfile.write(b'{"accepted":1,"dropped":[]}')
+ def log_message(self,*args):pass
+server=http.server.HTTPServer(('127.0.0.1',0),Handler)
+print(server.server_port,flush=True)
+server.serve_forever()
+"""
+        let process = try TestProcess(["python3", "-c", script, output.path]); defer { process.stop() }
+        let port = try process.port(within: 5)
+        let app = appIntake ? try DiagnosticAppConfiguration(appID: "native01", ingestKey: "smk_" + String(repeating: "a", count: 39), host: "http://127.0.0.1:\(port)") : nil
+        let destination = try DiagnosticDestination(site: "localtest123", host: "http://127.0.0.1:\(port)", appUrl: "https://app.test.invalid", app: app)
+        let transport = URLSessionDiagnosticTransport()
+        if appIntake {
+            let reply = try await transport.sendApp(destination: destination, body: Data("{\"site\":\"native01\",\"events\":[{}]}".utf8), userAgent: "VoiceStudio/0.5.9-beta.3 (ios; arm64)", allowed: { true })
+            #expect(reply.status == 202); #expect(diagnosticAppCompleted(reply, count: 1) == [0])
+            #expect(try await transport.sendApp(destination: destination, body: Data("{}".utf8), userAgent: "VoiceStudio/0.5.9-beta.3 (ios; arm64)", allowed: { true }).status == 302)
+        } else {
+            #expect(try await transport.send(destination: destination, body: Data("{\"v\":1}".utf8), allowed: { true }) == 201)
+            #expect(try await transport.send(destination: destination, body: Data("{}".utf8), allowed: { true }) == 302)
+        }
+        let requests = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: output)) as? [[String: Any]])
+        #expect(requests.count == 2); #expect(requests.first?["path"] as? String == (appIntake ? "/api/public/v1/app-events" : "/api/public/v1/events"))
+        let headers = try #require(requests.first?["headers"] as? [String: String])
+        #expect(headers["Origin"] == (appIntake ? nil : "https://app.test.invalid")); #expect(headers["Authorization"] == nil); #expect(headers["Cookie"] == nil); #expect(headers["Referer"] == nil)
+        #expect(headers["X-Supermetry-Key"] == app?.ingestKey)
+        if appIntake { #expect(headers["User-Agent"] == "VoiceStudio/0.5.9-beta.3 (ios; arm64)") }
+        else { #expect(requests.first?["body"] as? String == "{\"v\":1}") }
+        transport.cancelAll()
+    }
+    #endif
+}
+
+extension DiagnosticReportsTests {
+@Test func diagnosticKillSwitchMatchesExistingAnalyticsTruthiness() {
+    for value in ["1", "true", "YES", " ON ", "True"] { #expect(diagnosticKillSwitch(value)) }
+    for value in ["", "0", "false", "off", "private-value"] { #expect(!diagnosticKillSwitch(value)) }
+    #expect(!diagnosticKillSwitch(nil))
+}
+}
+
+extension DiagnosticReportsTests {
+    @Test func quotedConsentScalarsNeverBecomePermission() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticTestClock()
+        let first = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock); try await first.setConsent(true); await first.close()
+        let original = try diagnosticObject(#require(store.data("consent.json")))
+        for (key, value) in [("enabled", "true"), ("version", "1"), ("enabled_at_ms", String(clock.nowMs()))] {
+            var variant = original; variant[key] = value
+            store.set("consent.json", try JSONSerialization.data(withJSONObject: variant))
+            let transport = DiagnosticTestTransport()
+            let next = try diagnosticTestReporter(store, transport, clock)
+            await next.load(); #expect(!next.status.enabled); #expect(!next.capture(diagnosticEvent())); #expect(transport.bodies().isEmpty); await next.close()
+        }
+    }
+    @Test func invalidRecoveryEnableTimeDoesNotInventHistory() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticTestClock()
+        let first = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock); try await first.setConsent(true); await first.close()
+        let original = try diagnosticObject(#require(store.data("consent.json")))
+        for stamp in [Int64(0), clock.nowMs() + 60001] {
+            var variant = original; variant["enabled_at_ms"] = stamp
+            store.set("consent.json", try JSONSerialization.data(withJSONObject: variant))
+            let next = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock); await next.load()
+            #expect(next.status.enabled); #expect(next.recoveryContext == nil); await next.close()
+        }
+    }
+    @Test func closeIsTerminalAndCannotBeReopenedByConsent() async throws {
+        let store = DiagnosticTestStore(), reports = try diagnosticTestReporter(store, DiagnosticTestTransport())
+        try await reports.setConsent(true); await reports.close(); try await reports.setConsent(true)
+        #expect(!reports.status.enabled); #expect(!reports.capture(diagnosticEvent())); await reports.close()
+    }
+    @Test func failedRecordHasBoundedRetryEligibilityAcrossNewFailures() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticTestReporter(store, transport); try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); await reports.flush()
+        let firstBody = try #require(transport.bodies().first)
+        let firstObject = try diagnosticObject(firstBody)
+        let firstID = try #require(firstObject["id"] as? String)
+        #expect(try transport.bodies().map(diagnosticObject).filter { $0["id"] as? String == firstID }.count == 3)
+        reports.capture(DiagnosticInput(category: "model_load_failed", stage: "model_load")); await reports.flush()
+        #expect(try transport.bodies().map(diagnosticObject).filter { $0["id"] as? String == firstID }.count == 3)
+        await reports.close()
+    }
+}
+
+extension DiagnosticReportsTests {
+    @Test func failedWithdrawalCannotReloadAnOldEnabledGrant() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticTestClock()
+        let first = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock)
+        try await first.setConsent(true)
+        #expect(first.status.enabled)
+        store.failing(true)
+        do { try await first.setConsent(false); Issue.record("Expected consent save failure") } catch {}
+        #expect(!first.status.enabled)
+        await first.close()
+        store.failing(false)
+        let next = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock)
+        await next.load()
+        #expect(!next.status.enabled)
+        #expect(!next.capture(diagnosticEvent()))
+        await next.close()
+    }
+}
+
+extension DiagnosticReportsTests {
+    @Test func recoveryGroupsPreserveIdentityCountsAndVersionAcrossUpgrade() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticTestClock()
+        let first = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock); try await first.setConsent(true)
+        let context = try #require(first.recoveryContext); clock.advance(1000)
+        let key = "ios:\(clock.nowMs()):crashed", input = DiagnosticInput(category: "app_crash", reason: "crashed", signal: "SIGSEGV")
+        #expect(first.captureRecovered(input, occurredAtMs: clock.nowMs(), consentEpoch: context.epoch, recoveryKey: key, reportedAppVersion: "0.5.9-beta.2", occurrenceCount: 3))
+        await first.flush(); await first.close()
+        let saved = try #require(diagnosticRecords(store).first)
+        let next = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock, appVersion: "0.5.10-beta.1", buildCommit: String(repeating: "b", count: 40))
+        await next.load(); await next.flush()
+        #expect(next.captureRecovered(input, occurredAtMs: clock.nowMs(), consentEpoch: context.epoch, recoveryKey: key, reportedAppVersion: "0.5.9-beta.2", occurrenceCount: 3))
+        await next.flush(); await next.close()
+        let replayed = try #require(diagnosticRecords(store).first)
+        #expect(saved["id"] as? String == replayed["id"] as? String)
+        #expect(saved["timestamp_ms"] as? Int64 == replayed["timestamp_ms"] as? Int64)
+        let props = try #require(replayed["props"] as? [String: Any])
+        #expect(props["occurrences"] as? Int == 3); #expect(props["build_commit"] == nil)
+    }
+    @Test func recoverySignalsAndVersionsWithinSameWindowDoNotCollide() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticTestClock()
+        let reports = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock); try await reports.setConsent(true)
+        let context = try #require(reports.recoveryContext); clock.advance(1000)
+        let key = "ios:\(clock.nowMs()):crashed", input = DiagnosticInput(category: "app_crash", reason: "crashed", signal: "SIGSEGV")
+        #expect(!reports.captureRecovered(input, occurredAtMs: clock.nowMs(), consentEpoch: context.epoch, recoveryKey: key, reportedAppVersion: "0.5.8-beta.1", occurrenceCount: 0))
+        #expect(reports.captureRecovered(input, occurredAtMs: clock.nowMs(), consentEpoch: context.epoch, recoveryKey: key, reportedAppVersion: "0.5.8-beta.1", occurrenceCount: 2))
+        #expect(reports.captureRecovered(DiagnosticInput(category: "app_crash", reason: "crashed", signal: "SIGILL"), occurredAtMs: clock.nowMs(), consentEpoch: context.epoch, recoveryKey: key, reportedAppVersion: "0.5.8-beta.1"))
+        #expect(reports.captureRecovered(input, occurredAtMs: clock.nowMs(), consentEpoch: context.epoch, recoveryKey: key, reportedAppVersion: "0.5.9-beta.2"))
+        await reports.close()
+        let records = try diagnosticRecords(store)
+        #expect(Set(records.compactMap { $0["id"] as? String }).count == 3)
+        #expect(records.compactMap { ($0["props"] as? [String: Any])?["occurrences"] as? Int }.sorted() == [1, 1, 2])
+    }
+}
+
+extension DiagnosticReportsTests {
+    @Test func cocoaUserCancellationNeverQueuesOrSends() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticTestReporter(store, transport); try await reports.setConsent(true)
+        #expect(!reports.capture(diagnosticEvent(), error: CocoaError(.userCancelled)))
+        await reports.flush(); await reports.close()
+        #expect(transport.bodies().isEmpty); #expect(!store.has("outbox.json"))
+    }
+}
+
+extension DiagnosticReportsTests {
+    @Test func hardKillRevokesOldGrantAndPreventsUnkillHistoryReplay() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticTestClock(), kill = DiagnosticTestKill()
+        let first = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock, disabled: { kill.value })
+        try await first.setConsent(true)
+        let oldEpoch = try #require(first.recoveryContext?.epoch)
+        first.capture(diagnosticEvent()); await first.flush(); await first.close()
+        kill.set(true)
+        let killed = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock, disabled: { kill.value }); await killed.load()
+        #expect(!killed.status.available)
+        _ = try? await killed.setConsent(true)
+        await killed.close(); kill.set(false)
+        let transport = DiagnosticTestTransport(), next = try diagnosticTestReporter(store, transport, clock, disabled: { kill.value })
+        await next.load(); await next.flush()
+        #expect(!next.status.enabled); #expect(!next.capture(diagnosticEvent())); #expect(next.recoveryContext == nil); #expect(transport.bodies().isEmpty)
+        try await next.setConsent(true); #expect(next.recoveryContext?.epoch != oldEpoch); await next.close()
+    }
+}
+
+extension DiagnosticReportsTests {
+    @Test func hardKillWithoutPriorGrantCreatesNoIdentityOrFiles() async throws {
+        let store = DiagnosticTestStore(), reports = try diagnosticTestReporter(store, DiagnosticTestTransport(), disabled: { true })
+        await reports.load()
+        #expect(!reports.status.available); #expect(!reports.capture(diagnosticEvent()))
+        #expect(!store.has("consent.json")); #expect(!store.has("outbox.json")); await reports.close()
+    }
+    @Test func hardKillSaveFailureIsVisibleAndRemovedGrantStaysOffOnRestart() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticTestClock(), kill = DiagnosticTestKill()
+        let first = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock, disabled: { kill.value })
+        try await first.setConsent(true); await first.close()
+        kill.set(true); store.failing(true)
+        let killed = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock, disabled: { kill.value }); await killed.load()
+        #expect(killed.status.consentSaveFailed); #expect(!killed.status.enabled); await killed.close()
+        store.failing(false); kill.set(false)
+        let next = try diagnosticTestReporter(store, DiagnosticTestTransport(), clock, disabled: { kill.value }); await next.load()
+        #expect(!next.status.enabled); await next.close()
+    }
+}
+
+extension DiagnosticReportsTests {
+    @Test func bootstrapRevocationNeedsNoPolicyOrDestination() async throws {
+        let store = DiagnosticTestStore(), first = try diagnosticTestReporter(store, DiagnosticTestTransport())
+        try await first.setConsent(true); first.capture(diagnosticEvent()); await first.flush(); await first.close()
+        let success = await DiagnosticReports.revokeStoredConsent(directory: URL(fileURLWithPath: "/unused-test-store"), storage: store)
+        #expect(success)
+        let consent = try diagnosticObject(#require(store.data("consent.json")))
+        #expect(consent["enabled"] as? Bool == false); #expect(!store.has("outbox.json"))
+        let next = try diagnosticTestReporter(store, DiagnosticTestTransport()); await next.load()
+        #expect(!next.status.enabled); #expect(next.recoveryContext == nil); await next.close()
+        let empty = DiagnosticTestStore()
+        #expect(await DiagnosticReports.revokeStoredConsent(directory: URL(fileURLWithPath: "/unused-test-store"), storage: empty))
+        #expect(!empty.has("consent.json")); #expect(!empty.has("outbox.json"))
+    }
+}
+
+private func diagnosticWaitForEvent(_ event: DispatchSemaphore) async -> Bool {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.global().async { continuation.resume(returning: event.wait(timeout: .now() + 5) == .success) }
+    }
+}
+private final class DiagnosticStaleWriteStore: DiagnosticStorage, @unchecked Sendable {
+    let firstEntered=DispatchSemaphore(value: 0), releaseFirst=DispatchSemaphore(value: 0)
+    let secondEntered=DispatchSemaphore(value: 0), releaseSecond=DispatchSemaphore(value: 0)
+    private let lock=NSLock()
+    private var files: [String:Data]=[:]
+    private var writes=0
+    func read(_ name: String,maxBytes: Int) throws -> Data? { lock.withLock { files[name] } }
+    func remove(_ name: String) throws { _ = lock.withLock { files.removeValue(forKey: name) } }
+    func write(_ name: String,data: Data) throws {
+        // An initial decline publishes only the anonymous tombstone; both
+        // files represent a consent choice, unlike outbox bookkeeping.
+        if name=="consent.json" || name=="revoked.json" {
+            let count=lock.withLock { writes += 1; return writes }
+            if count==1 { firstEntered.signal(); _ = releaseFirst.wait(timeout: .now()+5); throw DiagnosticFailure.storageUnavailable }
+            if count==2 { secondEntered.signal(); _ = releaseSecond.wait(timeout: .now()+5) }
+        }
+        lock.withLock { files[name]=data }
+    }
+}
+extension DiagnosticReportsTests {
+    @Test func staleWriteFailureDoesNotMarkNewerPendingChoiceAsFailed() async throws {
+        let store=DiagnosticStaleWriteStore(), transport=DiagnosticTestTransport()
+        let reports=try diagnosticTestReporter(store,transport)
+        let stale=Task { _ = try? await reports.setConsent(true) }
+        #expect(await diagnosticWaitForEvent(store.firstEntered))
+        let latest=Task { _ = try? await reports.setConsent(false) }
+        let deadline=ContinuousClock.now.advanced(by: .seconds(5))
+        while transport.cancellationCount<2 && ContinuousClock.now<deadline { await Task.yield() }
+        #expect(transport.cancellationCount>=2)
+        store.releaseFirst.signal()
+        #expect(await diagnosticWaitForEvent(store.secondEntered))
+        await stale.value
+        // The latest write is deliberately still pending, so its state cannot
+        // be cleared by its own success before observing the stale failure.
+        #expect(!reports.status.consentSaveFailed)
+        store.releaseSecond.signal(); await latest.value
+        #expect(!reports.status.enabled); #expect(reports.status.prompted)
+        #expect(try store.read("consent.json", maxBytes: 4096) == nil)
+        #expect(try store.read("revoked.json", maxBytes: 4096) != nil)
+        await reports.close()
+    }
+}
+
+extension DiagnosticReportsTests {
+    @Test @MainActor func persistedPreConsentUploadReceiptDoesNotReportAfterOptIn() async throws {
+        let suite="diagnostic-upload-"+UUID().uuidString
+        let defaults=try #require(UserDefaults(suiteName:suite));defer{defaults.removePersistentDomain(forName:suite)}
+        let pending=PendingUpload(host:"http://127.0.0.1:3900/",jobID:"old-upload",languages:[DubLanguage(code:"es",name:"Spanish")],profile:"",file:URL(fileURLWithPath:"/private/old-clip.multipart"))
+        let ledger=DubUploadLedger(defaults:defaults);try ledger.begin(pending)
+        #expect(ledger.complete(UploadReceipt(pending:pending,upload:nil,failure:ClientError("mobile.errors.server",params:["message":"PRIVATE_OLD_CONTENT"],status:500))))
+        let uploader=BackgroundUpload(configuration:.ephemeral,defaults:defaults)
+        let store=DiagnosticTestStore(),transport=DiagnosticTestTransport();transport.set(code:201)
+        let reports=try diagnosticTestReporter(store,transport);try await reports.setConsent(true)
+        uploader.setDiagnosticFailureHandler { input, _ in _ = reports.capture(input) }
+        #expect(uploader.takeReceipt(host:pending.host)?.failure != nil)
+        await reports.flush()
+        #expect(transport.bodies().isEmpty)
+        uploader.setDiagnosticFailureHandler(nil);await reports.close()
+    }
+    #if os(macOS)
+    @Test @MainActor func liveUploadFailureReportsOnlyWhileOptedInAndExcludesAuth() async throws {
+        for (consent,status,expected) in [(true,500,1),(false,500,0),(true,401,0),(true,422,0)] {
+            let script="""
+import http.server,socket,sys
+socket.getfqdn = lambda name='': name
+class Host(http.server.BaseHTTPRequestHandler):
+ def do_POST(self):
+  self.rfile.read(int(self.headers.get('Content-Length','0')))
+  body=b'{"detail":"PRIVATE_LIVE_CONTENT"}'
+  self.send_response(int(sys.argv[1]));self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+ def log_message(self,*args):pass
+host=http.server.HTTPServer(('127.0.0.1',0),Host);print(host.server_port,flush=True);host.serve_forever()
+"""
+            let host=try TestProcess(["python3","-u","-c",script,String(status)]);defer{host.stop()}
+            let port=try host.port(within:5)
+            let directory=FileManager.default.temporaryDirectory.appendingPathComponent("live-diagnostic-upload-"+UUID().uuidString)
+            try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true);defer{try? FileManager.default.removeItem(at:directory)}
+            let suite="live-diagnostic-upload-"+UUID().uuidString
+            let defaults=try #require(UserDefaults(suiteName:suite));defer{defaults.removePersistentDomain(forName:suite)}
+            let uploader=BackgroundUpload(configuration:.ephemeral,defaults:defaults,stagingDirectory:directory)
+            let store=DiagnosticTestStore(),transport=DiagnosticTestTransport();transport.set(code:201)
+            let reports=try diagnosticTestReporter(store,transport);await reports.load()
+            if consent {try await reports.setConsent(true)}
+            uploader.setDiagnosticFailureHandler { input, _ in _ = reports.capture(input) }
+            let source=directory.appendingPathComponent("test.wav");try Data("RIFF-test-upload".utf8).write(to:source)
+            let api=APIClient(address:try PairingAddress("http://127.0.0.1:\(port)/"))
+            try await uploader.start(source:source,api:api,languages:[DubLanguage(code:"es",name:"Spanish")],profile:"",audioOnly:true)
+            for _ in 0..<250 where uploader.receipt==nil {try await Task.sleep(for:.milliseconds(20))}
+            #expect(uploader.receipt?.failure != nil)
+            await reports.flush()
+            #expect(transport.bodies().count==expected)
+            #expect(!transport.bodies().contains{String(decoding:$0,as:UTF8.self).contains("PRIVATE_LIVE_CONTENT")})
+            uploader.setDiagnosticFailureHandler(nil);await reports.close()
+        }
+    }
+    #endif
+}
+
+extension DiagnosticReportsTests {
+    @Test func uploadCompletionTreatsCocoaUserCancellationAsExpected() {
+        let pending=PendingUpload(host:"http://127.0.0.1:3900/",jobID:"cancelled",languages:[],profile:"",file:URL(fileURLWithPath:"/unused-test-upload"))
+        let result=UploadCompletion.resolve(pending:pending,reply:HTTPReply(data:Data(),status:0),error:CocoaError(.userCancelled),authenticated:false,background:false)
+        if case .cancelled=result {} else { Issue.record("User cancellation must not become a failure observation") }
+    }
+}
+
+#if os(macOS)
+private final class DiagnosticBlockedUploadDefaults: UserDefaults, @unchecked Sendable {
+    let receiptEntered=DispatchSemaphore(value:0),releaseReceipt=DispatchSemaphore(value:0)
+    override func set(_ value: Any?,forKey key: String) {
+        if key=="uploadReceipt",value != nil { receiptEntered.signal();_ = releaseReceipt.wait(timeout:.now()+5) }
+        super.set(value,forKey:key)
+    }
+}
+extension DiagnosticReportsTests {
+    @Test @MainActor func blockedUploadLedgerCannotRetroactivelyUseLaterConsent() async throws {
+        for initiallyEnabled in [false,true] {
+            let script="""
+import http.server,socket
+socket.getfqdn = lambda name='': name
+class Host(http.server.BaseHTTPRequestHandler):
+ def do_POST(self):
+  self.rfile.read(int(self.headers.get('Content-Length','0')));body=b'{"detail":"PRIVATE_BLOCKED_UPLOAD"}'
+  self.send_response(500);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+ def log_message(self,*args):pass
+host=http.server.HTTPServer(('127.0.0.1',0),Host);print(host.server_port,flush=True);host.serve_forever()
+"""
+            let host=try TestProcess(["python3","-u","-c",script]);defer{host.stop()}
+            let port=try host.port(within:5)
+            let directory=FileManager.default.temporaryDirectory.appendingPathComponent("blocked-diagnostic-upload-"+UUID().uuidString)
+            try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true);defer{try? FileManager.default.removeItem(at:directory)}
+            let suite="blocked-diagnostic-upload-"+UUID().uuidString
+            let defaults=try #require(DiagnosticBlockedUploadDefaults(suiteName:suite));defer{defaults.removePersistentDomain(forName:suite)}
+            let uploader=BackgroundUpload(configuration:.ephemeral,defaults:defaults,stagingDirectory:directory)
+            let store=DiagnosticTestStore(),transport=DiagnosticTestTransport(),clock=DiagnosticTestClock();transport.set(code:201)
+            clock.advance(SystemDiagnosticClock().nowMs()-clock.nowMs())
+            let reports=try diagnosticTestReporter(store,transport,clock);await reports.load()
+            if initiallyEnabled {
+                try await reports.setConsent(true)
+                let context=try #require(reports.recoveryContext)
+                uploader.setDiagnosticFailureHandler{ input,stamp in _ = reports.captureRecovered(input,occurredAtMs:stamp,consentEpoch:context.epoch,recoveryKey:"ios:\(stamp):unknown",reportedAppVersion:context.appVersion) }
+            }
+            let source=directory.appendingPathComponent("test.wav");try Data("RIFF-test-upload".utf8).write(to:source)
+            let api=APIClient(address:try PairingAddress("http://127.0.0.1:\(port)/"))
+            try await uploader.start(source:source,api:api,languages:[DubLanguage(code:"es",name:"Spanish")],profile:"",audioOnly:true)
+            #expect(await diagnosticWaitForEvent(defaults.receiptEntered))
+            if initiallyEnabled {uploader.setDiagnosticFailureHandler(nil);try await reports.setConsent(false)}
+            clock.advance(SystemDiagnosticClock().nowMs()-clock.nowMs());try await reports.setConsent(true)
+            let current=try #require(reports.recoveryContext)
+            uploader.setDiagnosticFailureHandler{ input,stamp in _ = reports.captureRecovered(input,occurredAtMs:stamp,consentEpoch:current.epoch,recoveryKey:"ios:\(stamp):unknown",reportedAppVersion:current.appVersion) }
+            defaults.releaseReceipt.signal()
+            for _ in 0..<250 where uploader.receipt==nil {try await Task.sleep(for:.milliseconds(20))}
+            #expect(uploader.receipt?.failure != nil)
+            await reports.flush()
+            #expect(transport.bodies().isEmpty)
+            uploader.setDiagnosticFailureHandler(nil);await reports.close()
+        }
+    }
+}
+#endif
+
+private final class DiagnosticRetryClock: DiagnosticClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var time: Int64 = 1_794_640_000_000
+    private var sleepers: [UUID: (Int64, CheckedContinuation<Void, any Error>)] = [:]
+    private let scheduled = DispatchSemaphore(value: 0)
+    private let cancelled = DispatchSemaphore(value: 0)
+    func nowMs() -> Int64 { lock.withLock { time } }
+    var pendingSleeps: Int { lock.withLock { sleepers.count } }
+    var sleepDeadlines: [Int64] { lock.withLock { sleepers.values.map { $0.0 }.sorted() } }
+    func sleep(milliseconds: Int) async throws {
+        if milliseconds < 1000 {
+            try Task.checkCancellation()
+            lock.withLock { time += Int64(milliseconds) }
+            return
+        }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                lock.withLock {
+                    guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
+                    sleepers[id] = (time + Int64(milliseconds), continuation)
+                    scheduled.signal()
+                }
+            }
+        } onCancel: {
+            let sleeper = self.lock.withLock { self.sleepers.removeValue(forKey: id) }
+            sleeper?.1.resume(throwing: CancellationError())
+            self.cancelled.signal()
+        }
+    }
+    func advance(_ milliseconds: Int64) {
+        let ready = lock.withLock {
+            time += milliseconds
+            let ready = sleepers.filter { $0.value.0 <= time }
+            for id in ready.keys { sleepers.removeValue(forKey: id) }
+            return Array(ready.values)
+        }
+        for sleeper in ready { sleeper.1.resume() }
+    }
+    func waitForSchedule() async -> Bool { await diagnosticWaitForEvent(scheduled) }
+    func waitForCancellation() async -> Bool { await diagnosticWaitForEvent(cancelled) }
+}
+
+extension DiagnosticReportsTests {
+    @Test func scheduledRetryDeliversWithoutAnotherCaptureOrLifecycleEvent() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticRetryClock()
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); await reports.flush()
+        #expect(transport.bodies().count == 3)
+        for _ in 0..<3 { #expect(await transport.waitForEntry()) }
+        try #require(await clock.waitForSchedule())
+        let original = try diagnosticObject(#require(transport.bodies().first))
+        transport.set(code: 201)
+        clock.advance(59999)
+        #expect(transport.bodies().count == 3)
+        clock.advance(1)
+        #expect(await transport.waitForEntry())
+        await reports.flush()
+        #expect(transport.bodies().count == 4)
+        let delivered = try diagnosticObject(#require(transport.bodies().last))
+        #expect(delivered["id"] as? String == original["id"] as? String)
+        #expect(delivered["ts"] as? Int64 == original["ts"] as? Int64)
+        #expect(!store.has("outbox.json")); #expect(reports.status.pendingCount == 0)
+        await reports.close()
+    }
+    @Test func scheduledRetryCancelsOnWithdrawalAndCloseAndCannotCrossConsentEpochs() async throws {
+        for closing in [false, true] {
+            let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticRetryClock()
+            let reports = try diagnosticRetryReporter(store, transport, clock)
+            try await reports.setConsent(true)
+            let oldEpoch = try #require(reports.recoveryContext?.epoch)
+            reports.capture(diagnosticEvent()); await reports.flush()
+            #expect(transport.bodies().count == 3)
+            try #require(await clock.waitForSchedule())
+            if closing { await reports.close() } else { try await reports.setConsent(false) }
+            try #require(await clock.waitForCancellation())
+            clock.advance(60000)
+            #expect(transport.bodies().count == 3)
+            #expect(!reports.capture(diagnosticEvent()))
+            if !closing {
+                transport.set(code: 201)
+                try await reports.setConsent(true)
+                #expect(reports.recoveryContext?.epoch != oldEpoch)
+                await reports.flush()
+                #expect(transport.bodies().count == 3)
+                reports.capture(diagnosticEvent()); await reports.flush()
+                #expect(transport.bodies().count == 4)
+                clock.advance(60000); await reports.flush()
+                #expect(transport.bodies().count == 4)
+                #expect(!store.has("outbox.json"))
+                await reports.close()
+            }
+        }
+    }
+}
+private final class DiagnosticPausedTransport: DiagnosticTransport, @unchecked Sendable {
+    private let lock = NSLock(); private var sent = 0
+    var count: Int { lock.withLock { sent } }
+    func send(destination: DiagnosticDestination, body: Data, allowed: @escaping @Sendable () -> Bool) async throws -> Int { throw DiagnosticFailure.invalidDestination }
+    func sendApp(destination: DiagnosticDestination, body: Data, userAgent: String, allowed: @escaping @Sendable () -> Bool) async throws -> DiagnosticTransportReply {
+        guard allowed() else { throw DiagnosticFailure.cancelled }
+        lock.withLock { sent += 1 }
+        return DiagnosticTransportReply(status: 401)
+    }
+    func cancelAll() {}
+}
+extension DiagnosticReportsTests {
+    @Test func unauthorizedPausesNetworkButAutomaticallyRetriesDurablePublication() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticPausedTransport(), clock = DiagnosticRetryClock()
+        let app = try DiagnosticAppConfiguration(appID: "native01", ingestKey: "smk_" + String(repeating: "a", count: 39), host: "https://intake.example")
+        let reports = try DiagnosticReports(directory: URL(fileURLWithPath: "/unused"), policy: diagnosticTestPolicy(), destination: DiagnosticDestination(site: "legacy01", host: "https://legacy.example", appUrl: "https://app.test.invalid", app: app), appVersion: "0.5.9-beta.3", transport: transport, clock: clock, storage: store, disabled: { false })
+        try await reports.setConsent(true)
+        #expect(reports.capture(diagnosticEvent())); await reports.flush()
+        #expect(transport.count == 1); #expect(try diagnosticRecords(store).count == 1)
+        store.failingOutboxWrites(true)
+        #expect(reports.capture(DiagnosticInput(category: "install_failed"))); await reports.flush()
+        #expect(reports.status.pendingCount == 2); #expect(try diagnosticRecords(store).count == 1)
+        // Observe the actual storage commit, not a manual flush/load/close that
+        // could accidentally repair missing autonomous retry scheduling.
+        let committed = DispatchSemaphore(value: 0)
+        store.observeOutboxCommit { committed.signal() }
+        let attempts = store.outboxWriteAttempts
+        #expect(await clock.waitForSchedule())
+        store.failingOutboxWrites(false); clock.advance(59999)
+        #expect(store.outboxWriteAttempts == attempts)
+        clock.advance(1)
+        #expect(await diagnosticWaitForEvent(committed))
+        #expect(try diagnosticRecords(store).count == 2)
+        #expect(transport.count == 1)
+        #expect(reports.status.pendingCount == 2)
+        await reports.close()
+    }
+}
+private func diagnosticRetryReporter(_ store: DiagnosticTestStore, _ transport: any DiagnosticTransport, _ clock: DiagnosticRetryClock, disabled: @escaping @Sendable () -> Bool = { false }) throws -> DiagnosticReports {
+    try DiagnosticReports(directory: URL(fileURLWithPath: "/unused-test-diagnostics"), policy: diagnosticTestPolicy(), destination: DiagnosticDestination(site: "localtest123", host: "http://127.0.0.1:1", appUrl: "https://app.test.invalid"), appVersion: "0.5.9-beta.2", transport: transport, clock: clock, storage: store, disabled: disabled)
+}
+
+extension DiagnosticReportsTests {
+    @Test func diagnosticDestinationsRequireHTTPSExceptLiteralLoopback() throws {
+        for value in ["https://collector.invalid", "https://localhost:9443", "http://127.0.0.1:3900", "http://[::1]:3900", "http://localhost:3900"] {
+            _ = try DiagnosticDestination(site: "localtest123", host: value, appUrl: "https://app.test.invalid")
+            _ = try DiagnosticDestination(site: "localtest123", host: "https://collector.invalid", appUrl: value + "/app")
+        }
+        for value in ["http://collector.invalid", "http://192.168.1.4", "http://localhost.example.invalid", "http://127.0.0.1.example.invalid", "http://127.0.0.2", "http://127.1", "http://2130706433", "http://[0:0:0:0:0:0:0:1]", "http://%6cocalhost", "https://user:secret@collector.invalid", "https://collector.invalid/#fragment", "https://collector.invalid/?secret"] {
+            #expect(throws: DiagnosticFailure.self) {
+                try DiagnosticDestination(site: "localtest123", host: value, appUrl: "https://app.test.invalid")
+            }
+            #expect(throws: DiagnosticFailure.self) {
+                try DiagnosticDestination(site: "localtest123", host: "https://collector.invalid", appUrl: value)
+            }
+        }
+    }
+}
+
+private final class DiagnosticCommittedTransport: DiagnosticTransport, @unchecked Sendable {
+    private let store: DiagnosticTestStore
+    private let transport = DiagnosticTestTransport()
+    private let lock = NSLock()
+    private var committed: [Bool] = []
+    init(_ store: DiagnosticTestStore) { self.store = store; transport.set(code: 201) }
+    func send(destination: DiagnosticDestination, body: Data, allowed: @escaping @Sendable () -> Bool) async throws -> Int {
+        let identity = try diagnosticObject(body)["id"] as? String
+        let records = try diagnosticRecords(store)
+        lock.withLock { committed.append(identity != nil && records.contains { $0["id"] as? String == identity }) }
+        return try await transport.send(destination: destination, body: body, allowed: allowed)
+    }
+    func cancelAll() { transport.cancelAll() }
+    func bodies() -> [Data] { transport.bodies() }
+    func commits() -> [Bool] { lock.withLock { committed } }
+    func waitForEntry() async -> Bool { await transport.waitForEntry() }
+}
+private func diagnosticSeedSavedOutbox(_ store: DiagnosticTestStore) async throws -> Data {
+    let first = try diagnosticTestReporter(store, DiagnosticTestTransport())
+    try await first.setConsent(true)
+    first.capture(diagnosticEvent()); await first.flush(); await first.close()
+    return try #require(store.data("outbox.json"))
+}
+extension DiagnosticReportsTests {
+    @Test(arguments: [false, true]) func storageRecoveryPreservesReadableReportsAndRetriesWithoutNewEvents(_ failRead: Bool) async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock()
+        let saved = try await diagnosticSeedSavedOutbox(store)
+        let old = try #require(diagnosticRecords(store).first)
+        if failRead { store.failingOutboxReads(true) } else { store.failingOutboxWrites(true) }
+        let transport = DiagnosticCommittedTransport(store)
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        await reports.load(); await reports.flush()
+        #expect(store.data("outbox.json") == saved)
+        #expect(transport.bodies().isEmpty)
+        if !failRead { #expect(reports.status.pendingCount == 1) }
+        try #require(await clock.waitForSchedule())
+        // Repeated flush/capture requests must not spin on the failed storage.
+        let attempts = store.outboxWriteAttempts
+        for _ in 0..<100 { reports.capture(diagnosticEvent()) }
+        await reports.flush()
+        #expect(store.outboxWriteAttempts == attempts)
+        if failRead { #expect(reports.status.droppedCount > 0) }
+        else { #expect(reports.status.pendingCount <= 64) }
+        store.failingOutboxReads(false); store.failingOutboxWrites(false)
+        clock.advance(59999)
+        #expect(transport.bodies().isEmpty)
+        clock.advance(1)
+        try #require(await transport.waitForEntry(), "clock=\(clock.nowMs()) deadlines=\(clock.sleepDeadlines) writes=\(store.outboxWriteAttempts) pending=\(reports.status.pendingCount)")
+        await reports.flush()
+        let delivered = try diagnosticObject(#require(transport.bodies().first))
+        #expect(delivered["id"] as? String == old["id"] as? String)
+        #expect(delivered["ts"] as? Int64 == old["timestamp_ms"] as? Int64)
+        #expect(transport.commits().allSatisfy { $0 })
+        #expect(transport.bodies().count <= 64)
+        #expect(!store.has("outbox.json")); #expect(reports.status.pendingCount == 0)
+        await reports.close()
+    }
+    @Test func storageRecoverySchedulesTheFirstUncommittedCapture() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock()
+        let delivery = DiagnosticCommittedTransport(store)
+        let reports = try diagnosticRetryReporter(store, delivery, clock)
+        try await reports.setConsent(true)
+        store.failingOutboxWrites(true)
+        let capturedAt = clock.nowMs()
+        reports.capture(diagnosticEvent()); await reports.flush()
+        #expect(delivery.bodies().isEmpty); #expect(!store.has("outbox.json"))
+        #expect(reports.status.pendingCount == 1)
+        try #require(await clock.waitForSchedule())
+        store.failingOutboxWrites(false)
+        clock.advance(60000)
+        try #require(await delivery.waitForEntry())
+        await reports.flush()
+        #expect(delivery.bodies().count == 1); #expect(delivery.commits() == [true])
+        #expect(try diagnosticObject(#require(delivery.bodies().first))["ts"] as? Int64 == capturedAt)
+        #expect(!store.has("outbox.json")); await reports.close()
+    }
+    @Test(arguments: ["off", "kill", "close"]) func storageRecoveryWakeCannotOutliveConsent(_ action: String) async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock(), kill = DiagnosticTestKill()
+        let transport = DiagnosticCommittedTransport(store)
+        let reports = try diagnosticRetryReporter(store, transport, clock, disabled: { kill.value })
+        try await reports.setConsent(true)
+        let oldEpoch = try #require(reports.recoveryContext?.epoch)
+        store.failingOutboxWrites(true)
+        reports.capture(diagnosticEvent()); await reports.flush()
+        try #require(await clock.waitForSchedule())
+        if action == "close" { await reports.close() }
+        else if action == "kill" { kill.set(true); await reports.load() }
+        else { try await reports.setConsent(false) }
+        #expect(clock.pendingSleeps == 0)
+        store.failingOutboxWrites(false); kill.set(false); clock.advance(60000)
+        #expect(transport.bodies().isEmpty); #expect(!reports.capture(diagnosticEvent()))
+        if action != "close" {
+            try await reports.setConsent(true)
+            #expect(reports.recoveryContext?.epoch != oldEpoch)
+            await reports.flush(); #expect(transport.bodies().isEmpty)
+            reports.capture(diagnosticEvent()); await reports.flush()
+            #expect(transport.bodies().count == 1); #expect(transport.commits() == [true])
+            await reports.close()
+        }
+    }
+}
+
+extension DiagnosticReportsTests {
+    @Test func joiningFlushServicesIntakeAcceptedDuringTheHeldFirstSend() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        transport.set(code: 201); transport.setHolding(true)
+        let joined = DispatchSemaphore(value: 0)
+        let reports = try diagnosticTestReporter(store, transport, observation: { _ in joined.signal() })
+        try await reports.setConsent(true)
+        let epoch = try #require(reports.recoveryContext?.epoch)
+        #expect(reports.capture(diagnosticEvent(), expectedEpoch: epoch))
+        try #require(await transport.waitForEntry())
+        #expect(reports.capture(DiagnosticInput(category: "install_failed"), expectedEpoch: epoch))
+        let joining = Task { await reports.flush(); return transport.bodies().count }
+        try #require(await diagnosticWaitForEvent(joined))
+        transport.finishHolding()
+        let deliveredAtReturn = await joining.value
+        #expect(deliveredAtReturn == 2)
+        await reports.close()
+    }
+    @Test func joiningFlushHonorsStorageCooldownWithoutWaitingForAnotherCapture() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+        transport.set(code: 201); transport.setHolding(true)
+        let joined = DispatchSemaphore(value: 0)
+        let reports = try diagnosticTestReporter(store, transport, clock, observation: { _ in joined.signal() })
+        try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); try #require(await transport.waitForEntry())
+        store.failingOutboxWrites(true)
+        reports.capture(DiagnosticInput(category: "install_failed"))
+        let joining = Task { await reports.flush() }
+        try #require(await diagnosticWaitForEvent(joined))
+        let attempts = store.outboxWriteAttempts
+        transport.finishHolding(); await joining.value
+        #expect(transport.bodies().count == 1)
+        #expect(store.outboxWriteAttempts == attempts + 1)
+        await reports.flush()
+        #expect(store.outboxWriteAttempts == attempts + 1)
+        store.failingOutboxWrites(false); clock.advance(60000)
+        await reports.flush(); #expect(transport.bodies().count == 2)
+        await reports.close()
+    }
+    @Test(arguments: ["off", "reenable", "close"]) func joiningFlushCannotOutliveItsObservedGrant(_ change: String) async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        transport.set(code: 201); transport.setHolding(true); transport.setIgnoringCancellation(true)
+        let joined = DispatchSemaphore(value: 0)
+        let reports = try diagnosticTestReporter(store, transport, observation: { _ in joined.signal() })
+        try await reports.setConsent(true)
+        let epoch = try #require(reports.recoveryContext?.epoch)
+        reports.capture(diagnosticEvent(), expectedEpoch: epoch); try #require(await transport.waitForEntry())
+        reports.capture(DiagnosticInput(category: "install_failed"), expectedEpoch: epoch)
+        let completed = DispatchSemaphore(value: 0)
+        let joining = Task { await reports.flush(); completed.signal() }
+        try #require(await diagnosticWaitForEvent(joined))
+        if change == "close" { await reports.close() }
+        else {
+            try await reports.setConsent(false)
+            if change == "reenable" {
+                try await reports.setConsent(true)
+                let current = try #require(reports.recoveryContext?.epoch)
+                #expect(current != epoch)
+                reports.capture(DiagnosticInput(category: "backend_crash"), expectedEpoch: current)
+            }
+        }
+        transport.finishHolding(keepHolding: true)
+        let returned = await diagnosticWaitForEvent(completed)
+        #expect(returned)
+        transport.finishHolding(); await joining.value
+        if change == "reenable" { await reports.flush() }
+        let categories = try transport.bodies().map { try diagnosticObject($0)["props"] as? [String: Any] }.compactMap { $0?["category"] as? String }
+        #expect(!categories.contains("install_failed"))
+        if change == "reenable" { #expect(categories.contains("backend_crash")) }
+        await reports.close()
+    }
+    @Test func joiningFlushDoesNotWaitForIntakeAcceptedAfterItsFollowUpBegan() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        transport.set(code: 201); transport.setHolding(true)
+        let joined = DispatchSemaphore(value: 0)
+        let reports = try diagnosticTestReporter(store, transport, observation: { _ in joined.signal() })
+        try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); try #require(await transport.waitForEntry())
+        reports.capture(DiagnosticInput(category: "install_failed"))
+        let completed = DispatchSemaphore(value: 0)
+        let joining = Task { await reports.flush(); completed.signal() }
+        try #require(await diagnosticWaitForEvent(joined))
+        transport.finishHolding(keepHolding: true)
+        try #require(await transport.waitForEntry())
+        reports.capture(DiagnosticInput(category: "backend_crash"))
+        transport.finishHolding(keepHolding: true)
+        let returned = await diagnosticWaitForEvent(completed)
+        #expect(returned)
+        transport.finishHolding(); await joining.value
+        await reports.flush(); #expect(transport.bodies().count == 3)
+        await reports.close()
+    }
+    @Test func revocationOwnerEpochRejectsEarlierLiveOperations() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        transport.set(code: 201)
+        let reports = try diagnosticTestReporter(store, transport)
+        try await reports.setConsent(true)
+        let old = try #require(reports.recoveryContext?.epoch)
+        try await reports.setConsent(false); try await reports.setConsent(true)
+        let current = try #require(reports.recoveryContext?.epoch)
+        #expect(current != old)
+        #expect(!reports.capture(diagnosticEvent(), expectedEpoch: old))
+        #expect(!reports.capture(diagnosticEvent(), expectedEpoch: ""))
+        #expect(reports.capture(diagnosticEvent(), expectedEpoch: current))
+        #expect(reports.capture(DiagnosticInput(category: "install_failed")))
+        await reports.flush()
+        #expect(transport.bodies().count == 2)
+        await reports.close()
+    }
+    @Test func revocationSurvivesLockedOldConsentAndRetriesDurableOff() async throws {
+        let store = DiagnosticTestStore()
+        _ = try await diagnosticSeedSavedOutbox(store)
+        let old = try diagnosticObject(#require(store.data("consent.json")))
+        let clock = DiagnosticRetryClock(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        await reports.load(); await reports.flush()
+        store.failingConsentChanges(true)
+        do { try await reports.setConsent(false); Issue.record("Locked consent must report its save failure") } catch {}
+        #expect(!reports.status.enabled); #expect(!reports.status.optedIn); #expect(reports.status.prompted)
+        #expect(try diagnosticObject(#require(store.data("consent.json")))["enabled"] as? Bool == true)
+        #expect(try diagnosticObject(#require(store.data("revoked.json"))).keys.sorted() == ["version"])
+        #expect(!store.has("outbox.json"))
+        await reports.close()
+
+        let nextClock = DiagnosticRetryClock(), delivery = DiagnosticCommittedTransport(store)
+        let next = try diagnosticRetryReporter(store, delivery, nextClock)
+        await next.load(); await next.flush()
+        #expect(!next.status.enabled); #expect(!next.capture(diagnosticEvent()))
+        #expect(delivery.bodies().isEmpty)
+        try #require(await nextClock.waitForSchedule())
+        store.failingConsentChanges(false)
+        nextClock.advance(60000)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while next.status.consentSaveFailed && ContinuousClock.now < deadline { await Task.yield() }
+        #expect(!next.status.consentSaveFailed)
+        #expect(!next.status.enabled)
+        try await next.setConsent(true)
+        let current = try diagnosticObject(#require(store.data("consent.json")))
+        #expect(current["epoch"] as? String != old["epoch"] as? String)
+        #expect(current["profile_id"] as? String != old["profile_id"] as? String)
+        #expect(!store.has("revoked.json")); await next.close()
+    }
+    @Test func revocationMustClearBeforeFreshOptInCanEnable() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticTestReporter(store, transport)
+        try await reports.setConsent(true); try await reports.setConsent(false)
+        store.failingRevocationRemoval(true)
+        do { try await reports.setConsent(true); Issue.record("A retained tombstone must prevent opt-in") } catch {}
+        #expect(!reports.status.enabled); #expect(!reports.status.optedIn)
+        #expect(!reports.capture(diagnosticEvent())); await reports.flush()
+        #expect(transport.bodies().isEmpty)
+        store.failingRevocationRemoval(false)
+        try await reports.setConsent(true); #expect(reports.status.enabled)
+        #expect(!store.has("revoked.json")); await reports.close()
+    }
+    @Test func revocationDeclineDoesNotCreateAnInstallIdentity() async throws {
+        let store = DiagnosticTestStore(), reports = try diagnosticTestReporter(store, DiagnosticTestTransport())
+        await reports.load(); try await reports.setConsent(false)
+        #expect(!store.has("consent.json")); #expect(reports.recoveryContext == nil)
+        #expect(try diagnosticObject(#require(store.data("revoked.json"))).keys.sorted() == ["version"])
+        await reports.close()
+        let next = try diagnosticTestReporter(store, DiagnosticTestTransport()); await next.load()
+        #expect(next.status.prompted); #expect(!next.status.enabled); #expect(!store.has("consent.json"))
+        await next.close()
+    }
+    @Test(arguments: [false, true]) func revocationPresentOrUnreadableBlocksRestart(_ unreadable: Bool) async throws {
+        let store = DiagnosticTestStore(); _ = try await diagnosticSeedSavedOutbox(store)
+        store.set("revoked.json", Data("{invalid-tombstone".utf8)); store.failingRevocationReads(unreadable)
+        let transport = DiagnosticTestTransport(), reports = try diagnosticTestReporter(store, transport)
+        await reports.load(); await reports.flush()
+        #expect(!reports.status.enabled); #expect(!reports.capture(diagnosticEvent()))
+        #expect(transport.bodies().isEmpty); await reports.close()
+    }
+    @Test func fileStorageChecksPublishedFileAndParentBeforeAcknowledgingWrite() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-commit-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let probe = DiagnosticFileCommitProbe(directory: directory)
+        let storage = FileDiagnosticStorage(directory: directory, synchronizer: probe)
+        let marker = Data("{\"version\":1}".utf8)
+        try storage.write("revoked.json", data: marker)
+        #expect(probe.commits == ["revoked.json", directory.lastPathComponent])
+        #expect(try storage.read("revoked.json", maxBytes: 4096) == marker)
+    }
+    @Test(arguments: [false, true]) func fileStoreBarrierFailureCannotEnableAFormerlyWithdrawnGrant(directoryFailure: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-commit-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let probe = DiagnosticFileCommitProbe(directory: directory)
+        let storage = FileDiagnosticStorage(directory: directory, synchronizer: probe)
+        let transport = DiagnosticTestTransport()
+        let reports = try diagnosticTestReporter(storage, transport)
+        try await reports.setConsent(false)
+        probe.fail(directoryFailure ? directory.lastPathComponent : "consent.json")
+        do { try await reports.setConsent(true); Issue.record("Uncommitted opt-in must fail") } catch {}
+        #expect(!reports.status.enabled); #expect(reports.status.consentSaveFailed)
+        let accepted = reports.capture(diagnosticEvent())
+        #expect(!accepted)
+        #expect(try storage.read("revoked.json", maxBytes: 4096) != nil)
+        probe.fail(nil); await reports.close()
+        let next = try diagnosticTestReporter(FileDiagnosticStorage(directory: directory), transport)
+        await next.load(); await next.flush()
+        #expect(!next.status.enabled); #expect(transport.bodies().isEmpty)
+        await next.close()
+    }
+    @Test(arguments: [false, true]) func firstOptInBarrierFailureStaysOffBeforeCloseOrRetry(directoryFailure: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-first-commit-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let probe = DiagnosticFileCommitProbe(directory: directory)
+        let storage = FileDiagnosticStorage(directory: directory, synchronizer: probe)
+        let transport = DiagnosticTestTransport(), reports = try diagnosticTestReporter(storage, transport)
+        #expect(try storage.read("consent.json", maxBytes: 4096) == nil)
+        #expect(try storage.read("revoked.json", maxBytes: 4096) == nil)
+        probe.fail(directoryFailure ? directory.lastPathComponent : "consent.json")
+        do { try await reports.setConsent(true); Issue.record("Uncommitted first opt-in must fail") } catch {}
+        #expect(!reports.status.enabled); #expect(reports.status.consentSaveFailed)
+        probe.fail(nil)
+        // Inspect restart authority before closing the failed owner, so close's
+        // cleanup cannot accidentally supply the revocation being tested.
+        let next = try diagnosticTestReporter(FileDiagnosticStorage(directory: directory), transport)
+        await next.load(); await next.flush()
+        #expect(!next.status.enabled); #expect(!next.capture(diagnosticEvent()))
+        #expect(transport.bodies().isEmpty)
+        await next.close(); await reports.close()
+    }
+    @Test func failedOffDirectoryBarrierRemainsClosedAndOffOnRestart() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-commit-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let probe = DiagnosticFileCommitProbe(directory: directory)
+        let storage = FileDiagnosticStorage(directory: directory, synchronizer: probe)
+        let transport = DiagnosticTestTransport(), reports = try diagnosticTestReporter(storage, transport)
+        try await reports.setConsent(true)
+        probe.fail(directory.lastPathComponent)
+        do { try await reports.setConsent(false); Issue.record("Uncommitted OFF must expose the storage failure") } catch {}
+        #expect(!reports.status.enabled)
+        let accepted = reports.capture(diagnosticEvent())
+        #expect(!accepted)
+        probe.fail(nil); await reports.close()
+        let next = try diagnosticTestReporter(FileDiagnosticStorage(directory: directory), transport)
+        await next.load(); await next.flush()
+        #expect(!next.status.enabled); #expect(transport.bodies().isEmpty)
+        await next.close()
+    }
+    @Test func revocationPrivateFileIsSupportedByProductionStorage() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-revocation-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = FileDiagnosticStorage(directory: directory), marker = Data("{\"version\":1}".utf8)
+        try storage.write("revoked.json", data: marker)
+        #expect(try storage.read("revoked.json", maxBytes: 4096) == marker)
+        #expect(throws: DiagnosticFailure.self) { try storage.write("../revoked.json", data: marker) }
+        try storage.remove("revoked.json")
+        try FileManager.default.createSymbolicLink(atPath: directory.appendingPathComponent("revoked.json").path, withDestinationPath: directory.appendingPathComponent("absent-target").path)
+        #expect(throws: DiagnosticFailure.self) { try storage.read("revoked.json", maxBytes: 4096) }
+        try storage.remove("revoked.json")
+        #expect(try storage.read("revoked.json", maxBytes: 4096) == nil)
+    }
+}
+
+private final class DiagnosticRevokingTransport: DiagnosticTransport, @unchecked Sendable {
+    private let store: DiagnosticTestStore
+    private let unreadable: Bool
+    private let lock = NSLock()
+    private var sends = 0
+    init(_ store: DiagnosticTestStore, unreadable: Bool) { self.store = store; self.unreadable = unreadable }
+    var count: Int { lock.withLock { sends } }
+    func send(destination: DiagnosticDestination, body: Data, allowed: @escaping @Sendable () -> Bool) async throws -> Int {
+        guard allowed() else { throw DiagnosticFailure.cancelled }
+        lock.withLock { sends += 1 }
+        if unreadable { store.failingRevocationReads(true) }
+        else { store.set("revoked.json", Data("{\"version\":1}".utf8)) }
+        return 503
+    }
+    func cancelAll() {}
+}
+extension DiagnosticReportsTests {
+    @Test(arguments: [false, true]) func revocationIsCheckedBeforeEveryDeliveryAttempt(_ unreadable: Bool) async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticRevokingTransport(store, unreadable: unreadable)
+        let reports = try diagnosticTestReporter(store, transport)
+        try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); await reports.flush()
+        #expect(transport.count == 1)
+        #expect(!reports.status.enabled); #expect(!reports.capture(diagnosticEvent()))
+        await reports.close()
+    }
+}
+
+
+extension DiagnosticReportsTests {
+    @Test(arguments: [false, true]) func bootstrapHardKillCleanupRetriesWithoutAReporterAndHonorsCancellation(_ cancel: Bool) async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock()
+        _ = try await diagnosticSeedSavedOutbox(store)
+        store.failing(true); store.failingConsentChanges(true)
+        #expect(await DiagnosticReports.revokeStoredConsent(directory: URL(fileURLWithPath: "/unused"), storage: store) == false)
+        let reads = store.consentReadAttempts
+        let retry = Task { await DiagnosticReports.retryStoredRevocation(directory: URL(fileURLWithPath: "/unused"), storage: store, clock: clock, onAttempt: { _ in }) }
+        try #require(await clock.waitForSchedule())
+        store.failing(false); store.failingConsentChanges(false)
+        clock.advance(59999); #expect(store.consentReadAttempts == reads)
+        if cancel { retry.cancel() }
+        clock.advance(1); await retry.value
+        if cancel { #expect(store.consentReadAttempts == reads) }
+        else {
+            #expect(store.has("revoked.json"))
+            let reloaded = try diagnosticTestReporter(store, DiagnosticTestTransport()); await reloaded.load()
+            #expect(!reloaded.status.enabled); #expect(!reloaded.capture(diagnosticEvent())); await reloaded.close()
+        }
+    }
+    @Test func unreadRevocationMarkerPreservesGrantAndOutboxUntilReadRecovers() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock()
+        let saved = try await diagnosticSeedSavedOutbox(store)
+        let grant = try #require(store.data("consent.json"))
+        let original = try #require(diagnosticRecords(store).first)
+        store.failingRevocationReads(true)
+        let transport = DiagnosticCommittedTransport(store), reports = try diagnosticRetryReporter(store, transport, clock)
+        await reports.load(); await reports.flush()
+        #expect(!reports.status.enabled); #expect(!reports.capture(diagnosticEvent()))
+        #expect(store.data("outbox.json") == saved); #expect(store.data("consent.json") == grant)
+        #expect(!store.has("revoked.json")); #expect(transport.bodies().isEmpty)
+        try #require(await clock.waitForSchedule())
+        store.failingRevocationReads(false); clock.advance(60000)
+        try #require(await transport.waitForEntry()); await reports.flush()
+        let deliveredData = try #require(transport.bodies().first)
+        let delivered = try diagnosticObject(deliveredData)
+        #expect(delivered["id"] as? String == original["id"] as? String)
+        #expect(store.data("consent.json") == grant); #expect(reports.status.enabled)
+        await reports.close()
+    }
+    @Test(arguments: [5, 13]) func unreadConsentPreservesReportsAndSchedulesSameGrantRecovery(_ code: Int) async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock()
+        let saved = try await diagnosticSeedSavedOutbox(store)
+        let grant = try #require(store.data("consent.json"))
+        let original = try #require(diagnosticRecords(store).first)
+        store.failingConsentReads(code)
+        let transport = DiagnosticCommittedTransport(store)
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        await reports.load(); await reports.flush()
+        #expect(!reports.status.enabled && !reports.status.optedIn)
+        #expect(!reports.capture(diagnosticEvent()))
+        #expect(store.data("outbox.json") == saved)
+        #expect(store.data("consent.json") == grant)
+        #expect(transport.bodies().isEmpty)
+        try #require(await clock.waitForSchedule())
+        let attempts = store.consentReadAttempts
+        for _ in 0..<20 { await reports.load(); await reports.flush() }
+        #expect(store.consentReadAttempts == attempts)
+        store.failingConsentReads(nil)
+        clock.advance(59999)
+        #expect(transport.bodies().isEmpty)
+        clock.advance(1)
+        try #require(await transport.waitForEntry())
+        await reports.flush()
+        let delivered = try diagnosticObject(#require(transport.bodies().first))
+        #expect(delivered["id"] as? String == original["id"] as? String)
+        #expect(delivered["ts"] as? Int64 == original["timestamp_ms"] as? Int64)
+        #expect(store.data("consent.json") == grant)
+        #expect(reports.status.enabled && reports.capture(diagnosticEvent()))
+        await reports.close()
+    }
+
+    @Test(arguments: ["off", "regrant", "close"]) func unreadConsentRetryCannotCrossNewChoiceOrClose(_ control: String) async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock()
+        _ = try await diagnosticSeedSavedOutbox(store)
+        let grant = try #require(store.data("consent.json"))
+        store.failingConsentReads(13)
+        let transport = DiagnosticTestTransport(); transport.set(code: 201)
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        await reports.load()
+        try #require(await clock.waitForSchedule())
+        if control == "close" { await reports.close() }
+        else { try await reports.setConsent(control == "regrant") }
+        try #require(await clock.waitForCancellation())
+        store.failingConsentReads(nil); clock.advance(60000)
+        await reports.flush()
+        #expect(transport.bodies().isEmpty)
+        if control == "regrant" {
+            #expect(store.data("consent.json") != grant)
+            #expect(reports.capture(diagnosticEvent()))
+            await reports.flush(); #expect(transport.bodies().count == 1)
+        } else { #expect(!reports.capture(diagnosticEvent())) }
+        await reports.close()
+    }
+
+    @Test(arguments: [false, true]) func absentOrInvalidConsentRemainsKnownOffWithoutRetry(_ invalid: Bool) async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock()
+        store.set("outbox.json", Data("[]".utf8))
+        if invalid { store.set("consent.json", Data("{invalid".utf8)) }
+        let reports = try diagnosticRetryReporter(store, DiagnosticTestTransport(), clock)
+        await reports.load()
+        #expect(!reports.status.enabled && !reports.capture(diagnosticEvent()))
+        #expect(!store.has("outbox.json"))
+        #expect(clock.pendingSleeps == 0)
+        if !invalid { #expect(!store.has("consent.json")) }
+        await reports.close()
+    }
+    @Test func failedWithdrawalRemainsOffAcrossConsentReadRecovery() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        try await reports.setConsent(true)
+        let original = try #require(store.data("consent.json"))
+        store.failing(true); store.failingConsentChanges(true)
+        do { try await reports.setConsent(false); Issue.record("Failed OFF must surface its save failure") } catch {}
+        #expect(store.data("consent.json") == original)
+        store.failingRevocationReads(true)
+        await reports.load()
+        try #require(await clock.waitForSchedule())
+        store.failingRevocationReads(false)
+        clock.advance(60000)
+        await reports.load()
+        #expect(!reports.status.enabled && !reports.status.optedIn)
+        #expect(!reports.capture(diagnosticEvent()))
+        #expect(reports.status.consentSaveFailed)
+        await reports.flush(); #expect(transport.bodies().isEmpty)
+        store.failing(false); store.failingConsentChanges(false)
+        clock.advance(60000); await reports.load()
+        #expect(!reports.status.enabled)
+        await reports.close()
+        let restarted = try diagnosticTestReporter(store, DiagnosticTestTransport())
+        await restarted.load(); #expect(!restarted.status.enabled)
+        await restarted.close()
+    }
+
+    @Test(arguments: [false, true]) func queuedWithdrawalSurvivesCloseActorHop(_ failPersistence: Bool) async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        let closed = DispatchSemaphore(value: 0)
+        let reports = try diagnosticTestReporter(store, transport, observation: { event in
+            if case .closeInvalidated = event { closed.signal() }
+        })
+        try await reports.setConsent(true)
+        store.lock.withLock { store.blockOutbox = true }
+        #expect(reports.capture(diagnosticEvent()))
+        try #require(await store.waitForEntry())
+        let off = Task { () -> Bool in
+            do { try await reports.setConsent(false); return true } catch { return false }
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while reports.status.enabled && ContinuousClock.now < deadline { await Task.yield() }
+        #expect(!reports.status.enabled && !reports.capture(diagnosticEvent()))
+        if failPersistence { store.failing(true); store.failingConsentChanges(true) }
+        let closing = Task { await reports.close() }
+        // Wait for the actual close gate before releasing the blocked actor.
+        try #require(await diagnosticWaitForEvent(closed))
+        store.lock.withLock { store.blockOutbox = false }; store.release.signal()
+        await closing.value
+        #expect(await off.value == !failPersistence)
+        #expect(!reports.status.enabled && !reports.capture(diagnosticEvent()))
+        #expect(transport.bodies().isEmpty)
+        if failPersistence { #expect(reports.status.consentSaveFailed) }
+        else {
+            let restarted = try diagnosticTestReporter(store, DiagnosticTestTransport())
+            await restarted.load(); #expect(!restarted.status.enabled)
+            #expect(!restarted.capture(diagnosticEvent())); await restarted.close()
+        }
+    }
+
+    @Test func explicitUnreadConsentRetryRestoresOnlyReadableAuthority() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock(), transport = DiagnosticTestTransport()
+        _ = try await diagnosticSeedSavedOutbox(store)
+        let original = try #require(store.data("consent.json"))
+        store.failingConsentReads(13)
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        await reports.load()
+        #expect(!reports.consentReady && !reports.status.enabled)
+        #expect(!reports.capture(diagnosticEvent()))
+        try #require(await clock.waitForSchedule())
+        let reads = store.consentReadAttempts
+        await reports.load(); #expect(store.consentReadAttempts == reads)
+        store.failingConsentReads(nil)
+        await reports.load(retryUnread: true)
+        #expect(reports.consentReady && reports.status.enabled)
+        #expect(store.data("consent.json") == original)
+        try await reports.setConsent(false)
+        #expect(reports.consentReady && !reports.status.enabled)
+        await reports.close(); #expect(!reports.consentReady)
+    }
+
+}
+
+extension DiagnosticReportsTests {
+    @Test(arguments: ["missing", "saved", "malformed", "oversized", "read-error"])
+    func sameGrantRereadPreservesUnpublishedReportsAndOccurrenceCounts(_ saved: String) async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+        let reports = try diagnosticTestReporter(store, transport, clock)
+        try await reports.setConsent(true)
+        if saved != "missing" { reports.capture(diagnosticEvent()); await reports.flush() }
+        store.failingOutboxWrites(true)
+        if saved != "missing" { reports.capture(diagnosticEvent()) }
+        reports.capture(DiagnosticInput(category: "engine_failed"))
+        await reports.flush(); clock.advance(60000); await reports.flush()
+        let attempted = try #require(store.lastOutboxAttempt)
+        let expected = try #require(JSONSerialization.jsonObject(with: attempted) as? [[String: Any]])
+        #expect(expected.count == (saved == "missing" ? 1 : 2))
+        if saved == "malformed" { store.set("outbox.json", Data("{invalid".utf8)) }
+        if saved == "oversized" { store.set("outbox.json", Data(repeating: 0, count: 524289)) }
+        store.failingRevocationReads(true); await reports.load(retryUnread: true)
+        #expect(!reports.status.enabled)
+        #expect(!reports.capture(diagnosticEvent()))
+        store.failingRevocationReads(false); store.failingOutboxWrites(false)
+        if saved == "read-error" { store.failingOutboxReads(true) }
+        await reports.load(retryUnread: true)
+        store.failingOutboxReads(false); clock.advance(60000); await reports.flush()
+        let restored = try diagnosticRecords(store)
+        #expect(Set(restored.compactMap { $0["id"] as? String }) == Set(expected.compactMap { $0["id"] as? String }))
+        #expect(restored.count == expected.count)
+        for item in expected {
+            let actual = restored.first { $0["id"] as? String == item["id"] as? String }
+            #expect((actual?["props"] as? [String: Any])?["occurrences"] as? Int == (item["props"] as? [String: Any])?["occurrences"] as? Int)
+        }
+        transport.set(code: 201); clock.advance(60000); await reports.flush(); await reports.close()
+    }
+
+    @Test func sameGrantRereadCannotResurrectAnAcknowledgedReportWhenRemovalFailed() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+        let reports = try diagnosticTestReporter(store, transport, clock)
+        try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); await reports.flush()
+        let acknowledged = try #require(diagnosticRecords(store).first?["id"] as? String)
+        transport.set(code: 201); store.failingOutboxRemovals(true)
+        clock.advance(60000); await reports.flush()
+        let afterAcknowledgement = transport.bodies().count
+        #expect(store.has("outbox.json")); #expect(reports.status.pendingCount == 0)
+        store.failingOutboxWrites(true)
+        reports.capture(DiagnosticInput(category: "engine_failed"))
+        await reports.flush(); clock.advance(60000); await reports.flush()
+        let attempted = try #require(store.lastOutboxAttempt)
+        let pending = try #require(JSONSerialization.jsonObject(with: attempted) as? [[String: Any]])
+        let pendingID = try #require(pending.first?["id"] as? String)
+        store.failingRevocationReads(true); await reports.load(retryUnread: true)
+        store.failingRevocationReads(false); store.failingOutboxWrites(false); store.failingOutboxRemovals(false)
+        await reports.load(retryUnread: true); clock.advance(60000); await reports.flush()
+        let delivered = try transport.bodies().dropFirst(afterAcknowledgement).map { try diagnosticObject($0)["id"] as? String }
+        #expect(!delivered.contains(acknowledged))
+        #expect(delivered == [pendingID])
+        await reports.close()
+    }
+
+    @Test(arguments: ["same", "expired", "changed", "off"])
+    func sameGrantMemoryRecoveryPreservesTheQueueBoundAndInvalidatesOnlyKnownOldAuthority(_ change: String) async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+        let reports = try diagnosticTestReporter(store, transport, clock)
+        try await reports.setConsent(true); store.failingOutboxWrites(true)
+        for line in 1...100 { reports.capture(DiagnosticInput(category: "generation_failed", frames: [DiagnosticFrame(path: "backend/core/tasks.py", line: line)])) }
+        await reports.flush(); clock.advance(60000); await reports.flush()
+        #expect(reports.status.pendingCount == 64)
+        store.failingRevocationReads(true); await reports.load(retryUnread: true)
+        if change == "changed" || change == "off" {
+            let bytes = try #require(store.data("consent.json"))
+            var consent = try diagnosticObject(bytes)
+            if change == "changed" { consent["epoch"] = String(repeating: "b", count: 32) }
+            else { consent["enabled"] = false }
+            store.set("consent.json", try JSONSerialization.data(withJSONObject: consent))
+        }
+        if change == "expired" { clock.advance(604800001) }
+        store.failingRevocationReads(false); store.failingOutboxWrites(false)
+        await reports.load(retryUnread: true); await reports.flush()
+        #expect(reports.status.pendingCount == (change == "same" ? 64 : 0))
+        #expect(try diagnosticRecords(store).count == (change == "same" ? 64 : 0))
+        if change == "off" { #expect(!reports.status.enabled) }
+        else { #expect(reports.status.enabled) }
+        transport.set(code: 201); clock.advance(60000); await reports.flush(); await reports.close()
+    }
+}
+
+extension DiagnosticReportsTests {
+    @Test(arguments: [true, false])
+    func knownGrantRecoveryRetiresAPendingPriorSessionWithoutBorrowingAnotherProfile(_ enabled: Bool) async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+        let app = try DiagnosticAppConfiguration(appID: "fixture01", ingestKey: "smk_" + String(repeating: "a", count: 39), host: "http://127.0.0.1:1", sessionPings: true)
+        let reports = try DiagnosticReports(directory: URL(fileURLWithPath: "/unused-session-recovery"), policy: diagnosticTestPolicy(), destination: DiagnosticDestination(site: "fixture01", host: "http://127.0.0.1:1", appUrl: "https://app.test.invalid", app: app), appVersion: "0.5.9-beta.3", transport: transport, clock: clock, storage: store, disabled: { false })
+        try await reports.setConsent(true); await reports.flush()
+        let first = try #require(transport.bodies().first)
+        let original = try diagnosticObject(first)
+        #expect((original["events"] as? [[String: Any]])?.first?["kind"] as? String == "session")
+        store.failingRevocationReads(true); await reports.load(retryUnread: true)
+        var consent = try diagnosticObject(try #require(store.data("consent.json")))
+        consent["enabled"] = enabled; consent["epoch"] = String(repeating: "b", count: 32)
+        consent["profile_id"] = "install_" + String(repeating: "c", count: 32)
+        store.set("consent.json", try JSONSerialization.data(withJSONObject: consent))
+        let previousSends = transport.bodies().count
+        let readsBeforeRecovery = store.revocationReadAttempts
+        clock.advance(60000); store.failingRevocationReads(false)
+        await reports.load(retryUnread: true); await reports.flush()
+        #expect(transport.bodies().count == previousSends, "An old run-session must never acquire the newly read profile")
+        if !enabled { try await reports.setConsent(true); await reports.flush(); #expect(transport.bodies().count == previousSends) }
+        let deadline = ContinuousClock.now.advanced(by: .milliseconds(100))
+        while store.revocationReadAttempts - readsBeforeRecovery < 20, ContinuousClock.now < deadline { await Task.yield() }
+        let readsAfterRecovery = store.revocationReadAttempts
+        await reports.close()
+        #expect(readsAfterRecovery - readsBeforeRecovery < 20, "An ineligible old session must not rearm an expired retry indefinitely")
+    }
+}
+
+private final class DiagnosticHeldMarkerRead: DiagnosticStorage, @unchecked Sendable {
+    let store: DiagnosticTestStore
+    let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var first = true, released = false
+    init(_ store: DiagnosticTestStore) { self.store = store }
+    var explicitlyReleased: Bool { lock.withLock { released } }
+    func read(_ name: String, maxBytes: Int) throws -> Data? {
+        let hold = lock.withLock { if name == "revoked.json", first { first = false; return true }; return false }
+        if hold {
+            entered.signal()
+            let signalled = release.wait(timeout: .now() + 5) == .success
+            lock.withLock { released = signalled }
+        }
+        return try store.read(name, maxBytes: maxBytes)
+    }
+    func write(_ name: String, data: Data) throws { try store.write(name, data: data) }
+    func remove(_ name: String) throws { try store.remove(name) }
+}
+private final class DiagnosticPublicationCaptureProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var ran = false, result: Bool?
+    var accepted: Bool? { lock.withLock { result } }
+    func run(_ reports: DiagnosticReports) {
+        let first = lock.withLock { if ran { return false }; ran = true; return true }
+        if first { let captured = reports.capture(diagnosticEvent()); lock.withLock { result = captured } }
+    }
+}
+extension DiagnosticReportsTests {
+    @Test(arguments: ["off", "regrant", "unchanged"])
+    func withdrawalWhileTheInitialMarkerReadIsHeldCannotPublishSavedOnAuthority(_ control: String) async throws {
+        let store = DiagnosticTestStore()
+        _ = try await diagnosticSeedSavedOutbox(store)
+        let initialBytes = try #require(store.data("consent.json"))
+        let initial = try diagnosticObject(initialBytes)
+        let held = DiagnosticHeldMarkerRead(store), transport = DiagnosticTestTransport(), probe = DiagnosticPublicationCaptureProbe()
+        transport.set(code: 201)
+        let reports = try diagnosticTestReporter(held, transport)
+        store.observeOutboxCommit { [weak reports] in if let reports { probe.run(reports) } }
+        let observingReady = DispatchSemaphore(value: 0), invalidated = DispatchSemaphore(value: 0)
+        let changes = reports.statusChanges()
+        let observing = Task {
+            var iterator = changes.makeAsyncIterator()
+            _ = await iterator.next(); observingReady.signal()
+            if await iterator.next() != nil { invalidated.signal() }
+        }
+        defer { observing.cancel(); held.release.signal(); store.observeOutboxCommit {} }
+        try #require(await diagnosticWaitForEvent(observingReady))
+        let loading = Task { await reports.load() }
+        try #require(await diagnosticWaitForEvent(held.entered))
+        let changing: Task<Void, any Error>? = control == "unchanged" ? nil : Task {
+            try await reports.setConsent(false)
+            if control == "regrant" { try await reports.setConsent(true) }
+        }
+        if changing != nil {
+            // The only new status event while load is blocked is the public
+            // OFF gate invalidation, before its worker can own the actor.
+            try #require(await diagnosticWaitForEvent(invalidated))
+            #expect(!reports.status.enabled); #expect(!reports.capture(diagnosticEvent()))
+        }
+        held.release.signal()
+        _ = await loading.value
+        if let changing { try await changing.value }
+        try #require(held.explicitlyReleased, "The fixture must release the actual read before its bounded timeout")
+        store.observeOutboxCommit {}
+        if control == "unchanged" { #expect(probe.accepted == true) }
+        else { #expect(probe.accepted != true, "Saved ON must not reopen capture after OFF was already accepted") }
+        if control == "off" { #expect(!reports.status.enabled && !reports.capture(diagnosticEvent())) }
+        else {
+            #expect(reports.status.enabled)
+            if control == "regrant" { #expect(reports.recoveryContext?.epoch != initial["epoch"] as? String) }
+            #expect(reports.capture(DiagnosticInput(category: "engine_failed")))
+        }
+        await reports.close()
+    }
+}

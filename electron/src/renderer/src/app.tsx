@@ -11,6 +11,7 @@ import { router } from './router';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { UpdateRestartConfirm } from '@/components/update-restart-confirm';
 import { AnalyticsConsentBanner, AnalyticsRuntime } from '@/components/analytics-consent';
+import { DiagnosticRuntime } from '@/components/diagnostic-consent';
 import { GpuOfferBanner } from '@/components/gpu-offer';
 import { CloudSyncRuntime } from '@/features/account/cloud-sync-runtime';
 import { getBridge } from '@/components/bridge';
@@ -93,6 +94,7 @@ export function App() {
           <RealtimeEventSync />
           <GenerateBudgetSync />
           <AnalyticsRuntime />
+          <DiagnosticRuntime />
           <CloudSyncRuntime />
           <AnalyticsConsentBanner />
           <GpuOfferBanner />

@@ -52,7 +52,10 @@ import java.io.File
     var editing by remember {mutableStateOf<String?>(null)}
     var playing by rememberSaveable {mutableStateOf<String?>(null)}
     var savePath by rememberSaveable {mutableStateOf<String?>(null)}
-    val catalog=rememberLanguageCatalog(vm::fail)
+    var pickFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
+    var batchFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
+    var saveFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
+    val catalog=rememberLanguageCatalog(vm::failureHandler)
     val languages=catalog?.dubChoices().orEmpty()
     fun model(capability: String): PhoneModel? = phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,prefs.phoneModels["dub-$capability"])
     val asr=model("asr");val translator=model("translate")
@@ -61,34 +64,40 @@ import java.io.File
     val ready=models.size==3&&missing.isEmpty()
     LaunchedEffect(phone.voices) {if(voice.isNotEmpty()&&phone.voices.none {it.id==voice}) voice=""}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->
+        val failure=pickFailure ?: vm::restoreFailure
+        pickFailure=null
         if(uri!=null) scope.launch {
             copying=true
             try {
                 val selected=withContext(Dispatchers.IO) {copyMedia(context,uri,"media") to mediaDisplayName(context,uri)}
                 path?.let {File(it).delete()};path=selected.first.path;sourceName=selected.second ?: selected.first.name
-            } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {copying=false}
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {copying=false}
         }
     }
     val batchPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) {uris ->
+        val failure=batchFailure ?: vm::restoreFailure
+        batchFailure=null
         scope.launch {
             copying=true
             try {for(uri in uris) {
                 val selected=copyMedia(context,uri,"media")
                 batchPaths=batchPaths+selected.path;batchNames=batchNames+(mediaDisplayName(context,uri) ?: selected.name)
-            }} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)} finally {copying=false}
+            }} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)} finally {copying=false}
         }
     }
     val save=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) {uri ->
+        val failure=saveFailure ?: vm::restoreFailure
+        saveFailure=null
         val file=savePath?.let(::File);savePath=null
         if(file!=null&&uri!=null) scope.launch {
             try {withContext(Dispatchers.IO) {context.contentResolver.openOutputStream(uri)!!.use {out ->file.inputStream().use {it.copyTo(out)}}}}
-            catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
+            catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
         }
     }
     Screen {
         ScreenTitle(if(libraryOnly) "projects.title" else if(batchMode) "batch.title" else "mobile.tabs.dub")
         if(projectId==null && !libraryOnly) {
-        DubSourceCard(!copying&&!state.busy) {if(batchMode) batchPicker.launch(arrayOf("audio/*","video/*")) else picker.launch(arrayOf("audio/*","video/*"))}
+        DubSourceCard(!copying&&!state.busy) {if(batchMode) {batchFailure=vm.failureHandler();batchPicker.launch(arrayOf("audio/*","video/*"))} else {pickFailure=vm.failureHandler();picker.launch(arrayOf("audio/*","video/*"))}}
         batchPaths.forEachIndexed {index,source ->SelectedDubSource(batchNames.getOrNull(index) ?: File(source).name) {
             File(source).delete();batchPaths=batchPaths.filterIndexed {i,_->i!=index};batchNames=batchNames.filterIndexed {i,_->i!=index}
         }}
@@ -163,15 +172,15 @@ import java.io.File
                     Text(output.name,style=MaterialTheme.typography.labelSmall,color=role("textMuted"))
                 }
                 IconAction("player.play",Icons.Default.PlayArrow) {playing=file.path}
-                IconAction("mobile.speak.share",Icons.Default.Share) {scope.launch {try {shareLocalFile(context,file,if(file.extension=="mp4") "video/mp4" else "audio/wav")} catch(e:Exception) {vm.fail(e)}}}
-                IconAction("common.save",VSIcons.Download) {savePath=file.path;save.launch(record.request.title.substringBeforeLast('.').ifBlank {record.request.id}+"-${output.language}.${file.extension}")}
+                IconAction("mobile.speak.share",Icons.Default.Share) {val failure=vm.failureHandler();scope.launch {try {shareLocalFile(context,file,if(file.extension=="mp4") "video/mp4" else "audio/wav")} catch(e:Exception) {failure(e)}}}
+                IconAction("common.save",VSIcons.Download) {saveFailure=vm.failureHandler();savePath=file.path;save.launch(record.request.title.substringBeforeLast('.').ifBlank {record.request.id}+"-${output.language}.${file.extension}")}
                 ReportAction(vm) {ReportSubjects.phoneDub(record.request,phone.models)}
                 if(record.checkpoint.done) IconAction("mobile.dub_advanced.exports",Icons.Default.Share) {exportID=record.request.id;exportTarget=output.language}
                 if(record.checkpoint.done && vm.phone.dubs.file(record.request.id,"original.pcm").isFile) IconAction("clone.edit",Icons.Default.Edit) {editing=record.request.id}
                 if(record.checkpoint.done) IconAction("mobile.simple.remove_job",Icons.Default.Delete) {vm.run {if(playing==file.path) playing=null;vm.phone.dubs.delete(record.request.id);vm.phone.refreshDubs()}}
             }
         }}
-        playing?.let {LocalAudioPlayer(File(it),vm::fail)}
+        playing?.let {LocalAudioPlayer(File(it),vm::failureHandler)}
         exportID?.let {id ->
             androidx.compose.ui.window.Dialog(onDismissRequest={exportID=null},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
                 Surface(Modifier.fillMaxSize(),color=role("canvas")) {PhoneDubExportScreen(vm,id,exportTarget) {exportID=null}}

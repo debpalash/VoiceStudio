@@ -9,11 +9,20 @@ public struct HTTPReply: Sendable {
         self.headers = Dictionary(headers.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { _, new in new })
     }
 }
+public enum ModelDownloadOrigin: Sendable, Equatable { case currentRequest, recovered }
+/// Local provenance only; this never enters API errors or report properties.
+public struct HistoricalModelDownloadFailure: Error, Sendable {
+    public let failure: ClientError
+    public init(_ failure: ClientError) { self.failure = failure }
+}
 public struct DownloadReply: Sendable {
     public let file: URL
     public let status: Int
     public let headers: [String: String]
-    public init(file: URL, status: Int, headers: [String: String]) { self.file = file; self.status = status; self.headers = headers }
+    public let origin: ModelDownloadOrigin
+    public init(file: URL, status: Int, headers: [String: String], origin: ModelDownloadOrigin = .currentRequest) {
+        self.file = file; self.status = status; self.headers = headers; self.origin = origin
+    }
 }
 public protocol HTTPTransport: Sendable {
     var preferredRangeBytes: Int64 { get }

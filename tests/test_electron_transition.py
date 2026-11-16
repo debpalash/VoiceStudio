@@ -43,7 +43,13 @@ def test_snap_store_workflow_builds_strict_snap_and_uploads_only_tags_to_candida
     jobs = workflow["jobs"]
     package = jobs["package"]
     assert package["env"]["VOICESTUDIO_DISTRIBUTION"] == "snap-store"
-    assert "environment" not in package and "secrets." not in yaml.dump(package)
+    assert "environment" not in package
+    # Only write-only intake build metadata may enter the package step; Snap
+    # upload/account credentials remain confined to the separate upload job.
+    import re
+    refs = set(re.findall(r"secrets\.([A-Za-z0-9_]+)", yaml.dump(package)))
+    assert refs == {"SUPERMETRY_APP_ID", "SUPERMETRY_INGEST_KEY", "SUPERMETRY_APP_HOST"}
+    assert "secrets." not in yaml.dump(package["env"])
     tag_guard = next(s for s in package["steps"] if s.get("name") == "Match the tag to the app version")
     assert '"v$version"' in tag_guard["run"]
     import os
