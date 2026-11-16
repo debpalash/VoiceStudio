@@ -7,6 +7,26 @@ import { renameWithRetry } from './rename-retry';
 const FILE = '.voicestudio-data-identity.json';
 const LIMIT = 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// On Windows a file being deleted or replaced stays "delete pending" until every
+// handle closes, so a racing open fails with EPERM/EACCES/EBUSY instead of
+// EEXIST/ENOENT. Those are contention there, not failure.
+const SHARING = new Set(['EPERM', 'EACCES', 'EBUSY']);
+function sharingViolation(error: unknown): boolean {
+  return (
+    process.platform === 'win32' && SHARING.has((error as NodeJS.ErrnoException)?.code ?? '')
+  );
+}
+const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
+async function readSettled(path: string): Promise<Identity | null> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await readIdentity(path);
+    } catch (error) {
+      if (attempt >= 20 || !sharingViolation(error)) throw error;
+      await pause();
+    }
+  }
+}
 interface Identity {
   version: 1;
   id: string;
@@ -79,23 +99,24 @@ export async function localDataIdentity(directory: string): Promise<string | und
       return current.isDirectory() && current.dev === root.dev && current.ino === root.ino;
     };
     const matches = (record: Identity | null) => record?.dev === dev && record.ino === ino;
-    const previous = await readIdentity(path);
+    const previous = await readSettled(path);
     if (matches(previous)) return (await sameRoot()) ? previous!.id : undefined;
     // One creator/rotation at a time. Other instances may read the completed
     // atomic publication; a stale or inaccessible lock simply leaves it unknown.
-    for (let attempt = 0; attempt < 10; attempt++) {
+    for (let attempt = 0; attempt < 50; attempt++) {
       try {
         lock = await open(lockPath, 'wx', 0o600);
         break;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        const published = await readIdentity(path);
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST' && !sharingViolation(error))
+          throw error;
+        await pause();
+        const published = await readSettled(path);
         if (matches(published)) return (await sameRoot()) ? published!.id : undefined;
       }
     }
     if (!lock) return;
-    const published = await readIdentity(path);
+    const published = await readSettled(path);
     if (matches(published)) return (await sameRoot()) ? published!.id : undefined;
     const value: Identity = { version: 1, id: randomUUID(), dev, ino };
     temporary = `${path}.${randomUUID()}.tmp`;
