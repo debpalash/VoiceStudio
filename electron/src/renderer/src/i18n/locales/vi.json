@@ -878,7 +878,8 @@
     "glossary_label": "Bảng thuật ngữ",
     "set_speaker": "Đặt người nói…",
     "new_speaker": "Người nói mới",
-    "speaker_label": "Người nói"
+    "speaker_label": "Người nói",
+    "delete_project_hint": "Chỉ dự án đã lưu bị xóa khỏi danh sách. Tệp phương tiện và giọng nói vẫn được giữ."
   },
   "dub_workflow": {
     "transcribing_audio": "Phiên âm âm thanh…",

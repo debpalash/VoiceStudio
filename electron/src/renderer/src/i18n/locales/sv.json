@@ -878,7 +878,8 @@
     "glossary_label": "Ordlista",
     "set_speaker": "Ange talare…",
     "new_speaker": "Ny talare",
-    "speaker_label": "Talare"
+    "speaker_label": "Talare",
+    "delete_project_hint": "Bara det sparade projektet tas bort från listan. Mediefiler och röster behålls."
   },
   "dub_workflow": {
     "transcribing_audio": "Transkriberar ljud...",

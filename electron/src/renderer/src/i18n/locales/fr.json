@@ -880,7 +880,8 @@
     "glossary_label": "Glossaire",
     "set_speaker": "Définir le locuteur…",
     "new_speaker": "Nouveau locuteur",
-    "speaker_label": "Locuteur"
+    "speaker_label": "Locuteur",
+    "delete_project_hint": "Seul le projet enregistré est retiré de la liste. Les fichiers multimédias et les voix sont conservés."
   },
   "dub_workflow": {
     "transcribing_audio": "Transcription audio…",

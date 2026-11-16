@@ -892,7 +892,8 @@
     "glossary_label": "Słowniczek",
     "set_speaker": "Ustaw mówcę…",
     "new_speaker": "Nowy mówca",
-    "speaker_label": "Mówca"
+    "speaker_label": "Mówca",
+    "delete_project_hint": "Z listy usuwany jest tylko zapisany projekt. Pliki multimedialne i głosy są zachowane."
   },
   "dub_workflow": {
     "transcribing_audio": "Transkrypcja dźwięku…",

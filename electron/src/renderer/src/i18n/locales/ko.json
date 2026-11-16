@@ -878,7 +878,8 @@
     "timing_concise": "간결하게",
     "timing_stretch_video": "영상 늘이기",
     "timing_strict_slot": "구간 엄수",
-    "upload_transcribe": "업로드 및 전사"
+    "upload_transcribe": "업로드 및 전사",
+    "delete_project_hint": "저장된 프로젝트만 목록에서 제거됩니다. 미디어 파일과 목소리는 유지됩니다."
   },
   "dub_workflow": {
     "transcription_complete": "전사 완료",

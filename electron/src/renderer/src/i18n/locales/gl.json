@@ -1121,7 +1121,8 @@
     "glossary_label": "Glosario",
     "set_speaker": "Establecer altofalante…",
     "new_speaker": "Novo altofalante",
-    "speaker_label": "Orador"
+    "speaker_label": "Orador",
+    "delete_project_hint": "Só se elimina o proxecto gardado da lista. Consérvanse os ficheiros de audio e vídeo e as voces."
   },
   "dub_workflow": {
     "transcribing_audio": "Transcribindo o audio…",

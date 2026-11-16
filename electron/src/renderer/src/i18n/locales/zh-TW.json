@@ -878,7 +878,8 @@
     "glossary_label": "術語表",
     "set_speaker": "設定說話者…",
     "new_speaker": "新說話者",
-    "speaker_label": "說話者"
+    "speaker_label": "說話者",
+    "delete_project_hint": "僅從清單中移除已儲存的專案。媒體檔案和聲音均保留。"
   },
   "dub_workflow": {
     "transcribing_audio": "正在轉錄音訊...",

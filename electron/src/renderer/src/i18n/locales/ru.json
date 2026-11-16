@@ -892,7 +892,8 @@
     "glossary_label": "Глоссарий",
     "set_speaker": "Назначить говорящего…",
     "new_speaker": "Новый говорящий",
-    "speaker_label": "Говорящий"
+    "speaker_label": "Говорящий",
+    "delete_project_hint": "Из списка удаляется только сохранённый проект. Медиафайлы и голоса сохраняются."
   },
   "dub_workflow": {
     "transcribing_audio": "Расшифровка аудио…",

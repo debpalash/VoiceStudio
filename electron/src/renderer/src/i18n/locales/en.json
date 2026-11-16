@@ -1121,7 +1121,8 @@
     "glossary_label": "Glossary",
     "set_speaker": "Set speaker…",
     "new_speaker": "New speaker",
-    "speaker_label": "Speaker"
+    "speaker_label": "Speaker",
+    "delete_project_hint": "Only the saved project is removed from the list. Media files and voices are kept."
   },
   "dub_workflow": {
     "transcribing_audio": "Transcribing audio…",

@@ -878,7 +878,8 @@
     "glossary_label": "Sözlük",
     "set_speaker": "Konuşmacı ata…",
     "new_speaker": "Yeni konuşmacı",
-    "speaker_label": "Konuşmacı"
+    "speaker_label": "Konuşmacı",
+    "delete_project_hint": "Yalnızca kayıtlı proje listeden kaldırılır. Medya dosyaları ve sesler korunur."
   },
   "dub_workflow": {
     "transcribing_audio": "Ses yazıya aktarılıyor…",

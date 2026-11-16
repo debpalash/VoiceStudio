@@ -878,7 +878,8 @@
     "glossary_label": "Woordenlijst",
     "set_speaker": "Spreker instellen…",
     "new_speaker": "Nieuwe spreker",
-    "speaker_label": "Spreker"
+    "speaker_label": "Spreker",
+    "delete_project_hint": "Alleen het opgeslagen project wordt uit de lijst verwijderd. Mediabestanden en stemmen blijven behouden."
   },
   "dub_workflow": {
     "transcribing_audio": "Audio transcriberen…",

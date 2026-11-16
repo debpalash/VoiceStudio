@@ -892,7 +892,8 @@
     "translate_all": "翻译所有片段",
     "translating": "正在翻译…",
     "upload_transcribe": "上传并转写",
-    "video_dubbing_studio": "视频配音工作室"
+    "video_dubbing_studio": "视频配音工作室",
+    "delete_project_hint": "仅从列表中移除已保存的项目。媒体文件和声音均保留。"
   },
   "dub_workflow": {
     "transcribing_audio": "正在转录音频...",

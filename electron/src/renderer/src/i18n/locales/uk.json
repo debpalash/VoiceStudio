@@ -892,7 +892,8 @@
     "glossary_label": "Глосарій",
     "set_speaker": "Призначити мовця…",
     "new_speaker": "Новий мовець",
-    "speaker_label": "Мовець"
+    "speaker_label": "Мовець",
+    "delete_project_hint": "Зі списку видаляється лише збережений проєкт. Медіафайли й голоси зберігаються."
   },
   "dub_workflow": {
     "transcribing_audio": "Транскрибування аудіо…",

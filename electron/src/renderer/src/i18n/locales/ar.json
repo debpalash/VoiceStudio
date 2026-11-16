@@ -906,7 +906,8 @@
     "set_speaker": "تعيين المتحدث…",
     "new_speaker": "متحدث جديد",
     "speaker_label": "المتحدث",
-    "mirror_delivery": "محاكاة أسلوب الإلقاء الأصلي"
+    "mirror_delivery": "محاكاة أسلوب الإلقاء الأصلي",
+    "delete_project_hint": "يُزال المشروع المحفوظ فقط من القائمة. تبقى ملفات الوسائط والأصوات محفوظة."
   },
   "dub_workflow": {
     "transcribing_audio": "جارٍ تحويل الصوت إلى نص…",

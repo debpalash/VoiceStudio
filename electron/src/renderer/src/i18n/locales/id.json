@@ -878,7 +878,8 @@
     "glossary_label": "Glosarium",
     "set_speaker": "Atur pembicara…",
     "new_speaker": "Pembicara baru",
-    "speaker_label": "Pembicara"
+    "speaker_label": "Pembicara",
+    "delete_project_hint": "Hanya proyek tersimpan yang dihapus dari daftar. Berkas media dan suara tetap disimpan."
   },
   "dub_workflow": {
     "transcribing_audio": "Mentranskripsikan audio…",

@@ -878,7 +878,8 @@
     "glossary_label": "शब्दावली",
     "set_speaker": "वक्ता चुनें…",
     "new_speaker": "नया वक्ता",
-    "speaker_label": "वक्ता"
+    "speaker_label": "वक्ता",
+    "delete_project_hint": "केवल सहेजी गई परियोजना सूची से हटती है। मीडिया फ़ाइलें और आवाज़ें सुरक्षित रहती हैं।"
   },
   "dub_workflow": {
     "transcribing_audio": "ऑडियो ट्रांसक्राइब किया जा रहा है...",

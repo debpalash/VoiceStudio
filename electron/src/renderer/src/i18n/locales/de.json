@@ -878,7 +878,8 @@
     "glossary_label": "Glossar",
     "set_speaker": "Sprecher festlegen…",
     "new_speaker": "Neuer Sprecher",
-    "speaker_label": "Sprecher"
+    "speaker_label": "Sprecher",
+    "delete_project_hint": "Nur das gespeicherte Projekt wird aus der Liste entfernt. Mediendateien und Stimmen bleiben erhalten."
   },
   "dub_workflow": {
     "transcribing_audio": "Audio transkribieren…",

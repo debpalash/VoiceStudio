@@ -880,7 +880,8 @@
     "glossary_label": "Glossario",
     "set_speaker": "Imposta parlante…",
     "new_speaker": "Nuovo parlante",
-    "speaker_label": "Parlante"
+    "speaker_label": "Parlante",
+    "delete_project_hint": "Viene rimosso solo il progetto salvato dalla lista. I file multimediali e le voci vengono conservati."
   },
   "dub_workflow": {
     "transcribing_audio": "Trascrizione dell'audio…",

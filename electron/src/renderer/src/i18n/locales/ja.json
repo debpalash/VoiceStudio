@@ -878,7 +878,8 @@
     "glossary_label": "用語集",
     "set_speaker": "話者を設定…",
     "new_speaker": "新しい話者",
-    "speaker_label": "話者"
+    "speaker_label": "話者",
+    "delete_project_hint": "保存したプロジェクトのみ一覧から削除します。メディアファイルと声は保持されます。"
   },
   "dub_workflow": {
     "transcribing_audio": "音声を文字に起こしています…",
