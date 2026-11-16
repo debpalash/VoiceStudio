@@ -1129,7 +1129,7 @@ async def dub_download(
     # can still cut off the trailing frame; let ffmpeg keep both streams.
     # Otherwise keep the legacy `-shortest` so a slightly-overrunning track
     # doesn't extend the mux past the video.
-    if not stretch_entry and retime_decision is None:
+    if not stretch_entry and retime_decision is None and not _has_narration_audio(job):
         cmd += ["-shortest"]
     cmd += [output_path, "-y"]
 
@@ -1450,7 +1450,7 @@ async def dub_preview_video(
         cmd += ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
         # `-shortest` would cut the retimed video at the (slightly different)
         # audio length and lose the trailing frame; only use it on the copy path.
-        if not stretch_entry and retime_decision is None:
+        if not stretch_entry and retime_decision is None and not _has_narration_audio(job):
             cmd += ["-shortest"]
         cmd += [mux_path, "-y"]
 
@@ -1699,6 +1699,21 @@ def _existing_segment_artifact(job_id: str, candidate_ids: list) -> str | None:
     return None
 
 
+def _speech_order(job: dict, lang: str | None) -> list:
+    language = lang or job.get("language_code")
+    return (job.get("seg_order_by_lang") or {}).get(language) or job.get("seg_order") or []
+
+
+def _speech_segments(job: dict, lang: str | None) -> list:
+    language = lang or job.get("language_code")
+    script = (job.get("narration_scripts") or {}).get(language)
+    return script["blocks"] if script else _segments_for_lang(job, language)
+
+
+def _has_narration_audio(job: dict) -> bool:
+    return any(track.get("timing_strategy") == "narration" for track in job.get("dubbed_tracks", {}).values())
+
+
 @router.get("/dub/preview/{job_id}/{segment_index}", dependencies=[Depends(reject_cross_site_get)])
 async def dub_preview_segment(job_id: str, segment_index: int, lang: str = Query(None)):
     _job_dir_or_400(job_id)
@@ -1711,7 +1726,7 @@ async def dub_preview_segment(job_id: str, segment_index: int, lang: str = Query
     # before per-language (and before id-based, #185) naming. Each candidate
     # is realpath-normalised and containment-checked BEFORE any filesystem
     # access, and discovery returns only a non-symlink entry from that root.
-    order = job.get("seg_order") or []
+    order = _speech_order(job, lang)
     seg_id = order[segment_index] if 0 <= segment_index < len(order) else segment_index
     seg_path = _existing_segment_artifact(
         job_id, _seg_wav_candidates(job, lang, (seg_id, segment_index))
@@ -1745,13 +1760,13 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     if track_lang is None:
         raise HTTPException(status_code=400, detail="No dubbed audio track generated yet")
     wav_path = _dub_artifact(tracks[track_lang].get("path"), job_id, missing_detail="Dubbed audio file not found")
-    segments = job.get("segments") or []
+    segments = _speech_segments(job, track_lang)
     if not segments:
         raise HTTPException(status_code=400, detail="Job has no segments")
     # Score the recognized audio against THAT track's text. `job["segments"]`
     # holds whichever language was generated last, so QC of an earlier track
     # compared its speech with another language and flagged every line (#2574).
-    scored_segments = _segments_for_lang(job, track_lang)
+    scored_segments = _speech_segments(job, track_lang)
     # Smart Fit and Stretch Video place each line at its fitted position, so
     # the recognized speech is timed on that track. Score each line in the
     # window it plays in (the cue timing the subtitle exports use); source
@@ -1813,7 +1828,7 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
         logger.exception("dub QC ASR pass failed")
         raise HTTPException(status_code=500, detail=f"QC transcription failed: {e}")
 
-    seg_ids = job.get("seg_order") or [s.get("id", i) for i, s in enumerate(segments)]
+    seg_ids = _speech_order(job, track_lang) or [s.get("id", i) for i, s in enumerate(segments)]
     scored = dub_qc.score_dub(scored_segments, recognized, drift_threshold=drift_threshold, seg_ids=seg_ids)
 
     # Annotate each segment (non-destructive — content text untouched).
@@ -2393,12 +2408,12 @@ async def dub_export_segments_zip(job_id: str, lang: str = Query(None)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    segments = job.get("segments", [])
+    segments = _speech_segments(job, lang)
     if not segments:
         raise HTTPException(status_code=400, detail="No segments available")
 
     entries = []
-    order = job.get("seg_order") or []
+    order = _speech_order(job, lang)
     for i, seg in enumerate(segments):
         seg_id = order[i] if i < len(order) else i
         # Discovery returns only a non-symlink entry from the validated job root.
