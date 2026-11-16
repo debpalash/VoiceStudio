@@ -1870,7 +1870,12 @@
     "cast_note_one": "{{names}} hat noch keine Stimme und wird mit der Hauptstimme gelesen. Wähle unter Besetzung eine Stimme.",
     "cast_note_other": "{{names}} haben noch keine Stimmen und werden mit der Hauptstimme gelesen. Wähle unter Besetzung Stimmen.",
     "line_gap": "Abstand zwischen Zeilen",
-    "paragraph_gap": "Abstand zwischen Absätzen"
+    "paragraph_gap": "Abstand zwischen Absätzen",
+    "result_other_connection": "Diese gespeicherte Audiodatei gehört zu einer anderen VoiceStudio-Verbindung. Wechsle zum Abspielen zu dieser Verbindung zurück.",
+    "result_connection_unknown": "Verbinde deine lokale Engine oder deinen entfernten Computer, um gespeicherte Audiodateien anzuzeigen.",
+    "result_legacy": "Für dieses ältere gespeicherte Ergebnis ist keine Verbindung hinterlegt. Suche auf dieser Verbindung nach dem Dateinamen; es könnte sich um eine andere Datei handeln.",
+    "result_check_audio": "Gespeicherte Audiodatei auf dieser Verbindung prüfen",
+    "result_recovery_failed": "Die gespeicherte Audiodatei ist auf dieser Verbindung nicht verfügbar. Wechsle zu ihrer ursprünglichen Verbindung zurück oder erzeuge sie erneut."
   },
   "credentials": {
     "microsoft_key": "Microsoft-Übersetzerschlüssel",

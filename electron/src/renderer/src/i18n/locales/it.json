@@ -1872,7 +1872,12 @@
     "cast_note_other": "{{names}} non hanno ancora una voce, quindi vengono letti con la voce principale. Scegli le voci in Cast.",
     "line_gap": "Intervallo tra le righe",
     "paragraph_gap": "Intervallo tra i paragrafi",
-    "trim_edges": "Taglia i silenzi del motore"
+    "trim_edges": "Taglia i silenzi del motore",
+    "result_other_connection": "Questo audio salvato appartiene a un’altra connessione VoiceStudio. Torna a quella connessione per riprodurlo.",
+    "result_connection_unknown": "Collega il motore locale o il computer remoto per visualizzare l’audio salvato.",
+    "result_legacy": "Questo vecchio risultato salvato non contiene informazioni sulla connessione. Cerca il suo nome file su questa connessione; potrebbe trattarsi di un file diverso.",
+    "result_check_audio": "Verifica l’audio salvato su questa connessione",
+    "result_recovery_failed": "L’audio salvato non è disponibile su questa connessione. Torna alla connessione originale oppure generalo di nuovo."
   },
   "credentials": {
     "microsoft_key": "Chiave del traduttore Microsoft",

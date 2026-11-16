@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   detach: vi.fn(),
   edit: vi.fn(),
+  replace: vi.fn(),
   active: false,
   drafts: { stories: { projectId: 'book' }, audiobook: { projectId: null } },
 }));
@@ -44,10 +45,19 @@ vi.mock('../longform/longform-session', () => ({
   longformSession: { state: { active: false, drafts: mocks.drafts } },
   blankLongformDraft: () => ({}),
   editLongform: mocks.edit,
+  replaceLongformDraft: mocks.replace,
 }));
 vi.mock('../longform/project-library', () => ({
   projectLibrary: {
-    list: async () => [{ id: 'book', mode: 'stories', name: 'Saved story', updatedAt: 1 }],
+    list: async () => [
+      {
+        id: 'book',
+        mode: 'stories',
+        name: 'Saved story',
+        updatedAt: 1,
+        draft: { script: 'Saved script', lines: [] },
+      },
+    ],
     remove: mocks.remove,
     rename: vi.fn(),
   },
@@ -238,4 +248,17 @@ it('prevents duplicate submissions and cancellation while deletion is pending', 
   expect(deletions()).toHaveLength(1);
   finish();
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+
+it('opens a saved story through the explicit replacement boundary', async () => {
+  await mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Saved story' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+  await waitFor(() =>
+    expect(mocks.replace).toHaveBeenCalledWith(
+      'stories',
+      expect.objectContaining({ script: 'Saved script', projectId: 'book' }),
+    ),
+  );
+  expect(mocks.edit).not.toHaveBeenCalled();
 });

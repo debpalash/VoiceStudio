@@ -1872,7 +1872,12 @@
     "cast_note_one": "{{names}} n’a pas encore de voix et sera lu avec la voix principale. Choisissez-en une dans Distribution.",
     "cast_note_other": "{{names}} n’ont pas encore de voix et seront lus avec la voix principale. Choisissez-en dans Distribution.",
     "line_gap": "Silence entre chaque ligne",
-    "paragraph_gap": "Silence entre chaque paragraphe"
+    "paragraph_gap": "Silence entre chaque paragraphe",
+    "result_other_connection": "Cet audio enregistré appartient à une autre connexion VoiceStudio. Revenez à cette connexion pour le lire.",
+    "result_connection_unknown": "Connectez votre moteur local ou votre ordinateur distant pour afficher les audios enregistrés.",
+    "result_legacy": "Cet ancien résultat enregistré ne contient aucune information de connexion. Recherchez son nom de fichier sur cette connexion ; il peut s’agir d’un autre fichier.",
+    "result_check_audio": "Vérifier l’audio enregistré sur cette connexion",
+    "result_recovery_failed": "L’audio enregistré n’est pas disponible sur cette connexion. Revenez à sa connexion d’origine ou générez-le à nouveau."
   },
   "credentials": {
     "microsoft_key": "Clé du traducteur Microsoft",

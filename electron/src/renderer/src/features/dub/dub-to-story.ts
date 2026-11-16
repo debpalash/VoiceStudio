@@ -8,7 +8,7 @@
  */
 import { dubToStory } from '@shared/utils/dubToStory';
 import {
-  editLongform,
+  replaceLongformDraft,
   longformSession,
   storiesImportEpoch,
   type Draft,
@@ -84,7 +84,8 @@ export function loadDubIntoStories(
   if (tracks.length === 0) return false;
   const newLineId = options.newLineId ?? (() => crypto.randomUUID());
   storiesImportEpoch.current += 1;
-  editLongform('stories', {
+  replaceLongformDraft('stories', {
+    ...longformSession.state.drafts.stories,
     // Clearing the script the same way "Clear script" does, so a pending import
     // cannot survive underneath the lines that just replaced it.
     ...clearedScriptPatch('stories'),
