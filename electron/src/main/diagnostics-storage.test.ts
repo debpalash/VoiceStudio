@@ -26,10 +26,12 @@ const gate = vi.hoisted(() => ({
   publications: [] as string[],
   failDirectorySync: false,
   failConsentDirectorySyncOnce: false,
+  failSessionDirectorySyncOnce: false,
   failedOnEpoch: null as string | null,
   afterConsentSyncFailure: null as null | (() => void),
   blockedRead: null as null | { entered: () => void; wait: Promise<void> },
   blockedConsentRead: null as null | { entered: () => void; wait: Promise<void> },
+  blockedSessionReadReturn: null as null | { entered: () => void; wait: Promise<void> },
 }));
 vi.mock('node:fs/promises', async (original) => {
   const fs = await original<typeof import('node:fs/promises')>();
@@ -81,7 +83,14 @@ vi.mock('node:fs/promises', async (original) => {
       const close = handle.close.bind(handle);
       handle.close = async () => {
         if (directory) gate.publications.push('directory-close');
-        return close();
+        const result = await close();
+        if (!directory && name === 'session.json' && gate.blockedSessionReadReturn) {
+          const blocked = gate.blockedSessionReadReturn;
+          gate.blockedSessionReadReturn = null;
+          blocked.entered();
+          await blocked.wait;
+        }
+        return result;
       };
       const write = handle.writeFile.bind(handle);
       handle.writeFile = (async (...values: Parameters<typeof write>) => {
@@ -98,6 +107,10 @@ vi.mock('node:fs/promises', async (original) => {
           gate.failedOnEpoch = published.epoch;
           gate.afterConsentSyncFailure?.();
           throw Object.assign(new Error('One-shot post-rename directory sync failed'), { code: 'EIO' });
+        }
+        if (directory && gate.failSessionDirectorySyncOnce && gate.publications.at(-2) === 'rename:session.json') {
+          gate.failSessionDirectorySyncOnce = false;
+          throw Object.assign(new Error('Session post-rename directory sync failed'), { code: 'EIO' });
         }
         if (directory && gate.failDirectorySync)
           throw Object.assign(new Error('Directory sync failed'), { code: 'EIO' });
@@ -135,10 +148,12 @@ afterEach(async () => {
   gate.publications = [];
   gate.failDirectorySync = false;
   gate.failConsentDirectorySyncOnce = false;
+  gate.failSessionDirectorySyncOnce = false;
   gate.failedOnEpoch = null;
   gate.afterConsentSyncFailure = null;
   gate.blockedRead = null;
   gate.blockedConsentRead = null;
+  gate.blockedSessionReadReturn = null;
   await reports?.close();
   if (root) await rm(root, { recursive: true, force: true });
 });
@@ -194,6 +209,103 @@ it('does not recover the same unclean session twice after marker replacement is 
   const body = JSON.parse(String(initial.send.mock.calls[0][1]?.body));
   expect(body).toMatchObject({ id: original.id, ts: original.timestamp_ms, props: { occurrences: 1 } });
   expect(JSON.stringify(body)).not.toContain(JSON.parse(marker.toString()).session_id);
+});
+
+it('retains recovered evidence until the old session marker can be replaced', async () => {
+  const initial = await create();
+  let now = Date.now();
+  const options = { ...initial.options, now: () => now };
+  const session = join(options.directory, 'session.json');
+  const outbox = join(options.directory, 'outbox.json');
+  const marker = await readFile(session);
+  await initial.reports.close();
+  await writeFile(session, marker);
+  gate.failRenameTarget = gate.failRemoveTarget = 'session.json';
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  const original = JSON.parse(await readFile(outbox, 'utf8')).records[0];
+  await reports.flush();
+  expect(initial.send).not.toHaveBeenCalled();
+  await reports.close();
+  expect(await readFile(session)).toEqual(marker);
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  expect(JSON.parse(await readFile(outbox, 'utf8')).records).toHaveLength(1);
+  expect(JSON.parse(await readFile(outbox, 'utf8')).records[0].id).toBe(original.id);
+  gate.failRenameTarget = gate.failRemoveTarget = '';
+  now += 60_000;
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).id).toBe(original.id);
+});
+
+it.each([false, true])('does not create a second crash after session post-rename sync failure=%s and orderly close', async (inject) => {
+  const initial = await create();
+  const session = join(initial.options.directory, 'session.json');
+  const outbox = join(initial.options.directory, 'outbox.json');
+  const marker = await readFile(session);
+  await initial.reports.close();
+  await writeFile(session, marker);
+  gate.failSessionDirectorySyncOnce = inject;
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  const original = JSON.parse(await readFile(outbox, 'utf8')).records[0];
+  const published = JSON.parse(await readFile(session, 'utf8'));
+  expect(published.session_id).not.toBe(JSON.parse(marker.toString()).session_id);
+  await reports.close();
+  await expect(readFile(session)).rejects.toMatchObject({ code: 'ENOENT' });
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  const restored = JSON.parse(await readFile(outbox, 'utf8')).records;
+  expect(restored).toHaveLength(1);
+  expect(restored[0]).toMatchObject({
+    id: original.id, timestamp_ms: original.timestamp_ms, session_id: original.session_id,
+    props: { reason: 'unclean_exit', occurrences: 1 },
+  });
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).id).toBe(original.id);
+});
+
+it.each(['previous', 'unknown', 'unreadable'] as const)(
+  'preserves %s session markers during orderly close even without pending startup recovery',
+  async (kind) => {
+    const initial = await create();
+    const session = join(initial.options.directory, 'session.json');
+    const current = JSON.parse(await readFile(session, 'utf8'));
+    const marker = kind === 'unknown'
+      ? Buffer.from('unrecognized private evidence')
+      : Buffer.from(JSON.stringify({ ...current, ...(kind === 'previous' ? { session_id: 'f'.repeat(32) } : {}) }));
+    await writeFile(session, marker);
+    if (kind === 'unreadable') gate.failReadTarget = 'session.json';
+    await reports!.close();
+    gate.failReadTarget = '';
+    expect(await readFile(session)).toEqual(marker);
+  },
+);
+
+it('does not use a stale session read to unlink evidence after a newer withdrawal', async () => {
+  const initial = await create();
+  const session = join(initial.options.directory, 'session.json');
+  const previous = JSON.parse(await readFile(session, 'utf8'));
+  let enter!: () => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => { enter = resolve; });
+  const wait = new Promise<void>((resolve) => { release = resolve; });
+  gate.blockedSessionReadReturn = { entered: enter, wait };
+  const closing = initial.reports.close();
+  try {
+    await entered;
+    await initial.reports.setConsent(false);
+    const unrelated = Buffer.from(JSON.stringify({ ...previous, session_id: 'e'.repeat(32) }));
+    await writeFile(session, unrelated);
+    release();
+    await closing;
+    expect(await readFile(session)).toEqual(unrelated);
+  } finally {
+    release();
+    await closing;
+  }
 });
 
 it.each(['outbox.json', 'inbox', 'session.json'])(

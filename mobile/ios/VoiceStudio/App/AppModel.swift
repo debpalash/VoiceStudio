@@ -68,7 +68,7 @@ import BackgroundTasks
             guard let self else { return (false, 0, 600_000) }
             return (self.diagnostics.collecting, self.diagnostics.observationRevision, self.diagnostics.stallThresholdMs)
         }
-        phone.onDiagnosticStall = { [weak self] in self?.diagnostics.captureStall() }
+        phone.onDiagnosticStall = { [weak self] observation in self?.diagnostics.captureStall(observation:observation) }
         phone.diagnosticFailureObservation = { [weak self] in self?.diagnostics.failureObservation }
         phone.onFailure = { [weak self] stage, error, observation in self?.diagnostics.captureObservedFailure(error, observation: observation, stage: stage) }
         dub.diagnosticObservation = { [weak self] in self?.diagnostics.failureObservation }
