@@ -373,7 +373,8 @@ def legacy_cuda_repair_eligible() -> bool:
 
     Same rules as ``resolveTorchVariant``: Windows/Linux x64, all NVIDIA cards in
     range, driver >= 525. False when the build is already cu126 (nothing to switch
-    to) or when nvidia-smi cannot say.
+    to) or when nvidia-smi cannot say. An explicit OMNIVOICE_TORCH_VARIANT pin
+    overrides this selection, so the advice tells the user to clear it first.
     """
     import platform
     import subprocess
@@ -388,14 +389,20 @@ def legacy_cuda_repair_eligible() -> bool:
             return False
     except Exception:  # noqa: BLE001 - advice only
         pass
+    from core.nvidia_smi import find_nvidia_smi
+
+    # Older Windows drivers keep nvidia-smi.exe in NVSMI, outside PATH.
+    executable = find_nvidia_smi()
+    if not executable:
+        return False
     try:
         out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=compute_cap,driver_version", "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=5, check=False,
+            [executable, "--query-gpu=compute_cap,driver_version", "--format=csv,noheader"],
+            capture_output=True, text=True, errors="replace", timeout=5, check=False,
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return False
-    return legacy_cuda_from_smi(out)
+    return legacy_cuda_from_smi(out or "")
 
 
 def legacy_cuda_repair_advice() -> str:
@@ -403,7 +410,8 @@ def legacy_cuda_repair_advice() -> str:
     if legacy_cuda_repair_eligible():
         return (
             "A driver update will not help, but the CUDA 12.6 PyTorch build covers this GPU: "
-            "run setup again (Repair) to install it, or use a Vulkan engine "
+            "run setup again (Repair) to install it (clear OMNIVOICE_TORCH_VARIANT first if you set it), "
+            "or use a Vulkan engine "
             "(audio.cpp, CosyVoice GGUF, OmniVoice GGUF), or continue on CPU (slower)."
         )
     return (
@@ -421,7 +429,7 @@ def legacy_nvidia_advice(device_name: str, device_arch: str) -> str:
     if legacy_cuda_repair_eligible():
         return head + (
             "A CUDA 12.6 build still covers this card: the desktop app's runtime setup "
-            "installs it on the next Repair (unset OMNIVOICE_TORCH_VARIANT=cuda if you pinned it). "
+            "installs it on the next Repair (clear OMNIVOICE_TORCH_VARIANT first if you set it). "
             + _LEGACY_VULKAN_TAIL
         )
     return head + "Installing another CUDA build will not help. " + _LEGACY_VULKAN_TAIL

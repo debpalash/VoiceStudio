@@ -196,3 +196,42 @@ def test_gpu_report_surfaces_the_legacy_cuda_fallback_reason(tmp_path):
     (tmp_path / gr.LEGACY_CUDA_FALLBACK_MARKER).write_text("no kernels for sm_61\n", encoding="utf-8")
     assert gr.legacy_cuda_fallback_reason(str(prefix)) == "no kernels for sm_61"
 
+
+
+def test_repair_eligibility_finds_nvidia_smi_outside_path(monkeypatch):
+    """Older Windows drivers keep nvidia-smi.exe in NVSMI, outside PATH (#4244 review)."""
+    import platform
+    import subprocess
+
+    dc = _m("core.device_caps")
+    nvidia_smi = _m("core.nvidia_smi")
+    nvsmi = r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+    seen = {}
+
+    def run(cmd, **kwargs):
+        seen["cmd"], seen["errors"] = cmd, kwargs.get("errors")
+        return SimpleNamespace(stdout="6.1, 581.57\n")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(nvidia_smi, "find_nvidia_smi", lambda: nvsmi)
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(version=SimpleNamespace(cuda="12.8")))
+    dc.legacy_cuda_repair_eligible.cache_clear()
+    try:
+        assert dc.legacy_cuda_repair_eligible() is True
+        assert seen["cmd"][0] == nvsmi
+        # A bad byte must not leave stdout None on Windows.
+        assert seen["errors"] == "replace"
+        monkeypatch.setattr(nvidia_smi, "find_nvidia_smi", lambda: None)
+        dc.legacy_cuda_repair_eligible.cache_clear()
+        assert dc.legacy_cuda_repair_eligible() is False
+    finally:
+        dc.legacy_cuda_repair_eligible.cache_clear()
+
+
+def test_eligible_advice_tells_the_user_to_clear_a_torch_pin(monkeypatch):
+    dc = _m("core.device_caps")
+    monkeypatch.setattr(dc, "legacy_cuda_repair_eligible", lambda: True)
+    for advice in (dc.legacy_nvidia_advice("GTX 1070", "sm_61"), dc.legacy_cuda_repair_advice()):
+        assert "clear OMNIVOICE_TORCH_VARIANT first" in advice
