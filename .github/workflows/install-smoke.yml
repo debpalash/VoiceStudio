@@ -1,11 +1,85 @@
 # Exercise the maintained Electron installers, never the archived Tauri build.
+#
+# The job installs a release and then the pull request's own source as `main`, so
+# it builds the product: the trigger list is the files that build feeds on, not
+# only the installer scripts. A change to the package manifests, the lockfiles,
+# the Electron builder config, the runtime setup helpers or the bundled CLI can
+# break the install while every other job stays green.
 name: Install smoke
 on:
   pull_request:
-    paths: ['scripts/install.sh', 'scripts/install.ps1', 'electron/tests/*installer*', '.github/workflows/install-smoke.yml']
+    paths:
+      - 'scripts/install.sh'
+      - 'scripts/install.ps1'
+      - 'scripts/setup-api.mjs'
+      - 'scripts/setup.py'
+      - 'scripts/cli_install_smoke.py'
+      - 'package.json'
+      - 'bun.lock'
+      - 'uv.lock'
+      - 'pyproject.toml'
+      - 'config/**'
+      - 'store/**'
+      - 'electron/package.json'
+      - 'electron/electron-builder.config.mjs'
+      - 'electron/build/**'
+      - 'electron/native-helper-build.mjs'
+      - 'electron/cli-bundle.mjs'
+      - 'electron/omnivoice-tts-bundle.mjs'
+      - 'electron/mas-runtime-bundle.mjs'
+      - 'electron/snap-template-payload.mjs'
+      - 'electron/packaging/**'
+      - 'electron/scripts/**'
+      - 'electron/tests/*installer*'
+      - 'native/desktop-bridge/**'
+      - 'cli/**'
+      - 'backend/main.py'
+      - 'README.md'
+      - 'LICENSE'
+      - 'LICENSE-NOTICE.md'
+      - 'scripts/windows-rocm-recipe.json'
+      - 'scripts/smoke_windows_rocm.py'
+      - 'electron/*vite*.config.ts'
+      - 'electron/T3CODE-LICENSE.txt'
+      - '.github/scripts/apt-retry.sh'
+      - '.github/workflows/install-smoke.yml'
   push:
     branches: [main]
-    paths: ['scripts/install.sh', 'scripts/install.ps1', 'electron/tests/*installer*', '.github/workflows/install-smoke.yml']
+    paths:
+      - 'scripts/install.sh'
+      - 'scripts/install.ps1'
+      - 'scripts/setup-api.mjs'
+      - 'scripts/setup.py'
+      - 'scripts/cli_install_smoke.py'
+      - 'package.json'
+      - 'bun.lock'
+      - 'uv.lock'
+      - 'pyproject.toml'
+      - 'config/**'
+      - 'store/**'
+      - 'electron/package.json'
+      - 'electron/electron-builder.config.mjs'
+      - 'electron/build/**'
+      - 'electron/native-helper-build.mjs'
+      - 'electron/cli-bundle.mjs'
+      - 'electron/omnivoice-tts-bundle.mjs'
+      - 'electron/mas-runtime-bundle.mjs'
+      - 'electron/snap-template-payload.mjs'
+      - 'electron/packaging/**'
+      - 'electron/scripts/**'
+      - 'electron/tests/*installer*'
+      - 'native/desktop-bridge/**'
+      - 'cli/**'
+      - 'backend/main.py'
+      - 'README.md'
+      - 'LICENSE'
+      - 'LICENSE-NOTICE.md'
+      - 'scripts/windows-rocm-recipe.json'
+      - 'scripts/smoke_windows_rocm.py'
+      - 'electron/*vite*.config.ts'
+      - 'electron/T3CODE-LICENSE.txt'
+      - '.github/scripts/apt-retry.sh'
+      - '.github/workflows/install-smoke.yml'
   workflow_dispatch:
 permissions:
   contents: read
