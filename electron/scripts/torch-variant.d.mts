@@ -29,6 +29,16 @@ export interface LegacyNvidiaResult {
   reason: string;
 }
 export function legacyNvidiaFromSmi(output: string): LegacyNvidiaResult;
+export function primeLegacyNvidiaProbe(options?: {
+  run?: (
+    command: string,
+    args: string[],
+    options: object,
+    callback: (error: Error | null, stdout: string) => void,
+  ) => unknown;
+  cache?: boolean;
+}): Promise<LegacyNvidiaResult>;
+export function resetLegacyNvidiaProbe(): void;
 export function legacyNvidiaCard(options?: {
   run?: (command: string, args: string[], options: object) => string;
   cache?: boolean;

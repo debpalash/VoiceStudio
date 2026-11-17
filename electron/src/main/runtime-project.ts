@@ -3,6 +3,7 @@ import {
   cudaOnlyPackages,
   windowsRocmSyncArgs,
   legacyNvidiaCard,
+  primeLegacyNvidiaProbe,
 } from '../../scripts/torch-variant.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 export { nvidiaDriverPresent, cudaOnlyPackages } from '../../scripts/torch-variant.mjs';
@@ -227,6 +228,22 @@ export function parseLegacyCudaProbe(output: string | void): { ok: boolean; reas
   } catch {
     return { ok: false, reason: 'the CUDA check result was unreadable' };
   }
+}
+
+/**
+ * Read the GPU's compute capability once, off the main thread, before any
+ * variant resolution (resolveTorchVariant reads the primed cache). Only hosts
+ * with an NVIDIA driver on a platform that can select cu126 spawn nvidia-smi.
+ */
+export async function primeTorchVariantProbe(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+  hasNvidia: () => boolean = () => nvidiaDriverPresent(platform),
+  prime: () => Promise<unknown> = () => primeLegacyNvidiaProbe(),
+): Promise<void> {
+  if (!cpuTorchApplies(platform, arch) || (platform === 'win32' && arch === 'arm64')) return;
+  if (process.env.OMNIVOICE_TORCH_VARIANT?.trim()) return;
+  if (hasNvidia()) await prime();
 }
 
 /** Windows on ARM runs the x64 interpreter: PyTorch ships no win_arm64 torchaudio. */
@@ -893,6 +910,7 @@ export function outdatedSystemLibraryError(
 }
 
 export async function runtimeReady(bundle: string, project: string): Promise<boolean> {
+  await primeTorchVariantProbe();
   if (await runtimeIncomplete(project)) return false;
   try {
     return (
@@ -917,6 +935,7 @@ export async function runtimeReady(bundle: string, project: string): Promise<boo
  * Tauri predates it and owns the same frozen Python graph.
  */
 export async function runtimeCompatible(bundle: string, project: string): Promise<boolean> {
+  await primeTorchVariantProbe();
   if (await runtimeIncomplete(project)) return false;
   try {
     const [python, config, bundledProject, installedProject, bundledLock, installedLock, marker] =
@@ -1474,6 +1493,7 @@ export async function installRuntime(
   downloads: MirrorReporter = {},
 ): Promise<void> {
   signal.throwIfAborted();
+  await primeTorchVariantProbe();
   phase('checking');
   if (process.platform === 'darwin' && process.arch === 'x64') {
     throw Object.assign(new Error('INTEL_MAC_UNSUPPORTED'), { code: 'INTEL_MAC_UNSUPPORTED' });

@@ -96,20 +96,54 @@ export function legacyNvidiaFromSmi(output) {
 }
 
 let legacyProbeCache;
-/** Synchronous and cached for the process: the variant is resolved from many call sites. */
+let legacyProbePending;
+const SMI_ARGS = ['--query-gpu=compute_cap,driver_version', '--format=csv,noheader'];
+const SMI_OPTIONS = { timeout: 5_000, windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 };
+const SMI_FAILED = {
+  legacy: false,
+  reason: 'nvidia-smi could not report compute capability',
+};
+
+/**
+ * Non-blocking probe for the main process: fills the cache the synchronous
+ * `legacyNvidiaCard` reads, so startup never spawns `nvidia-smi` on the main
+ * thread. Idempotent; never rejects. Call only when an NVIDIA driver is present.
+ */
+export function primeLegacyNvidiaProbe({ run = execFile, cache = true } = {}) {
+  if (cache && legacyProbeCache) return Promise.resolve(legacyProbeCache);
+  if (cache && legacyProbePending) return legacyProbePending;
+  const pending = new Promise((resolve) => {
+    try {
+      run('nvidia-smi', SMI_ARGS, SMI_OPTIONS, (error, stdout) =>
+        resolve(error ? SMI_FAILED : legacyNvidiaFromSmi(stdout)),
+      );
+    } catch {
+      resolve(SMI_FAILED);
+    }
+  }).then((result) => {
+    if (cache) legacyProbeCache = result;
+    return result;
+  });
+  if (cache) legacyProbePending = pending;
+  return pending;
+}
+
+/** Test hook: forget the cached probe. */
+export function resetLegacyNvidiaProbe() {
+  legacyProbeCache = undefined;
+  legacyProbePending = undefined;
+}
+
+/** Reads the primed cache; spawns `nvidia-smi` synchronously only when never primed (scripts, tests). */
 export function legacyNvidiaCard({ run = execFileSync, cache = true } = {}) {
   if (cache && legacyProbeCache) return legacyProbeCache;
   let result;
   try {
-    const out = run(
-      'nvidia-smi',
-      ['--query-gpu=compute_cap,driver_version', '--format=csv,noheader'],
-      { timeout: 5_000, windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 },
-    );
+    const out = run('nvidia-smi', SMI_ARGS, SMI_OPTIONS);
     result = legacyNvidiaFromSmi(out);
   } catch {
     // Old nvidia-smi without compute_cap, or no binary: keep the default build.
-    result = { legacy: false, reason: 'nvidia-smi could not report compute capability' };
+    result = SMI_FAILED;
   }
   if (cache) legacyProbeCache = result;
   return result;

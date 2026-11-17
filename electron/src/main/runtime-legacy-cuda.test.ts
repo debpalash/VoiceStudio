@@ -301,3 +301,61 @@ describe.skipIf(!python)('LEGACY_CUDA_PROBE', () => {
     expect(runProbe('sys.modules["torch"] = None').ok).toBe(false);
   });
 });
+
+describe('non-blocking GPU probe', () => {
+  it('fills the cache asynchronously and the sync reader then never spawns', async () => {
+    const real = await vi.importActual<typeof import('../../scripts/torch-variant.mjs')>(
+      '../../scripts/torch-variant.mjs',
+    );
+    real.resetLegacyNvidiaProbe();
+    const async = vi.fn(
+      (_c: string, _a: string[], _o: object, cb: (e: Error | null, s: string) => void) =>
+        cb(null, '6.1, 580.0\n'),
+    );
+    const sync = vi.fn(() => {
+      throw new Error('sync nvidia-smi must not run once primed');
+    });
+    expect((await real.primeLegacyNvidiaProbe({ run: async })).legacy).toBe(true);
+    expect(real.legacyNvidiaCard({ run: sync }).legacy).toBe(true);
+    expect(sync).not.toHaveBeenCalled();
+    await real.primeLegacyNvidiaProbe({ run: async });
+    expect(async).toHaveBeenCalledTimes(1);
+    real.resetLegacyNvidiaProbe();
+    const failing = (
+      _c: string,
+      _a: string[],
+      _o: object,
+      cb: (e: Error | null, s: string) => void,
+    ) => cb(new Error('missing'), '');
+    expect((await real.primeLegacyNvidiaProbe({ run: failing })).legacy).toBe(false);
+    real.resetLegacyNvidiaProbe();
+  });
+  it('startup entry points prime the probe before resolving, only for NVIDIA hosts', async () => {
+    const { primeTorchVariantProbe } = await import('./runtime-project');
+    const prime = vi.fn(async () => undefined);
+    await primeTorchVariantProbe('linux', 'x64', () => true, prime);
+    expect(prime).toHaveBeenCalledTimes(1);
+    await primeTorchVariantProbe('linux', 'x64', () => false, prime);
+    await primeTorchVariantProbe('darwin', 'arm64', () => true, prime);
+    await primeTorchVariantProbe('win32', 'arm64', () => true, prime);
+    expect(prime).toHaveBeenCalledTimes(1);
+  });
+  it('installRuntime and runtimeReady prime before the first variant resolution', async () => {
+    const order: string[] = [];
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('./runtime-project.ts', import.meta.url), 'utf8');
+    for (const fn of ['runtimeReady', 'runtimeCompatible', 'installRuntime']) {
+      const body = src.slice(src.indexOf(`export async function ${fn}(`));
+      order.push(
+        `${fn}:${body.indexOf('await primeTorchVariantProbe()') < body.indexOf('resolveTorchVariant(')}`,
+      );
+    }
+    expect(order).toEqual(['runtimeReady:true', 'runtimeCompatible:true', 'installRuntime:true']);
+    const backend = readFileSync(new URL('./backend.ts', import.meta.url), 'utf8');
+    const start = backend.slice(backend.indexOf('async start(): Promise<void> {'));
+    expect(start.indexOf('await primeTorchVariantProbe()')).toBeGreaterThan(0);
+    expect(start.indexOf('await primeTorchVariantProbe()')).toBeLessThan(
+      start.indexOf('resolveTorchVariant'),
+    );
+  });
+});
