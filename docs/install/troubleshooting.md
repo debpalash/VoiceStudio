@@ -502,9 +502,11 @@ Sidecar engines, which run in their own environments, don't use this result.
 
 **Symptom:** a Maxwell or Pascal card (GTX 900 and 1000 series, compute capability below 7.0, such as a GTX 1060 or 1080 Ti) is found, but the app runs on the CPU. The GPU report in **Settings** says the PyTorch build no longer supports that GPU generation.
 
-**Cause:** the PyTorch build VoiceStudio ships (the cu128 build) includes kernels only for compute capability 7.0 and newer. Reinstalling another CUDA build or updating the driver does not add them.
+**Cause:** the PyTorch build VoiceStudio ships (the cu128 build) includes kernels only for compute capability 7.0 and newer. A driver update does not add them. PyTorch's CUDA 12.6 build still does (compute capability 5.0 and up), and PyTorch 2.15 drops that build.
 
-**What works:** PyTorch engines run on the CPU. Engines with their own Vulkan runtime (audio.cpp, CosyVoice GGUF, OmniVoice GGUF) can use the GPU; **Settings → GPU acceleration** lists them. Install one under **Settings → Models**. See [audio.cpp](../engines/audio-cpp.md).
+**Fix (desktop app):** nothing to do. On Windows and Linux x64, runtime setup detects an NVIDIA GPU below compute capability 7.0 (driver 525 or newer) and installs `torch 2.10.0+cu126` from `download.pytorch.org/whl/cu126` instead of the cu128 build. An existing cu128 runtime is switched the next time setup runs, which re-downloads PyTorch (about 3 GB). Setup then checks that `torch.cuda.is_available()` is true and that the build has kernels for the card; if not, it keeps the CPU build, writes the reason to the setup log and `.runtime-torch-fallback` in the runtime folder, and the GPU report shows it as `torch_fallback`. Set `OMNIVOICE_TORCH_VARIANT=cuda` to keep the cu128 build or `cpu` to force the CPU build. Mixed hosts (an older card next to a Volta or newer one) keep cu128. Docker images, source setups and sidecar engines are unchanged.
+
+**What else works:** PyTorch engines run on the CPU if the CUDA 12.6 build cannot drive the card. Engines with their own Vulkan runtime (audio.cpp, CosyVoice GGUF, OmniVoice GGUF) can use the GPU; **Settings → GPU acceleration** lists them. Install one under **Settings → Models**. See [audio.cpp](../engines/audio-cpp.md).
 
 ## 5a. Backend exits on the first `/generate` on an older NVIDIA GPU
 

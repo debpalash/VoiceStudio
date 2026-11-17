@@ -318,8 +318,9 @@ def apply_rocm_override_before_init(torch) -> str | None:
 _CUDA_ARCH_TAG = re.compile(r"^(sm|compute)_(\d+)([a-z]?)$")
 
 # Stamped onto the English advice for a pre-Volta NVIDIA card (Maxwell sm_5x,
-# Pascal sm_6x). No PyTorch CUDA build we ship can cover it, so a "reinstall a
-# cu128 build" remedy is wrong for it; callers key their wording off this.
+# Pascal sm_6x). The cu128 build cannot cover it, so a "reinstall a cu128
+# build" remedy is wrong for it; the CUDA 12.6 build (#4242) can. Callers key
+# their wording off this.
 LEGACY_NVIDIA_MARKER = "no longer supports this GPU generation"
 
 
@@ -343,8 +344,10 @@ def legacy_nvidia_advice(device_name: str, device_arch: str) -> str:
     return (
         f"{device_name} ({device_arch}) is an older NVIDIA GPU: this PyTorch build "
         f"{LEGACY_NVIDIA_MARKER}, so PyTorch engines run on the CPU. Installing "
-        "another CUDA build will not help. The Vulkan engines (e.g. audio.cpp, "
-        "CosyVoice GGUF, OmniVoice GGUF) can use this GPU."
+        "a CUDA 12.6 build still covers this card (the desktop app's runtime "
+        "setup installs it automatically on the next Repair or reinstall; unset "
+        "OMNIVOICE_TORCH_VARIANT=cuda if you pinned it). The Vulkan engines "
+        "(e.g. audio.cpp, CosyVoice GGUF, OmniVoice GGUF) can also use this GPU."
     )
 
 

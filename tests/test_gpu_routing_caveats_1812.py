@@ -155,5 +155,5 @@ def test_preflight_routing_row_agrees_with_legacy_gpu_row(monkeypatch):
     checks = resp["checks"] if isinstance(resp, dict) else resp.checks
     rows = {(c if isinstance(c, dict) else c.model_dump())["id"]: (c if isinstance(c, dict) else c.model_dump()) for c in checks}
     for row_id in ("gpu", "gpu_routing"):
-        assert "neither will another CUDA build" in rows[row_id]["fix"]
+        assert "CUDA 12.6 PyTorch build" in rows[row_id]["fix"]
         assert "Install a PyTorch build" not in rows[row_id]["fix"]

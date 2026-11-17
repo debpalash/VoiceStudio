@@ -674,9 +674,9 @@ def preflight():
                 "this PyTorch build no longer supports; PyTorch engines run on CPU"
             )
             gpu_fix = (
-                "A driver update will not help, and neither will another CUDA build. Use a Vulkan engine "
-                "(audio.cpp, CosyVoice GGUF, OmniVoice GGUF) to run on this GPU, or "
-                "continue on CPU (slower)."
+                "A driver update will not help, but the CUDA 12.6 PyTorch build covers this GPU: run "
+                "setup again (Repair) to install it. Or use a Vulkan engine "
+                "(audio.cpp, CosyVoice GGUF, OmniVoice GGUF), or continue on CPU (slower)."
             )
     elif gpu["vendor"] == "nvidia" and gpu["available"]:
         gpu_status, gpu_fix = "pass", None
@@ -807,7 +807,8 @@ def preflight():
         elif _rs == "cpu_fallback" and KERNEL_RISK_MARKER in (_why or ""):
             # The wheel lacks this GPU's architecture (#3067): the driver is fine.
             r_status, r_detail, r_fix = "warn", f"{_eng} runs on CPU here: {_why}", (
-                "A driver update will not help, and neither will another CUDA build. Use a Vulkan "
+                "A driver update will not help, but the CUDA 12.6 PyTorch build covers this GPU: run "
+                "setup again (Repair) to install it. Or use a Vulkan "
                 "engine (audio.cpp, CosyVoice GGUF, OmniVoice GGUF), or continue on CPU (slower)."
                 if legacy_gpu else
                 "The installed PyTorch build has no kernels for this GPU's "

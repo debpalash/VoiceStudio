@@ -153,3 +153,26 @@ def test_backend_notification_levels_are_accepted_by_the_renderer():
     with open(os.path.join(root, "backend", "api", "routers", "system.py"), encoding="utf-8") as fh:
         emitted = set(re.findall(r'"level": "(\w+)"', fh.read()))
     assert emitted <= accepted, f"backend emits unknown notification levels: {emitted - accepted}"
+
+
+def test_legacy_advice_points_at_the_cuda_126_build_not_cu128():
+    advice = _m("core.device_caps").legacy_nvidia_advice("GTX 1070", "sm_61")
+    assert "will not help" not in advice
+    assert "CUDA 12.6" in advice and "cu128" not in advice
+    assert _m("core.device_caps").LEGACY_NVIDIA_MARKER in advice
+
+
+def test_cu126_arch_list_covers_pascal_and_cu128_does_not():
+    dc = _m("core.device_caps")
+    cu126 = ["sm_50", "sm_60", "sm_61", "sm_70", "sm_75", "sm_80", "sm_86", "sm_90", "compute_90"]
+    assert dc.cuda_build_covers(cu126, 6, 1)
+    assert not dc.cuda_build_covers(CU128, 6, 1)
+
+
+def test_gpu_report_surfaces_the_legacy_cuda_fallback_reason(tmp_path):
+    gr = _m("core.gpu_report")
+    prefix = tmp_path / ".venv"
+    prefix.mkdir()
+    assert gr.legacy_cuda_fallback_reason(str(prefix)) is None
+    (tmp_path / gr.LEGACY_CUDA_FALLBACK_MARKER).write_text("no kernels for sm_61\n", encoding="utf-8")
+    assert gr.legacy_cuda_fallback_reason(str(prefix)) == "no kernels for sm_61"

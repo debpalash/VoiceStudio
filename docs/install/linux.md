@@ -100,7 +100,7 @@ driver is found, the packaged app's runtime setup installs the small CPU build
 of PyTorch rather than the CUDA build and its ~3 GB of `nvidia-*` packages,
 and needs about 5 GiB of free disk instead of 9 GiB. Pick a light voice engine
 (KittenTTS, Supertonic-3, PocketTTS) and a small Whisper model for the best
-speed. `OMNIVOICE_TORCH_VARIANT=cuda|cpu|rocm` overrides the detection, and an
+speed. `OMNIVOICE_TORCH_VARIANT=cuda|cpu|rocm` overrides the detection (an NVIDIA card below compute capability 7.0 gets the CUDA 12.6 build automatically; see [Older NVIDIA cards](troubleshooting.md#older-nvidia-cards-gtx-9001000-series)), and an
 existing install keeps working untouched. Source setup (`bun run setup:api`)
 also selects the locked CPU wheels on x86-64 hosts without NVIDIA. Linux ARM
 source installs keep their native PyPI wheels. See

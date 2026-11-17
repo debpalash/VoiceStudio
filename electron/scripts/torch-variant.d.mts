@@ -21,3 +21,15 @@ export function selectTorchVariant(options?: {
 export function torchSyncArgs(variant: SelectedTorchVariant): string[];
 export function cudaOnlyPackages(lockText: string): string[];
 export function windowsRocmSyncArgs(lockText: string): string[];
+export const LEGACY_CUDA_MIN_CC: number;
+export const LEGACY_CUDA_MAX_CC: number;
+export const LEGACY_CUDA_MIN_DRIVER: number;
+export interface LegacyNvidiaResult {
+  legacy: boolean;
+  reason: string;
+}
+export function legacyNvidiaFromSmi(output: string): LegacyNvidiaResult;
+export function legacyNvidiaCard(options?: {
+  run?: (command: string, args: string[], options: object) => string;
+  cache?: boolean;
+}): LegacyNvidiaResult;

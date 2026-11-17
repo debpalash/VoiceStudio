@@ -113,3 +113,13 @@ def test_rocm_and_torch_versions_meet_the_rdna4_floor():
     assert tuple(map(int, match.groups())) >= (6, 4)
     torch_version = tuple(map(int, _constraints()["torch"].split(".")[:2]))
     assert torch_version >= (2, 8)
+
+
+def test_electron_legacy_cuda_pins_match_project_constraints():
+    """The cu126 overlay for pre-Volta NVIDIA cards (#4242) follows the locked stack."""
+    constraints = _constraints()
+    pins = _pin_map(_typescript_assignment("LEGACY_CUDA_PINS"))
+    assert {name: pins.get(name) for name in STACK} == {
+        name: f"{constraints[name]}+cu126" for name in STACK
+    }
+    assert _typescript_assignment("LEGACY_CUDA_INDEX") == "https://download.pytorch.org/whl/cu126"
