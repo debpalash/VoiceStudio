@@ -105,8 +105,9 @@ export async function localDataIdentity(directory: string): Promise<string | und
     // atomic publication; a stale or inaccessible lock simply leaves it unknown.
     // A time budget, not an attempt count: a loaded machine (or CI runner) can
     // hold the lock longer than a fixed number of 10 ms waits.
-    const deadline = Date.now() + 5_000;
-    while (Date.now() < deadline) {
+    // Monotonic: a wall-clock jump must not stretch or cut the wait.
+    const deadline = performance.now() + 5_000;
+    while (performance.now() < deadline) {
       try {
         lock = await open(lockPath, 'wx', 0o600);
         break;
