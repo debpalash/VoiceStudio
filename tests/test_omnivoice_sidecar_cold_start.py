@@ -112,3 +112,58 @@ def test_prefetch_stops_when_the_real_load_starts(tmp_path):
 def test_prefetch_never_raises_for_a_missing_checkpoint(tmp_path):
     sidecar._prefetch_weights(str(tmp_path / "does-not-exist"), threading.Event())
     sidecar._prefetch_weights("not-an-installed/repo-id", threading.Event())
+
+
+def test_heartbeating_emits_progress_while_the_body_is_silent(monkeypatch):
+    # #4228: any silent phase past the parent's 300s recv deadline kills the sidecar.
+    import time
+
+    sent = []
+    monkeypatch.setattr(sidecar, "_LOAD_HEARTBEAT_S", 0.01)
+    monkeypatch.setattr(sidecar, "_send", lambda _s, obj: sent.append(obj))
+    with sidecar._heartbeating(None, "generating"):
+        time.sleep(0.12)
+    assert sent and all(f["op"] == "progress" and f["stage"] == "generating" for f in sent)
+    count = len(sent)
+    time.sleep(0.05)
+    assert len(sent) == count  # stopped with the body
+
+
+def test_synthesis_heartbeats_while_model_generate_runs(monkeypatch):
+    import time
+
+    frames = []
+    monkeypatch.setattr(sidecar, "_LOAD_HEARTBEAT_S", 0.01)
+    monkeypatch.setattr(sidecar, "_send", lambda _s, obj: frames.append(obj))
+
+    class Model:
+        sampling_rate = 24000
+
+        def generate(self, **_kw):
+            time.sleep(0.12)
+            return [object()]
+
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *_a, **_k: ("", 24000, 0))
+    monkeypatch.setattr(sidecar, "_load_model", lambda _s: Model())
+    sidecar._handle_synthesize({"text": "hello"}, None)
+    ops = [f["op"] for f in frames]
+    assert ops[-1] == "audio"
+    assert any(f["op"] == "progress" and f["stage"] == "generating" for f in frames)
+
+
+def test_cold_load_heartbeats_through_the_imports_before_from_pretrained(monkeypatch):
+    # The imports and checkpoint resolution ahead of from_pretrained were silent.
+    import time
+
+    frames = []
+    monkeypatch.setattr(sidecar, "_LOAD_HEARTBEAT_S", 0.01)
+    monkeypatch.setattr(sidecar, "_send", lambda _s, obj: frames.append(obj))
+    monkeypatch.setattr(sidecar, "_model", None)
+
+    def slow_construct(_stdout, progress):
+        time.sleep(0.12)
+        return "model"
+
+    monkeypatch.setattr(sidecar, "_construct_model", slow_construct)
+    assert sidecar._load_model(None) == "model"
+    assert any(f["stage"] == "loading_model" for f in frames)

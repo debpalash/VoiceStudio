@@ -62,6 +62,34 @@ _SEND_LOCK = threading.Lock()
 _LOAD_HEARTBEAT_S = 5.0
 
 
+@contextlib.contextmanager
+def _heartbeating(stdout, stage: str, progress: dict | None = None):
+    """Send {"op":"progress"} every few seconds while the body runs.
+
+    The parent re-arms its recv watchdog on every frame, so slow-but-alive work
+    (imports on a cold disk, reference transcription, a long synthesis) is not
+    killed as a silent wedge (#4228). Stage "loading_model" also counts as
+    cold-load evidence for the parent's GPU-pool clock; "generating" does not.
+    """
+    stop = threading.Event()
+
+    def beat() -> None:
+        while not stop.wait(_LOAD_HEARTBEAT_S):
+            _send(stdout, {
+                "op": "progress",
+                "stage": stage,
+                "percent": (progress or {}).get("percent", 0),
+            })
+
+    thread = threading.Thread(target=beat, name=f"omnivoice-{stage}-heartbeat", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join()
+
+
 # ── wire protocol ─────────────────────────────────────────────────────────
 
 
@@ -180,10 +208,18 @@ def _skip_unused_heavy_imports():
 
 def _load_model(stdout):
     """Cold-construct the OmniVoice model, reusing the parent's load path."""
-    global _model
     if _model is not None:
         return _model
+    progress = {"percent": 0}
+    # Heartbeat across the WHOLE cold load, imports and weight prefetch
+    # included: those used to be silent, and on a slow Windows disk they alone
+    # could outlast the parent's recv deadline (#4228).
+    with _heartbeating(stdout, "loading_model", progress):
+        return _construct_model(stdout, progress)
 
+
+def _construct_model(stdout, progress: dict):
+    global _model
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 0})
 
     _ensure_backend_on_path()
@@ -202,27 +238,12 @@ def _load_model(stdout):
     # Forward real HF download/weight progress so the parent's recv loop keeps
     # its watchdog alive across a slow cold load (the parent consumes these
     # {"op": "progress"} frames and re-arms its deadline on each one).
-    progress = {"percent": 0}
-
     def _on_progress(ev):
         pct = ev.get("pct", 0.0)
         if pct:
             progress["percent"] = min(round(pct * 100), 99)
             _send(stdout, {"op": "progress", "stage": "loading_model",
                            "percent": progress["percent"]})
-
-    # Cached checkpoints produce no download callbacks. Loading and moving a
-    # model onto MPS can still exceed the normal generation budget, so keep
-    # both bounded parent watchdogs informed that the child remains alive.
-    stop_heartbeat = threading.Event()
-
-    def _heartbeat():
-        while not stop_heartbeat.wait(_LOAD_HEARTBEAT_S):
-            _send(stdout, {
-                "op": "progress",
-                "stage": "loading_model",
-                "percent": progress["percent"],
-            })
 
     checkpoint = resolve_omnivoice_checkpoint()
     stop_prefetch = threading.Event()
@@ -242,20 +263,12 @@ def _load_model(stdout):
 
     stop_prefetch.set()
     lid = register_listener(_on_progress)
-    heartbeat = threading.Thread(
-        target=_heartbeat,
-        name="omnivoice-load-heartbeat",
-        daemon=True,
-    )
-    heartbeat.start()
     try:
         _model = OmniVoice.from_pretrained(
             checkpoint, device_map=device,
             dtype=getattr(torch, tts_dtype_name(device)), load_asr=preload_asr,
         )
     finally:
-        stop_heartbeat.set()
-        heartbeat.join()
         unregister_listener(lid)
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})
     return _model
@@ -310,7 +323,9 @@ def _handle_synthesize(msg: dict, stdout) -> None:
 
             ref_text = None
             try:
-                ref_text = transcribe_reference(ref_audio, release_after=True)
+                # Loads a Whisper model: silent for minutes on a cold disk.
+                with _heartbeating(stdout, "loading_model"):
+                    ref_text = transcribe_reference(ref_audio, release_after=True)
                 reference_asr = None if ref_text else "empty"
             except Exception:  # noqa: BLE001 — preserve installed-only model fallback
                 reference_asr = "failed"
@@ -332,18 +347,21 @@ def _handle_synthesize(msg: dict, stdout) -> None:
     # length: when resolution found no words, plain generate() would load the
     # model's own ASR and (now) release it again on every line.
     untranscribed = isinstance(ref_audio, str) and not (ref_text or "").strip()
-    if untranscribed:
-        _ensure_backend_on_path()
-        from services.tts_backend import generate_with_cached_ref  # noqa: PLC0415
+    # The first synthesis also pays one-time kernel compilation / warm-up; keep
+    # proving liveness so a slow render is not mistaken for a hang (#4228).
+    with _heartbeating(stdout, "generating"):
+        if untranscribed:
+            _ensure_backend_on_path()
+            from services.tts_backend import generate_with_cached_ref  # noqa: PLC0415
 
-        audios = generate_with_cached_ref(
-            model, text=text, ref_audio=ref_audio, ref_text=None,
-            release_reference_asr=True, reference_asr=reference_asr, **gen_kw,
-        )
-    else:
-        audios = model.generate(
-            text=text, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
-        )
+            audios = generate_with_cached_ref(
+                model, text=text, ref_audio=ref_audio, ref_text=None,
+                release_reference_asr=True, reference_asr=reference_asr, **gen_kw,
+            )
+        else:
+            audios = model.generate(
+                text=text, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
+            )
     audio = audios[0] if isinstance(audios, (list, tuple)) else audios
     sample_rate = int(getattr(model, "sampling_rate", OMNIVOICE_SAMPLE_RATE))
 
