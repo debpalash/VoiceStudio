@@ -169,6 +169,20 @@ it('lists install steps with the active package on the current step and the log 
   expect(restart).toHaveBeenCalledTimes(1);
 });
 
+it.each(['starting', 'attaching'] as const)(
+  'does not claim a first run on an ordinary %s launch (#4228)',
+  (stage) => {
+    backendStatus.stage = stage;
+    render(
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>,
+    );
+    expect(screen.queryByText(i18n.t('backend.first_run_hint'))).not.toBeInTheDocument();
+    expect(screen.getByText(i18n.t(`backend.${stage}`))).toBeInTheDocument();
+  },
+);
+
 it('keeps the download bar live when a new download follows a prepared batch', () => {
   backendStatus.stage = 'installing';
   backendStatus.setupPhase = 'installing_deps';
