@@ -673,11 +673,9 @@ def preflight():
                 f"{gpu['device_name']} ({gpu['kernels_missing']}) — an older NVIDIA GPU "
                 "this PyTorch build no longer supports; PyTorch engines run on CPU"
             )
-            gpu_fix = (
-                "A driver update will not help, but the CUDA 12.6 PyTorch build covers this GPU: run "
-                "setup again (Repair) to install it. Or use a Vulkan engine "
-                "(audio.cpp, CosyVoice GGUF, OmniVoice GGUF), or continue on CPU (slower)."
-            )
+            from core.device_caps import legacy_cuda_repair_advice
+
+            gpu_fix = legacy_cuda_repair_advice()
     elif gpu["vendor"] == "nvidia" and gpu["available"]:
         gpu_status, gpu_fix = "pass", None
         gpu_detail = f"{gpu['device_name']} (driver {gpu['driver']}) — CUDA ready"
@@ -806,10 +804,10 @@ def preflight():
                 "or choose a lighter engine.")
         elif _rs == "cpu_fallback" and KERNEL_RISK_MARKER in (_why or ""):
             # The wheel lacks this GPU's architecture (#3067): the driver is fine.
+            from core.device_caps import legacy_cuda_repair_advice as _legacy_repair_advice
+
             r_status, r_detail, r_fix = "warn", f"{_eng} runs on CPU here: {_why}", (
-                "A driver update will not help, but the CUDA 12.6 PyTorch build covers this GPU: run "
-                "setup again (Repair) to install it. Or use a Vulkan "
-                "engine (audio.cpp, CosyVoice GGUF, OmniVoice GGUF), or continue on CPU (slower)."
+                _legacy_repair_advice()
                 if legacy_gpu else
                 "The installed PyTorch build has no kernels for this GPU's "
                 "architecture, so a driver update will not help. Install a "

@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => ({
   occupied: new Set<number>(),
   /** False simulates an unbuilt runtime, so start() lands on setup_required. */
   runtimeReadyNow: true,
+  /** Resolves the GPU probe that start() awaits first. */
+  prime: (async () => undefined) as () => Promise<void>,
 }));
 
 vi.mock('electron', () => ({ app: { isPackaged: true, getPath: () => '/unused-budget-test' } }));
@@ -67,6 +69,7 @@ vi.mock('./runtime-project', async (importOriginal) => {
     ...actual,
     resolveTorchVariant: () => ({ variant: 'cpu', explicit: false }),
     cpuTorchApplies: () => false,
+    primeTorchVariantProbe: () => mocks.prime(),
     runtimeReady: async () => mocks.runtimeReadyNow,
     runtimeCompatible: async () => false,
     runtimeDependenciesReady: async () => {
@@ -182,6 +185,7 @@ afterEach(() => {
   mocks.denied.clear();
   mocks.occupied.clear();
   mocks.runtimeReadyNow = true;
+  mocks.prime = async () => undefined;
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -694,5 +698,29 @@ it('never splits an emoji when it shortens a log line', () => {
     logTail: [line],
   });
   expect(message.length).toBeLessThanOrEqual(MAX_MSG_CHARS);
-  expect(message).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+  expect(message).not.toMatch(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/,
+  );
+});
+
+it('does not launch a backend when shutdown runs while start() awaits the GPU probe', async () => {
+  stubEnv();
+  stubBackend(() => false);
+  let release!: () => void;
+  mocks.prime = () => new Promise<void>((resolve) => (release = resolve));
+  const supervisor = new BackendSupervisor();
+  const starting = supervisor.start();
+  await supervisor.shutdown();
+  release();
+  await starting;
+  expect(mocks.spawn).not.toHaveBeenCalled();
+  expect(supervisor.status.stage).toBe('idle');
+  // A later start() still works: shutdown must not poison the supervisor.
+  mocks.prime = async () => undefined;
+  const { child } = fakeChild();
+  mocks.spawn.mockReturnValue(child);
+  await supervisor.start();
+  expect(mocks.spawn).toHaveBeenCalledTimes(1);
+  (supervisor as unknown as { child: null }).child = null;
+  await supervisor.shutdown();
 });

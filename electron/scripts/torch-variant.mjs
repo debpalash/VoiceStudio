@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 
 /**
  * Whether an NVIDIA driver is installed. File checks only (no subprocess), and
@@ -81,9 +81,10 @@ export function legacyNvidiaFromSmi(output) {
     return { legacy: false, reason: 'compute capability not reported' };
   }
   const highest = Math.max(...caps);
+  const lowest = Math.min(...caps);
   if (highest >= LEGACY_CUDA_MAX_CC) return { legacy: false, reason: 'a card is Volta or newer' };
-  if (highest < LEGACY_CUDA_MIN_CC) {
-    return { legacy: false, reason: `compute capability ${highest.toFixed(1)} is below 5.0` };
+  if (lowest < LEGACY_CUDA_MIN_CC) {
+    return { legacy: false, reason: `compute capability ${lowest.toFixed(1)} is below 5.0` };
   }
   const driver = Math.min(...drivers);
   if (!Number.isFinite(driver) || driver < LEGACY_CUDA_MIN_DRIVER) {
@@ -97,6 +98,24 @@ export function legacyNvidiaFromSmi(output) {
 
 let legacyProbeCache;
 let legacyProbePending;
+/**
+ * `nvidia-smi` on PATH, or on Windows the driver's own copy (System32, then NVSMI)
+ * when PATH lacks it: the same places `nvidiaDriverPresent` recognises.
+ */
+export function nvidiaSmiCommand(
+  platform = process.platform,
+  exists = existsSync,
+  env = process.env,
+) {
+  if (platform !== 'win32') return 'nvidia-smi';
+  const root = env.SystemRoot || env.windir || 'C:\\Windows';
+  const candidates = [
+    win32.join(root, 'System32', 'nvidia-smi.exe'),
+    'C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe',
+  ];
+  return candidates.find((path) => exists(path)) ?? 'nvidia-smi';
+}
+
 const SMI_ARGS = ['--query-gpu=compute_cap,driver_version', '--format=csv,noheader'];
 const SMI_OPTIONS = { timeout: 5_000, windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 };
 const SMI_FAILED = {
@@ -114,7 +133,7 @@ export function primeLegacyNvidiaProbe({ run = execFile, cache = true } = {}) {
   if (cache && legacyProbePending) return legacyProbePending;
   const pending = new Promise((resolve) => {
     try {
-      run('nvidia-smi', SMI_ARGS, SMI_OPTIONS, (error, stdout) =>
+      run(nvidiaSmiCommand(), SMI_ARGS, SMI_OPTIONS, (error, stdout) =>
         resolve(error ? SMI_FAILED : legacyNvidiaFromSmi(stdout)),
       );
     } catch {
@@ -139,7 +158,7 @@ export function legacyNvidiaCard({ run = execFileSync, cache = true } = {}) {
   if (cache && legacyProbeCache) return legacyProbeCache;
   let result;
   try {
-    const out = run('nvidia-smi', SMI_ARGS, SMI_OPTIONS);
+    const out = run(nvidiaSmiCommand(), SMI_ARGS, SMI_OPTIONS);
     result = legacyNvidiaFromSmi(out);
   } catch {
     // Old nvidia-smi without compute_cap, or no binary: keep the default build.

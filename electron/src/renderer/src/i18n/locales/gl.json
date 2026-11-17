@@ -1558,6 +1558,7 @@
     "gpu_report_state_nvidia_rocm_build": "Atopouse {{gpu}}, pero este PyTorch é unha compilación AMD ROCm e non pode manexar GPU NVIDIA.",
     "gpu_report_state_intel_unsupported": "Atopouse {{gpu}}, pero ningún motor instalado pode usar GPU Intel, polo que todo funciona na CPU.",
     "gpu_report_state_kernels_missing": "Atopouse {{gpu}}, pero esta compilación de PyTorch ({{torch}}) non ten núcleos para a súa arquitectura de cálculo, polo que os motores funcionan na CPU.",
+    "gpu_report_torch_fallback": "A configuración probou a compilación de PyTorch con CUDA 12.6 para esta GPU, pero non puido usar a tarxeta, polo que os motores de PyTorch seguen na CPU. Motivo: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} é unha GPU NVIDIA máis antiga (serie GTX 900 / 1000 ou anterior). Esta compilación de PyTorch ({{torch}}) xa non admite esa xeración, así que os motores de PyTorch execútanse na CPU. Os motores co seu propio runtime Vulkan aínda poden usar a GPU.",
     "gpu_report_state_unknown": "Non se puido determinar o estado da GPU.",
     "gpu_report_option_vulkan_engines": "Use un motor co seu propio tempo de execución da GPU: audio.cpp execútase en GPU AMD Radeon a través de Vulkan (Configuración → Modelos → instalar o tempo de execución).",

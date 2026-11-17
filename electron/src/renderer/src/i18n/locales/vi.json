@@ -1367,6 +1367,7 @@
     "gpu_report_state_nvidia_rocm_build": "Đã tìm thấy {{gpu}}, nhưng PyTorch này là bản dựng AMD ROCm và không điều khiển được GPU NVIDIA.",
     "gpu_report_state_intel_unsupported": "Đã tìm thấy {{gpu}}, nhưng không engine nào đã cài dùng được GPU Intel nên mọi thứ chạy trên CPU.",
     "gpu_report_state_kernels_missing": "Đã tìm thấy {{gpu}}, nhưng bản dựng PyTorch này ({{torch}}) không có kernel cho kiến trúc tính toán của nó nên các engine chạy trên CPU.",
+    "gpu_report_torch_fallback": "Quá trình cài đặt đã thử bản PyTorch CUDA 12.6 cho GPU này nhưng không dùng được card, nên các engine PyTorch vẫn chạy trên CPU. Lý do: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} là GPU NVIDIA đời cũ (dòng GTX 900 / 1000 trở về trước). Bản PyTorch này ({{torch}}) không còn hỗ trợ thế hệ đó, nên các engine PyTorch chạy trên CPU. Các engine có runtime Vulkan riêng vẫn dùng được GPU.",
     "gpu_report_state_unknown": "Không xác định được trạng thái GPU.",
     "gpu_report_option_vulkan_engines": "Dùng engine có runtime GPU riêng: audio.cpp chạy trên GPU AMD Radeon qua Vulkan (Cài đặt → Mô hình → cài runtime).",

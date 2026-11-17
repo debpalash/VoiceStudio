@@ -4,7 +4,11 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { legacyNvidiaFromSmi, LEGACY_CUDA_MIN_DRIVER } from '../../scripts/torch-variant.mjs';
+import {
+  legacyNvidiaFromSmi,
+  nvidiaSmiCommand,
+  LEGACY_CUDA_MIN_DRIVER,
+} from '../../scripts/torch-variant.mjs';
 import {
   CPU_TORCH_ARGS,
   CPU_TORCH_PINS,
@@ -37,6 +41,18 @@ describe('legacyNvidiaFromSmi', () => {
   it('selects pre-Volta cards with a recent enough driver', () => {
     expect(legacyNvidiaFromSmi('6.1, 580.95.05\n').legacy).toBe(true);
     expect(legacyNvidiaFromSmi('5.2, 528.33\n6.1, 528.33').legacy).toBe(true);
+  });
+  it('applies the lower bound to every card, not only the highest', () => {
+    expect(legacyNvidiaFromSmi('3.5, 580.0\n6.1, 580.0').legacy).toBe(false);
+    expect(legacyNvidiaFromSmi('6.1, 580.0\n3.5, 580.0').legacy).toBe(false);
+  });
+  it('finds nvidia-smi in the Windows driver folders when PATH lacks it', () => {
+    const sys32 = 'C:\\Windows\\System32\\nvidia-smi.exe';
+    expect(
+      nvidiaSmiCommand('win32', (p: string) => p === sys32, { SystemRoot: 'C:\\Windows' }),
+    ).toBe(sys32);
+    expect(nvidiaSmiCommand('win32', () => false, {})).toBe('nvidia-smi');
+    expect(nvidiaSmiCommand('linux', () => true, {})).toBe('nvidia-smi');
   });
   it('leaves Volta and newer, mixed hosts and Kepler alone', () => {
     expect(legacyNvidiaFromSmi('7.0, 580.0').legacy).toBe(false);
@@ -240,6 +256,24 @@ describe('legacy CUDA runtime install', () => {
     );
   });
 
+  it('scrubs home paths from the persisted fallback reason', async () => {
+    const { bundle, project } = await fixture();
+    const run = runner(project, probeLine(false, 'failed in /Users/alice/venv/torch'));
+    await installRuntime(bundle, project, 'uv', run, new AbortController().signal);
+    expect(await readFile(join(project, LEGACY_CUDA_FALLBACK_MARKER), 'utf8')).not.toContain(
+      'alice',
+    );
+  });
+
+  it('clears a stale fallback marker when the install is any other variant', async () => {
+    const { bundle, project } = await fixture();
+    await mkdir(project, { recursive: true });
+    await writeFile(join(project, LEGACY_CUDA_FALLBACK_MARKER), 'old reason');
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'cuda');
+    await installRuntime(bundle, project, 'uv', runner(project, ''), new AbortController().signal);
+    await expect(readFile(join(project, LEGACY_CUDA_FALLBACK_MARKER))).rejects.toThrow();
+  });
+
   it('flags a cu128 runtime stale on a legacy host so the next setup switches it', async () => {
     const { bundle, project } = await fixture();
     hoisted.legacy = { legacy: false, reason: 'modern' };
@@ -339,6 +373,13 @@ describe('non-blocking GPU probe', () => {
     await primeTorchVariantProbe('darwin', 'arm64', () => true, prime);
     await primeTorchVariantProbe('win32', 'arm64', () => true, prime);
     expect(prime).toHaveBeenCalledTimes(1);
+    // `auto` and an empty value reach the sync reader too, so they prime as well.
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'AUTO');
+    await primeTorchVariantProbe('linux', 'x64', () => true, prime);
+    expect(prime).toHaveBeenCalledTimes(2);
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'cuda');
+    await primeTorchVariantProbe('linux', 'x64', () => true, prime);
+    expect(prime).toHaveBeenCalledTimes(2);
   });
   it('installRuntime and runtimeReady prime before the first variant resolution', async () => {
     const order: string[] = [];

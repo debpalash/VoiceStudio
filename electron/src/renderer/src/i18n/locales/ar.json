@@ -1395,6 +1395,7 @@
     "gpu_report_state_nvidia_rocm_build": "عُثر على {{gpu}}، لكن هذا PyTorch إصدار AMD ROCm ولا يستطيع تشغيل وحدات NVIDIA.",
     "gpu_report_state_intel_unsupported": "عُثر على {{gpu}}، لكن لا يوجد محرك مثبّت يستطيع استخدام وحدات Intel، لذلك يعمل كل شيء على CPU.",
     "gpu_report_state_kernels_missing": "عُثر على {{gpu}}، لكن نسخة PyTorch هذه ({{torch}}) لا تحتوي على أنوية (kernels) لبنية الحوسبة الخاصة بها، لذا تعمل المحركات على CPU.",
+    "gpu_report_torch_fallback": "جرّب الإعداد إصدار PyTorch المبني على CUDA 12.6 لهذه البطاقة لكنه لم يستطع استخدامها، لذا تبقى محركات PyTorch على المعالج. السبب: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} بطاقة رسومات NVIDIA قديمة (سلسلة GTX 900 / 1000 أو أقدم). إصدار PyTorch هذا ({{torch}}) لم يعد يدعم هذا الجيل، لذا تعمل محركات PyTorch على المعالج. أما المحركات ذات بيئة Vulkan الخاصة بها فما زالت تستطيع استخدام البطاقة.",
     "gpu_report_state_unknown": "تعذّر تحديد حالة GPU.",
     "gpu_report_option_vulkan_engines": "استخدم محركًا له بيئة تشغيل GPU خاصة: يعمل audio.cpp على وحدات AMD Radeon عبر Vulkan (الإعدادات ← النماذج ← تثبيت بيئة التشغيل).",

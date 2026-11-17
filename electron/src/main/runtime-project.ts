@@ -242,7 +242,9 @@ export async function primeTorchVariantProbe(
   prime: () => Promise<unknown> = () => primeLegacyNvidiaProbe(),
 ): Promise<void> {
   if (!cpuTorchApplies(platform, arch) || (platform === 'win32' && arch === 'arm64')) return;
-  if (process.env.OMNIVOICE_TORCH_VARIANT?.trim()) return;
+  // `auto` and an empty value still reach the sync reader in resolveTorchVariant.
+  const requested = process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase();
+  if (requested && requested !== 'auto') return;
   if (hasNvidia()) await prime();
 }
 
@@ -1761,8 +1763,9 @@ export async function installRuntime(
     signal.throwIfAborted();
   }
   let legacyFallback = '';
+  // A stale reason from an earlier cu126 attempt must not outlive a switch to any other variant.
+  await rm(join(project, LEGACY_CUDA_FALLBACK_MARKER), { force: true });
   if (legacyCuda) {
-    await rm(join(project, LEGACY_CUDA_FALLBACK_MARKER), { force: true });
     try {
       await retryDownload(() =>
         run(
@@ -1795,6 +1798,7 @@ export async function installRuntime(
       legacyFallback = `the CUDA 12.6 PyTorch install failed: ${String((error as Error)?.message ?? error).slice(0, 200)}`;
     }
     if (legacyFallback) {
+      legacyFallback = scrubText(legacyFallback).slice(0, 300);
       // Same outcome as before this build existed: PyTorch engines on the CPU.
       // The cu128 build has no kernels for these cards, so it is no fallback.
       downloads.log?.(

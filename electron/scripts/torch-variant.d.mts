@@ -28,6 +28,11 @@ export interface LegacyNvidiaResult {
   legacy: boolean;
   reason: string;
 }
+export function nvidiaSmiCommand(
+  platform?: NodeJS.Platform,
+  exists?: (path: string) => boolean,
+  env?: NodeJS.ProcessEnv,
+): string;
 export function legacyNvidiaFromSmi(output: string): LegacyNvidiaResult;
 export function primeLegacyNvidiaProbe(options?: {
   run?: (
