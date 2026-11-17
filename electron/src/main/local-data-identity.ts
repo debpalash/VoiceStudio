@@ -103,7 +103,10 @@ export async function localDataIdentity(directory: string): Promise<string | und
     if (matches(previous)) return (await sameRoot()) ? previous!.id : undefined;
     // One creator/rotation at a time. Other instances may read the completed
     // atomic publication; a stale or inaccessible lock simply leaves it unknown.
-    for (let attempt = 0; attempt < 50; attempt++) {
+    // A time budget, not an attempt count: a loaded machine (or CI runner) can
+    // hold the lock longer than a fixed number of 10 ms waits.
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
       try {
         lock = await open(lockPath, 'wx', 0o600);
         break;
