@@ -90,6 +90,7 @@ vi.mock('./runtime-project', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./runtime-project')>()),
   MISSING_SYSTEM_LIBRARY_CODE: 'MISSING_SYSTEM_LIBRARY',
   OUTDATED_SYSTEM_LIBRARY_CODE: 'OUTDATED_SYSTEM_LIBRARY',
+  TORCH_DLL_INIT_FAILED_CODE: 'TORCH_DLL_INIT_FAILED',
   RUNTIME_FILES_LOCKED_CODE: 'RUNTIME_FILES_LOCKED',
   runtimeDependenciesReady: mocks.dependencies,
   runtimeReady: mocks.ready,
@@ -613,6 +614,11 @@ it('exposes actionable storage failures without requiring log parsing', async ()
   );
   await supervisor.setupRuntime();
   expect(supervisor.status.setupIssue).toBe('outdated_system_library');
+  mocks.install.mockRejectedValue(
+    Object.assign(new Error('unknown cause'), { code: 'TORCH_DLL_INIT_FAILED' }),
+  );
+  await supervisor.setupRuntime();
+  expect(supervisor.status.setupIssue).toBe('torch_dll_init_failed');
   await supervisor.shutdown();
 });
 

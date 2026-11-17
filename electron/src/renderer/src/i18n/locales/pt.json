@@ -2031,6 +2031,7 @@
     "setup_wrong_architecture": "Esta é a versão Intel (x64) do VoiceStudio executada pelo Rosetta num Mac com Apple Silicon, por isso o backend de IA local não pode ser instalado. Feche o app, instale por cima o DMG para Apple Silicon (arm64) e abra-o novamente — suas vozes e projetos são mantidos.",
     "setup_missing_system_library": "Este sistema Windows não tem o Microsoft Visual C++ 2015-2022 Redistributable (x64), de que a extensão de áudio do PyTorch precisa. Instale-o a partir da Microsoft e prima Tentar novamente.",
     "setup_outdated_system_library": "O Microsoft Visual C++ Redistributable (x64) deste sistema Windows é demasiado antigo, por isso uma biblioteca de voz falha ao carregar. Instale a versão mais recente a partir da Microsoft e prima Tentar novamente.",
+    "setup_torch_dll_init_failed": "Não foi possível carregar o PyTorch e a causa não foi determinada. Instale o Microsoft Visual C++ Redistributable (x64) mais recente, depois atualize o driver da placa de vídeo e toque em Tentar novamente. Se ainda falhar, use \"Limpar e Repetir\" em \"Mais soluções\".",
     "setup_files_locked": "Outro programa está a usar os ficheiros do VoiceStudio (OneDrive ou outra app de sincronização, antivírus, ou um backend do VoiceStudio ainda em execução). Feche-o ou pause a sincronização e prima Tentar novamente.",
     "download_apple_silicon": "Baixar a versão para Apple Silicon",
     "ready": "Motor pronto",

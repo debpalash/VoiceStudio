@@ -32,6 +32,7 @@ vi.mock('./runtime-project', async (importOriginal) => ({
   runtimePython: (root: string) => root + '/.venv/bin/python',
   MISSING_SYSTEM_LIBRARY_CODE: 'MISSING_SYSTEM_LIBRARY',
   OUTDATED_SYSTEM_LIBRARY_CODE: 'OUTDATED_SYSTEM_LIBRARY',
+  TORCH_DLL_INIT_FAILED_CODE: 'TORCH_DLL_INIT_FAILED',
   RUNTIME_FILES_LOCKED_CODE: 'RUNTIME_FILES_LOCKED',
 }));
 

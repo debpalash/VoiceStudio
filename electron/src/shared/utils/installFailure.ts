@@ -129,6 +129,7 @@ const SETUP_ISSUE_CODES: Record<string, InstallFailureCode> = {
   files_locked: 'RUNTIME_FILES_LOCKED',
   missing_system_library: 'SYSTEM_LIBRARY_PROBLEM',
   outdated_system_library: 'SYSTEM_LIBRARY_PROBLEM',
+  torch_dll_init_failed: 'SYSTEM_LIBRARY_PROBLEM',
   unsupported_platform: 'UNSUPPORTED_PLATFORM',
   wrong_architecture: 'UNSUPPORTED_PLATFORM',
 };

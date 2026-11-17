@@ -384,6 +384,7 @@
     "setup_wrong_architecture": "Quit VoiceStudio, replace it with the Apple Silicon (arm64) DMG, then open it again. You are running the Intel build through Rosetta; switching builds enables local AI without removing voices or projects.",
     "setup_missing_system_library": "This Windows system is missing the Microsoft Visual C++ 2015-2022 Redistributable (x64), which the PyTorch audio extension needs. Install it from Microsoft, then press Retry.",
     "setup_outdated_system_library": "This Windows system's Microsoft Visual C++ Redistributable (x64) is too old or damaged, so PyTorch or a speech library fails to load. Install the latest version from Microsoft, then press Retry.",
+    "setup_torch_dll_init_failed": "PyTorch could not load, and the cause is not established. Try installing the latest Microsoft Visual C++ Redistributable (x64), then updating your graphics driver, then press Retry. If it still fails, use \"Clean & Retry\" under \"More fixes\".",
     "setup_files_locked": "Another program is using VoiceStudio's files (OneDrive or another sync app, antivirus, or a VoiceStudio backend that is still running). Close it or pause syncing, then press Retry.",
     "download_apple_silicon": "Download the Apple Silicon build",
     "proxy_bypass_help": "Fully quit VoiceStudio, set HTTP_PROXY/HTTPS_PROXY to your proxy URL and NO_PROXY to excluded hosts in a terminal, then launch VoiceStudio from that terminal. Retrying in the current app cannot load new environment variables.",
