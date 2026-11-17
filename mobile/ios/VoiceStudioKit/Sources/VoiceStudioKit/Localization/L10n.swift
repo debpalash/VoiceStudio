@@ -49,8 +49,13 @@ public struct L10n: Sendable {
         var result: String?
         for code in chain {
             if let count {
+                // Same precedence as the Android reader: the exact category, then
+                // `_other`, then the unsuffixed key.
                 let suffix = Self.plural(count, language: code)
-                if let value = catalogs[code]?[key + "_" + suffix] { result = value; break }
+                if let value = catalogs[code]?[key + "_" + suffix] ?? catalogs[code]?[key + "_other"] {
+                    result = value
+                    break
+                }
             }
             if let value = catalogs[code]?[key] { result = value; break }
         }
@@ -69,10 +74,41 @@ public struct L10n: Sendable {
         }
         return output + text[cursor...]
     }
+    /// CLDR cardinal category for `count`, matching `mobile/android/core/l10n`.
+    ///
+    /// Both apps read the same generated catalogs, so a count that lands in `few`
+    /// on Android has to land in `few` here too; before this the iOS reader only
+    /// ever produced `one` or `other`, and a Polish or Russian catalog entry for
+    /// 2–4 items was never selected.
     private static func plural(_ count: Int, language: String) -> String {
         let lang = language.split(separator: "-").first.map(String.init) ?? language
-        if ["ja", "zh", "ko", "th", "vi", "id"].contains(lang) { return "other" }
-        if lang == "fr" || lang == "pt" { return count == 0 || count == 1 ? "one" : "other" }
-        return count == 1 ? "one" : "other"
+        let mod10 = count % 10
+        let mod100 = count % 100
+        switch lang {
+        case "ar":
+            if count == 0 { return "zero" }
+            if count == 1 { return "one" }
+            if count == 2 { return "two" }
+            if (3...10).contains(mod100) { return "few" }
+            if (11...99).contains(mod100) { return "many" }
+            return "other"
+        case "ru", "uk":
+            if mod10 == 1 && mod100 != 11 { return "one" }
+            if (2...4).contains(mod10) && !(12...14).contains(mod100) { return "few" }
+            if mod10 == 0 || (5...9).contains(mod10) || (11...14).contains(mod100) { return "many" }
+            return "other"
+        case "pl":
+            if count == 1 { return "one" }
+            if (2...4).contains(mod10) && !(12...14).contains(mod100) { return "few" }
+            return "many"
+        case "fr", "pt":
+            return (0...1).contains(count) ? "one" : "other"
+        case "hi":
+            return (count == 0 || count == 1) ? "one" : "other"
+        case "zh", "ja", "ko", "th", "vi", "id":
+            return "other"
+        default:
+            return count == 1 ? "one" : "other"
+        }
     }
 }
