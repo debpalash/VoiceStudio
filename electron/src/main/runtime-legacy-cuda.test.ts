@@ -22,6 +22,7 @@ import {
   parseLegacyCudaProbe,
   resolveTorchVariant,
   runtimePython,
+  runtimeCompatible,
   runtimeReady,
 } from './runtime-project';
 
@@ -281,6 +282,16 @@ describe('legacy CUDA runtime install', () => {
     expect(await runtimeReady(bundle, project)).toBe(true);
     hoisted.legacy = { legacy: true, reason: 'pascal' };
     expect(await runtimeReady(bundle, project)).toBe(false);
+  });
+
+  it('rejects an unstamped (pre-Electron) runtime on a legacy host so setup installs cu126', async () => {
+    const { bundle, project } = await fixture();
+    hoisted.legacy = { legacy: false, reason: 'modern' };
+    await installRuntime(bundle, project, 'uv', runner(project, ''), new AbortController().signal);
+    await rm(join(project, '.runtime-ready'));
+    expect(await runtimeCompatible(bundle, project)).toBe(true);
+    hoisted.legacy = { legacy: true, reason: 'pascal' };
+    expect(await runtimeCompatible(bundle, project)).toBe(false);
   });
 });
 

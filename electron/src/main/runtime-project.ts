@@ -1008,8 +1008,12 @@ export async function runtimeCompatible(bundle: string, project: string): Promis
           normalizeLockHosts(installedLock.toString('utf8'))) &&
       (marker === null
         ? // A Tauri environment carries the lock's default (CUDA) torch: fine for
-          // inferred CPU hosts, wrong for an explicit ROCm or CPU request.
-          !resolveTorchVariant().explicit || resolveTorchVariant().variant === 'default'
+          // inferred CPU hosts, wrong for an explicit ROCm or CPU request, and
+          // wrong for a pre-Volta card that needs the cu126 build (#4242).
+          ((choice) =>
+            choice.variant !== 'cu126' && (!choice.explicit || choice.variant === 'default'))(
+            resolveTorchVariant(),
+          )
         : (await acceptedStamps(bundle)).includes(marker)) &&
       (!windowsRocmSelected() ||
         ((await windowsRocmRecipeMatches(bundle, project)) && (await windowsRocmReady(project))))
