@@ -1,7 +1,9 @@
-"""The runtime app version must come from package metadata, not a stale literal
-(prevents the recurring "0.4.0"/"0.2.7" drift — Greptile #145)."""
+"""The runtime app version must come from this checkout, not a stale cache.
+
+A checkout declares its version in pyproject.toml; the installed metadata is a
+cache that a skipped re-sync leaves behind, so it is only the fallback.
+"""
 import re
-from importlib.metadata import version
 
 from core.version import APP_VERSION
 
@@ -10,10 +12,65 @@ def test_app_version_is_semver():
     assert re.match(r"^\d+\.\d+\.\d+", APP_VERSION), APP_VERSION
 
 
-def test_app_version_matches_installed_package_metadata():
-    # In any synced env the package is installed; APP_VERSION must equal it
-    # (i.e. it's read from pyproject, not hardcoded).
-    assert APP_VERSION == version("omnivoice")
+def test_app_version_matches_the_checkout_not_a_stale_install():
+    """A venv whose metadata lags ``pyproject.toml`` must not change the reported version.
+
+    The old test compared ``APP_VERSION`` with ``importlib.metadata.version``,
+    which is the same source when the package is installed, so it could never
+    catch the drift it was written for: a checkout bumped without a re-sync kept
+    reporting the old version.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    pyproject = re.search(
+        r'(?m)^version\s*=\s*"([^"]+)"',
+        (root / "pyproject.toml").read_text(encoding="utf-8"),
+    ).group(1)
+    assert APP_VERSION == pyproject, (
+        f"the backend reports {APP_VERSION!r} while this checkout declares {pyproject!r}"
+    )
+
+
+def test_installed_metadata_is_only_a_fallback(monkeypatch):
+    """The checkout wins, then the installed metadata, then the literal."""
+    import core.version as version_module
+
+    # Both present and different: the checkout decides. Without this the test
+    # would pass on a runner whose metadata happens to match the checkout.
+    monkeypatch.setattr(version_module, "_source_version", lambda: "1.2.3")
+    monkeypatch.setattr(version_module, "_installed_version", lambda: "9.9.9")
+    assert version_module._resolve_version() == "1.2.3"
+
+    monkeypatch.setattr(version_module, "_source_version", lambda: None)
+    assert version_module._resolve_version() == "9.9.9"
+
+    monkeypatch.setattr(version_module, "_installed_version", lambda: None)
+    assert version_module._resolve_version() == version_module._FALLBACK_VERSION
+
+
+def test_an_unreadable_manifest_falls_through_to_metadata(monkeypatch, tmp_path):
+    """A pyproject that cannot be decoded must not stop `core.version` importing."""
+    import core.version as version_module
+
+    broken = tmp_path / "pyproject.toml"
+    broken.write_bytes(b'\xff\xfeversion = "9.9.9"')
+    monkeypatch.setattr(version_module, "_installed_version", lambda: "8.8.8")
+
+    class _BrokenPath:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def resolve() -> "_BrokenPath":
+            return _BrokenPath()
+
+        @property
+        def parents(self) -> tuple:
+            return (tmp_path,)
+
+    monkeypatch.setattr(version_module, "Path", _BrokenPath)
+    assert version_module._resolve_version() == "8.8.8"
 
 
 def test_all_version_files_in_lockstep():
