@@ -51,7 +51,7 @@ def test_actual_dub_terminal_error_keeps_one_causal_report(reporter, dub_job_env
     rows = reporter._files()
     assert len(rows) == 1
     assert rows[0]['props']['error_type'] == ('MemoryError' if kind == 'memory' else 'TimeoutError')
-    assert rows[0]['props']['error_code'] == ('HOST_MEMORY_EXHAUSTED' if kind == 'memory' else 'UNKNOWN')
+    assert rows[0]['props']['error_code'] == ('HOST_MEMORY_EXHAUSTED' if kind == 'memory' else 'GPU_JOB_TIMEOUT')
     assert rows[0]['props']['occurrences'] == 1
     assert any('"type": "error"' in event for event in published)
     assert all('diagnostic' not in event and 'private' not in event for event in published)

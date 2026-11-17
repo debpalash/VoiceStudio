@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { types } from 'node:util';
 import rawSchema from '../../../config/diagnostics.json';
 import type { DiagnosticCategory, DiagnosticStage } from '../preload/diagnostics';
 
@@ -255,11 +256,25 @@ export function sanitizeRecord(
     : null;
 }
 
+/** Subclasses (`class FetchError extends TypeError`) report their nearest known built-in base. */
+function knownErrorType(error: { name: string }): string {
+  const named = enums.get('error_type')?.has(error.name) ? error.name : undefined;
+  if (named && named !== 'Error') return named;
+  let proto: unknown = Object.getPrototypeOf(error);
+  for (let depth = 0; proto && depth < 16; depth++) {
+    const ctor = (proto as { constructor?: { name?: unknown } }).constructor;
+    const name = ctor && typeof ctor.name === 'string' ? ctor.name : '';
+    if (name !== 'Error' && enums.get('error_type')?.has(name) && name !== 'OtherError') return name;
+    proto = Object.getPrototypeOf(proto);
+  }
+  return named ?? 'OtherError';
+}
+
 /** Error messages and the first stack line are intentionally never inspected. */
 export function projectException(error: unknown): Pick<DiagnosticEvent, 'error_type' | 'frames'> {
   try {
-    if (!(error instanceof Error)) return { error_type: 'OtherError' };
-    const error_type = enumValue('error_type', error.name) ?? 'OtherError';
+    if (!(error instanceof Error) && !types.isNativeError(error)) return { error_type: 'OtherError' };
+    const error_type = knownErrorType(error);
     const frames: string[] = [];
     for (const line of String(error.stack ?? '')
       .slice(0, 32_768)
