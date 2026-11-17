@@ -1983,6 +1983,43 @@ describe('outdated Visual C++ runtime behind a native import crash (#3293)', () 
     await expect(failure).rejects.toThrow(/"faster_whisper".*14\.23\.27820\.0.*Visual C\+\+/s);
   });
 
+  const dllInit = (dir = 'C:\\x') => () =>
+    Object.assign(new Error('Runtime setup exited with code 1'), {
+      code: 1,
+      stdout: 'VOICESTUDIO_IMPORT=fastapi\nVOICESTUDIO_IMPORT=faster_whisper\n',
+      stderr: `OSError: [WinError 1114] A dynamic link library (DLL) initialization routine failed. Error loading "${dir}\\torch\\lib\\c10.dll" or one of its dependencies.`,
+    });
+
+  it('matches WinError 1114 even when the runtime path is very long (#4230)', async () => {
+    const { bundle, project } = await fixture();
+    await expect(
+      installRuntime(
+        bundle,
+        project,
+        'uv',
+        runner('14.23.27820.0', dllInit(`D:\\${'a'.repeat(400)}`)),
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: OUTDATED_SYSTEM_LIBRARY_CODE });
+  });
+
+  it.each([
+    ['a current runtime', '14.44.35211.0', /\(14\.44\.35211\.0\) looks current/],
+    ['an unreadable runtime version', '', /version could not be read/],
+  ])('does not blame the runtime for WinError 1114 with %s (#4230)', async (_n, version, text) => {
+    const { bundle, project } = await fixture();
+    const failure = installRuntime(
+      bundle,
+      project,
+      'uv',
+      runner(version, dllInit()),
+      new AbortController().signal,
+    );
+    await expect(failure).rejects.toMatchObject({ code: 'TORCH_DLL_INIT_FAILED' });
+    await expect(failure).rejects.toThrow(text);
+    await expect(failure).rejects.toThrow(/not established/);
+  });
+
   it('keeps the plain import failure when the runtime is current or the error is not a crash', async () => {
     const current = await fixture();
     await expect(
