@@ -136,6 +136,8 @@ const SETUP_ISSUE_CODES: Record<string, InstallFailureCode> = {
 const DOWNLOAD_INTERRUPTED =
   /peer closed connection|close_notify|error decoding response body|error sending request|failed to download|failed to fetch|connection (?:reset|closed|refused|timed out)|operation timed out|network (?:is )?unreachable|dns error/i;
 
+const TORCH_DLL_INIT = /WinError 1114[^\n]*\btorch[\\/]+lib[\\/]+\w+\.dll/i;
+
 const ILLEGAL_INSTRUCTION = 0xc000001d;
 const ACCESS_VIOLATION = 0xc0000005;
 const IN_PAGE_ERROR = 0xc0000006;
@@ -184,6 +186,14 @@ export function classifyInstallFailure(evidence: FailureEvidence): InstallFailur
   if (inSyncedFolder(message)) return 'RUNTIME_IN_SYNCED_FOLDER';
   const native = nativeCode(evidence, message);
   if (native) return native;
+
+  // torch could not initialise c10.dll: the Visual C++ runtime, not the wheels (#4230).
+  if (
+    TORCH_DLL_INIT.test(message) ||
+    lines.some((line) => TORCH_DLL_INIT.test(line)) ||
+    /Windows could not initialise PyTorch's c10\.dll/.test(message)
+  )
+    return 'SYSTEM_LIBRARY_PROBLEM';
 
   if (/Python environment\b.*\b(is missing|is incomplete|missing or incomplete)\b/is.test(message))
     return /setup:api/.test(message) ? 'SOURCE_ENV_INCOMPLETE' : 'BROKEN_VENV';

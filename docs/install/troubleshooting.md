@@ -119,6 +119,8 @@ The runtime is inside OneDrive, Dropbox, iCloud Drive, Google Drive or Nextcloud
 
 A system library the engine needs is missing or too old. The setup screen names it; see the [Linux guide](linux.md).
 
+On Windows the usual one is the Microsoft Visual C++ Redistributable. `OSError: [WinError 1114] A dynamic link library (DLL) initialization routine failed ... torch\lib\c10.dll` while importing `faster_whisper`, `ctranslate2` or `torch` means the installed copy is too old or damaged (VoiceStudio reports its `msvcp140.dll` version when it can read it). Reinstalling the Python packages cannot fix it. Install the latest [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe), restart Windows, then press Retry.
+
 ### `UNSUPPORTED_PLATFORM`
 
 This computer cannot run the local engine, or this is the wrong download for it. See the [macOS guide](macos.md), or connect to an engine on another computer.
