@@ -313,18 +313,27 @@ def _check_deep_synthesis() -> dict:
     import concurrent.futures
     import time as _time
 
+    from services.inference_cancellation import InferenceCancellation
+
+    # A killable sidecar watches this scope: at the deadline below it is
+    # stopped instead of holding the engine lock and a GPU worker for as long
+    # as its heartbeats keep arriving (#4228).
+    cancellation = InferenceCancellation()
+
     def _synth():
         import services.model_manager as mm
         from services.tts_backend import get_active_tts_backend, active_backend_id
-        backend = get_active_tts_backend(model=mm.model)
-        wav = backend.generate("Diagnostics check, one two three.", num_step=4)
-        return active_backend_id(), int(wav.shape[-1]) / max(1, backend.sample_rate)
+        with cancellation.activate():
+            backend = get_active_tts_backend(model=mm.model)
+            wav = backend.generate("Diagnostics check, one two three.", num_step=4)
+            return active_backend_id(), int(wav.shape[-1]) / max(1, backend.sample_rate)
 
     t0 = _time.perf_counter()
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
         engine_id, audio_s = ex.submit(_synth).result(timeout=_DEEP_TIMEOUT_S)
     except concurrent.futures.TimeoutError:
+        cancellation.cancel()
         return _check(
             "deep_synth", "Deep synthesis", FAIL,
             f"timed out after {_DEEP_TIMEOUT_S}s - engine load or synthesis hung",

@@ -323,8 +323,10 @@ def _handle_synthesize(msg: dict, stdout) -> None:
 
             ref_text = None
             try:
-                # Loads a Whisper model: silent for minutes on a cold disk.
-                with _heartbeating(stdout, "loading_model"):
+                # Loads a Whisper model: silent for minutes on a cold disk. Not
+                # a "loading_model" stage: the parent credits that as cold-load
+                # progress, and a stalled transcription must not earn it.
+                with _heartbeating(stdout, "reference_asr"):
                     ref_text = transcribe_reference(ref_audio, release_after=True)
                 reference_asr = None if ref_text else "empty"
             except Exception:  # noqa: BLE001 — preserve installed-only model fallback
