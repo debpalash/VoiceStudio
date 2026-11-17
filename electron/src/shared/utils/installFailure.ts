@@ -136,7 +136,7 @@ const SETUP_ISSUE_CODES: Record<string, InstallFailureCode> = {
 const DOWNLOAD_INTERRUPTED =
   /peer closed connection|close_notify|error decoding response body|error sending request|failed to download|failed to fetch|connection (?:reset|closed|refused|timed out)|operation timed out|network (?:is )?unreachable|dns error/i;
 
-const TORCH_DLL_INIT = /WinError 1114[^\n]*\btorch[\\/]+lib[\\/]+\w+\.dll/i;
+const TORCH_DLL_INIT = /WinError 1114[^\r\n]*\btorch[\\/]+lib[\\/]+\w+\.dll/i;
 
 const ILLEGAL_INSTRUCTION = 0xc000001d;
 const ACCESS_VIOLATION = 0xc0000005;

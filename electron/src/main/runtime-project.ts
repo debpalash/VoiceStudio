@@ -195,7 +195,10 @@ const ACCESS_VIOLATION_EXIT_CODES = new Set<unknown>([3221225477, -1073741819]);
  * Visual C++ runtime it initialises against is too old or damaged; reinstalling
  * the wheels cannot change a system library.
  */
-const TORCH_DLL_INIT_FAILED = /WinError 1114[\s\S]{0,240}?\btorch[\\/]+lib[\\/]+\w+\.dll/i;
+/** Error code for a torch DLL that would not initialise when the cause is not established. */
+export const TORCH_DLL_INIT_FAILED_CODE = 'TORCH_DLL_INIT_FAILED';
+// One line, no distance limit: a long custom runtime path must still match (#4230).
+const TORCH_DLL_INIT_FAILED = /WinError 1114[^\r\n]*\btorch[\\/]+lib[\\/]+\w+\.dll/i;
 function importFailure(error: unknown): Error {
   const failure = error as { code?: unknown; message?: unknown; stdout?: unknown } | null;
   const module = lastImportAttempted(failure?.stdout);
@@ -801,19 +804,29 @@ export function outdatedSystemLibraryError(
   // torch's DLL loader names the failure itself, so it needs no crash status. The
   // system runtime is the cause whether or not the probe could read its version.
   if (TORCH_DLL_INIT_FAILED.test(text)) {
-    const detail =
-      msvcp && msvcp140Outdated(msvcp.version)
-        ? ` (${scrubText(msvcp.path)} is version ${msvcp.version}; ${MIN_MSVCP140_VERSION.join('.')} or newer is needed)`
-        : '';
+    const subject = module ? `Importing "${module}" failed` : 'Loading PyTorch failed';
+    if (msvcp && msvcp140Outdated(msvcp.version)) {
+      return Object.assign(
+        new Error(
+          `${subject} because Windows could not initialise PyTorch's c10.dll (WinError 1114) and this ` +
+            `system's Visual C++ runtime is outdated (${scrubText(msvcp.path)} is version ${msvcp.version}; ` +
+            `${MIN_MSVCP140_VERSION.join('.')} or newer is needed). Install the latest Microsoft Visual C++ ` +
+            'Redistributable (x64) from Microsoft, restart Windows and press Retry; reinstalling the ' +
+            'Python packages cannot update a system library.',
+        ),
+        { code: OUTDATED_SYSTEM_LIBRARY_CODE, stdout: output?.stdout },
+      );
+    }
+    // The runtime is current or could not be read: the cause is not established.
     return Object.assign(
       new Error(
-        `${module ? `Importing "${module}" failed` : 'Loading PyTorch failed'} because Windows could not ` +
-          `initialise PyTorch's c10.dll (WinError 1114). This is almost always an outdated or damaged ` +
-          `Microsoft Visual C++ runtime${detail}. Install the latest Microsoft Visual C++ ` +
-          'Redistributable (x64) from Microsoft, restart Windows and press Retry; reinstalling the ' +
-          'Python packages cannot update a system library.',
+        `${subject} because Windows could not initialise PyTorch's c10.dll (WinError 1114). The cause ` +
+          'is not established: this Windows system\'s Visual C++ runtime ' +
+          `${msvcp?.version ? `(${msvcp.version}) looks current` : 'version could not be read'}. Installing the latest ` +
+          'Microsoft Visual C++ Redistributable (x64) and restarting Windows may help; so may updating the ' +
+          'graphics driver or pressing Clean & Retry under More fixes. Send the in-app report if it persists.',
       ),
-      { code: OUTDATED_SYSTEM_LIBRARY_CODE, stdout: output?.stdout },
+      { code: TORCH_DLL_INIT_FAILED_CODE, stdout: output?.stdout },
     );
   }
   if (!ACCESS_VIOLATION_EXIT_CODES.has(code)) return null;
