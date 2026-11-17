@@ -2029,6 +2029,7 @@
     "setup_wrong_architecture": "यह VoiceStudio का Intel (x64) बिल्ड है जो Apple Silicon Mac पर Rosetta के ज़रिए चल रहा है, इसलिए लोकल AI बैकएंड इंस्टॉल नहीं हो सकता। ऐप बंद करें, इसके ऊपर Apple Silicon (arm64) DMG इंस्टॉल करें और फिर से खोलें — आपकी आवाज़ें और प्रोजेक्ट सुरक्षित रहेंगे।",
     "setup_missing_system_library": "इस Windows सिस्टम पर Microsoft Visual C++ 2015-2022 Redistributable (x64) नहीं है, जिसकी PyTorch ऑडियो एक्सटेंशन को ज़रूरत है। इसे Microsoft से इंस्टॉल करें, फिर «पुनः प्रयास करें» दबाएँ।",
     "setup_outdated_system_library": "इस Windows सिस्टम पर Microsoft Visual C++ Redistributable (x64) बहुत पुराना है, इसलिए एक स्पीच लाइब्रेरी लोड होते समय क्रैश हो जाती है। Microsoft से नवीनतम संस्करण इंस्टॉल करें, फिर «पुनः प्रयास करें» दबाएँ।",
+    "setup_torch_dll_init_failed": "PyTorch लोड नहीं हो सका और कारण स्पष्ट नहीं है। नवीनतम Microsoft Visual C++ Redistributable (x64) इंस्टॉल करें, फिर ग्राफ़िक्स ड्राइवर अपडेट करें और पुनः प्रयास दबाएँ। फिर भी विफल हो तो \"अन्य समाधान\" में \"साफ़ करें और पुनः प्रयास करें\" का उपयोग करें।",
     "setup_files_locked": "कोई दूसरा प्रोग्राम VoiceStudio की फ़ाइलों का उपयोग कर रहा है (OneDrive या कोई अन्य सिंक ऐप, एंटीवायरस, या अभी भी चल रहा VoiceStudio बैकएंड)। उसे बंद करें या सिंक रोकें, फिर «पुनः प्रयास करें» दबाएँ।",
     "download_apple_silicon": "Apple Silicon बिल्ड डाउनलोड करें",
     "ready": "इंजन तैयार है",

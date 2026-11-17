@@ -232,6 +232,7 @@ def validate_record(value, epoch, schema=None):
 
 
 _causal_counter = itertools.count(1)
+_NETWORK_ERRNOS = frozenset(getattr(errno, name) for name in ('ENETDOWN','ENETUNREACH','ENETRESET','EHOSTUNREACH','EHOSTDOWN','ENOTCONN','ETIMEDOUT') if hasattr(errno, name))
 
 
 def _exception_fields(error, schema):
@@ -254,13 +255,15 @@ def _exception_fields(error, schema):
     if MemoryError in kinds:
         result['error_code'] = 'HOST_MEMORY_EXHAUSTED'
     elif any(cls is compute_timeout for cls in kinds):
-        result['error_code'] = 'UNKNOWN'
+        result['error_code'] = 'GPU_JOB_TIMEOUT'
     elif TimeoutError in kinds or ConnectionError in kinds:
         result['error_code'] = 'NETWORK_ERROR'
     elif OSError in kinds:
         number = BaseException.__getattribute__(error,'errno')
         if number in (errno.ENOSPC,errno.EDQUOT):
             result['error_code'] = 'DISK_FULL'
+        elif number in _NETWORK_ERRNOS:
+            result['error_code'] = 'NETWORK_ERROR'
     lines = []
     total = 0
     tb = BaseException.__getattribute__(error,'__traceback__')

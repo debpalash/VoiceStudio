@@ -2029,6 +2029,7 @@
     "setup_wrong_architecture": "VoiceStudio'yu kapatın, Apple Silicon (arm64) DMG'siyle değiştirin ve yeniden açın. Şu anda Intel sürümü Rosetta üzerinden çalışıyor; sürümü değiştirmek sesleri ve projeleri silmeden yerel yapay zekâyı etkinleştirir.",
     "setup_missing_system_library": "Bu Windows sisteminde, PyTorch ses eklentisinin ihtiyaç duyduğu Microsoft Visual C++ 2015-2022 Redistributable (x64) eksik. Microsoft’tan yükleyip Yeniden Dene’ye basın.",
     "setup_outdated_system_library": "Bu Windows sistemindeki Microsoft Visual C++ Redistributable (x64) çok eski olduğu için bir konuşma kitaplığı yüklenirken çöküyor. En son sürümü Microsoft’tan yükleyin, ardından Yeniden Dene’ye basın.",
+    "setup_torch_dll_init_failed": "PyTorch yüklenemedi ve neden belirlenemedi. En son Microsoft Visual C++ Redistributable (x64) sürümünü yükleyin, ardından grafik sürücünüzü güncelleyin ve Yeniden dene'ye basın. Yine de başarısız olursa \"Diğer çözümler\" altındaki \"Temizle ve Yeniden Dene\" seçeneğini kullanın.",
     "setup_files_locked": "Başka bir program VoiceStudio dosyalarını kullanıyor (OneDrive veya başka bir eşitleme uygulaması, antivirüs ya da hâlâ çalışan bir VoiceStudio arka ucu). Onu kapatın veya eşitlemeyi duraklatın, ardından Yeniden Dene’ye basın.",
     "download_apple_silicon": "Apple Silicon sürümünü indir",
     "ready": "Motor hazır",

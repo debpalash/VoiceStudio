@@ -2029,6 +2029,7 @@
     "setup_wrong_architecture": "Beende VoiceStudio, ersetze es durch das Apple-Silicon-DMG (arm64) und starte es neu. Derzeit läuft die Intel-Ausgabe über Rosetta; der Wechsel aktiviert lokale KI und lässt Stimmen sowie Projekte unangetastet.",
     "setup_missing_system_library": "Auf diesem Windows-System fehlt das Microsoft Visual C++ 2015-2022 Redistributable (x64), das die PyTorch-Audioerweiterung benötigt. Installiere es von Microsoft und drücke dann auf „Erneut versuchen“.",
     "setup_outdated_system_library": "Das Microsoft Visual C++ Redistributable (x64) auf diesem Windows-System ist zu alt, deshalb stürzt eine Sprachbibliothek beim Laden ab. Installiere die neueste Version von Microsoft und drücke dann auf „Erneut versuchen“.",
+    "setup_torch_dll_init_failed": "PyTorch konnte nicht geladen werden, die Ursache ist nicht geklärt. Installiere das neueste Microsoft Visual C++ Redistributable (x64), aktualisiere dann den Grafiktreiber und drücke auf „Erneut versuchen“. Hilft das nicht, nutze „Bereinigen & Wiederholen“ unter „Weitere Lösungen“.",
     "setup_files_locked": "Ein anderes Programm verwendet die Dateien von VoiceStudio (OneDrive oder eine andere Sync-App, ein Virenscanner oder ein noch laufendes VoiceStudio-Backend). Schließe es oder pausiere die Synchronisierung und drücke dann auf „Erneut versuchen“.",
     "download_apple_silicon": "Apple-Silicon-Version herunterladen",
     "ready": "Engine bereit",

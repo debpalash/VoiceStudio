@@ -283,6 +283,12 @@ def _ensure_reaper_running() -> None:
 _RESOLVE_HEARTBEAT_S = 5.0
 
 
+#: Progress stages that only re-arm the recv watchdog. They prove the child is
+#: alive, not that a cold load advanced, so they never extend the pool job's
+#: execution budget (#2435, #4228).
+_UNCREDITED_PROGRESS_STAGES = frozenset({"generating", "reference_asr"})
+
+
 @contextlib.contextmanager
 def _heartbeat_while_resolving(engine_id: str):
     """Report progress while a slow engine-venv resolution runs (#1414).
@@ -978,7 +984,7 @@ class SubprocessBackend(TTSBackend):
                             # timer thread proves nothing about synthesis progress:
                             # crediting it would let a stalled native generate hold
                             # its GPU worker past the execution budget (#2435).
-                            if running_on_gpu_pool() and reply.get("stage") != "generating":
+                            if running_on_gpu_pool() and reply.get("stage") not in _UNCREDITED_PROGRESS_STAGES:
                                 report_model_load_activity()
                         except Exception:
                             pass  # the heartbeat is best-effort; never fail a synth over it

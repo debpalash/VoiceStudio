@@ -159,7 +159,7 @@ def test_get_best_device_installs_it_on_an_xpu_host(monkeypatch):
 
 @pytest.mark.parametrize("rel,loader", [
     ("backend/services/model_manager.py", "def _load_model_sync("),
-    ("backend/engines/omnivoice_subprocess/main.py", "def _load_model("),
+    ("backend/engines/omnivoice_subprocess/main.py", "def _construct_model("),
 ])
 def test_omnivoice_loaders_pick_the_device_before_loading(rel, loader):
     """get_best_device() installs the fallback, so it has to run before

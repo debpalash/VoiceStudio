@@ -2029,6 +2029,7 @@
     "setup_wrong_architecture": "Hãy đóng VoiceStudio, thay bằng DMG Apple Silicon (arm64), rồi mở lại. Hiện bản Intel đang chạy qua Rosetta; đổi bản sẽ bật AI cục bộ mà không xóa giọng nói hay dự án.",
     "setup_missing_system_library": "Hệ thống Windows này thiếu Microsoft Visual C++ 2015-2022 Redistributable (x64), thành phần mà tiện ích âm thanh của PyTorch cần đến. Hãy cài từ Microsoft rồi nhấn Thử lại.",
     "setup_outdated_system_library": "Microsoft Visual C++ Redistributable (x64) trên hệ thống Windows này quá cũ nên một thư viện giọng nói bị lỗi khi tải. Hãy cài phiên bản mới nhất từ Microsoft rồi nhấn Thử lại.",
+    "setup_torch_dll_init_failed": "Không thể tải PyTorch và chưa xác định được nguyên nhân. Hãy cài Microsoft Visual C++ Redistributable (x64) mới nhất, sau đó cập nhật trình điều khiển đồ họa rồi nhấn Thử lại. Nếu vẫn lỗi, hãy dùng \"Dọn dẹp & Thử lại\" trong \"Cách khắc phục khác\".",
     "setup_files_locked": "Một chương trình khác đang dùng tệp của VoiceStudio (OneDrive hoặc ứng dụng đồng bộ khác, phần mềm diệt virus, hoặc backend VoiceStudio vẫn đang chạy). Hãy đóng chương trình đó hoặc tạm dừng đồng bộ rồi nhấn Thử lại.",
     "download_apple_silicon": "Tải bản Apple Silicon",
     "retry": "Thử lại",

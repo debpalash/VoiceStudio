@@ -2053,6 +2053,7 @@
     "setup_wrong_architecture": "Zamknij VoiceStudio, zastąp go obrazem DMG dla Apple Silicon (arm64) i uruchom ponownie. Obecnie edycja Intel działa przez Rosetta; zmiana włączy lokalną AI bez usuwania głosów ani projektów.",
     "setup_missing_system_library": "W tym systemie Windows brakuje pakietu Microsoft Visual C++ 2015-2022 Redistributable (x64), którego potrzebuje rozszerzenie audio PyTorch. Zainstaluj go ze strony Microsoft, a następnie naciśnij Ponów.",
     "setup_outdated_system_library": "Pakiet Microsoft Visual C++ Redistributable (x64) w tym systemie Windows jest zbyt stary, więc biblioteka mowy ulega awarii podczas ładowania. Zainstaluj najnowszą wersję ze strony Microsoft, a następnie naciśnij Ponów.",
+    "setup_torch_dll_init_failed": "Nie udało się załadować PyTorch, a przyczyna nie jest ustalona. Zainstaluj najnowszy Microsoft Visual C++ Redistributable (x64), następnie zaktualizuj sterownik karty graficznej i naciśnij Ponów. Jeśli nadal się nie udaje, użyj „Wyczyść i ponów” w „Inne rozwiązania”.",
     "setup_files_locked": "Inny program używa plików VoiceStudio (OneDrive lub inna aplikacja synchronizująca, antywirus albo wciąż działający backend VoiceStudio). Zamknij go lub wstrzymaj synchronizację, a następnie naciśnij Ponów.",
     "download_apple_silicon": "Pobierz wersję dla Apple Silicon",
     "ready": "Silnik gotowy",
