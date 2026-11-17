@@ -118,7 +118,8 @@ def test_strict_slot_keeps_full_cache_and_fits_the_tail(render_dub, monkeypatch,
     monkeypatch.setattr(dg, "apply_rvc", lambda _: None)
     calls=[]
     async def stretch(wav, target, sr):
-        calls.append((wav.shape[-1], target, float(wav[0,-1])))
+        # Probe just before the 25 ms tail fade (#4229): the loud tail must arrive uncut.
+        calls.append((wav.shape[-1], target, float(wav[0,-2000])))
         return torch.nn.functional.interpolate(wav.unsqueeze(0),size=target,mode='linear').squeeze(0)
     monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
     events=render_dub.run(timing_strategy='strict_slot')
