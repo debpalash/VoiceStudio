@@ -461,6 +461,7 @@ def test_generating_heartbeats_are_not_credited_as_model_load_progress(mm, monke
         {"op": "progress", "stage": "loading_model", "percent": 1},
         {"op": "progress", "stage": "generating", "percent": 2},
         {"op": "progress", "stage": "generating", "percent": 3},
+        {"op": "progress", "stage": "reference_asr", "percent": 0},
         {"op": "audio", "audio_pcm_b64": "", "sample_rate": 24000, "n_samples": 0},
     ]
     monkeypatch.setattr(b, "_spawn", lambda: None)

@@ -128,6 +128,39 @@ def test_deep_check_success(monkeypatch):
     assert "1.0s of audio" in check["detail"]
 
 
+def test_deep_check_timeout_cancels_the_worker(monkeypatch):
+    """#4228: a hung deep synthesis must not keep a sidecar (and the engine
+    lock and GPU worker it holds) alive once the verdict has shipped."""
+    import threading
+
+    from services.inference_cancellation import current_cancellation
+
+    entered = threading.Event()
+    seen = []
+    release = threading.Event()
+
+    class HungBackend:
+        sample_rate = 24000
+
+        def generate(self, text, **kw):
+            seen.append(current_cancellation())
+            entered.set()
+            release.wait(10)
+            raise RuntimeError("cancelled")
+
+    import services.tts_backend as tb
+    monkeypatch.setattr(tb, "get_active_tts_backend", lambda model=None: HungBackend())
+    monkeypatch.setattr(tb, "active_backend_id", lambda: "fake")
+    monkeypatch.setattr(diagnose, "_DEEP_TIMEOUT_S", 0.5)
+    try:
+        check = diagnose._check_deep_synthesis()
+        assert entered.wait(5)
+        assert check["status"] == FAIL
+        assert seen[0] is not None and seen[0].cancelled.is_set()
+    finally:
+        release.set()
+
+
 def test_deep_check_engine_failure(monkeypatch):
     import services.tts_backend as tb
     def _boom(model=None):

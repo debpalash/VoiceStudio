@@ -2078,6 +2078,7 @@
     "setup_wrong_architecture": "أغلق VoiceStudio واستبدله بملف DMG لإصدار Apple Silicon ‏(arm64)، ثم افتحه مجددًا. الإصدار الحالي مخصص لـ Intel ويعمل عبر Rosetta؛ تبديله يتيح الذكاء الاصطناعي المحلي مع إبقاء الأصوات والمشاريع.",
     "setup_missing_system_library": "ينقص هذا النظام من Windows حزمة Microsoft Visual C++ 2015-2022 Redistributable (x64) التي يحتاجها امتداد الصوت في PyTorch. ثبّتها من Microsoft ثم اضغط «إعادة المحاولة».",
     "setup_outdated_system_library": "حزمة Microsoft Visual C++ Redistributable (x64) على نظام Windows هذا قديمة جدًا، لذا تتعطل مكتبة كلام عند تحميلها. ثبّت أحدث إصدار من Microsoft ثم اضغط «إعادة المحاولة».",
+    "setup_torch_dll_init_failed": "تعذّر تحميل PyTorch ولم يتم تحديد السبب. ثبّت أحدث إصدار من Microsoft Visual C++ Redistributable (x64)، ثم حدّث تعريف بطاقة الرسومات، ثم اضغط إعادة المحاولة. إذا استمر الفشل، فاستخدم \"تنظيف وإعادة المحاولة\" ضمن \"حلول أخرى\".",
     "setup_files_locked": "يستخدم برنامج آخر ملفات VoiceStudio (OneDrive أو تطبيق مزامنة آخر، أو برنامج مكافحة الفيروسات، أو خادم VoiceStudio لا يزال يعمل). أغلقه أو أوقف المزامنة مؤقتًا ثم اضغط «إعادة المحاولة».",
     "download_apple_silicon": "تنزيل نسخة Apple Silicon",
     "ready": "المحرك جاهز",

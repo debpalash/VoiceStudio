@@ -72,6 +72,10 @@ Without valid app credentials, the existing public events request
 (`/api/public/v1/events`, event `diagnostic_report`) and site remain unchanged.
 Usage analytics keeps its existing destination and request format.
 `config/diagnostics.json` is the shared closed metadata policy.
+Desktop process crashes carry a closed code that names the path, never a message:
+main-process uncaught exception or unhandled rejection, GPU process gone, utility
+process gone, or another Electron child process gone (the child's free-text service
+name is not read). A generation deadline reports `GPU_JOB_TIMEOUT`.
 Reports contain technical categories/codes, app/build/platform labels,
 known first-party source locations, bounded counters and a separately generated
 random installation ID. They never contain audio, text/transcripts, user names,

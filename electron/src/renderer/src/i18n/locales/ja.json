@@ -2030,6 +2030,7 @@
     "setup_wrong_architecture": "VoiceStudio を終了し、Apple Silicon（arm64）版 DMG に置き換えてから再起動してください。現在は Intel 版が Rosetta 経由で動作しています。版を切り替えてもボイスやプロジェクトは消えず、ローカル AI が利用可能になります。",
     "setup_missing_system_library": "この Windows システムには、PyTorch の音声拡張に必要な Microsoft Visual C++ 2015-2022 再頒布可能パッケージ (x64) が入っていません。Microsoft からインストールしてから、再試行を押してください。",
     "setup_outdated_system_library": "この Windows システムの Microsoft Visual C++ 再頒布可能パッケージ (x64) が古いため、音声ライブラリの読み込み時にクラッシュします。Microsoft から最新版をインストールしてから、再試行を押してください。",
+    "setup_torch_dll_init_failed": "PyTorch を読み込めませんでした。原因は特定できていません。最新の Microsoft Visual C++ 再頒布可能パッケージ (x64) をインストールし、次にグラフィックドライバーを更新してから、再試行を押してください。それでも失敗する場合は、「その他の解決策」の「クリーンアップして再試行」を使ってください。",
     "setup_files_locked": "別のプログラムが VoiceStudio のファイルを使用しています（OneDrive などの同期アプリ、ウイルス対策ソフト、または実行中のままの VoiceStudio バックエンド）。そのプログラムを閉じるか同期を一時停止してから、再試行を押してください。",
     "download_apple_silicon": "Apple Silicon 版をダウンロード",
     "ready": "エンジン準備完了",

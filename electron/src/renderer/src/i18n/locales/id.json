@@ -2030,6 +2030,7 @@
     "setup_wrong_architecture": "Tutup VoiceStudio, ganti dengan DMG Apple Silicon (arm64), lalu buka lagi. Saat ini edisi Intel berjalan melalui Rosetta; penggantian edisi mengaktifkan AI lokal tanpa menghapus suara atau proyek.",
     "setup_missing_system_library": "Sistem Windows ini tidak memiliki Microsoft Visual C++ 2015-2022 Redistributable (x64), yang dibutuhkan ekstensi audio PyTorch. Pasang dari Microsoft, lalu tekan Coba Lagi.",
     "setup_outdated_system_library": "Microsoft Visual C++ Redistributable (x64) di sistem Windows ini terlalu lama, sehingga sebuah pustaka suara mogok saat dimuat. Pasang versi terbaru dari Microsoft, lalu tekan Coba Lagi.",
+    "setup_torch_dll_init_failed": "PyTorch tidak dapat dimuat dan penyebabnya belum dipastikan. Pasang Microsoft Visual C++ Redistributable (x64) terbaru, lalu perbarui driver grafis, kemudian tekan Coba lagi. Jika masih gagal, gunakan \"Bersihkan & Coba Lagi\" di \"Solusi lain\".",
     "setup_files_locked": "Program lain sedang menggunakan file VoiceStudio (OneDrive atau aplikasi sinkronisasi lain, antivirus, atau backend VoiceStudio yang masih berjalan). Tutup program itu atau jeda sinkronisasi, lalu tekan Coba Lagi.",
     "download_apple_silicon": "Unduh build Apple Silicon",
     "ready": "Mesin siap",

@@ -2030,6 +2030,7 @@
     "setup_wrong_architecture": "ปิด VoiceStudio เปลี่ยนเป็น DMG รุ่น Apple Silicon (arm64) แล้วเปิดใหม่ ขณะนี้รุ่น Intel ทำงานผ่าน Rosetta; การเปลี่ยนรุ่นจะเปิดใช้ AI ในเครื่องโดยไม่ลบเสียงหรือโปรเจกต์",
     "setup_missing_system_library": "ระบบ Windows นี้ไม่มี Microsoft Visual C++ 2015-2022 Redistributable (x64) ซึ่งส่วนขยายเสียงของ PyTorch ต้องใช้ ติดตั้งจาก Microsoft แล้วกดลองใหม่",
     "setup_outdated_system_library": "Microsoft Visual C++ Redistributable (x64) บนระบบ Windows นี้เก่าเกินไป ไลบรารีเสียงจึงขัดข้องขณะโหลด ติดตั้งเวอร์ชันล่าสุดจาก Microsoft แล้วกดลองใหม่",
+    "setup_torch_dll_init_failed": "โหลด PyTorch ไม่ได้และยังไม่ทราบสาเหตุ ติดตั้ง Microsoft Visual C++ Redistributable (x64) เวอร์ชันล่าสุด จากนั้นอัปเดตไดรเวอร์การ์ดจอ แล้วกดลองอีกครั้ง หากยังล้มเหลว ให้ใช้ \"ล้างข้อมูลและลองใหม่\" ใน \"วิธีแก้ไขอื่น\"",
     "setup_files_locked": "มีโปรแกรมอื่นกำลังใช้ไฟล์ของ VoiceStudio (OneDrive หรือแอปซิงค์อื่น โปรแกรมป้องกันไวรัส หรือแบ็กเอนด์ VoiceStudio ที่ยังทำงานอยู่) ปิดโปรแกรมนั้นหรือหยุดการซิงค์ชั่วคราว แล้วกดลองใหม่",
     "download_apple_silicon": "ดาวน์โหลดรุ่น Apple Silicon",
     "ready": "เอนจินพร้อม",

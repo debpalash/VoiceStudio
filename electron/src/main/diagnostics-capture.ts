@@ -119,7 +119,12 @@ export function installDiagnosticProcessCapture(
   source: MainProcessErrorSource = process,
 ): () => void {
   const stopTracking = trackDiagnosticOperations();
-  const capture = (error: unknown, reason: string, expectedEpoch?: string) => {
+  const capture = (
+    error: unknown,
+    reason: string,
+    error_code: string,
+    expectedEpoch?: string,
+  ) => {
     try {
       if (!reports.enabled) return;
       if (
@@ -128,7 +133,7 @@ export function installDiagnosticProcessCapture(
       )
         return;
       reports.capture(
-        { category: 'app_crash', stage: 'other', reason, ...projectException(error) },
+        { category: 'app_crash', stage: 'other', reason, error_code, ...projectException(error) },
         expectedEpoch,
       );
     } catch {
@@ -141,11 +146,11 @@ export function installDiagnosticProcessCapture(
     if (origin === 'unhandledRejection') return;
     const owner = diagnosticOperationOwner(reports, error);
     if (!owner || owner.epoch === null) return;
-    capture(error, 'unhandled_exception', owner.epoch);
+    capture(error, 'unhandled_exception', 'MAIN_UNCAUGHT_EXCEPTION', owner.epoch);
   };
   const rejected = (error: unknown, promise?: Promise<unknown>) => {
     const epoch = diagnosticRejectionEpoch(promise, reports, error);
-    if (epoch !== null) capture(error, 'unhandled_rejection', epoch);
+    if (epoch !== null) capture(error, 'unhandled_rejection', 'MAIN_UNHANDLED_REJECTION', epoch);
   };
   source.on('uncaughtExceptionMonitor', fatal);
   source.on('unhandledRejection', rejected);
@@ -156,6 +161,13 @@ export function installDiagnosticProcessCapture(
   };
 }
 
+/** Electron's fixed child-process type enum; the free-text service name is never read. */
+function childProcessCode(type: string | undefined): string {
+  if (type === 'GPU') return 'GPU_PROCESS_GONE';
+  if (type === 'Utility') return 'UTILITY_PROCESS_GONE';
+  return 'OTHER_CHILD_PROCESS_GONE';
+}
+
 /** Electron provides these reasons; normal/expected exits and arbitrary strings are ignored. */
 export function captureProcessGone(
   reports: Pick<DiagnosticReports, 'capture'>,
@@ -163,6 +175,7 @@ export function captureProcessGone(
   reason: string,
   exitCode: number,
   expected = false,
+  processType?: string,
 ): void {
   if (
     expected ||
@@ -182,6 +195,7 @@ export function captureProcessGone(
           'integrity-failure': 'integrity_failure',
         } as Record<string, string>
       )[reason] ?? reason,
+    ...(renderer ? {} : { error_code: childProcessCode(processType) }),
     exit_code: exitCode,
   });
 }
