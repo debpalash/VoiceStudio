@@ -644,6 +644,16 @@ it('warns about Smart App Control before the download without blocking install',
   delete backendStatus.smartAppControlWarning;
 });
 
+it('shows localized guidance for a torch DLL failure with no established cause (#4230)', () => {
+  backendStatus.message = 'Importing "faster_whisper" failed (WinError 1114)';
+  backendStatus.setupIssue = 'torch_dll_init_failed';
+
+  renderGate('setup_required');
+
+  expect(screen.getByText(i18n.t('backend.setup_torch_dll_init_failed'))).toBeVisible();
+  delete backendStatus.setupIssue;
+});
+
 it('shows download guidance on a failed setup', () => {
   backendStatus.message = 'Runtime setup exited with code 1';
   backendStatus.failure = { code: 'RUNTIME_DOWNLOAD_INTERRUPTED', stage: 'setup_required' };

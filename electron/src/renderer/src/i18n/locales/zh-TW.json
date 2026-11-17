@@ -2029,6 +2029,7 @@
     "setup_wrong_architecture": "這是透過 Rosetta 在 Apple Silicon Mac 上執行的 VoiceStudio Intel (x64) 版本，因此無法安裝本機 AI 後端。請結束應用程式，覆蓋安裝 Apple Silicon (arm64) 版 DMG 後重新開啟——你的聲音與專案都會保留。",
     "setup_missing_system_library": "此 Windows 系統缺少 PyTorch 音訊擴充功能所需的 Microsoft Visual C++ 2015-2022 可再散布元件 (x64)。請從 Microsoft 安裝後按一下重試。",
     "setup_outdated_system_library": "此 Windows 系統上的 Microsoft Visual C++ 可轉散發套件 (x64) 版本過舊，導致語音程式庫在載入時當機。請從 Microsoft 安裝最新版本，然後按下重試。",
+    "setup_torch_dll_init_failed": "PyTorch 無法載入，原因尚未確定。請安裝最新的 Microsoft Visual C++ 可轉散發套件 (x64)，接著更新顯示卡驅動程式，再按重試。若仍然失敗，請使用「更多修復方法」中的「清理並重試」。",
     "setup_files_locked": "另一個程式正在使用 VoiceStudio 的檔案（OneDrive 或其他同步應用程式、防毒軟體，或仍在執行的 VoiceStudio 後端）。請關閉該程式或暫停同步，然後按下重試。",
     "download_apple_silicon": "下載 Apple Silicon 版本",
     "ready": "引擎已就緒",
