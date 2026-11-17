@@ -8,7 +8,11 @@ import {
   authorizeModelsDirectory,
   authorizeModelsDirectoryReadOnly,
 } from './media-authorization';
-import { isTrustedRenderer } from './trusted-renderer';
+import {
+  assertTrustedMainFrame as trustedIpcMainFrame,
+  assertTrustedTopLevel as trustedTopLevel,
+  trustedOwner,
+} from './trusted-ipc';
 import { replaceFile } from './replace-file';
 import { encodeDownloadFailure, MAX_FAILURE_BODY_CHARS } from '../shared/download-failure';
 import { homedir, tmpdir } from 'node:os';
@@ -217,28 +221,16 @@ function assertSaveDataRequest(value: unknown): SaveDataRequest {
 export function assertTrustedMainFrame(
   event: IpcMainInvokeEvent,
   owner: BrowserWindow | null,
+  message?: string,
 ): asserts owner is BrowserWindow {
-  if (
-    !owner ||
-    event.sender !== owner.webContents ||
-    event.senderFrame !== owner.webContents.mainFrame ||
-    !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-  ) {
-    throw new Error('Untrusted main-frame request');
-  }
+  // One implementation lives in trusted-ipc.ts; the name stays exported for the
+  // callers that already import it from here.
+  trustedIpcMainFrame(event, owner, message);
 }
 
 /** Read-only connection metadata is also needed by trusted utility windows. */
 function assertTrustedTopLevelFrame(event: IpcMainInvokeEvent): void {
-  const owner = windowFor(event);
-  if (
-    !owner ||
-    event.sender !== owner.webContents ||
-    event.senderFrame !== owner.webContents.mainFrame ||
-    !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-  ) {
-    throw new Error('Untrusted top-level request');
-  }
+  trustedTopLevel(event);
 }
 
 function remoteInput(raw: unknown): { url: string; apiKey: string } {
@@ -696,14 +688,7 @@ export function registerIpc(
     }
   });
   handle(CHANNELS.backendSetupRuntime, (event) => {
-    const owner = getMainWindow();
-    if (
-      !owner ||
-      event.sender !== owner.webContents ||
-      event.senderFrame !== owner.webContents.mainFrame ||
-      !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-    )
-      throw new Error('Untrusted runtime setup request');
+    assertTrustedMainFrame(event, getMainWindow(), 'Untrusted runtime setup request');
     return supervisor.setupRuntime();
   });
   handle(CHANNELS.backendCleanSetupRuntime, (event) => {
@@ -887,16 +872,16 @@ export function registerIpc(
   });
 
   ipcMain.on(CHANNELS.windowMinimize, (event) => {
-    (windowFor(event) ?? getMainWindow())?.minimize();
+    trustedOwner(event, windowFor(event) ?? getMainWindow())?.minimize();
   });
   ipcMain.on(CHANNELS.windowToggleMaximize, (event) => {
-    const win = windowFor(event) ?? getMainWindow();
+    const win = trustedOwner(event, windowFor(event) ?? getMainWindow());
     if (!win) return;
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
   });
   ipcMain.on(CHANNELS.windowClose, (event) => {
-    (windowFor(event) ?? getMainWindow())?.close();
+    trustedOwner(event, windowFor(event) ?? getMainWindow())?.close();
   });
   handle(CHANNELS.windowIsMaximized, (event) => {
     const owner = windowFor(event);

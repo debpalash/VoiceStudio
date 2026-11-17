@@ -5,7 +5,7 @@ import {
   session,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { isTrustedRenderer } from './trusted-renderer';
+import { assertTrustedMainFrame } from './trusted-ipc';
 import { browserUrl, type SiteBrowserState, type SiteBrowserBounds } from '../shared/site-browser';
 import { listInstalledBrowsers, openInBrowser } from './installed-browsers';
 import { randomUUID } from 'node:crypto';
@@ -32,15 +32,8 @@ export function registerSiteBrowser(getMainWindow: () => BrowserWindow | null) {
       dispose: () => void;
     }
   >();
-  const trusted = (event: IpcMainInvokeEvent, owner: BrowserWindow | null) => {
-    if (
-      !owner ||
-      event.sender !== owner.webContents ||
-      event.senderFrame !== owner.webContents.mainFrame ||
-      !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-    )
-      throw new Error('Untrusted browser request');
-  };
+  const trusted = (event: IpcMainInvokeEvent, owner: BrowserWindow | null) =>
+    assertTrustedMainFrame(event, owner, 'Untrusted browser request');
   const entryFor = (event: IpcMainInvokeEvent) => {
     const entry = windows.get(event.sender.id);
     trusted(event, entry?.window ?? null);
