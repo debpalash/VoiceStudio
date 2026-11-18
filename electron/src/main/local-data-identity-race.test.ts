@@ -91,7 +91,14 @@ it('records the stage and code, never a path, when the root is missing', async (
   expect(JSON.stringify(failures)).not.toContain(root);
 });
 
-it('never follows a symlinked identity file', async () => {
-  await symlink(join(root, 'elsewhere'), join(directory, '.voicestudio-data-identity.json'));
+it('never follows a symlinked identity file', async (context) => {
+  try {
+    await symlink(join(root, 'elsewhere'), join(directory, '.voicestudio-data-identity.json'));
+  } catch (error) {
+    // Windows without the symlink privilege or Developer Mode cannot create
+    // a file symlink; a junction would test a directory, not this case.
+    if ((error as NodeJS.ErrnoException).code === 'EPERM') return context.skip();
+    throw error;
+  }
   expect(await localDataIdentity(directory)).toBeUndefined();
 });
