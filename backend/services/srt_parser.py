@@ -25,8 +25,8 @@ import secrets
 from dataclasses import dataclass
 
 
-# Captures: HH MM SS sep(`,` or `.`) ms (1-3 digits)
-_TS = r"(?:(\d+):)?([0-5]?\d):([0-5]?\d)[,.](\d{1,3})"
+# Captures: HH MM SS sep(`,` or `.`) ms (validated during conversion)
+_TS = r"(?:(\d+):)?([0-5]?\d):([0-5]?\d)[,.](\d+)"
 # Horizontal whitespace only — NEVER plain `\s`, which matches newlines.
 # A timing line lives on ONE line, so `\s*` bought nothing but catastrophic
 # backtracking: under re.MULTILINE the engine restarts at every line start,
@@ -42,6 +42,8 @@ _TIMING_RE = re.compile(rf"^{_H}{_TS}{_H}-->{_H}{_TS}.*$", re.MULTILINE)
 
 def _ts_to_seconds(h: str, m: str, s: str, ms: str) -> float:
     # The final field is a millisecond count: "5" -> 0.005, "50" -> 0.050.
+    if len(ms) > 3:
+        raise ValueError("Timestamp milliseconds must have at most three digits")
     return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
 
 

@@ -394,3 +394,25 @@ def test_unrepresentable_hour_timestamp_is_skipped():
     hours = "9" * 1000
     result = parse_srt(f"{hours}:00:00.000 --> {hours}:00:01.000\nToo large\n")
     assert result.segments == []
+
+
+@pytest.mark.parametrize("separator", [",", "."])
+@pytest.mark.parametrize("endpoint", ["start", "end"])
+@pytest.mark.parametrize("milliseconds", ["1234", "1234567890"])
+def test_skips_overlong_milliseconds_without_losing_next_cue(
+    separator, endpoint, milliseconds
+):
+    start, end = "00:00:01,000", "00:00:02,000"
+    if endpoint == "start":
+        start = f"00:00:01{separator}{milliseconds}"
+    else:
+        end = f"00:00:02{separator}{milliseconds}"
+    content = (
+        f"1\n{start} --> {end}\nInvalid timestamp.\n\n"
+        "2\n00:00:03,000 --> 00:00:04,000\nKeep this cue.\n"
+    )
+    result = parse_srt(content)
+    assert result.skipped_cues == 1
+    assert len(result.segments) == 1
+    assert result.segments[0]["text"] == "Keep this cue."
+    assert result.segments[0]["start"] == 3.0
