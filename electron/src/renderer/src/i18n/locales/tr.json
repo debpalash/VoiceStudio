@@ -1367,6 +1367,7 @@
     "gpu_report_state_nvidia_rocm_build": "{{gpu}} bulundu, ancak bu PyTorch bir AMD ROCm derlemesi ve NVIDIA GPU'ları sürmez.",
     "gpu_report_state_intel_unsupported": "{{gpu}} bulundu, ancak kurulu hiçbir motor Intel GPU'larını kullanamaz, bu yüzden her şey CPU'da çalışır.",
     "gpu_report_state_kernels_missing": "{{gpu}} bulundu, ancak bu PyTorch derlemesi ({{torch}}) kendi hesaplama mimarisine uygun çekirdek içermediği için motorlar CPU'da çalışır.",
+    "gpu_report_torch_fallback": "Kurulum bu GPU için CUDA 12.6 PyTorch sürümünü denedi ancak kartı kullanamadı, bu yüzden PyTorch motorları CPU'da çalışmaya devam ediyor. Neden: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} eski bir NVIDIA GPU'dur (GTX 900 / 1000 serisi veya daha eski). Bu PyTorch derlemesi ({{torch}}) bu nesli artık desteklemiyor, bu yüzden PyTorch motorları CPU'da çalışır. Kendi Vulkan çalışma zamanı olan motorlar GPU'yu yine de kullanabilir.",
     "gpu_report_state_unknown": "GPU durumu belirlenemedi.",
     "gpu_report_option_vulkan_engines": "Kendi GPU çalışma zamanına sahip bir motor kullanın: audio.cpp, AMD Radeon GPU'larda Vulkan üzerinden çalışır (Ayarlar → Modeller → çalışma zamanını kur).",

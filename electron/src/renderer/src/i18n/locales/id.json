@@ -1367,6 +1367,7 @@
     "gpu_report_state_nvidia_rocm_build": "{{gpu}} ditemukan, tetapi PyTorch ini adalah build AMD ROCm dan tidak dapat mengendalikan GPU NVIDIA.",
     "gpu_report_state_intel_unsupported": "{{gpu}} ditemukan, tetapi tidak ada mesin terpasang yang dapat memakai GPU Intel, jadi semuanya berjalan di CPU.",
     "gpu_report_state_kernels_missing": "{{gpu}} ditemukan, tetapi build PyTorch ini ({{torch}}) tidak memiliki kernel untuk arsitektur komputasinya, sehingga mesin berjalan di CPU.",
+    "gpu_report_torch_fallback": "Penyiapan mencoba build PyTorch CUDA 12.6 untuk GPU ini, tetapi tidak dapat menggunakan kartunya, sehingga mesin PyTorch tetap berjalan di CPU. Alasan: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} adalah GPU NVIDIA lama (seri GTX 900 / 1000 atau lebih lama). Build PyTorch ini ({{torch}}) tidak lagi mendukung generasi tersebut, sehingga engine PyTorch berjalan di CPU. Engine dengan runtime Vulkan sendiri masih bisa memakai GPU.",
     "gpu_report_state_unknown": "Status GPU tidak dapat ditentukan.",
     "gpu_report_option_vulkan_engines": "Pakai mesin dengan runtime GPU sendiri: audio.cpp berjalan di GPU AMD Radeon lewat Vulkan (Pengaturan → Model → pasang runtime).",

@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 
 /**
  * Whether an NVIDIA driver is installed. File checks only (no subprocess), and
@@ -50,6 +50,122 @@ export async function hasNvidiaGpu({
       (error, stdout) => resolve(!error && Boolean(stdout.trim())),
     );
   });
+}
+
+/**
+ * PyTorch's CUDA 12.8+ builds ship no kernels below compute capability 7.0
+ * (Maxwell/Pascal), and its CUDA 12.6 builds still cover sm_50 and up. A
+ * legacy card therefore needs the cu126 wheels; Kepler (3.x) is in neither.
+ */
+export const LEGACY_CUDA_MIN_CC = 5.0;
+export const LEGACY_CUDA_MAX_CC = 7.0;
+/** CUDA 12.x minor-version compatibility starts at this driver branch (525.60 / 527.41). */
+export const LEGACY_CUDA_MIN_DRIVER = 525;
+
+/**
+ * Decide from `nvidia-smi --query-gpu=compute_cap,driver_version --format=csv,noheader`
+ * output whether every NVIDIA card is a pre-Volta one the cu126 wheels can drive.
+ * Mixed hosts keep the default build: it drives the newest card, which cu126 may not
+ * (Blackwell), and the older card is no worse off than before.
+ */
+export function legacyNvidiaFromSmi(output) {
+  const rows = String(output || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split(',').map((part) => part.trim()));
+  if (!rows.length) return { legacy: false, reason: 'no NVIDIA card reported' };
+  const caps = rows.map(([cc]) => Number.parseFloat(cc));
+  const drivers = rows.map(([, driver]) => Number.parseFloat(driver));
+  if (caps.some((cc) => !Number.isFinite(cc))) {
+    return { legacy: false, reason: 'compute capability not reported' };
+  }
+  const highest = Math.max(...caps);
+  const lowest = Math.min(...caps);
+  if (highest >= LEGACY_CUDA_MAX_CC) return { legacy: false, reason: 'a card is Volta or newer' };
+  if (lowest < LEGACY_CUDA_MIN_CC) {
+    return { legacy: false, reason: `compute capability ${lowest.toFixed(1)} is below 5.0` };
+  }
+  const driver = Math.min(...drivers);
+  if (!Number.isFinite(driver) || driver < LEGACY_CUDA_MIN_DRIVER) {
+    return {
+      legacy: false,
+      reason: `driver ${rows[0][1] ?? 'unknown'} is older than ${LEGACY_CUDA_MIN_DRIVER}`,
+    };
+  }
+  return { legacy: true, reason: `compute capability ${highest.toFixed(1)}, driver ${driver}` };
+}
+
+let legacyProbeCache;
+let legacyProbePending;
+/**
+ * `nvidia-smi` on PATH, or on Windows the driver's own copy (System32, then NVSMI)
+ * when PATH lacks it: the same places `nvidiaDriverPresent` recognises.
+ */
+export function nvidiaSmiCommand(
+  platform = process.platform,
+  exists = existsSync,
+  env = process.env,
+) {
+  if (platform !== 'win32') return 'nvidia-smi';
+  const root = env.SystemRoot || env.windir || 'C:\\Windows';
+  const candidates = [
+    win32.join(root, 'System32', 'nvidia-smi.exe'),
+    'C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe',
+  ];
+  return candidates.find((path) => exists(path)) ?? 'nvidia-smi';
+}
+
+const SMI_ARGS = ['--query-gpu=compute_cap,driver_version', '--format=csv,noheader'];
+const SMI_OPTIONS = { timeout: 5_000, windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 };
+const SMI_FAILED = {
+  legacy: false,
+  reason: 'nvidia-smi could not report compute capability',
+};
+
+/**
+ * Non-blocking probe for the main process: fills the cache the synchronous
+ * `legacyNvidiaCard` reads, so startup never spawns `nvidia-smi` on the main
+ * thread. Idempotent; never rejects. Call only when an NVIDIA driver is present.
+ */
+export function primeLegacyNvidiaProbe({ run = execFile, cache = true } = {}) {
+  if (cache && legacyProbeCache) return Promise.resolve(legacyProbeCache);
+  if (cache && legacyProbePending) return legacyProbePending;
+  const pending = new Promise((resolve) => {
+    try {
+      run(nvidiaSmiCommand(), SMI_ARGS, SMI_OPTIONS, (error, stdout) =>
+        resolve(error ? SMI_FAILED : legacyNvidiaFromSmi(stdout)),
+      );
+    } catch {
+      resolve(SMI_FAILED);
+    }
+  }).then((result) => {
+    if (cache) legacyProbeCache = result;
+    return result;
+  });
+  if (cache) legacyProbePending = pending;
+  return pending;
+}
+
+/** Test hook: forget the cached probe. */
+export function resetLegacyNvidiaProbe() {
+  legacyProbeCache = undefined;
+  legacyProbePending = undefined;
+}
+
+/** Reads the primed cache; spawns `nvidia-smi` synchronously only when never primed (scripts, tests). */
+export function legacyNvidiaCard({ run = execFileSync, cache = true } = {}) {
+  if (cache && legacyProbeCache) return legacyProbeCache;
+  let result;
+  try {
+    const out = run(nvidiaSmiCommand(), SMI_ARGS, SMI_OPTIONS);
+    result = legacyNvidiaFromSmi(out);
+  } catch {
+    // Old nvidia-smi without compute_cap, or no binary: keep the default build.
+    result = SMI_FAILED;
+  }
+  if (cache) legacyProbeCache = result;
+  return result;
 }
 
 export function requestedTorchVariant(env = process.env) {

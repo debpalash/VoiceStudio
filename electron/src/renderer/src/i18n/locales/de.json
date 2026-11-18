@@ -1367,6 +1367,7 @@
     "gpu_report_state_nvidia_rocm_build": "{{gpu}} wurde gefunden, aber dieses PyTorch ist ein AMD-ROCm-Build und kann NVIDIA-GPUs nicht ansteuern.",
     "gpu_report_state_intel_unsupported": "{{gpu}} wurde gefunden, aber keine installierte Engine kann Intel-GPUs nutzen, daher läuft alles auf der CPU.",
     "gpu_report_state_kernels_missing": "{{gpu}} wurde gefunden, aber dieser PyTorch-Build ({{torch}}) enthält keine Kernel für seine Rechenarchitektur, daher laufen die Engines auf der CPU.",
+    "gpu_report_torch_fallback": "Die Einrichtung hat den CUDA-12.6-PyTorch-Build für diese GPU versucht, konnte die Karte aber nicht nutzen; PyTorch-Engines bleiben daher auf der CPU. Grund: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} ist eine ältere NVIDIA-GPU (GTX-900-/1000-Serie oder älter). Dieser PyTorch-Build ({{torch}}) unterstützt diese Generation nicht mehr, daher laufen PyTorch-Engines auf der CPU. Engines mit eigener Vulkan-Laufzeit können die GPU weiterhin nutzen.",
     "gpu_report_state_unknown": "Der GPU-Status konnte nicht ermittelt werden.",
     "gpu_report_option_vulkan_engines": "Nutzen Sie eine Engine mit eigener GPU-Laufzeit: audio.cpp läuft über Vulkan auf AMD-Radeon-GPUs (Einstellungen → Modelle → Laufzeit installieren).",

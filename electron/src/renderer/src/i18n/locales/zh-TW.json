@@ -1367,6 +1367,7 @@
     "gpu_report_state_nvidia_rocm_build": "找到了 {{gpu}}，但此 PyTorch 是 AMD ROCm 版本，無法驅動 NVIDIA GPU。",
     "gpu_report_state_intel_unsupported": "找到了 {{gpu}}，但已安裝的引擎都無法使用 Intel GPU，因此所有工作都在 CPU 上執行。",
     "gpu_report_state_kernels_missing": "找到了 {{gpu}}，但此 PyTorch 版本（{{torch}}）沒有其計算架構對應的核心，因此引擎在 CPU 上執行。",
+    "gpu_report_torch_fallback": "安裝程式已為此 GPU 嘗試 CUDA 12.6 版 PyTorch,但無法使用該顯示卡,因此 PyTorch 引擎仍在 CPU 上執行。原因:{{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} 是較舊的 NVIDIA GPU（GTX 900 / 1000 系列或更早）。此 PyTorch 組建（{{torch}}）已不再支援該世代，因此 PyTorch 引擎在 CPU 上執行。自帶 Vulkan 執行環境的引擎仍可使用該 GPU。",
     "gpu_report_state_unknown": "無法判斷 GPU 狀態。",
     "gpu_report_option_vulkan_engines": "使用自帶 GPU 執行環境的引擎：audio.cpp 透過 Vulkan 在 AMD Radeon GPU 上執行（設定 → 模型 → 安裝執行環境）。",

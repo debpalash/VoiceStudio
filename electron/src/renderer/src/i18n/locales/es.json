@@ -1369,6 +1369,7 @@
     "gpu_report_state_nvidia_rocm_build": "Se encontró {{gpu}}, pero este PyTorch es una compilación ROCm de AMD y no puede controlar GPU de NVIDIA.",
     "gpu_report_state_intel_unsupported": "Se encontró {{gpu}}, pero ningún motor instalado puede usar GPU de Intel, así que todo se ejecuta en la CPU.",
     "gpu_report_state_kernels_missing": "Se encontró {{gpu}}, pero esta compilación de PyTorch ({{torch}}) no tiene kernels para su arquitectura de cómputo, así que los motores se ejecutan en la CPU.",
+    "gpu_report_torch_fallback": "La configuración probó la compilación de PyTorch con CUDA 12.6 para esta GPU, pero no pudo usar la tarjeta, así que los motores de PyTorch siguen en la CPU. Motivo: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} es una GPU NVIDIA antigua (serie GTX 900 / 1000 o anterior). Esta compilación de PyTorch ({{torch}}) ya no admite esa generación, así que los motores de PyTorch se ejecutan en la CPU. Los motores con su propio runtime Vulkan aún pueden usar la GPU.",
     "gpu_report_state_unknown": "No se pudo determinar el estado de la GPU.",
     "gpu_report_option_vulkan_engines": "Usa un motor con su propio runtime de GPU: audio.cpp se ejecuta en GPU AMD Radeon mediante Vulkan (Ajustes → Modelos → instalar el runtime).",

@@ -1367,6 +1367,7 @@
     "gpu_report_state_nvidia_rocm_build": "พบ {{gpu}} แต่ PyTorch นี้เป็นบิลด์ AMD ROCm และควบคุม GPU ของ NVIDIA ไม่ได้",
     "gpu_report_state_intel_unsupported": "พบ {{gpu}} แต่ไม่มีเอนจินที่ติดตั้งไว้ตัวใดใช้ GPU ของ Intel ได้ ทุกอย่างจึงทำงานบน CPU",
     "gpu_report_state_kernels_missing": "พบ {{gpu}} แต่บิลด์ PyTorch นี้ ({{torch}}) ไม่มีเคอร์เนลสำหรับสถาปัตยกรรมการคำนวณของมัน เอนจินจึงทำงานบน CPU",
+    "gpu_report_torch_fallback": "การตั้งค่าได้ลอง PyTorch รุ่น CUDA 12.6 สำหรับ GPU นี้ แต่ใช้การ์ดไม่ได้ เอนจิน PyTorch จึงยังทำงานบน CPU สาเหตุ: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} เป็น GPU NVIDIA รุ่นเก่า (ซีรีส์ GTX 900 / 1000 หรือเก่ากว่า) PyTorch บิลด์นี้ ({{torch}}) ไม่รองรับรุ่นดังกล่าวแล้ว เอนจิน PyTorch จึงทำงานบน CPU ส่วนเอนจินที่มีรันไทม์ Vulkan ของตัวเองยังใช้ GPU ได้",
     "gpu_report_state_unknown": "ไม่สามารถระบุสถานะของ GPU ได้",
     "gpu_report_option_vulkan_engines": "ใช้เอนจินที่มีรันไทม์ GPU ของตัวเอง: audio.cpp ทำงานบน GPU AMD Radeon ผ่าน Vulkan (การตั้งค่า → โมเดล → ติดตั้งรันไทม์)",

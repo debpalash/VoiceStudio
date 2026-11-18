@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { cpus } from 'node:os';
-import { resolveTorchVariant } from './runtime-project';
+import { primeTorchVariantProbe, resolveTorchVariant } from './runtime-project';
 
 export interface SetupHardware {
   gpu?: string;
@@ -22,7 +22,10 @@ const NAME_MAX = 60;
 
 export function sanitizeGpuName(raw: string | undefined): string | undefined {
   // eslint-disable-next-line no-control-regex
-  const first = raw?.split(/\r?\n/).find((line) => line.trim())?.replace(/[\u0000-\u001f]/g, '');
+  const first = raw
+    ?.split(/\r?\n/)
+    .find((line) => line.trim())
+    ?.replace(/[\u0000-\u001f]/g, '');
   const name = first?.trim().replace(/\s+/g, ' ');
   return name ? name.slice(0, NAME_MAX) : undefined;
 }
@@ -52,6 +55,7 @@ export async function detectSetupHardware(
       return { ...(gpu ? { gpu } : {}), build: 'metal' };
     }
     if (platform !== 'linux' && platform !== 'win32') return undefined;
+    if (!probe.hasNvidia) await primeTorchVariantProbe(platform, arch);
     const choice = resolveTorchVariant(env, platform, arch, probe.hasNvidia);
     if (choice.variant === 'rocm') return { build: 'rocm' };
     if (choice.variant === 'cpu') {

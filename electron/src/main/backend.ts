@@ -25,6 +25,7 @@ import {
   runtimeDownloadHosts,
   cpuTorchApplies,
   resolveTorchVariant,
+  primeTorchVariantProbe,
   managedPythonRequest,
   runtimeInstallInterrupted,
   runtimePython,
@@ -1554,6 +1555,11 @@ export class BackendSupervisor extends EventEmitter<{
 
   /** Attach to a backend already answering on the port, else spawn one. */
   async start(): Promise<void> {
+    // Read the GPU once, off the main thread, before any torch-variant resolution.
+    // A shutdown (or another start) during the probe must not be undone below.
+    const requested = this.generation;
+    await primeTorchVariantProbe();
+    if (this.generation !== requested) return;
     const gen = ++this.generation;
     this.dataIdentity = undefined;
     this.dataIdentityChild = null;
