@@ -61,7 +61,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
-- Windows setup now explains a torch c10.dll "WinError 1114" load failure as an outdated Visual C++ runtime and tells you to install the latest one (#4230)
+- Windows setup now explains a torch c10.dll "WinError 1114" load failure, naming an outdated Visual C++ runtime when that is the cause and listing what to try otherwise (#4230)
 - Trimmed speech now ends with a short fade-out instead of a sharp cut-off (#4229)
 - The startup screen only says "first run can take several minutes" while the Python environment is actually being installed, and the OmniVoice engine now reports progress during cold imports, reference transcription and synthesis so slow starts are no longer killed as "sent nothing for 300s" (#4228)
 - Windows ROCm setup prefers the AMD driver's newer HIP runtime, fixing an `amdhip64_7.dll` crash on dGPU + Ryzen iGPU systems, with automatic fallback to the bundled runtime (#4225) — thanks @giuseppefaro!
@@ -173,11 +173,11 @@ metadata and the backend fallback mirror it.
 
 **Highlights**
 
-- Optional automatic error reports stay off until separately allowed in Privacy
-- Android Stories and Audiobook keep long manuscripts scrollable and recover drafts through activity recreation
-- Stories can merge adjacent lines with compatible speaker and voice settings
-- Linux ROCm setup preserves its installed PyTorch stack, and GPU readiness reflects failed self-tests
-- Phone dub exports check available space and avoid false low-space errors on iOS
+- GTX 900/1000-series NVIDIA cards run on the GPU again with a CUDA 12.6 PyTorch build (#4242)
+- Close to tray: keep VoiceStudio and its jobs running when you close the window (#4174)
+- Download buttons work in the Docker/web build (#4224)
+- Faster-feeling starts: no more "first run" hint on every launch, and slow cold loads are no longer killed after 300 s (#4228)
+- Security hardening across file actions, HTTP errors and CI, plus clearer Windows setup errors (#4173–#4188, #4213, #4230)
 
 ### Changed
 
@@ -224,7 +224,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
-- Windows setup now explains a torch c10.dll "WinError 1114" load failure as an outdated Visual C++ runtime and tells you to install the latest one (#4230)
+- Windows setup now explains a torch c10.dll "WinError 1114" load failure, naming an outdated Visual C++ runtime when that is the cause and listing what to try otherwise (#4230)
 - Trimmed speech now ends with a short fade-out instead of a sharp cut-off (#4229)
 - The startup screen only says "first run can take several minutes" while the Python environment is actually being installed, and the OmniVoice engine now reports progress during cold imports, reference transcription and synthesis so slow starts are no longer killed as "sent nothing for 300s" (#4228)
 - Windows ROCm setup prefers the AMD driver's newer HIP runtime, fixing an `amdhip64_7.dll` crash on dGPU + Ryzen iGPU systems, with automatic fallback to the bundled runtime (#4225) — thanks @giuseppefaro!
