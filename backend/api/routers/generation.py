@@ -519,8 +519,13 @@ def _resolve_profile_conditioning(row, *, ref_text=None, instruct=None,
         # Rendered sample (if present) carries the voice identity; instruct
         # alone is the fallback for legacy archetype rows.
         out["ref_audio_path"] = contained_join(VOICES_DIR, row["ref_audio_path"])
-        if out["ref_audio_path"] and not out["ref_text"] and row["ref_text"]:
-            out["ref_text"] = row["ref_text"]
+        if out["ref_audio_path"] and not out["ref_text"]:
+            # Every design-sample renderer speaks the saved sample line, or the
+            # fallback script when none was given. The sample's transcript is
+            # therefore known; leaving it empty would demand a speech-to-text
+            # model on every generation and fail on hosts without one.
+            from api.routers.archetypes import _FALLBACK_SCRIPT
+            out["ref_text"] = (row["ref_text"] or "").strip() or _FALLBACK_SCRIPT
         if not out["instruct"]:
             out["instruct"] = _profile_instruct(row, engine_id)
         if out["seed"] is None and row["seed"] is not None:

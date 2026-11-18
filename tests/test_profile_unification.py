@@ -815,3 +815,38 @@ def test_migration_0005_downgrade_drops_columns(tmp_path):
     _run_alembic("downgrade", str(db), target="0003_voice_profile_consent")
     cols = _columns(db, "voice_profiles")
     assert "kind" not in cols and "vd_states" not in cols
+
+
+def test_design_sample_rendered_without_script_carries_its_transcript(app_client):
+    """A design voice saved without a sample line is rendered from the fallback
+    script; generation must pair that rendered sample with the same text instead
+    of demanding a speech-to-text model to transcribe it (otherwise every
+    generation with the profile fails on hosts without ASR installed)."""
+    from api.routers.archetypes import _FALLBACK_SCRIPT
+    from api.routers.generation import _resolve_profile_conditioning
+    from core.db import db_conn
+
+    client, _ = app_client
+    r = client.post("/profiles", data={
+        "name": "Narrator without script", "kind": "design",
+        "vd_states": json.dumps(_VD), "seed": "101",
+    })
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    with db_conn() as conn:
+        # The identity sample the renderer stores for this profile.
+        conn.execute("UPDATE voice_profiles SET ref_audio_path=? WHERE id=?", (f"{pid}.wav", pid))
+        conn.commit()
+        row = conn.execute("SELECT * FROM voice_profiles WHERE id=?", (pid,)).fetchone()
+    assert (row["ref_text"] or "") == ""
+
+    cond = _resolve_profile_conditioning(row, engine_id="omnivoice")
+    assert cond["ref_audio_path"]
+    assert cond["ref_text"] == _FALLBACK_SCRIPT
+
+    # A sample line the user chose stays the transcript.
+    with db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET ref_text=? WHERE id=?", ("Olá, tudo bem?", pid))
+        conn.commit()
+        row = conn.execute("SELECT * FROM voice_profiles WHERE id=?", (pid,)).fetchone()
+    assert _resolve_profile_conditioning(row, engine_id="omnivoice")["ref_text"] == "Olá, tudo bem?"

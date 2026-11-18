@@ -1889,6 +1889,23 @@ def _resolve_language(language: Optional[str]) -> Union[str, None]:
     alias = APP_LANGUAGE_NAMES.get(key) or APP_LANGUAGE_IDS.get(key)
     if alias:
         return alias
+    # A BCP-47 region tag ("pt-BR", "es_MX", "en-US") the vocabulary does not
+    # list speaks its base language; the dialect itself is applied upstream
+    # (text normalization), so the model only needs the base id.
+    head, sep, _region = key.replace("_", "-").partition("-")
+    if sep and head.isascii() and head.isalpha() and len(head) in (2, 3):
+        base = head if head in LANG_IDS else (
+            APP_LANGUAGE_NAMES.get(head) or APP_LANGUAGE_IDS.get(head)
+        )
+        if base:
+            return base
+    # A regional picker name ("Portuguese (Brazil)") speaks its base language.
+    name, paren, _rest = key.partition("(")
+    name = name.strip()
+    if paren and name:
+        base = LANG_NAME_TO_ID.get(name) or APP_LANGUAGE_NAMES.get(name)
+        if base:
+            return base
     logger.warning(
         f"Language '{language}' is not recognized. "
         f"Please use a valid language ID (e.g., 'en', 'zh', 'ja', 'de') "

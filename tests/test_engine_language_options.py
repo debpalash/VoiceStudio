@@ -65,6 +65,12 @@ def test_every_app_translation_target_resolves_for_omnivoice(tts):
     ('Arabic', 'arb'), ('ar', 'arb'), ('Kurdish', 'kmr'), ('ku', 'kmr'),
     ('Chinese (Simplified)', 'zh'), ('cmn-Hant', 'zh'), ('Pashto', 'ps'),
     ('Standard Arabic', 'arb'), ('Egyptian Arabic', 'arz'), ('en', 'en'), ('Klingon', None),
+    # Region tags the API documents (pt-BR, pt-PT) and any other BCP-47 region
+    # fall back to their base language instead of language-agnostic mode.
+    ('pt-BR', 'pt'), ('pt_br', 'pt'), ('PT-pt', 'pt'), ('es-MX', 'es'), ('en-US', 'en'),
+    ('ar-EG', 'arb'), ('xx-YY', None), ('Klingon-Empire', None),
+    # Picker variant names reach the model directly on the design-sample path.
+    ('Portuguese (Brazil)', 'pt'), ('Portuguese (Portugal)', 'pt'), ('Klingon (Empire)', None),
 ])
 def test_omnivoice_resolves_app_picker_names_and_tags(language, expected):
     from omnivoice.models.omnivoice import _resolve_language
