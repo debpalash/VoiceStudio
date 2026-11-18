@@ -7,9 +7,18 @@ element to exist and be hittable first.
 import re
 from pathlib import Path
 
+import pytest
+
 UITESTS = Path(__file__).resolve().parent.parent / "mobile" / "ios" / "VoiceStudioUITests"
 
 TAP = re.compile(r"\.tap\(\)")
+
+
+class Unsupported(ValueError):
+    """Syntax this scanner does not model. Failing beats guessing and passing silently."""
+
+    def __init__(self, what: str):
+        super().__init__(f"{what}: extend executable() in tests/test_ios_uitest_taps.py")
 
 
 def executable(source: str) -> str:
@@ -36,8 +45,12 @@ def executable(source: str) -> str:
         elif source.startswith("/*", i):
             stop = source.find("*/", i + 2)
             stop = n if stop < 0 else stop + 2
+            if "/*" in source[i + 2 : stop]:
+                raise Unsupported("a nested /* */ comment")
             blank(i, stop)
             i = stop
+        elif source.startswith('#"', i):
+            raise Unsupported('a #"…"# raw string')
         elif source[i] == '"':
             quote = '"""' if source.startswith('"""', i) else '"'
             body = j = i + len(quote)
@@ -114,6 +127,9 @@ def test_matcher_classifies_each_call():
     assert not bare_taps('XCTFail("never call .tap() here")')
     assert not bare_taps("/* button.tap() */")
     assert len(bare_taps('let s = "a\\"b"; button.tap()')) == 1
+    for unmodelled in ('let slash = #"\\"#; button.tap()', "/* a /* b */ button.tap() */"):
+        with pytest.raises(Unsupported):
+            bare_taps(unmodelled)
 
 
 def test_no_bare_element_taps():
