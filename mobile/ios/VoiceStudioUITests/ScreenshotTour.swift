@@ -40,19 +40,19 @@ final class ScreenshotTour: XCTestCase {
         if app.buttons["keyboard.done"].waitForExistence(timeout: 3) { app.buttons["keyboard.done"].tapReady() }
         let engine = app.buttons["speak.engine"]
         XCTAssertTrue(engine.waitForExistence(timeout: uiReadyTimeout))
-        engine.tap()
+        engine.tapReady()
         shot(app, "06-engine-picker")
         XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: uiReadyTimeout))
         app.buttons["Close"].tapReady()
         app.swipeUp()
         let generate = app.buttons["speak.generate"]
         XCTAssertTrue(generate.waitForExistence(timeout: uiReadyTimeout))
-        generate.tap()
+        generate.tapReady()
         XCTAssertTrue(app.buttons["audio.play"].waitForExistence(timeout: uiReadyTimeout))
         shot(app, "07-speak-generated")
 
         for (tab, name) in [("Voices", "08-voices"), ("Dub", "09-dub"), ("Dictate", "10-dictate"), ("Settings", "11-settings")] {
-            app.tabBars.buttons[tab].tap()
+            app.tabBars.buttons[tab].tapReady()
             sleep(1)
             if tab == "Dub" {
                 XCTAssertEqual(app.buttons["dub.languages"].value as? String, "Choose")
