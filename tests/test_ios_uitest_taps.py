@@ -11,11 +11,19 @@ UITESTS = Path(__file__).resolve().parent.parent / "mobile" / "ios" / "VoiceStud
 
 # `foo.tap()`, `app.buttons["x"].tap()`, `rows.element(boundBy: 0).tap()`.
 # Coordinate taps (`....coordinate(...).tap()`) have no tapReady and are skipped.
-BARE_TAP = re.compile(r"(?:[\w\]\)])\.tap\(\)")
+# Also matches a line-leading `.tap()` (receiver on the previous line of a chain).
+BARE_TAP = re.compile(r"(?:[\w\]\)])\.tap\(\)|^\.tap\(\)")
 
 # (file name, stripped line) pairs allowed to tap bare. Keep empty unless a tap
 # must deliberately fire on a non-hittable element; say why next to the entry.
 ALLOWLIST: set[tuple[str, str]] = set()
+
+
+def test_matcher_flags_same_line_and_multiline_taps():
+    assert BARE_TAP.search('app.buttons["Generate"].tap()')
+    assert BARE_TAP.search("rows.element(boundBy: 0).tap()")
+    assert BARE_TAP.search(".tap()")  # stripped continuation line of a chain
+    assert not BARE_TAP.search('app.buttons["x"].tapReady()')
 
 
 def test_no_bare_element_taps():

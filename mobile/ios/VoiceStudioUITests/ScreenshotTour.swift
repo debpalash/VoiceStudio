@@ -52,8 +52,7 @@ final class ScreenshotTour: XCTestCase {
         shot(app, "07-speak-generated")
 
         for (tab, name) in [("Voices", "08-voices"), ("Dub", "09-dub"), ("Dictate", "10-dictate"), ("Settings", "11-settings")] {
-            app.tabBars.buttons[tab].tapReady()
-            sleep(1)
+            guard app.selectTab(tab) else { return }  // selectTab already records the failure
             if tab == "Dub" {
                 XCTAssertEqual(app.buttons["dub.languages"].value as? String, "Choose")
                 XCTAssertEqual(app.staticTexts["dub.metadata.smoke-dub"].label, "Spanish dub, 2:05 long")
