@@ -51,6 +51,12 @@ export interface CloneSettings {
   postprocess: boolean;
   /** '' = auto. */
   duration: string;
+  /** Silence after each sentence end (ms); 0 = the engine's own pacing. */
+  sentenceGapMs: number;
+  /** Silence at blank lines (ms); 0 = use the sentence gap. */
+  paragraphGapMs: number;
+  /** Cut each chunk's engine lead-in/tail before joining. */
+  trimEngineSilence: boolean;
   showOverrides: boolean;
   selectedProfileId: string | null;
   autoPlay: boolean;
@@ -80,6 +86,9 @@ export const DEFAULT_CLONE_SETTINGS: CloneSettings = {
   denoise: true,
   postprocess: true,
   duration: '',
+  sentenceGapMs: 0,
+  paragraphGapMs: 0,
+  trimEngineSilence: false,
   showOverrides: false,
   selectedProfileId: null,
   autoPlay: false,
@@ -103,6 +112,8 @@ export function acceptsCloneSetting(key: keyof CloneSettings, value: unknown): b
   if (key === 'wavBits') return value === 16 || value === 24 || value === 32;
   if (key === 'effectPreset') return value === 'broadcast' || value === 'raw';
   if (key === 'selectedProfileId') return value === null || typeof value === 'string';
+  if (key === 'sentenceGapMs' || key === 'paragraphGapMs')
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 5000;
   const expected = typeof DEFAULT_CLONE_SETTINGS[key];
   if (typeof value !== expected) return false;
   return expected !== 'number' || Number.isFinite(value);
@@ -235,6 +246,9 @@ export function resetVoiceControls(): void {
     denoise,
     postprocess,
     duration,
+    sentenceGapMs,
+    paragraphGapMs,
+    trimEngineSilence,
     emotionMode,
     emotionText,
     emotionAlpha,
@@ -250,6 +264,9 @@ export function resetVoiceControls(): void {
     denoise,
     postprocess,
     duration,
+    sentenceGapMs,
+    paragraphGapMs,
+    trimEngineSilence,
     emotionMode,
     emotionText,
     emotionAlpha,
@@ -274,6 +291,9 @@ export function resetOverrides(): void {
     denoise,
     postprocess,
     duration: DEFAULT_CLONE_SETTINGS.duration,
+    sentenceGapMs: DEFAULT_CLONE_SETTINGS.sentenceGapMs,
+    paragraphGapMs: DEFAULT_CLONE_SETTINGS.paragraphGapMs,
+    trimEngineSilence: DEFAULT_CLONE_SETTINGS.trimEngineSilence,
     emotionMode: DEFAULT_CLONE_SETTINGS.emotionMode,
     emotionText: DEFAULT_CLONE_SETTINGS.emotionText,
     emotionAlpha: DEFAULT_CLONE_SETTINGS.emotionAlpha,

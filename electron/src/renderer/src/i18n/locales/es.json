@@ -3353,7 +3353,9 @@
     "denoise": "Limpiar ruido de referencia",
     "polish": "Pulir el audio generado",
     "basics": "1× es la velocidad normal. Deja la duración vacía para un ritmo natural.",
-    "hint": "Normalmente conviene usar los valores predeterminados. La guía ajusta la influencia de la indicación; los demás controles cambian cómo el modelo construye el sonido. Cambia uno a la vez."
+    "hint": "Normalmente conviene usar los valores predeterminados. La guía ajusta la influencia de la indicación; los demás controles cambian cómo el modelo construye el sonido. Cambia uno a la vez.",
+    "sentence_gap": "Silencio tras las frases",
+    "pauses_hint": "Añade silencio tras cada frase y en las líneas en blanco. 0 mantiene el ritmo propio del motor."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} tiene un solo modelo de {{language}}, así que el acento sigue a la voz de referencia.",

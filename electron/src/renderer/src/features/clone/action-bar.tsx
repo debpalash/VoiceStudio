@@ -17,7 +17,10 @@ import {
   ListPlusIcon,
   PlayIcon,
   LoaderCircleIcon,
+  PauseIcon,
+  PilcrowIcon,
   RotateCcwIcon,
+  ScissorsIcon,
   Settings2Icon,
   ShuffleIcon,
   SparklesIcon,
@@ -57,7 +60,15 @@ import { GenerationQueue } from './generation-queue';
 import { CloneDemoAction } from './clone-demo';
 import { useCloneDemo } from '@/hooks/use-clone-demo';
 
-type NumericKey = 'cfg' | 'speed' | 'tShift' | 'posTemp' | 'classTemp' | 'layerPenalty';
+type NumericKey =
+  | 'cfg'
+  | 'speed'
+  | 'tShift'
+  | 'posTemp'
+  | 'classTemp'
+  | 'layerPenalty'
+  | 'sentenceGapMs'
+  | 'paragraphGapMs';
 
 interface SliderSpec {
   key: NumericKey;
@@ -121,6 +132,28 @@ const SLIDERS: SliderSpec[] = [
   },
 ];
 
+/** Silence between sentences and paragraphs, as Audiobook's join controls. */
+const GAP_SLIDERS: SliderSpec[] = [
+  {
+    key: 'sentenceGapMs',
+    labelKey: 'voiceControls.sentence_gap',
+    icon: PauseIcon,
+    min: 0,
+    max: 2000,
+    step: 50,
+    suffix: ' ms',
+  },
+  {
+    key: 'paragraphGapMs',
+    labelKey: 'audiobook.paragraph_gap',
+    icon: PilcrowIcon,
+    min: 0,
+    max: 3000,
+    step: 50,
+    suffix: ' ms',
+  },
+];
+
 function decimals(step: number): number {
   const text = String(step);
   const dot = text.indexOf('.');
@@ -164,7 +197,7 @@ function SliderRow({ spec, value }: SliderRowProps) {
 }
 
 interface SwitchRowProps {
-  settingKey: 'denoise' | 'postprocess';
+  settingKey: 'denoise' | 'postprocess' | 'trimEngineSilence';
   labelKey: string;
   icon: LucideIcon;
   checked: boolean;
@@ -232,6 +265,20 @@ function Overrides({ settings }: OverridesProps) {
           icon={SparklesIcon}
           checked={settings.postprocess}
         />
+      </div>
+      <div className="border-t border-border/50 py-1.5">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,150px),1fr))] gap-x-4">
+          {GAP_SLIDERS.map((spec) => (
+            <SliderRow key={spec.key} spec={spec} value={settings[spec.key]} />
+          ))}
+        </div>
+        <SwitchRow
+          settingKey="trimEngineSilence"
+          labelKey="audiobook.trim_edges"
+          icon={ScissorsIcon}
+          checked={settings.trimEngineSilence}
+        />
+        <p className="px-1 text-[11px] text-muted-foreground">{t('voiceControls.pauses_hint')}</p>
       </div>
       <details className="group border-t border-border/50 pt-2.5">
         <summary className="flex cursor-pointer list-none items-center justify-between rounded px-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">

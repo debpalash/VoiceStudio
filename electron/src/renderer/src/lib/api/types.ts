@@ -208,6 +208,11 @@ export interface CloneGenerateInput {
   postprocess: boolean;
   /** '' = auto. */
   duration: string;
+  /** Silence after sentence ends / at blank lines (ms). Omitted or 0 = off. */
+  sentenceGapMs?: number;
+  paragraphGapMs?: number;
+  /** Trim each chunk's engine lead-in/tail before joining. */
+  trimEngineSilence?: boolean;
 }
 
 export interface GenerateResult {

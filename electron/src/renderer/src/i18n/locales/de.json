@@ -3351,7 +3351,9 @@
     "denoise": "Rauschen der Referenz entfernen",
     "polish": "Erzeugtes Audio verfeinern",
     "basics": "1× ist normale Geschwindigkeit. Für natürliches Timing die Dauer leer lassen.",
-    "hint": "Meist sind die Standardwerte passend. Die Vorgabe beeinflusst das Ergebnis; die anderen Regler ändern den Klangaufbau des Modells. Jeweils nur einen ändern."
+    "hint": "Meist sind die Standardwerte passend. Die Vorgabe beeinflusst das Ergebnis; die anderen Regler ändern den Klangaufbau des Modells. Jeweils nur einen ändern.",
+    "sentence_gap": "Stille nach Sätzen",
+    "pauses_hint": "Fügt nach jedem Satz und bei Leerzeilen Stille ein. 0 behält das Tempo der Engine bei."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} hat ein einziges Modell für {{language}}, daher folgt der Akzent der Referenzstimme.",

@@ -3353,7 +3353,9 @@
     "denoise": "Nettoyer le bruit de référence",
     "polish": "Peaufiner l’audio généré",
     "basics": "1× est la vitesse normale. Laissez la durée vide pour un rythme naturel.",
-    "hint": "Gardez généralement les valeurs par défaut. Le guidage règle l’influence de la consigne ; les autres réglages modifient la construction du son. Changez un seul réglage à la fois."
+    "hint": "Gardez généralement les valeurs par défaut. Le guidage règle l’influence de la consigne ; les autres réglages modifient la construction du son. Changez un seul réglage à la fois.",
+    "sentence_gap": "Silence après les phrases",
+    "pauses_hint": "Ajoute un silence après chaque phrase et aux lignes vides. 0 conserve le rythme propre du moteur."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} n’a qu’un seul modèle ({{language}}) : l’accent suit la voix de référence.",
