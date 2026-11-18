@@ -51,3 +51,24 @@ def test_download_names_derived_from_titles_are_never_raw():
         for match in re.finditer(r'^\s*(?:dl_)?filename\s*=\s*f"[^"\n]*\{[^}]*(?:base_name|filename)[^}]*\}[^\n]*$|^\s*dl_name\s*=\s*f"[^\n]*\{base_name\}[^\n]*$', text, re.M):
             offenders.append(f"{rel}: {match.group(0).strip()}")
     assert not offenders, offenders
+
+
+@pytest.mark.parametrize("prefix", ["COM", "LPT", "com", "lpt"])
+@pytest.mark.parametrize("digit", ["¹", "²", "³"])
+@pytest.mark.parametrize("suffix", ["", ".wav", ".tar.gz"])
+def test_superscript_device_names_are_repaired_and_rejected(prefix, digit, suffix):
+    from core.path_security import UnsafePath, portable_filename, safe_filename
+
+    name = prefix + digit + suffix
+    assert portable_filename(name) == "_" + name
+    with pytest.raises(UnsafePath):
+        safe_filename(name)
+    assert safe_filename(portable_filename(name)) == "_" + name
+
+
+@pytest.mark.parametrize("name", ["COM⁴.wav", "LPT⁰.srt", "COM¹_notes.wav"])
+def test_other_superscript_names_remain_unchanged(name):
+    from core.path_security import portable_filename, safe_filename
+
+    assert portable_filename(name) == name
+    assert safe_filename(name) == name
