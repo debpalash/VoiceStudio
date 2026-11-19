@@ -359,8 +359,13 @@ wheels = [
 [[package]]
 name = "antlr4-python3-runtime"
 version = "4.9.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3e/38/7859ff46355f76f8d19459005ca000b6e7012f2f1ca597746cbcd1fbfe5e/antlr4-python3-runtime-4.9.3.tar.gz", hash = "sha256:f224469b4168294902bb1efa80a8bf7855f24c99aef99cbefc1bcd3cce77881b", size = 117034, upload-time = "2021-11-06T17:52:23.524Z" }
+source = { path = "vendor/wheels/antlr4_python3_runtime-4.9.3-py3-none-any.whl" }
+wheels = [
+    { filename = "antlr4_python3_runtime-4.9.3-py3-none-any.whl", hash = "sha256:588fba2a13290be1bb48bfed98ab9b30b6334d226252484a0fadf8378d0ca9e2" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "typing", marker = "python_full_version < '3.5'" }]
 
 [[package]]
 name = "anyio"
@@ -1509,21 +1514,46 @@ wheels = [
 [[package]]
 name = "docopt"
 version = "0.6.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a2/55/8f8cab2afd404cf578136ef2cc5dfb50baa1761b68c9da1fb1e4eed343c9/docopt-0.6.2.tar.gz", hash = "sha256:49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491", size = 25901, upload-time = "2014-06-16T11:18:57.406Z" }
+source = { path = "vendor/wheels/docopt-0.6.2-py2.py3-none-any.whl" }
+wheels = [
+    { filename = "docopt-0.6.2-py2.py3-none-any.whl", hash = "sha256:54c57aecc36bd2fde10182938a9a7503a90fdd114c9313493933663fd00a6fc5" },
+]
 
 [[package]]
 name = "dora-search"
 version = "0.1.12"
-source = { registry = "https://pypi.org/simple" }
+source = { path = "vendor/wheels/dora_search-0.1.12-py3-none-any.whl" }
 dependencies = [
-    { name = "omegaconf", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform != 'darwin' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
-    { name = "retrying", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform != 'darwin' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
-    { name = "submitit", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform != 'darwin' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform != 'darwin' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
-    { name = "treetable", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform != 'darwin' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
+    { name = "omegaconf" },
+    { name = "retrying" },
+    { name = "submitit" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'arm64' and sys_platform == 'linux') or (sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform == 'linux' and extra != 'group-9-omnivoice-cpu' and extra != 'group-9-omnivoice-cuda') or (sys_platform == 'win32' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform == 'win32' and extra != 'group-9-omnivoice-cpu' and extra != 'group-9-omnivoice-cuda')" },
+    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux' and extra == 'group-9-omnivoice-cpu') or (platform_machine == 'aarch64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (platform_machine == 'arm64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform == 'win32' and extra == 'group-9-omnivoice-cpu') or (sys_platform != 'linux' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
+    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux' and extra == 'group-9-omnivoice-cuda') or (platform_machine == 'aarch64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (platform_machine == 'arm64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform == 'win32' and extra == 'group-9-omnivoice-cuda') or (sys_platform != 'linux' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
+    { name = "treetable" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/9d/9a13947db237375486c0690f4741dd2b7e1eee20e0ffcb55dbd1b21cc600/dora_search-0.1.12.tar.gz", hash = "sha256:2956fd2c4c7e4b9a4830e83f0d4cf961be45cfba1a2f0570281e91d15ac516fb", size = 87111, upload-time = "2023-05-23T14:36:24.743Z" }
+wheels = [
+    { filename = "dora_search-0.1.12-py3-none-any.whl", hash = "sha256:f71bccdddf525b274aab1e02dc069573412d986940a1cf12987a47f151d6a185" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "coverage", marker = "extra == 'dev'" },
+    { name = "flake8", marker = "extra == 'dev'" },
+    { name = "hiplot", marker = "extra == 'dev'" },
+    { name = "hydra-colorlog", marker = "extra == 'dev'" },
+    { name = "hydra-core", marker = "extra == 'dev'" },
+    { name = "mypy", marker = "extra == 'dev'" },
+    { name = "omegaconf" },
+    { name = "pdoc3", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytorch-lightning", marker = "extra == 'dev'" },
+    { name = "retrying" },
+    { name = "submitit" },
+    { name = "torch" },
+    { name = "treetable" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "einops"
@@ -4042,6 +4072,7 @@ source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
     { name = "alembic" },
+    { name = "antlr4-python3-runtime" },
     { name = "argostranslate" },
     { name = "audioop-lts", marker = "python_full_version >= '3.13' or (extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
     { name = "audioseal" },
@@ -4049,6 +4080,8 @@ dependencies = [
     { name = "cryptography" },
     { name = "demucs", version = "4.0.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform != 'darwin' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
     { name = "demucs", version = "4.1.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
+    { name = "docopt" },
+    { name = "dora-search" },
     { name = "en-core-web-sm" },
     { name = "fastapi" },
     { name = "faster-whisper" },
@@ -4154,12 +4187,15 @@ dev = [
 requires-dist = [
     { name = "accelerate" },
     { name = "alembic", specifier = ">=1.16" },
+    { name = "antlr4-python3-runtime", path = "vendor/wheels/antlr4_python3_runtime-4.9.3-py3-none-any.whl" },
     { name = "argostranslate", specifier = ">=1.9.0" },
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
     { name = "audioseal", specifier = ">=0.1.3" },
     { name = "boto3", specifier = ">=1.40" },
     { name = "cryptography", specifier = ">=41" },
     { name = "demucs", specifier = ">=4.0.1" },
+    { name = "docopt", path = "vendor/wheels/docopt-0.6.2-py2.py3-none-any.whl" },
+    { name = "dora-search", path = "vendor/wheels/dora_search-0.1.12-py3-none-any.whl" },
     { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "fastapi", specifier = "<0.137" },
     { name = "faster-whisper", specifier = ">=1.0.0" },
@@ -6794,8 +6830,8 @@ name = "submitit"
 version = "1.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cloudpickle", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform != 'darwin' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
-    { name = "typing-extensions", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda') or (sys_platform != 'darwin' and extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
+    { name = "cloudpickle" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/47/86/497018fb3b74e71bef45df82762b176e6b3d159f29941c20d2f141ec4096/submitit-1.5.4.tar.gz", hash = "sha256:7100848bd1cdda79c7196e54ee830793ae75fd7adde0c5bef738d72360a07508", size = 81538, upload-time = "2025-12-17T19:20:03.396Z" }
 wheels = [
