@@ -72,3 +72,11 @@ def test_other_superscript_names_remain_unchanged(name):
 
     assert portable_filename(name) == name
     assert safe_filename(name) == name
+
+
+@pytest.mark.parametrize("name", ["COM1", "lpt9.bin", "COM\u00b9.bin", "LPT\u00b2", "COM\u00b3.json"])
+def test_model_license_paths_reject_every_windows_device_name(name):
+    from services.model_licenses import safe_file
+
+    assert not safe_file(name)
+    assert not safe_file(f"weights/{name}")
