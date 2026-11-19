@@ -535,6 +535,7 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
       details.reason,
       details.exitCode,
       quitting || Boolean(quitPreparation),
+      details.type,
     );
   });
   let initialized: Promise<void> = Promise.resolve();

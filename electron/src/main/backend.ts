@@ -18,12 +18,14 @@ import {
   installRuntime,
   MISSING_SYSTEM_LIBRARY_CODE,
   OUTDATED_SYSTEM_LIBRARY_CODE,
+  TORCH_DLL_INIT_FAILED_CODE,
   RUNTIME_FILES_LOCKED_CODE,
   promoteLegacyRuntimeCaches,
   runtimeDependenciesReady,
   runtimeDownloadHosts,
   cpuTorchApplies,
   resolveTorchVariant,
+  primeTorchVariantProbe,
   managedPythonRequest,
   runtimeInstallInterrupted,
   runtimePython,
@@ -1553,6 +1555,11 @@ export class BackendSupervisor extends EventEmitter<{
 
   /** Attach to a backend already answering on the port, else spawn one. */
   async start(): Promise<void> {
+    // Read the GPU once, off the main thread, before any torch-variant resolution.
+    // A shutdown (or another start) during the probe must not be undone below.
+    const requested = this.generation;
+    await primeTorchVariantProbe();
+    if (this.generation !== requested) return;
     const gen = ++this.generation;
     this.dataIdentity = undefined;
     this.dataIdentityChild = null;
@@ -1961,7 +1968,9 @@ export class BackendSupervisor extends EventEmitter<{
                 ? 'missing_system_library'
                 : code === OUTDATED_SYSTEM_LIBRARY_CODE
                   ? 'outdated_system_library'
-                  : code === RUNTIME_FILES_LOCKED_CODE
+                  : code === TORCH_DLL_INIT_FAILED_CODE
+                    ? 'torch_dll_init_failed'
+                    : code === RUNTIME_FILES_LOCKED_CODE
                     ? 'files_locked'
                     : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
                       ? 'access'

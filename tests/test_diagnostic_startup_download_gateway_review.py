@@ -159,7 +159,7 @@ def test_gpu_deadline_is_compute_failure_and_transport_errors_keep_their_classif
         assert saved == []
     else:
         assert len(saved) == 1
-        assert saved[0]["props"]["error_code"] == ("UNKNOWN" if failure == "compute" else "NETWORK_ERROR")
+        assert saved[0]["props"]["error_code"] == ("GPU_JOB_TIMEOUT" if failure == "compute" else "NETWORK_ERROR")
         assert saved[0]["props"]["category"] == ("model_load_failed" if entry == "prewarm" else "engine_failed")
         assert "private operation detail" not in str(saved)
 
@@ -273,4 +273,4 @@ def test_local_compute_timeout_classification_is_central(
     saved = records(reporter)
     assert len(saved) == 1
     assert saved[0]["props"]["error_type"] == ("ConnectionError" if kind == "connection" else "TimeoutError")
-    assert saved[0]["props"]["error_code"] == ("UNKNOWN" if kind in {"compute", "subclass"} else "NETWORK_ERROR")
+    assert saved[0]["props"]["error_code"] == ("GPU_JOB_TIMEOUT" if kind in {"compute", "subclass"} else "NETWORK_ERROR")

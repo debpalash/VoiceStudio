@@ -88,3 +88,19 @@ def test_openai_speech_trims_edges(openai_tts):
 
 def test_openai_speech_keeps_explicit_duration(openai_tts):
     assert openai_tts({"duration": 2.0}).shape[-1] == 2000
+
+
+def test_trimmed_tail_fades_out_instead_of_cutting():  # #4229
+    """A tail that stops while still audible must end near zero, not on a step."""
+    audio = torch.cat([torch.full((1, 1000), 0.5), torch.full((1, 200), 0.3)], dim=-1)
+    out = dsp.trim_speech_padding(audio, SR * 24)
+    assert abs(float(out[0, -1])) < 0.01
+    assert float(out[0, 0]) == 0.5
+    assert out.shape[-1] == audio.shape[-1]
+
+
+def test_fade_leaves_quiet_tail_and_length_alone():
+    audio = torch.cat([torch.zeros(1, 100), torch.full((1, 500), 0.5), torch.zeros(1, 400)], dim=-1)
+    out = dsp.trim_speech_padding(audio, SR)
+    assert out.shape[-1] == 500 + 2 * MARGIN
+    assert float(out[0, -1]) == 0.0

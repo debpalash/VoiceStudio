@@ -169,6 +169,20 @@ it('lists install steps with the active package on the current step and the log 
   expect(restart).toHaveBeenCalledTimes(1);
 });
 
+it.each(['starting', 'attaching'] as const)(
+  'does not claim a first run on an ordinary %s launch (#4228)',
+  (stage) => {
+    backendStatus.stage = stage;
+    render(
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>,
+    );
+    expect(screen.queryByText(i18n.t('backend.first_run_hint'))).not.toBeInTheDocument();
+    expect(screen.getByText(i18n.t(`backend.${stage}`))).toBeInTheDocument();
+  },
+);
+
 it('keeps the download bar live when a new download follows a prepared batch', () => {
   backendStatus.stage = 'installing';
   backendStatus.setupPhase = 'installing_deps';
@@ -642,6 +656,16 @@ it('warns about Smart App Control before the download without blocking install',
   );
   expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeEnabled();
   delete backendStatus.smartAppControlWarning;
+});
+
+it('shows localized guidance for a torch DLL failure with no established cause (#4230)', () => {
+  backendStatus.message = 'Importing "faster_whisper" failed (WinError 1114)';
+  backendStatus.setupIssue = 'torch_dll_init_failed';
+
+  renderGate('setup_required');
+
+  expect(screen.getByText(i18n.t('backend.setup_torch_dll_init_failed'))).toBeVisible();
+  delete backendStatus.setupIssue;
 });
 
 it('shows download guidance on a failed setup', () => {

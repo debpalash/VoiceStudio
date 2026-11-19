@@ -164,12 +164,30 @@ it('shows a quiet note when the report cannot be read', async () => {
 });
 
 it('shows an unknown engine without claiming its GPU use', async () => {
-  mock.api.mockResolvedValue({ ...amdWindows, engines: [{
-    id: 'sidecar', name: 'Sidecar', kind: 'tts', available: true,
-    code: 'unknown', params: {}, reason: null,
-  }] });
+  mock.api.mockResolvedValue({
+    ...amdWindows,
+    engines: [
+      {
+        id: 'sidecar',
+        name: 'Sidecar',
+        kind: 'tts',
+        available: true,
+        code: 'unknown',
+        params: {},
+        reason: null,
+      },
+    ],
+  });
   renderIt();
   expect(await screen.findByText('Sidecar')).toBeTruthy();
   expect(screen.getByText('unknown')).toBeTruthy();
   expect(screen.queryByText(/0 of 1 engines use the GPU/i)).toBeNull();
+});
+
+it('shows why setup kept the CPU build after trying CUDA 12.6 on an older card', async () => {
+  mock.api.mockResolvedValue({ ...sm61, torch_fallback: 'no kernels for sm_61 in sm_70' });
+  renderIt();
+  expect(await screen.findByText(/CUDA 12\.6 PyTorch build for this GPU/)).toHaveTextContent(
+    'Reason: no kernels for sm_61 in sm_70',
+  );
 });

@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from pathlib import Path
 from typing import Any
 
 from core.device_caps import (
@@ -294,6 +295,22 @@ def build_gpu_report(
     }
 
 
+# Written by the desktop runtime setup (electron/src/main/runtime-project.ts) when
+# the CUDA 12.6 build it installed for a pre-Volta NVIDIA card could not drive
+# it and setup fell back to the CPU build (#4242). Lives beside the venv.
+LEGACY_CUDA_FALLBACK_MARKER = ".runtime-torch-fallback"
+
+
+def legacy_cuda_fallback_reason(prefix: str | None = None) -> str | None:
+    """Why the legacy-CUDA install fell back to CPU, or ``None`` (never raises)."""
+    try:
+        marker = Path(prefix or sys.prefix).parent / LEGACY_CUDA_FALLBACK_MARKER
+        text = marker.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    return text[:300] or None
+
+
 def collect_gpu_report() -> dict[str, Any]:
     """Gather live inputs and build the report. Never raises."""
     from core.device_caps import detect_host_caps
@@ -342,6 +359,9 @@ def collect_gpu_report() -> dict[str, Any]:
             e["reason"] = scrub_text(e["reason"])
     for g in report["gpus"]:
         g["name"] = scrub_text(g["name"])
+    fallback = legacy_cuda_fallback_reason()
+    if fallback:
+        report["torch_fallback"] = scrub_text(fallback)
     return report
 
 

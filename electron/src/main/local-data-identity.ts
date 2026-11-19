@@ -12,9 +12,29 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // EEXIST/ENOENT. Those are contention there, not failure.
 const SHARING = new Set(['EPERM', 'EACCES', 'EBUSY']);
 function sharingViolation(error: unknown): boolean {
-  return (
-    process.platform === 'win32' && SHARING.has((error as NodeJS.ErrnoException)?.code ?? '')
-  );
+  return process.platform === 'win32' && SHARING.has((error as NodeJS.ErrnoException)?.code ?? '');
+}
+/** Failure record for diagnosis: a stage and an error code, never a path or content. */
+export interface IdentityFailure {
+  stage: string;
+  code: string;
+}
+const failures: IdentityFailure[] = [];
+function record(stage: string, error: unknown): void {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  failures.push({ stage, code: typeof code === 'string' ? code : 'UNKNOWN' });
+  if (failures.length > 16) failures.shift();
+}
+/** Recent failures (oldest first), for tests and support diagnostics. */
+export function localDataIdentityFailures(): readonly IdentityFailure[] {
+  return failures.slice();
+}
+export function resetLocalDataIdentityFailures(): void {
+  failures.length = 0;
+}
+/** A read that raced a concurrent publication; re-reading settles it. */
+function racing(code: string): Error {
+  return Object.assign(new Error('Identity changed during read'), { code });
 }
 const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
 async function readSettled(path: string): Promise<Identity | null> {
@@ -22,7 +42,9 @@ async function readSettled(path: string): Promise<Identity | null> {
     try {
       return await readIdentity(path);
     } catch (error) {
-      if (attempt >= 20 || !sharingViolation(error)) throw error;
+      const transient =
+        sharingViolation(error) || (error as NodeJS.ErrnoException)?.code === 'RACING';
+      if (attempt >= 20 || !transient) throw error;
       await pause();
     }
   }
@@ -42,13 +64,12 @@ async function readIdentity(path: string): Promise<Identity | null> {
     );
     const info = await file.stat({ bigint: true });
     const entry = await lstat(path, { bigint: true });
-    if (
-      !info.isFile() ||
-      !entry.isFile() ||
-      info.dev !== entry.dev ||
-      info.ino !== entry.ino ||
-      info.size > BigInt(LIMIT)
-    )
+    // Two regular files with different ids: the entry was replaced between our
+    // open and lstat (a concurrent publication). Not a link, so re-read it; a
+    // symlink or directory fails the isFile checks below and stays an error.
+    if (info.isFile() && entry.isFile() && (info.dev !== entry.dev || info.ino !== entry.ino))
+      throw racing('RACING');
+    if (!info.isFile() || !entry.isFile() || info.size > BigInt(LIMIT))
       throw new Error('Unusable identity');
     const buffer = Buffer.alloc(LIMIT + 1);
     const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
@@ -72,7 +93,10 @@ async function readIdentity(path: string): Promise<Identity | null> {
         await lstat(path);
       } catch (missing) {
         if ((missing as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw missing;
       }
+      // Published between our open and lstat: a creator won the race. Re-read.
+      throw racing('RACING');
     }
     throw error;
   } finally {
@@ -89,9 +113,13 @@ export async function localDataIdentity(directory: string): Promise<string | und
   const lockPath = `${path}.lock`;
   let lock;
   let temporary: string | undefined;
+  let stage = 'root';
   try {
     const root = await stat(directory, { bigint: true });
-    if (!root.isDirectory() || root.dev <= 0n || root.ino <= 0n) return;
+    if (!root.isDirectory() || root.dev <= 0n || root.ino <= 0n) {
+      record('root', { code: 'UNUSABLE_ROOT' });
+      return;
+    }
     const dev = String(root.dev);
     const ino = String(root.ino);
     const sameRoot = async () => {
@@ -99,11 +127,17 @@ export async function localDataIdentity(directory: string): Promise<string | und
       return current.isDirectory() && current.dev === root.dev && current.ino === root.ino;
     };
     const matches = (record: Identity | null) => record?.dev === dev && record.ino === ino;
+    stage = 'read';
     const previous = await readSettled(path);
     if (matches(previous)) return (await sameRoot()) ? previous!.id : undefined;
     // One creator/rotation at a time. Other instances may read the completed
     // atomic publication; a stale or inaccessible lock simply leaves it unknown.
-    for (let attempt = 0; attempt < 50; attempt++) {
+    // A time budget, not an attempt count: a loaded machine (or CI runner) can
+    // hold the lock longer than a fixed number of 10 ms waits.
+    // Monotonic: a wall-clock jump must not stretch or cut the wait.
+    stage = 'lock';
+    const deadline = performance.now() + 5_000;
+    while (performance.now() < deadline) {
       try {
         lock = await open(lockPath, 'wx', 0o600);
         break;
@@ -115,9 +149,14 @@ export async function localDataIdentity(directory: string): Promise<string | und
         if (matches(published)) return (await sameRoot()) ? published!.id : undefined;
       }
     }
-    if (!lock) return;
+    if (!lock) {
+      record('lock', { code: 'TIMEOUT' });
+      return;
+    }
+    stage = 'read-locked';
     const published = await readSettled(path);
     if (matches(published)) return (await sameRoot()) ? published!.id : undefined;
+    stage = 'write';
     const value: Identity = { version: 1, id: randomUUID(), dev, ino };
     temporary = `${path}.${randomUUID()}.tmp`;
     const output = await open(temporary, 'wx', 0o600);
@@ -127,11 +166,17 @@ export async function localDataIdentity(directory: string): Promise<string | und
     } finally {
       await output.close();
     }
-    if (!(await sameRoot())) return;
+    if (!(await sameRoot())) {
+      record('write', { code: 'ROOT_CHANGED' });
+      return;
+    }
+    stage = 'rename';
     await renameWithRetry(temporary, path);
     temporary = undefined;
+    stage = 'verify';
     return (await sameRoot()) ? value.id : undefined;
-  } catch {
+  } catch (error) {
+    record(stage, error);
     return;
   } finally {
     if (temporary) await unlink(temporary).catch(() => {});

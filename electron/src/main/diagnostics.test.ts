@@ -11,7 +11,7 @@ import {
   installDiagnosticProcessCapture,
   captureProcessGone,
 } from './diagnostics-capture';
-import { sanitizeProperties, sanitizeFrames, validUiInput } from './diagnostics-schema';
+import { projectException, sanitizeProperties, sanitizeFrames, validUiInput } from './diagnostics-schema';
 import { runDiagnosticOperation } from './diagnostic-operation';
 import { MainErrorJournal, installMainProcessErrorHandlers } from './main-error-journal';
 import type { BackendStatus } from '../preload/index.d';
@@ -698,7 +698,39 @@ describe('strict data projection and durable recovery', () => {
     stop();
     await reports.flush();
     expect(send).toHaveBeenCalledTimes(2);
+    const sent = send.mock.calls.map((call) => JSON.parse(String(call[1]?.body)).props.error_code);
+    expect(sent).toContain('MAIN_UNCAUGHT_EXCEPTION');
     expect(JSON.stringify(send.mock.calls)).not.toMatch(/PRIVATE_PROMPT|PRIVATE_CANCEL/);
+  });
+
+  it('gives every stage-other app_crash path a distinct closed error_code', async () => {
+    const capture = vi.fn();
+    const reports = { capture } as never;
+    captureProcessGone(reports, false, 'crashed', 1, false, 'GPU');
+    captureProcessGone(reports, false, 'crashed', 1, false, 'Utility');
+    captureProcessGone(reports, false, 'killed', 9, false, 'Zygote');
+    captureProcessGone(reports, false, 'killed', 9);
+    const codes = capture.mock.calls.map(([event]) => event.error_code);
+    expect(codes).toEqual([
+      'GPU_PROCESS_GONE',
+      'UTILITY_PROCESS_GONE',
+      'OTHER_CHILD_PROCESS_GONE',
+      'OTHER_CHILD_PROCESS_GONE',
+    ]);
+    captureProcessGone(reports, true, 'crashed', 1, false, 'Tab');
+    expect(capture.mock.calls.at(-1)?.[0].error_code).toBeUndefined();
+  });
+
+  it('projects subclasses of built-in errors to their built-in base type', () => {
+    class FetchError extends TypeError {
+      name = 'FetchError';
+    }
+    expect(projectException(new FetchError('PRIVATE')).error_type).toBe('TypeError');
+    expect(projectException(new RangeError('x')).error_type).toBe('RangeError');
+    expect(projectException(Object.assign(new Error('x'), { name: 'Custom' })).error_type).toBe(
+      'OtherError',
+    );
+    expect(projectException('string').error_type).toBe('OtherError');
   });
 
   it('does not call a slow or canceled install stalled without actual no-progress evidence', async () => {

@@ -153,3 +153,85 @@ def test_backend_notification_levels_are_accepted_by_the_renderer():
     with open(os.path.join(root, "backend", "api", "routers", "system.py"), encoding="utf-8") as fh:
         emitted = set(re.findall(r'"level": "(\w+)"', fh.read()))
     assert emitted <= accepted, f"backend emits unknown notification levels: {emitted - accepted}"
+
+
+def test_legacy_advice_promises_cuda_126_only_where_setup_will_select_it(monkeypatch):
+    dc = _m("core.device_caps")
+    monkeypatch.setattr(dc, "legacy_cuda_repair_eligible", lambda: True)
+    advice = dc.legacy_nvidia_advice("GTX 1070", "sm_61")
+    assert "CUDA 12.6" in advice and "cu128" not in advice
+    assert dc.LEGACY_NVIDIA_MARKER in advice and "Repair" in advice
+    assert "Repair" in dc.legacy_cuda_repair_advice()
+    monkeypatch.setattr(dc, "legacy_cuda_repair_eligible", lambda: False)
+    advice = dc.legacy_nvidia_advice("GTX 780", "sm_35")
+    assert "Repair" not in advice and "CUDA 12.6" not in advice
+    assert "Vulkan" in advice and dc.LEGACY_NVIDIA_MARKER in advice
+    assert "CUDA 12.6" not in dc.legacy_cuda_repair_advice()
+
+
+def test_repair_eligibility_matches_runtime_selection_rules():
+    f = _m("core.device_caps").legacy_cuda_from_smi
+    assert f("6.1, 580.95.05\n")
+    assert f("5.2, 528.33\n6.1, 528.33")
+    assert not f("3.5, 470.0")  # Kepler
+    assert not f("3.5, 580.0\n6.1, 580.0")  # one card below the floor
+    assert not f("6.1, 580.0\n8.6, 580.0")  # mixed with a Volta+ card
+    assert not f("7.0, 580.0")
+    assert not f("6.1, 470.0")  # driver older than 525
+    assert not f("") and not f("[N/A], 580.0")
+
+
+def test_cu126_arch_list_covers_pascal_and_cu128_does_not():
+    dc = _m("core.device_caps")
+    cu126 = ["sm_50", "sm_60", "sm_61", "sm_70", "sm_75", "sm_80", "sm_86", "sm_90", "compute_90"]
+    assert dc.cuda_build_covers(cu126, 6, 1)
+    assert not dc.cuda_build_covers(CU128, 6, 1)
+
+
+def test_gpu_report_surfaces_the_legacy_cuda_fallback_reason(tmp_path):
+    gr = _m("core.gpu_report")
+    prefix = tmp_path / ".venv"
+    prefix.mkdir()
+    assert gr.legacy_cuda_fallback_reason(str(prefix)) is None
+    (tmp_path / gr.LEGACY_CUDA_FALLBACK_MARKER).write_text("no kernels for sm_61\n", encoding="utf-8")
+    assert gr.legacy_cuda_fallback_reason(str(prefix)) == "no kernels for sm_61"
+
+
+
+def test_repair_eligibility_finds_nvidia_smi_outside_path(monkeypatch):
+    """Older Windows drivers keep nvidia-smi.exe in NVSMI, outside PATH (#4244 review)."""
+    import platform
+    import subprocess
+
+    dc = _m("core.device_caps")
+    nvidia_smi = _m("core.nvidia_smi")
+    nvsmi = r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+    seen = {}
+
+    def run(cmd, **kwargs):
+        seen["cmd"], seen["errors"] = cmd, kwargs.get("errors")
+        return SimpleNamespace(stdout="6.1, 581.57\n")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(nvidia_smi, "find_nvidia_smi", lambda: nvsmi)
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(version=SimpleNamespace(cuda="12.8")))
+    dc.legacy_cuda_repair_eligible.cache_clear()
+    try:
+        assert dc.legacy_cuda_repair_eligible() is True
+        assert seen["cmd"][0] == nvsmi
+        # A bad byte must not leave stdout None on Windows.
+        assert seen["errors"] == "replace"
+        monkeypatch.setattr(nvidia_smi, "find_nvidia_smi", lambda: None)
+        dc.legacy_cuda_repair_eligible.cache_clear()
+        assert dc.legacy_cuda_repair_eligible() is False
+    finally:
+        dc.legacy_cuda_repair_eligible.cache_clear()
+
+
+def test_eligible_advice_tells_the_user_to_clear_a_torch_pin(monkeypatch):
+    dc = _m("core.device_caps")
+    monkeypatch.setattr(dc, "legacy_cuda_repair_eligible", lambda: True)
+    for advice in (dc.legacy_nvidia_advice("GTX 1070", "sm_61"), dc.legacy_cuda_repair_advice()):
+        assert "clear OMNIVOICE_TORCH_VARIANT first" in advice

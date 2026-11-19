@@ -251,6 +251,24 @@ export function diagnosticFrames(error: unknown): string {
   }
 }
 
+/** Subclasses report their nearest known built-in base; anything else stays OtherError. */
+function knownErrorType(error: unknown, errorName: unknown): string {
+  if (!(error instanceof Error)) return 'OtherError';
+  const named =
+    typeof errorName === 'string' && errorName.length <= 64 && errorTypes.has(errorName)
+      ? errorName
+      : undefined;
+  if (named && named !== 'Error') return named;
+  let proto: unknown = Object.getPrototypeOf(error);
+  for (let depth = 0; proto && depth < 16; depth++) {
+    const ctor = (proto as { constructor?: { name?: unknown } }).constructor;
+    const base = ctor && typeof ctor.name === 'string' ? ctor.name : '';
+    if (base !== 'Error' && base !== 'OtherError' && errorTypes.has(base)) return base;
+    proto = Object.getPrototypeOf(proto);
+  }
+  return named ?? 'OtherError';
+}
+
 /** Typed technical fields only; failure reporting never affects the original operation. */
 export function prepareDiagnosticException(
   error: unknown,
@@ -288,11 +306,7 @@ export function prepareDiagnosticException(
       if (seenErrors.has(error)) return null;
       seenErrors.add(error);
     }
-    const observedName = error instanceof Error ? errorName : 'OtherError';
-    const name =
-      typeof observedName === 'string' && observedName.length <= 64 && errorTypes.has(observedName)
-        ? observedName
-        : 'OtherError';
+    const name = knownErrorType(error, errorName);
     const frames = diagnosticFrames(error);
     const input: DiagnosticInput = {
       category,

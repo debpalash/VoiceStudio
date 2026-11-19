@@ -131,8 +131,12 @@ def test_preflight_gpu_row_does_not_say_cuda_ready_without_kernels(monkeypatch):
     assert "driver update will not help" in gpu["fix"].lower()
 
 
-def test_preflight_routing_row_agrees_with_legacy_gpu_row(monkeypatch):
-    # The routing row must not tell a pre-Volta card to install another build.
+@pytest.mark.parametrize("eligible", [True, False])
+def test_preflight_routing_row_agrees_with_legacy_gpu_row(monkeypatch, eligible):
+    # The routing row must not tell a pre-Volta card to install another build,
+    # and may promise the CUDA 12.6 build only where setup will select it (#4242).
+    import core.device_caps as device_caps
+    monkeypatch.setattr(device_caps, "legacy_cuda_repair_eligible", lambda: eligible)
     from api.routers.setup import wizard
     import services.media_tools as media_tools
     from core.device_caps import KERNEL_RISK_MARKER
@@ -155,5 +159,6 @@ def test_preflight_routing_row_agrees_with_legacy_gpu_row(monkeypatch):
     checks = resp["checks"] if isinstance(resp, dict) else resp.checks
     rows = {(c if isinstance(c, dict) else c.model_dump())["id"]: (c if isinstance(c, dict) else c.model_dump()) for c in checks}
     for row_id in ("gpu", "gpu_routing"):
-        assert "neither will another CUDA build" in rows[row_id]["fix"]
+        assert ("CUDA 12.6 PyTorch build" in rows[row_id]["fix"]) is eligible
+        assert ("neither will another CUDA build" in rows[row_id]["fix"]) is (not eligible)
         assert "Install a PyTorch build" not in rows[row_id]["fix"]
