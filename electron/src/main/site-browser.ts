@@ -6,7 +6,12 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron';
 import { assertTrustedMainFrame } from './trusted-ipc';
-import { browserUrl, type SiteBrowserState, type SiteBrowserBounds } from '../shared/site-browser';
+import {
+  browserUrl,
+  webTargetUrl,
+  type SiteBrowserState,
+  type SiteBrowserBounds,
+} from '../shared/site-browser';
 import { listInstalledBrowsers, openInBrowser } from './installed-browsers';
 import { randomUUID } from 'node:crypto';
 
@@ -145,7 +150,7 @@ export function registerSiteBrowser(getMainWindow: () => BrowserWindow | null) {
     });
     const allowWebNavigation = (event: { preventDefault(): void }, target: string) => {
       try {
-        browserUrl(target);
+        webTargetUrl(target);
       } catch {
         event.preventDefault();
       }
@@ -154,7 +159,7 @@ export function registerSiteBrowser(getMainWindow: () => BrowserWindow | null) {
     view.webContents.on('will-redirect', allowWebNavigation);
     view.webContents.setWindowOpenHandler(({ url: target }) => {
       try {
-        navigate(entry, target);
+        navigate(entry, webTargetUrl(target));
       } catch {
         /* Non-web schemes never execute. */
       }
