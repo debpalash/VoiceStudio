@@ -149,6 +149,11 @@ jobs:
         if: runner.os != 'Windows'
         working-directory: electron
         run: node --test tests/shell-installer.test.mjs tests/installer-worker.test.mjs
+      # Real uv, in temporary tool and config directories: the bundled command is
+      # installed, replaces an existing desktop wrapper, and keeps its environment.
+      - name: Command installation and launcher migration (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: python3 scripts/cli_install_smoke.py
       - name: Install latest release (macOS/Linux)
         if: runner.os != 'Windows'
         run: sh scripts/install.sh
