@@ -14,7 +14,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { localDataIdentity } from './local-data-identity';
+import { localDataIdentity, localDataIdentityFailures } from './local-data-identity';
 let root: string;
 const FILE = '.voicestudio-data-identity.json';
 beforeEach(async () => {
@@ -28,7 +28,7 @@ it('uses one opaque persisted UUID across restart and concurrent creators', asyn
   await mkdir(directory);
   const ids = await Promise.all(Array.from({ length: 6 }, () => localDataIdentity(directory)));
   expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
-  expect(new Set(ids).size).toBe(1);
+  expect(new Set(ids).size, JSON.stringify({ ids, failures: localDataIdentityFailures() })).toBe(1);
   expect(await localDataIdentity(directory)).toBe(ids[0]);
   const text = await readFile(join(directory, FILE), 'utf8');
   expect(text).not.toContain(root);

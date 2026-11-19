@@ -14,7 +14,7 @@ final class HomeScreens: XCTestCase {
         for (route, title) in [("speak","Speech"),("voices","Clone a voice"),("dub","Dub"),("dictate","Dictate"),("models","Models"),("connect","Connect to VoiceStudio")] {
             let card = app.buttons["home."+route]
             app.reveal(card)
-            XCTAssertTrue(card.isHittable, route); card.tap()
+            XCTAssertTrue(card.isHittable, route); card.tapReady()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: uiReadyTimeout), route)
             if route == "voices" {
                 app.buttons["Cancel"].tapReady()
@@ -25,7 +25,7 @@ final class HomeScreens: XCTestCase {
             // and never tap again once it does (Home's first bar button is Projects).
             for _ in 0..<3 where !app.navigationBars["Home"].exists {
                 if app.buttons["BackButton"].exists { app.buttons["BackButton"].tapReady() }
-                else if app.navigationBars[title].exists { app.navigationBars[title].buttons.element(boundBy: 0).tap() }
+                else if app.navigationBars[title].exists { app.navigationBars[title].buttons.element(boundBy: 0).tapReady() }
                 _ = app.navigationBars["Home"].waitForExistence(timeout: 3)
             }
             XCTAssertTrue(app.navigationBars["Home"].exists, "did not return Home from \(route)")
@@ -99,7 +99,7 @@ final class MaintainerCardScreens: XCTestCase {
             ("debpalash", "Palash Debnath", "Creator and Core Team", "palash.dev", "@idebpalash"),
             ("velixio", "Shimul Debnath", "Core Team", "shimul.me", "@shimuldn")
         ] {
-            app.buttons["home.contributor." + login].tap()
+            app.buttons["home.contributor." + login].tapReady()
             XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: uiReadyTimeout))
             XCTAssertTrue(app.staticTexts[role].exists)
             for (kind, handle) in [("website", website), ("github", "@" + login), ("x", social)] {
@@ -130,7 +130,7 @@ final class MaintainerCardScreens: XCTestCase {
         let maintainer = app.buttons["home.contributor.velixio"]
         for _ in 0..<5 { if maintainer.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(maintainer.isHittable)
-        maintainer.tap()
+        maintainer.tapReady()
         XCTAssertTrue(app.staticTexts["Shimul Debnath"].waitForExistence(timeout: uiReadyTimeout))
         for kind in ["website", "github", "x"] {
             let link = app.descendants(matching: .any)["home.maintainer.velixio." + kind].firstMatch
