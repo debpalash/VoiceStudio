@@ -403,9 +403,14 @@ def _quiet(exc: BaseException) -> None:
     logger.debug("Voice gallery unreachable (%s: %s)", type(exc).__name__, exc)
 
 
+def _is_missing_artifact(exc: GalleryError) -> bool:
+    """Nothing is published at that URL: no gallery yet, not a rejected one."""
+    return "HTTP 404" in str(exc)
+
+
 def _report_rejected_download(exc: GalleryError, context: str) -> None:
     """Keep a missing remote artifact quiet while reporting invalid content."""
-    if "HTTP 404" in str(exc):
+    if _is_missing_artifact(exc):
         _quiet(exc)
         return
     logger.warning("%s could not be accepted: %s", context, exc)
@@ -456,10 +461,15 @@ async def check_for_updates(
     except GalleryError as exc:
         # A signature failure is not a transient network hiccup — it is the one
         # state the user should be able to see, so record it. The app still
-        # works: previews render locally.
+        # works: previews render locally. A 404 is not one of those states:
+        # nothing is published there, which is like being offline, and a
+        # recorded 404 is a banner that no retry can clear.
         _report_rejected_download(exc, "Voice gallery update")
         state["last_checked"] = ts
-        state["last_error"] = str(exc)
+        if _is_missing_artifact(exc):
+            state.pop("last_error", None)
+        else:
+            state["last_error"] = str(exc)
         _save_state(state)
         return status(now=now)
     except Exception as exc:  # offline, DNS, TLS, timeout — all expected
