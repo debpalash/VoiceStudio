@@ -47,6 +47,10 @@ def _source_version() -> str | None:
             # An unreadable or mis-encoded manifest must not stop the import:
             # fall through to the installed metadata.
             continue
+        # Only this project's manifest counts: a venv or install directory that sits
+        # inside someone else's project must not report that project's version.
+        if not re.search(r'(?m)^name\s*=\s*"omnivoice"\s*$', text):
+            continue
         match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', text)
         if match:
             return match.group(1)

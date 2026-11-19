@@ -146,3 +146,26 @@ def test_ios_app_reads_the_full_version():
     sources = (Path(__file__).resolve().parents[1] / "mobile/ios/VoiceStudio").rglob("*.swift")
     offenders = [p.name for p in sources if "CFBundleShortVersionString" in p.read_text(encoding="utf-8")]
     assert not offenders
+
+
+def test_a_foreign_pyproject_above_the_install_is_ignored(monkeypatch, tmp_path):
+    """An install nested in another project must not report that project's version."""
+    import core.version as version_module
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "someone-elses-app"\nversion = "7.7.7"\n', encoding="utf-8"
+    )
+
+    class _NestedPath:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def resolve(self) -> "_NestedPath":
+            return self
+
+        @property
+        def parents(self) -> tuple:
+            return (tmp_path,)
+
+    monkeypatch.setattr(version_module, "Path", _NestedPath)
+    assert version_module._source_version() is None
