@@ -121,9 +121,12 @@ Electron translates enabled WinINET `ProxyServer` maps (`http=…`, `https=…`,
 Loopback hosts remain excluded, and existing `NO_PROXY` entries are retained.
 Proxy credentials are never logged by this normalization.
 
-Simple WinINET bypass hosts and `*.domain` suffix rules are retained. Windows-only
-bypass patterns such as `<local>` stop setup with localized proxy configuration
-guidance before uv runs; dropping them would silently change routing semantics.
+Simple WinINET bypass hosts, `*.domain` suffix rules and numeric prefix rules such
+as `10.*` or `192.168.*` (converted to CIDR blocks) are retained, so the default list
+Clash and v2rayN write works. `<local>` only exempts dotless intranet names, which
+setup downloads never use, so it is dropped. Other Windows-only bypass patterns stop
+setup with localized proxy configuration guidance before uv runs; dropping them would
+silently change routing semantics.
 Fully quit Electron, set an explicit proxy URL and the intended `NO_PROXY` exclusions in a terminal, then launch Electron from that same terminal. Retrying or relaunching from the existing process cannot pick up new environment variables. PAC remains handled by the existing system networking behavior; use the actual proxy protocol,
 not the `socks=` registry syntax. This repair applies to packaged runtime setup;
 it does not change browser networking or global Windows proxy settings.
