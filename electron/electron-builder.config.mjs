@@ -204,7 +204,7 @@ export default {
     { from: '../pyproject.toml', to: 'pyproject.toml' },
     { from: '../uv.lock', to: 'uv.lock' },
     // Wheels for packages PyPI ships only as source; uv.lock points at them (#4253).
-    { from: '../vendor/wheels', to: 'vendor/wheels', filter: ['*.whl'] },
+    { from: '../vendor/wheels', to: 'vendor/wheels', filter: ['*.whl', 'LICENSE-*.txt'] },
     { from: '../scripts/windows-rocm-recipe.json', to: 'scripts/windows-rocm-recipe.json' },
     { from: '../scripts/smoke_windows_rocm.py', to: 'scripts/smoke_windows_rocm.py' },
     { from: '../README.md', to: 'README.md' },

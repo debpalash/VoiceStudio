@@ -9,7 +9,7 @@ them here and `uv.lock` pins each wheel's sha256.
 |---|---|
 | docopt 0.6.2 | MIT (`LICENSE-MIT` kept in the wheel's dist-info) |
 | dora-search 0.1.12 | MIT (`LICENSE` kept in dist-info) |
-| antlr4-python3-runtime 4.9.3 | BSD-3-Clause per its METADATA; the upstream sdist ships no licence file |
+| antlr4-python3-runtime 4.9.3 | BSD-3-Clause; the upstream sdist ships no licence file, so the ANTLR project notice is kept in `LICENSE-antlr4-python3-runtime.txt` |
 
 Each wheel is the unmodified sdist built with the pinned backend in
 `build-constraints.txt`. `SOURCES.json` records every sdist URL and sha256
