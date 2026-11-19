@@ -1,0 +1,25 @@
+{
+  "wheels": [
+    {
+      "name": "docopt",
+      "version": "0.6.2",
+      "wheel": "docopt-0.6.2-py2.py3-none-any.whl",
+      "sdist_url": "https://files.pythonhosted.org/packages/a2/55/8f8cab2afd404cf578136ef2cc5dfb50baa1761b68c9da1fb1e4eed343c9/docopt-0.6.2.tar.gz",
+      "sdist_sha256": "49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491"
+    },
+    {
+      "name": "antlr4-python3-runtime",
+      "version": "4.9.3",
+      "wheel": "antlr4_python3_runtime-4.9.3-py3-none-any.whl",
+      "sdist_url": "https://files.pythonhosted.org/packages/3e/38/7859ff46355f76f8d19459005ca000b6e7012f2f1ca597746cbcd1fbfe5e/antlr4-python3-runtime-4.9.3.tar.gz",
+      "sdist_sha256": "f224469b4168294902bb1efa80a8bf7855f24c99aef99cbefc1bcd3cce77881b"
+    },
+    {
+      "name": "dora-search",
+      "version": "0.1.12",
+      "wheel": "dora_search-0.1.12-py3-none-any.whl",
+      "sdist_url": "https://files.pythonhosted.org/packages/d5/9d/9a13947db237375486c0690f4741dd2b7e1eee20e0ffcb55dbd1b21cc600/dora_search-0.1.12.tar.gz",
+      "sdist_sha256": "2956fd2c4c7e4b9a4830e83f0d4cf961be45cfba1a2f0570281e91d15ac516fb"
+    }
+  ]
+}
