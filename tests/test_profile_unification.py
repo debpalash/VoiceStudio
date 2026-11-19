@@ -815,3 +815,28 @@ def test_migration_0005_downgrade_drops_columns(tmp_path):
     _run_alembic("downgrade", str(db), target="0003_voice_profile_consent")
     cols = _columns(db, "voice_profiles")
     assert "kind" not in cols and "vd_states" not in cols
+
+
+def _design_row(ref_text):
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    return conn.execute(
+        "SELECT 'design' AS kind, 0 AS is_locked, NULL AS locked_audio_path, "
+        "'sample.wav' AS ref_audio_path, ? AS ref_text, "
+        "'female, young adult' AS instruct, 7 AS seed, NULL AS language, "
+        "NULL AS design_recipe",
+        (ref_text,),
+    ).fetchone()
+
+
+@pytest.mark.parametrize("stored,expected", [
+    ("", None), (None, None), ("  ", None), ("Hello there.", "Hello there."),
+])
+def test_design_sample_is_paired_with_the_script_it_speaks(stored, expected):
+    """A design sample saved without a sample line still carries a transcript,
+    so no speech-to-text model is needed to generate with it."""
+    from api.routers.archetypes import _FALLBACK_SCRIPT
+    from api.routers.generation import _resolve_profile_conditioning
+    cond = _resolve_profile_conditioning(_design_row(stored), engine_id="omnivoice")
+    assert cond["ref_text"] == (expected or _FALLBACK_SCRIPT)
