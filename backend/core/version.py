@@ -34,9 +34,9 @@ def _source_version() -> str | None:
     """The version this checkout declares, when a ``pyproject.toml`` is reachable."""
     for parent in Path(__file__).resolve().parents:
         pyproject = parent / "pyproject.toml"
-        if not pyproject.is_file():
-            continue
         try:
+            if not pyproject.is_file():
+                continue
             # TOML is UTF-8 by definition. A bare read_text() decodes in the
             # locale code page instead, and pyproject.toml carries characters
             # that are undecodable in cp932/cp936/cp949/cp950, so on a Chinese,

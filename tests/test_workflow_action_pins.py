@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 
 USES = re.compile(
-    r"uses:\s*['\"]?(?P<action>[\w.-]+/[\w.-]+(?:/[\w.-]+)*)@(?P<ref>[^'\"\s#]+)"
+    r"['\"]?uses['\"]?:\s*['\"]?(?P<action>[\w.-]+/[\w.-]+(?:/[\w.-]+)*)@(?P<ref>[^'\"\s#]+)"
     r"['\"]?[ \t]*(?:#\s*(?P<label>.*))?"
 )
 # A comment that names what the SHA is: a version, a release channel or a branch.
@@ -161,6 +161,20 @@ def test_commented_out_references_are_ignored() -> None:
     )
     found = _references(text, "probe.yml")
     assert [use["ref"] for use in found] == ["3d3c42e5aac5ba805825da76410c181273ba90b1"]
+
+
+def test_quoted_uses_keys_are_discovered() -> None:
+    """`"uses":` and `'uses':` are the same key to YAML and must not escape the pin check."""
+    text = (
+        '      - {"uses": "actions/checkout@v4"}\n'
+        "      - {'uses': 'actions/cache@v3'}\n"
+        "      - uses: actions/setup-python@v5\n"
+    )
+    assert [use["action"] for use in _references(text, "probe.yml")] == [
+        "actions/checkout",
+        "actions/cache",
+        "actions/setup-python",
+    ]
 
 
 def _parse(text: str):

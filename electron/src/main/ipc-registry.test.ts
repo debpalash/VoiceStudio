@@ -78,9 +78,14 @@ function code(body: string): string {
  * (`(event) => call(event)`) used to take a fixed window of the file, which could
  * reach into the next registration and borrow its guard.
  */
-function registrations(text: string): Registration[] {
+function registrations(text: string, aliased = false): Registration[] {
   const found: Registration[] = [];
-  for (const match of text.matchAll(/ipcMain\.(?:handle|on)\(/g)) {
+  // `ipc.ts` registers through a local `handle(...)` alias of `ipcMain.handle`, so
+  // that spelling counts as a registration too.
+  const pattern = aliased
+    ? /(?:ipcMain\.(?:handle|on)|(?<![\w.])handle)\(/g
+    : /ipcMain\.(?:handle|on)\(/g;
+  for (const match of text.matchAll(pattern)) {
     const callOpen = (match.index ?? 0) + match[0].length - 1;
     const callEnd = closing(text, callOpen, '(', ')');
     const comma = text.indexOf(',', callOpen + 1);
@@ -114,7 +119,7 @@ function registrations(text: string): Registration[] {
  * (`trustedOwner(...)?.minimize()`).
  */
 const GUARDED_BODY =
-  /\b(?:assertTrustedMainFrame|assertTrustedTopLevel|assertMain|assertRecorder|trusted|guard|entryFor|requireTrusted)\s*\(|=\s*trustedOwner\(|trustedOwner\([^\n]*?\)\s*\??\./;
+  /\b(?:assertTrustedMainFrame|assertTrustedTopLevel|assertTrustedTopLevelFrame|assertMain|assertRecorder|trusted|guard|entryFor|requireTrusted)\s*\(|=\s*trustedOwner\(|trustedOwner\([^\n]*?\)\s*\??\./;
 
 /**
  * Registrations whose handler authorizes without the shared predicate.
@@ -126,8 +131,20 @@ const GUARDED_BODY =
  */
 const GATED_WITHOUT_THE_PREDICATE = ['PERSISTENCE_FLUSHED'];
 
-/** Modules that own registration: `ipc.ts` is the dispatch wrapper every `handle(...)` goes through. */
-const DISPATCH_MODULES = new Set(['ipc.ts', 'trusted-ipc.ts']);
+/** Only the gate itself is exempt: its wrappers assert before dispatching (checked below). */
+const DISPATCH_MODULES = new Set(['trusted-ipc.ts']);
+
+/**
+ * `ipc.ts` channels that answer without a frame check: they only read state the
+ * renderer already holds. Adding a channel here is a security decision; every
+ * other `ipc.ts` registration, mutating ones such as `backend:restart` included,
+ * must authorize its caller.
+ */
+const UNGATED_READ_ONLY = new Set([
+  'CHANNELS.backendGetStatus',
+  'CHANNELS.backendGetConnection',
+  'CHANNELS.filesExtractScript',
+]);
 
 describe('IPC trust gate', () => {
   it('keeps the list of registering modules explicit', () => {
@@ -152,11 +169,14 @@ describe('IPC trust gate', () => {
       const relative = pathOf(file);
       if (DISPATCH_MODULES.has(relative)) continue;
       const text = read(file);
-      registrations(text).forEach(({ channel, body }, index) => {
+      registrations(text, relative === 'ipc.ts').forEach(({ channel, body }, index) => {
         if (GUARDED_BODY.test(code(body))) return;
         // The exemption covers its own registration only: another handler in the
         // same file still has to carry a check.
         if (GATED_WITHOUT_THE_PREDICATE.some((name) => channel.includes(name))) return;
+        if (relative === 'ipc.ts' && UNGATED_READ_ONLY.has(channel)) return;
+        // The wrapper in `ipc.ts` forwards a caller-chosen channel; the call sites are scanned.
+        if (relative === 'ipc.ts' && channel === 'channel') return;
         ungated.push(`${relative}: registration #${index + 1} (${channel}) has no authorization call`);
       });
     }

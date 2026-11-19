@@ -749,7 +749,11 @@ export function registerIpc(
     await supervisor.restart();
     return { ok: true };
   });
-  handle(CHANNELS.backendRestart, () => supervisor.restart());
+  handle(CHANNELS.backendRestart, (event: IpcMainInvokeEvent) => {
+    // It stops and restarts the backend: only the app's own window may ask.
+    assertTrustedMainFrame(event, getMainWindow());
+    return supervisor.restart();
+  });
   handle(CHANNELS.backendRestartOnCpu, async (event: IpcMainInvokeEvent) => {
     // It changes a stored setting: only the app's own window may ask.
     assertTrustedMainFrame(event, getMainWindow());

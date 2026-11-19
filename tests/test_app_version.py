@@ -169,3 +169,16 @@ def test_a_foreign_pyproject_above_the_install_is_ignored(monkeypatch, tmp_path)
 
     monkeypatch.setattr(version_module, "Path", _NestedPath)
     assert version_module._source_version() is None
+
+
+def test_unsearchable_manifest_path_falls_back_instead_of_raising(monkeypatch, tmp_path) -> None:
+    """`Path.is_file()` re-raises PermissionError for some paths; that must not abort the import."""
+    from pathlib import Path
+
+    import core.version as version_module
+
+    def _denied(_self) -> bool:
+        raise PermissionError("not searchable")
+
+    monkeypatch.setattr(Path, "is_file", _denied)
+    assert version_module._source_version() is None
