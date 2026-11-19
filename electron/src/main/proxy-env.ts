@@ -34,7 +34,23 @@ interface SystemProxy {
   bypass?: string;
 }
 
-/** Only translate bypass rules whose meaning NO_PROXY can preserve. */
+/** `10.*` / `192.168.*` style prefix rules as the CIDR block NO_PROXY understands. */
+function prefixWildcardCidr(value: string): string | null {
+  const match = /^(\d{1,3}(?:\.\d{1,3}){0,2})\.\*$/.exec(value);
+  if (!match) return null;
+  const octets = match[1].split('.').map(Number);
+  if (octets.some((octet) => octet > 255)) return null;
+  const bits = octets.length * 8;
+  return `${[...octets, 0, 0, 0, 0].slice(0, 4).join('.')}/${bits}`;
+}
+
+/**
+ * Only translate bypass rules whose meaning NO_PROXY can preserve. Proxy tools
+ * (Clash, v2rayN) write `localhost;127.*;10.*;172.16.*;192.168.*;<local>`, so
+ * those exact forms must convert: refusing them blocked setup for every user
+ * behind a system proxy. `<local>` only exempts dotless intranet names, which
+ * downloads from the pinned public hosts never use, so it is dropped.
+ */
 export function proxyBypassHosts(raw: string): string[] | null {
   const hosts: string[] = [];
   for (const value of raw
@@ -43,6 +59,12 @@ export function proxyBypassHosts(raw: string): string[] | null {
     .filter(Boolean)) {
     if (value === '*') {
       hosts.push(value);
+      continue;
+    }
+    if (value.toLowerCase() === '<local>') continue;
+    const cidr = prefixWildcardCidr(value);
+    if (cidr) {
+      hosts.push(cidr);
       continue;
     }
     const host = value.replace(/^\*\./, '.');
