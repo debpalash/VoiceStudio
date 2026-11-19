@@ -135,7 +135,7 @@ def test_matcher_classifies_each_call():
 def test_no_bare_element_taps():
     offenders = []
     for path in sorted(UITESTS.glob("*.swift")):
-        source = path.read_text()
+        source = path.read_text(encoding="utf-8")
         lines = source.splitlines()
         for offset in bare_taps(source):
             no = source.count("\n", 0, offset) + 1
