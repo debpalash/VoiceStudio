@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import time
 import shutil
@@ -111,13 +112,58 @@ def export_file(req: ExportRequest):
     return {"success": True, "id": export_id}
 
 
+_RECORD_PATH_MAX = 4096
+_RECORD_MODES = {"audio", "video", "file"}
+# Every C0 control character plus DEL: a path with one cannot have come from a
+# native save dialog, and it corrupts whatever renders the history.
+_CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
+_SEPARATORS = re.compile(r"[\\/]")
+
+
+def _recorded_destination(raw: str) -> str:
+    """The destination a completed export reports: bounded, control-free, display-only.
+
+    The path is returned exactly as the desktop saved it — a POSIX name may end in
+    a space — so the history shows the file the user actually got. Nothing opens
+    it (`/export/reveal` resolves against the data directory instead), but it must
+    not carry kilobytes of text, control characters, or an upward traversal.
+    """
+    path = raw or ""
+    if not path.strip() or len(path) > _RECORD_PATH_MAX:
+        raise HTTPException(
+            status_code=400, detail="The destination path is missing or too long."
+        )
+    if _CONTROL_CHARACTER.search(path):
+        raise HTTPException(
+            status_code=400, detail="The destination path contains control characters."
+        )
+    if ".." in _SEPARATORS.split(path):
+        raise HTTPException(
+            status_code=400, detail="The destination path may not traverse upwards."
+        )
+    return path
+
+
+def _recorded_mode(raw: str) -> str:
+    mode = (raw or "").strip().lower()
+    if mode not in _RECORD_MODES:
+        raise HTTPException(status_code=400, detail="Unknown export mode.")
+    return mode
+
+
 @router.post("/export/record", dependencies=[Depends(require_consumer)])
 def record_export(req: ExportRecordRequest):
     export_id = str(uuid.uuid4())[:8]
     with db_conn() as conn:
         conn.execute(
             "INSERT INTO export_history (id, filename, destination_path, mode, created_at) VALUES (?, ?, ?, ?, ?)",
-            (export_id, req.filename, req.destination_path, req.mode, time.time()),
+            (
+                export_id,
+                req.filename,
+                _recorded_destination(req.destination_path),
+                _recorded_mode(req.mode),
+                time.time(),
+            ),
         )
     event_bus.emit("export_history", {"action": "recorded", "id": export_id})
     return {"success": True, "id": export_id}
@@ -139,8 +185,15 @@ def get_export_history(request: Request):
     from core.auth import PrincipalKind, principal_for
 
     records = [dict(r) for r in rows]
-    if principal_for(request).kind == PrincipalKind.ANONYMOUS:
-        # Bare-server browser use may list exports, but host paths are private.
+    # The destination is a path on this host. Only clients that are the machine
+    # itself get it back: a browser on the trusted network or a PIN client is a
+    # different device, and the anonymous kind was the only case redacted before.
+    local_kinds = {
+        PrincipalKind.LOOPBACK,
+        PrincipalKind.API_KEY,
+        PrincipalKind.ADMIN_SESSION,
+    }
+    if principal_for(request).kind not in local_kinds:
         for record in records:
             record["destination_path"] = ""
     return records
