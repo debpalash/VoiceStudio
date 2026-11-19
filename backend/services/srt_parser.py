@@ -47,6 +47,12 @@ def _ts_to_seconds(h: str, m: str, s: str, ms: str) -> float:
     return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
 
 
+def _is_valid_timing_line(line: str) -> bool:
+    """A timing line whose millisecond fields fit the three-digit format."""
+    match = _TIMING_RE.match(line)
+    return bool(match) and len(match.group(4)) <= 3 and len(match.group(8)) <= 3
+
+
 def _is_index_line(line: str) -> bool:
     """True when ``line`` is nothing but ASCII digits (a SubRip cue number).
 
@@ -84,7 +90,7 @@ def webvtt_content_blocks(text: str, *, strict_blank: bool = False) -> list[str]
         # WebVTT's block parser gives a timing line in position two
         # precedence over the identifier, so STYLE/REGION can name a real
         # cue (https://www.w3.org/TR/webvtt1/#file-parsing).
-        identifies_cue = len(lines) > 1 and _TIMING_RE.match(lines[1])
+        identifies_cue = len(lines) > 1 and _is_valid_timing_line(lines[1])
         if re.match(r"NOTE(?:[ \t]|$)", first):
             continue
         if first in {"STYLE", "REGION"} and not identifies_cue:

@@ -360,6 +360,15 @@ def test_webvtt_metadata_words_can_identify_a_cue(identifier):
     assert [cue['text'] for cue in parse_srt(text).segments] == ['Spoken text']
 
 
+@pytest.mark.parametrize('identifier', ['STYLE', 'REGION'])
+def test_webvtt_metadata_with_overlong_timing_is_not_a_cue(identifier):
+    text = (
+        f'WEBVTT\n\n{identifier}\n00:01.0000 --> 00:02.000\n'
+        '00:03.000 --> 00:04.000\nmetadata text\n\n00:05.000 --> 00:06.000\nSpoken text\n'
+    )
+    assert [cue['text'] for cue in parse_srt(text).segments] == ['Spoken text']
+
+
 @pytest.mark.parametrize('identifier', ['NOTE', 'NOTE identifier'])
 def test_webvtt_note_block_is_never_a_cue_even_with_a_timing_line(identifier):
     text = f'WEBVTT\n\n{identifier}\n00:01.000 --> 00:02.000\nprivate note\n\n00:03.000 --> 00:04.000\nSpoken text\n'
