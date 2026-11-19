@@ -233,6 +233,13 @@ it('blocks non-web navigations and popups, closes remote contents and removes pa
   view.webContents.emit('will-redirect', event, 'file:///secret');
   expect(event.preventDefault).toHaveBeenCalled();
   const popup = view.webContents.setWindowOpenHandler.mock.calls[0][0];
+  for (const target of ['tel:5551234', 'data:1', 'localhost:8443']) {
+    const navigation = { preventDefault: vi.fn() };
+    view.webContents.emit('will-navigate', navigation, target);
+    expect(navigation.preventDefault).toHaveBeenCalled();
+    popup({ url: target });
+    expect(view.webContents.loadURL).not.toHaveBeenCalledWith(expect.stringContaining(target));
+  }
   expect(popup({ url: 'javascript:alert(1)' })).toEqual({ action: 'deny' });
   expect(popup({ url: 'https://example.com' })).toEqual({ action: 'deny' });
   expect(view.webContents.loadURL).toHaveBeenLastCalledWith('https://example.com/');
