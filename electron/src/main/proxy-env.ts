@@ -96,6 +96,7 @@ function systemProxy(): SystemProxy | undefined {
 }
 
 const DOWNLOAD_ENDPOINT_KEYS = [
+  'UV_INDEX',
   'UV_INDEX_URL',
   'UV_DEFAULT_INDEX',
   'UV_EXTRA_INDEX_URL',
@@ -110,7 +111,11 @@ const DOWNLOAD_ENDPOINT_KEYS = [
 function configuredDownloadHosts(input: NodeJS.ProcessEnv): string[] {
   const hosts = new Set<string>();
   for (const key of DOWNLOAD_ENDPOINT_KEYS) {
-    for (const value of (input[key] ?? '').split(/\s+/)) {
+    // uv splits UV_FIND_LINKS on commas; the index lists are whitespace-separated.
+    const delimiter = key === 'UV_FIND_LINKS' ? /[,\s]+/ : /\s+/;
+    for (const entry of (input[key] ?? '').split(delimiter)) {
+      // UV_INDEX entries may be `name=url`.
+      const value = entry.replace(/^[A-Za-z0-9_-]+=(?=[a-z][a-z0-9+.-]*:\/\/)/i, '');
       try {
         const host = new URL(value).hostname.toLowerCase();
         if (host) hosts.add(host);

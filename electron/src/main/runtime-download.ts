@@ -11,7 +11,9 @@ function ipv4(host: string): number | null {
 
 /** NO_PROXY `a.b.c.d/len` entries against an IP-literal hostname. */
 function inCidr(hostname: string, cidr: string): boolean {
-  const [base, bits] = cidr.split('/');
+  const parts = cidr.split('/');
+  if (parts.length !== 2 || !/^\d{1,2}$/.test(parts[1])) return false;
+  const [base, bits] = parts;
   const address = ipv4(hostname);
   const network = ipv4(base);
   const length = Number(bits);

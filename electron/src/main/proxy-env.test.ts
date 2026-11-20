@@ -138,3 +138,28 @@ it('bypasses IP-literal targets covered by a converted prefix rule', () => {
   expect(setupProxyForUrl('http://192.169.1.20/x', env)).toBe('http://127.0.0.1:7890');
   expect(setupProxyForUrl('https://files.pythonhosted.org/x', env)).toBe('http://127.0.0.1:7890');
 });
+
+it('discovers UV_INDEX name=url entries and comma-separated UV_FIND_LINKS', () => {
+  const env = downloadProxyEnv(
+    {
+      UV_INDEX: 'internal=https://buildserver/simple https://pub.example.com/simple',
+      UV_FIND_LINKS: 'https://first/wheels,https://second/wheels',
+      PIP_EXTRA_INDEX_URL: 'https://third/simple\nhttps://fourth/simple',
+      UV_EXTRA_INDEX_URL: 'https://fifth/simple https://sixth/simple',
+    },
+    'win32',
+    () => ({ server: '127.0.0.1:7890', bypass: '<local>' }),
+  );
+  const list = env.NO_PROXY?.split(',') ?? [];
+  expect(list).toEqual(
+    expect.arrayContaining(['buildserver', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth']),
+  );
+  expect(list).not.toContain('pub.example.com');
+});
+
+it('never lets a malformed CIDR entry match every host', () => {
+  for (const bad of ['10.0.0.0/', '10.0.0.0/8x', '10.0.0.0/33', '10.0/8', '10.0.0.0/8/8', '/8']) {
+    const env = { HTTP_PROXY: 'http://127.0.0.1:7890', NO_PROXY: bad };
+    expect(setupProxyForUrl('http://192.168.1.20/x', env)).toBe('http://127.0.0.1:7890');
+  }
+});
