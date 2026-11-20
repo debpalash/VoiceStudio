@@ -132,6 +132,7 @@ jobs:
     # Only version releases publish images; other release tags are ignored.
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
@@ -301,6 +302,7 @@ jobs:
     # Only version releases publish images; other release tags are ignored.
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
@@ -468,6 +470,7 @@ jobs:
     # Only version releases publish images; other release tags are ignored.
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write

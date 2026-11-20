@@ -15,6 +15,7 @@ jobs:
   omnivoice-tts:
     # The OmniVoice GGUF runtime each installer ships under resources/bin (#2780).
     uses: ./.github/workflows/build-omnivoice-tts.yml
+    timeout-minutes: 60
     with:
       desktop: true
 

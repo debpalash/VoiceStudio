@@ -55,6 +55,7 @@ jobs:
     # The archived sunset tag was assembled separately; future tags are Electron-only.
     if: github.event_name == 'workflow_dispatch' || github.ref_name != vars.TAURI_SUNSET_TAG
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       channel: ${{ steps.channel.outputs.channel }}
       version: ${{ steps.channel.outputs.version }}
@@ -120,6 +121,7 @@ jobs:
     # The OmniVoice GGUF runtime each installer ships under resources/bin (#2780).
     needs: validate
     uses: ./.github/workflows/build-omnivoice-tts.yml
+    timeout-minutes: 90
     with:
       ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || inputs.rehearsal && github.sha || github.ref }}
       desktop: true
@@ -503,6 +505,7 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/mobile-release.yml
+    timeout-minutes: 60
     with:
       # A rehearsal has no tag: it builds the dispatched commit, unsigned.
       release_ref: ${{ inputs.rehearsal && github.sha || inputs.release_tag || github.ref_name }}
@@ -518,6 +521,7 @@ jobs:
     needs: [validate, package, mobile]
     if: ${{ success() || (inputs.rehearsal == true && !cancelled() && needs.validate.result == 'success') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       # Dispatch docker.yml after publishing: GITHUB_TOKEN releases fire no `release` event.

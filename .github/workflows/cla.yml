@@ -46,6 +46,7 @@ jobs:
       contains(github.event.comment.body, 'VoiceStudio CLA') ||
       (github.event.issue.pull_request && contains(github.event.comment.body, 'recheck'))
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     # Job level, so comments the `if` skips never take the queue slot. Each run
     # rescans all comments, so a queued run GitHub cancels loses nothing.
     # ready_for_review queues apart: it often does nothing, so it must never

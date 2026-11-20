@@ -35,6 +35,7 @@ jobs:
   pull-request:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -53,6 +54,7 @@ jobs:
   drift:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     permissions:
       contents: read
       issues: write
