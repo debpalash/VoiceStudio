@@ -55,7 +55,22 @@ jobs:
           import assert from 'node:assert/strict';
           assert.match(process.env.ARTIFACT_ID ?? '', /^[1-9][0-9]*$/);
           JS
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      # The artifact list is eventually consistent: a by-name download in the
+      # same job as the upload can briefly report "Artifact not found". Retry
+      # once after a pause instead of failing the contract on that race.
+      - name: Download the named archive
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: action-contract-${{ runner.os }}
+          path: contract-restored
+      - name: Wait before retrying the download
+        if: steps.download.outcome == 'failure'
+        run: sleep 20
+      - name: Retry the named archive download
+        if: steps.download.outcome == 'failure'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: action-contract-${{ runner.os }}
           path: contract-restored
