@@ -24,6 +24,7 @@ import time
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from typing import Optional
+from core.media_types import MAX_AUDIO_UPLOAD_BYTES, read_upload_bounded
 from core.path_security import upload_suffix
 
 router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
@@ -117,7 +118,7 @@ async def transcribe_audio(
     # Set while a worker that reads the upload may outlive this request.
     defer_tmp_cleanup = False
     try:
-        content = await audio.read()
+        content = await read_upload_bounded(audio, MAX_AUDIO_UPLOAD_BYTES, what="Audio")
         tmp.write(content)
         tmp.close()
 

@@ -31,6 +31,54 @@ VIDEO_EXTS = frozenset({
 })
 MEDIA_EXTS = AUDIO_EXTS | VIDEO_EXTS
 
+# ── Bounded upload reads ────────────────────────────────────────────────────
+# ``UploadFile.read()`` with no size returns the whole multipart part, so a
+# multi-GB body becomes a multi-GB heap allocation in the backend process before
+# any route-level size check can run. Every route that needs the bytes in memory
+# reads them through ``read_upload_bounded``; the one route that only stores a
+# video streams it through ``copy_upload_bounded``.
+UPLOAD_CHUNK_BYTES = 1024 * 1024
+#: A reference clip, dictation take, voice clip or provider upload.
+MAX_AUDIO_UPLOAD_BYTES = 64 * 1024 * 1024
+#: A subtitle file the user imports.
+MAX_SUBTITLE_UPLOAD_BYTES = 4 * 1024 * 1024
+#: A book manuscript (txt/epub/pdf) the audiobook importer parses.
+MAX_MANUSCRIPT_UPLOAD_BYTES = 128 * 1024 * 1024
+
+
+def _too_large(what: str, limit: int) -> "Exception":
+    from fastapi import HTTPException
+
+    megabytes = max(1, limit // (1024 * 1024))
+    return HTTPException(status_code=413, detail=f"{what} is too large (maximum {megabytes} MB).")
+
+
+async def read_upload_bounded(upload, limit: int, *, what: str = "Upload") -> bytes:
+    """Read ``upload`` in full, refusing to buffer more than ``limit`` bytes."""
+    total = 0
+    chunks: list[bytes] = []
+    while True:
+        chunk = await upload.read(UPLOAD_CHUNK_BYTES)
+        if not chunk:
+            return b"".join(chunks)
+        total += len(chunk)
+        if total > limit:
+            raise _too_large(what, limit)
+        chunks.append(chunk)
+
+
+async def copy_upload_bounded(upload, destination, limit: int, *, what: str = "Upload") -> int:
+    """Stream ``upload`` into a binary ``destination``, refusing past ``limit``."""
+    total = 0
+    while True:
+        chunk = await upload.read(UPLOAD_CHUNK_BYTES)
+        if not chunk:
+            return total
+        total += len(chunk)
+        if total > limit:
+            raise _too_large(what, limit)
+        destination.write(chunk)
+
 
 def media_extension(filename: str | None, allowed: frozenset[str], default: str) -> str | None:
     """The lower-cased extension of ``filename`` if allowed, else None.

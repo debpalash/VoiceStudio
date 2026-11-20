@@ -17,11 +17,24 @@ from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 
 from api.dependencies import require_admin
+from core.media_types import (
+    AUDIO_EXTS,
+    MAX_SUBTITLE_UPLOAD_BYTES,
+    MEDIA_EXTS,
+    UPLOAD_CHUNK_BYTES,
+    media_extension,
+    media_upload_suffix,
+    read_upload_bounded,
+    unsupported_media_detail,
+)
+
+#: A preview clip is streamed to disk, not buffered; the cap matches the
+#: Convert video upload ceiling.
+MAX_PREVIEW_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
 from core.db import db_conn
 from core.config import PREVIEW_DIR
 from core.tasks import task_manager
 from core.logging_utils import log_safe
-from core.media_types import AUDIO_EXTS, MEDIA_EXTS, media_extension, media_upload_suffix, unsupported_media_detail
 from core.url_safety import UnsafeURLError, check_public_url, is_manifest_head, is_manifest_file
 from core.failure import InvalidMediaFileError
 from core import event_bus
@@ -309,7 +322,7 @@ async def dub_import_srt(job_id: str, file: UploadFile = File(...)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     try:
-        raw_bytes = await file.read()
+        raw_bytes = await read_upload_bounded(file, MAX_SUBTITLE_UPLOAD_BYTES, what="Subtitle file")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {scrub_text(str(e))}") from e
     if not raw_bytes:
@@ -721,14 +734,39 @@ async def preview_upload(video: UploadFile = File(...)):
     safe_name = f"{uuid.uuid4().hex[:12]}"
     vid_path = os.path.join(PREVIEW_DIR, f"{safe_name}{ext}")
     wav_path = os.path.join(PREVIEW_DIR, f"{safe_name}.wav")
-    payload = await video.read()
-    if is_manifest_head(payload[:512]):
+    # Stream to disk instead of buffering: a preview clip can be a real video, and
+    # `await video.read()` would hold the whole body in memory first. The manifest
+    # check still runs on the first bytes, from the file we just wrote.
+    head = b""
+    try:
+        with open(vid_path, "wb") as f:
+            while True:
+                chunk = await video.read(UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                if len(head) < 512:
+                    head += chunk[: 512 - len(head)]
+                f.write(chunk)
+                if f.tell() > MAX_PREVIEW_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Preview video is too large (maximum 4096 MB).",
+                    )
+    except BaseException:
+        try:
+            os.unlink(vid_path)
+        except OSError:
+            pass
+        raise
+    if is_manifest_head(head):
         # A playlist/manifest named like a video: ffmpeg would follow its URLs.
+        try:
+            os.unlink(vid_path)
+        except OSError:
+            pass
         raise InvalidMediaFileError()
 
     def _write_and_extract() -> bool:
-        with open(vid_path, "wb") as f:
-            f.write(payload)
         if ext in {".wav", ".mp3", ".m4a", ".aac"}:
             return False
         try:

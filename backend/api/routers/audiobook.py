@@ -34,6 +34,7 @@ from typing import Literal
 
 from core import voice_leases
 from services.reference_transcript import stored_reference_transcript
+from core.media_types import MAX_MANUSCRIPT_UPLOAD_BYTES, read_upload_bounded
 from core.render_trace import call as trace_call, stage as trace_stage
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
@@ -196,7 +197,7 @@ async def audiobook_import(file: UploadFile = File(...)) -> dict:
     )
 
     name = (file.filename or "").lower()
-    data = await file.read()
+    data = await read_upload_bounded(file, MAX_MANUSCRIPT_UPLOAD_BYTES, what="Manuscript")
     if not data:
         raise HTTPException(status_code=400, detail="empty file")
     if len(data) > _IMPORT_MAX_BYTES:
@@ -231,7 +232,7 @@ async def audiobook_cover(cover: UploadFile = File(...)) -> dict:
     ext = os.path.splitext(cover.filename or "")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png"):
         raise HTTPException(status_code=400, detail="cover must be a .jpg or .png")
-    data = await cover.read()
+    data = await read_upload_bounded(cover, _COVER_MAX_BYTES, what="Cover image")
     if not data or len(data) > _COVER_MAX_BYTES:
         raise HTTPException(status_code=400, detail="cover must be between 1 byte and 8 MB")
     cover_dir = os.path.join(OUTPUTS_DIR, "audiobook_covers")

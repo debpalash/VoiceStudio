@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException, Q
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.media_types import MAX_AUDIO_UPLOAD_BYTES, read_upload_bounded
 from core.db import db_conn
 from core.config import VOICES_DIR, OUTPUTS_DIR
 from core import event_bus
@@ -417,7 +418,7 @@ async def upload_voice_clip(
     audio_path = str(VOICE_GALLERY_DIR / f"{voice_id}{ext}")
 
     with open(audio_path, "wb") as f:
-        f.write(await audio.read())
+        f.write(await read_upload_bounded(audio, MAX_AUDIO_UPLOAD_BYTES, what="Voice clip"))
 
     # The picker accepts video; one without an audio stream is no voice clip.
     from services.ffmpeg_utils import require_audio_stream

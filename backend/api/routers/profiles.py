@@ -17,6 +17,7 @@ from api.dependencies import consumer_generation, require_consumer_reads_admin_w
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
+from core.media_types import MAX_AUDIO_UPLOAD_BYTES, read_upload_bounded
 from core.db import db_conn
 from core.config import VOICES_DIR, OUTPUTS_DIR
 from core import event_bus, voice_leases
@@ -1276,7 +1277,7 @@ async def record_consent(
 ):
     if not consent_text.strip():
         raise HTTPException(status_code=422, detail="consent_text must not be empty")
-    data = await consent_audio.read()
+    data = await read_upload_bounded(consent_audio, MAX_AUDIO_UPLOAD_BYTES, what="Consent recording")
     if len(data) < _MIN_CONSENT_AUDIO_BYTES:
         raise HTTPException(status_code=422, detail="consent recording is too short")
 

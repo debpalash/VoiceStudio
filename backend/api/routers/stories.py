@@ -15,6 +15,7 @@ from api.dependencies import consumer_generation, require_consumer_reads_admin_w
 from fastapi.responses import Response
 
 from services.ffmpeg_utils import find_ffmpeg, spawn_subprocess
+from core.media_types import MAX_AUDIO_UPLOAD_BYTES, read_upload_bounded
 from core.http_headers import content_disposition
 
 router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
@@ -58,7 +59,7 @@ async def stories_encode(
             detail="ffmpeg not available. Install system ffmpeg or re-run the setup.",
         )
 
-    data = await file.read()
+    data = await read_upload_bounded(file, MAX_AUDIO_UPLOAD_BYTES, what="Audio")
     in_path = out_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:

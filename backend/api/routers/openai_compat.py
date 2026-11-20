@@ -52,6 +52,7 @@ from pydantic import BaseModel, Field, field_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from services.model_manager import _gpu_pool, run_on_gpu_pool_guarded
+from core.media_types import MAX_AUDIO_UPLOAD_BYTES, read_upload_bounded
 from core.http_headers import content_disposition
 from core.path_security import contained_join, upload_suffix
 from services.audio_io import OPUS_CODEC_ARGS, OPUS_SAMPLE_RATE
@@ -1327,7 +1328,7 @@ async def _transcribe_request(
     suffix = upload_suffix(file.filename, ".wav") or ".wav"
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await file.read()
+            content = await read_upload_bounded(file, MAX_AUDIO_UPLOAD_BYTES, what="Audio")
             tmp.write(content)
             tmp_path = tmp.name
     except Exception as e:

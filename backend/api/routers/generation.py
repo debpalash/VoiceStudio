@@ -11,6 +11,7 @@ import logging
 from collections import OrderedDict
 import weakref
 
+from core.media_types import MAX_AUDIO_UPLOAD_BYTES, read_upload_bounded
 from core.render_trace import timed as _render_timed
 import threading
 import traceback
@@ -2239,7 +2240,7 @@ async def generate_speech(
         try:
             suffix = _ref_upload_suffix(ref_audio.filename)
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-                f.write(await ref_audio.read())
+                f.write(await read_upload_bounded(ref_audio, MAX_AUDIO_UPLOAD_BYTES, what="Reference audio"))
                 ref_audio_path = f.name
                 cleanup_ref = True
                 ref_lease = _TempReferenceLease(ref_audio_path)

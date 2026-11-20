@@ -14,6 +14,7 @@ from api.dependencies import consumer_generation, require_consumer_reads_admin_w
 # degrades to soundfile/ffmpeg when torchaudio is unusable.
 
 from services.watermark import detect_watermark, is_enabled, _check_available
+from core.media_types import MAX_AUDIO_UPLOAD_BYTES, read_upload_bounded
 from core.prefs import get as pref_get, set_ as pref_set
 from core.public_errors import public_failure
 
@@ -48,7 +49,7 @@ async def detect_audio_watermark(file: UploadFile = File(...)):
     # Write to temp file for torchaudio to load
     try:
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-            content = await file.read()
+            content = await read_upload_bounded(file, MAX_AUDIO_UPLOAD_BYTES, what="Audio")
             tmp.write(content)
             tmp_path = tmp.name
 

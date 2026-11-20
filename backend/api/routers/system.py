@@ -9,6 +9,7 @@ import psutil
 import asyncio
 import logging
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query, Request
+from core.media_types import MAX_AUDIO_UPLOAD_BYTES, read_upload_bounded
 from core.prefs import delete as prefs_delete, set_ as prefs_set
 from services import network_share
 from services import tailscale as _tailscale
@@ -1461,7 +1462,7 @@ async def clean_audio(audio: UploadFile = File(...)):
 async def _do_clean_audio(audio, tmp_dir, clean_id):
     raw_path = os.path.join(tmp_dir, "raw.wav")
     with open(raw_path, "wb") as f:
-        f.write(await audio.read())
+        f.write(await read_upload_bounded(audio, MAX_AUDIO_UPLOAD_BYTES, what="Audio"))
 
     converted_path = os.path.join(tmp_dir, "converted.wav")
     ffmpeg = find_ffmpeg()
