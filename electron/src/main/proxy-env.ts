@@ -49,9 +49,10 @@ function prefixWildcardCidr(value: string): string | null {
  * (Clash, v2rayN) write `localhost;127.*;10.*;172.16.*;192.168.*;<local>`, so
  * those exact forms must convert: refusing them blocked setup for every user
  * behind a system proxy. `<local>` only exempts dotless intranet names, which
- * downloads from the pinned public hosts never use, so it is dropped.
+ * downloads from the pinned public hosts never use, so it only keeps the
+ * dotless hosts of user-configured download endpoints (`downloadHosts`) direct.
  */
-export function proxyBypassHosts(raw: string): string[] | null {
+export function proxyBypassHosts(raw: string, downloadHosts: string[] = []): string[] | null {
   const hosts: string[] = [];
   for (const value of raw
     .split(';')
@@ -61,7 +62,10 @@ export function proxyBypassHosts(raw: string): string[] | null {
       hosts.push(value);
       continue;
     }
-    if (value.toLowerCase() === '<local>') continue;
+    if (value.toLowerCase() === '<local>') {
+      hosts.push(...downloadHosts.filter((host) => !host.includes('.') && !host.includes(':')));
+      continue;
+    }
     const cidr = prefixWildcardCidr(value);
     if (cidr) {
       hosts.push(cidr);
@@ -91,6 +95,33 @@ function systemProxy(): SystemProxy | undefined {
   }
 }
 
+const DOWNLOAD_ENDPOINT_KEYS = [
+  'UV_INDEX_URL',
+  'UV_DEFAULT_INDEX',
+  'UV_EXTRA_INDEX_URL',
+  'UV_PYTHON_INSTALL_MIRROR',
+  'UV_FIND_LINKS',
+  'PIP_INDEX_URL',
+  'PIP_EXTRA_INDEX_URL',
+  'HF_ENDPOINT',
+];
+
+/** Hostnames of the download endpoints the user configured through the environment. */
+function configuredDownloadHosts(input: NodeJS.ProcessEnv): string[] {
+  const hosts = new Set<string>();
+  for (const key of DOWNLOAD_ENDPOINT_KEYS) {
+    for (const value of (input[key] ?? '').split(/\s+/)) {
+      try {
+        const host = new URL(value).hostname.toLowerCase();
+        if (host) hosts.add(host);
+      } catch {
+        /* Not a URL (a local path or empty value). */
+      }
+    }
+  }
+  return [...hosts];
+}
+
 /** uv download subprocess settings; explicit caller proxies always take precedence. */
 export function downloadProxyEnv(
   input: NodeJS.ProcessEnv = process.env,
@@ -105,7 +136,7 @@ export function downloadProxyEnv(
   if (platform === 'win32' && !explicit) {
     const raw = readSystemProxy();
     const settings = typeof raw === 'string' ? { server: raw } : raw;
-    const hosts = proxyBypassHosts(settings?.bypass ?? '');
+    const hosts = proxyBypassHosts(settings?.bypass ?? '', configuredDownloadHosts(input));
     // Stop before uv can reinterpret the raw registry value as a hostname.
     // Omitting a bypass rule could route private requests through the proxy.
     if (settings && hosts === null) throw new Error('VOICESTUDIO_PROXY_BYPASS_UNSUPPORTED');

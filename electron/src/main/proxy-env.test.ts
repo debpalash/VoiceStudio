@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import { downloadProxyEnv, parseWinInetProxy, proxyBypassHosts } from './proxy-env';
+import { setupProxyForUrl } from './runtime-download';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
@@ -105,4 +106,35 @@ it('names unrepresentable proxy bypass rules instead of falling into misleading 
   expect(() =>
     downloadProxyEnv({}, 'win32', () => ({ server: 'socks=proxy:1080', bypass: '172.1?.*' })),
   ).toThrow('VOICESTUDIO_PROXY_BYPASS_UNSUPPORTED');
+});
+
+it('keeps configured dotless download hosts direct when <local> is present', () => {
+  const bypass = '192.168.*;<local>';
+  const env = downloadProxyEnv(
+    {
+      UV_PYTHON_INSTALL_MIRROR: 'https://buildserver/python',
+      UV_INDEX_URL: 'https://pypi.example.com/simple',
+    },
+    'win32',
+    () => ({ server: '127.0.0.1:7890', bypass }),
+  );
+  expect(env.NO_PROXY?.split(',')).toContain('buildserver');
+  expect(env.NO_PROXY?.split(',')).not.toContain('pypi.example.com');
+  expect(setupProxyForUrl('https://buildserver/python/x.tar.gz', env)).toBe('');
+  expect(setupProxyForUrl('https://pypi.example.com/x', env)).toBe('http://127.0.0.1:7890');
+  expect(proxyBypassHosts(bypass, ['buildserver', 'a.b'])).toEqual([
+    '192.168.0.0/16',
+    'buildserver',
+  ]);
+});
+
+it('bypasses IP-literal targets covered by a converted prefix rule', () => {
+  const env = downloadProxyEnv({}, 'win32', () => ({
+    server: '127.0.0.1:7890',
+    bypass: '10.*;192.168.*;<local>',
+  }));
+  expect(setupProxyForUrl('http://192.168.1.20/wheel.whl', env)).toBe('');
+  expect(setupProxyForUrl('http://10.4.5.6:8080/x', env)).toBe('');
+  expect(setupProxyForUrl('http://192.169.1.20/x', env)).toBe('http://127.0.0.1:7890');
+  expect(setupProxyForUrl('https://files.pythonhosted.org/x', env)).toBe('http://127.0.0.1:7890');
 });
