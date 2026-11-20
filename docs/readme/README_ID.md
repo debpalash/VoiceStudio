@@ -120,12 +120,12 @@ Semua yang di atas gratis, berjalan di perangkat keras Anda sendiri, dan tidak m
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       Untuk pekerjaan klien berbayar di lebih dari satu mesin.
       <ul>
-        <li>Lisensi Komersial untuk pekerjaan klien Anda, dikirim lewat email</li>
+        <li>Lisensi Komersial untuk kode VoiceStudio dalam pekerjaan klien Anda, dikirim lewat email</li>
         <li>Satu pengguna di hingga 3 perangkat sekaligus</li>
         <li>Kirim pekerjaan ke GPU Anda yang lain sementara proyek tetap lokal</li>
         <li>Fitur dan perbaikan baru lebih dulu</li>
       </ul>
-      <sub>Build sumber tertutup, wajib akun, pengembalian dana penuh 7 hari. Aplikasi AGPL-3.0 tetap gratis, termasuk untuk penggunaan komersial sesuai ketentuannya.</sub><br /><br />
+      <sub>Build sumber tertutup, wajib akun, pengembalian dana penuh 7 hari. Aplikasi AGPL-3.0 tetap gratis, termasuk untuk penggunaan komersial sesuai ketentuannya. Kedua lisensi tidak mencakup bobot model: bobot OmniVoice bawaan bersifat nonkomersial (CC-BY-NC), jadi periksa lisensi setiap model di Model Manager sebelum mengerjakan proyek klien.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Lihat paket Pro →</a></strong>
     </td>
     <td width="50%" valign="top">

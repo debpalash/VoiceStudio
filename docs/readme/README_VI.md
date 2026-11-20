@@ -120,12 +120,12 @@ Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       Dành cho công việc khách hàng có trả phí trên nhiều máy.
       <ul>
-        <li>Giấy phép thương mại cho công việc khách hàng, gửi qua email</li>
+        <li>Giấy phép thương mại cho mã nguồn VoiceStudio trong công việc khách hàng, gửi qua email</li>
         <li>Một người dùng trên tối đa 3 thiết bị cùng lúc</li>
         <li>Gửi tác vụ đến các GPU khác của bạn trong khi dự án vẫn ở máy cục bộ</li>
         <li>Nhận tính năng và bản sửa lỗi mới trước</li>
       </ul>
-      <sub>Bản mã nguồn đóng, cần tài khoản, hoàn tiền đầy đủ trong 7 ngày. Ứng dụng AGPL-3.0 vẫn miễn phí, kể cả dùng thương mại theo các điều khoản của giấy phép này.</sub><br /><br />
+      <sub>Bản mã nguồn đóng, cần tài khoản, hoàn tiền đầy đủ trong 7 ngày. Ứng dụng AGPL-3.0 vẫn miễn phí, kể cả dùng thương mại theo các điều khoản của giấy phép này. Không giấy phép nào bao gồm trọng số mô hình: trọng số OmniVoice mặc định là phi thương mại (CC-BY-NC), vì vậy hãy kiểm tra giấy phép của từng mô hình trong Trình quản lý mô hình trước khi làm việc cho khách hàng.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Xem các gói Pro →</a></strong>
     </td>
     <td width="50%" valign="top">

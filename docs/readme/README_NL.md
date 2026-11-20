@@ -120,12 +120,12 @@ Alles hierboven is gratis, draait op je eigen hardware en heeft geen account nod
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       Voor betaald klantwerk op meer dan één machine.
       <ul>
-        <li>Een commerciële licentie voor je klantwerk, per e-mail bezorgd</li>
+        <li>Een commerciële licentie voor de code van VoiceStudio in je klantwerk, per e-mail bezorgd</li>
         <li>Eén gebruiker op maximaal 3 apparaten tegelijk</li>
         <li>Stuur taken naar je andere GPU’s terwijl je projecten lokaal blijven</li>
         <li>Nieuwe functies en oplossingen als eerste</li>
       </ul>
-      <sub>Closed-source build, account vereist, 7 dagen volledige terugbetaling. De AGPL-3.0-app blijft gratis, ook voor commercieel gebruik onder de voorwaarden daarvan.</sub><br /><br />
+      <sub>Closed-source build, account vereist, 7 dagen volledige terugbetaling. De AGPL-3.0-app blijft gratis, ook voor commercieel gebruik onder de voorwaarden daarvan. Geen van beide licenties dekt modelgewichten: de standaard OmniVoice-gewichten zijn niet-commercieel (CC-BY-NC), dus controleer vóór klantwerk de licentie van elk model in Model Manager.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Bekijk de Pro-abonnementen →</a></strong>
     </td>
     <td width="50%" valign="top">

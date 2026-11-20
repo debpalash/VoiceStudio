@@ -121,12 +121,12 @@
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       複数のマシンで有償のクライアント業務を行う方に。
       <ul>
-        <li>クライアント業務向けの商用ライセンスをメールでお届け</li>
+        <li>クライアント業務での VoiceStudio のコード向け商用ライセンスをメールでお届け</li>
         <li>1 ユーザーにつき同時に最大 3 台のデバイス</li>
         <li>プロジェクトはローカルのまま、ジョブを他の GPU に送信</li>
         <li>新機能と修正をいち早く利用</li>
       </ul>
-      <sub>クローズドソース版、アカウント必須、7 日間の全額返金。AGPL-3.0 版アプリは、その条件に基づく商用利用を含めて引き続き無料です。</sub><br /><br />
+      <sub>クローズドソース版、アカウント必須、7 日間の全額返金。AGPL-3.0 版アプリは、その条件に基づく商用利用を含めて引き続き無料です。どちらのライセンスもモデルの重みは対象外です。標準の OmniVoice の重みは非商用（CC-BY-NC）のため、クライアント業務の前にモデルマネージャーで各モデルのライセンスをご確認ください。</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro のプランを見る →</a></strong>
     </td>
     <td width="50%" valign="top">
