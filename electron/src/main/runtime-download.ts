@@ -2,6 +2,27 @@ import { get } from 'node:https';
 import { ProxyAgent } from 'proxy-agent';
 
 /** Resolve the setup environment without changing the desktop process environment. */
+function ipv4(host: string): number | null {
+  const parts = host.split('.');
+  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part) && +part <= 255))
+    return null;
+  return parts.reduce((sum, part) => sum * 256 + +part, 0);
+}
+
+/** NO_PROXY `a.b.c.d/len` entries against an IP-literal hostname. */
+function inCidr(hostname: string, cidr: string): boolean {
+  const parts = cidr.split('/');
+  if (parts.length !== 2 || !/^\d{1,2}$/.test(parts[1])) return false;
+  const [base, bits] = parts;
+  const address = ipv4(hostname);
+  const network = ipv4(base);
+  const length = Number(bits);
+  if (address === null || network === null || !Number.isInteger(length)) return false;
+  if (length < 0 || length > 32) return false;
+  const size = 2 ** (32 - length);
+  return Math.floor(address / size) === Math.floor(network / size);
+}
+
 export function setupProxyForUrl(raw: string, env: NodeJS.ProcessEnv): string {
   const url = new URL(raw);
   const value = (key: string) => env[key.toLowerCase()] || env[key.toUpperCase()] || '';
@@ -14,6 +35,7 @@ export function setupProxyForUrl(raw: string, env: NodeJS.ProcessEnv): string {
     const match = /^(.*):(\d+)$/.exec(entry);
     if (match && match[2] !== port) continue;
     const host = match?.[1] ?? entry;
+    if (entry.includes('/') && inCidr(url.hostname, entry)) return '';
     const suffix = host.replace(/^\*/, '');
     if (
       url.hostname === host ||
