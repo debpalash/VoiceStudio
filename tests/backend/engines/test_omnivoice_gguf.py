@@ -435,6 +435,35 @@ def test_transcript_without_ref_audio_is_ignored(monkeypatch, tmp_path):
     assert "--ref-text" not in rig.argvs[-1]
 
 
+def test_clone_without_transcript_is_refused_before_spawn(monkeypatch, tmp_path):
+    """The pinned CLI exits 1 on "--ref-wav requires --ref-text", and the
+    route's auto-transcribe is best-effort — so a transcript-less clone must
+    be refused with the owned remedy before anything is spawned or decoded."""
+    from core.failure import (
+        REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE,
+        ReferenceTranscriptRequiredError,
+    )
+
+    clip = tmp_path / "prompt.wav"
+    _write_3s_wav(clip)
+    rig = _GgufRig(monkeypatch, tmp_path)
+    with pytest.raises(ReferenceTranscriptRequiredError) as caught:
+        rig.instance.generate("x", ref_audio=str(clip))
+    # The 400 detail and the stream frame carry the same owned wording.
+    assert str(caught.value) == REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE
+    assert rig.argvs == []
+
+
+@pytest.mark.parametrize("empty", ["", "   "])
+def test_blank_transcript_counts_as_missing(monkeypatch, tmp_path, empty):
+    clip = tmp_path / "prompt.wav"
+    _write_3s_wav(clip)
+    rig = _GgufRig(monkeypatch, tmp_path)
+    with pytest.raises(ValueError, match="transcript"):
+        rig.instance.generate("x", ref_audio=str(clip), ref_text=empty)
+    assert rig.argvs == []
+
+
 @pytest.mark.parametrize("how", ["runner_raises", "bad_ref_audio"])
 def test_transcript_file_never_outlives_a_failed_call(monkeypatch, tmp_path, how):
     clip = tmp_path / "prompt.wav"
