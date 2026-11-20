@@ -41,7 +41,7 @@ export class AccountController {
       /** Whether a sign-in survives a restart; asks the OS keyring, so only read when shown. */
       remembered: () => boolean;
       /** The dashboard pages for managing the profile and the plan (opened in the browser). */
-      links: { profile: string; plan: string; deletion: string };
+      links: { profile: string; plan: string; deletion: string; proDownload: string };
     },
   ) {}
 
