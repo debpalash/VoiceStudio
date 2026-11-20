@@ -105,6 +105,29 @@ class SourceLanguageRequiredError(ValueError):
         super().__init__(message)
 
 
+REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE = (
+    "This engine needs the words spoken in a voice-clone reference to clone it: "
+    "add a transcript to the voice profile, or pick an ASR model in Model "
+    "Catalogue so the clip can be transcribed automatically."
+)
+
+
+class ReferenceTranscriptRequiredError(ValueError):
+    """The selected engine cannot clone from a reference clip without its transcript.
+
+    Raised by engines whose runtime hard-requires a transcript (the OmniVoice
+    GGUF CLI exits 1 on "--ref-wav requires --ref-text") when the route's
+    best-effort auto-transcribe could not fill one in. Routers translate it to
+    an owned message; the raw engine text never reaches the stream frame.
+    """
+
+    code = "reference_transcript_required"
+    docs_topic = "REFERENCE_TRANSCRIPT_REQUIRED"
+
+    def __init__(self, message: str = REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE):
+        super().__init__(message)
+
+
 def is_no_audio_stream_stderr(text: "str | bytes | None") -> bool:
     """True when ffmpeg's stderr says the input had no audio stream to extract.
 
