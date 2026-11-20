@@ -2,6 +2,8 @@ import os
 import re
 import sys
 
+from core.path_security import is_within
+
 def get_app_data_dir():
     custom_dir = os.environ.get("OMNIVOICE_DATA_DIR")
     if custom_dir:
@@ -100,7 +102,7 @@ def dub_seg_path(job_id, seg_id):
     safe_seg = re.sub(r"[^A-Za-z0-9._-]", "_", str(seg_id))
     base = os.path.realpath(DUB_DIR)
     full = os.path.realpath(os.path.join(base, safe_job, f"seg_{safe_seg}.wav"))
-    if full != base and not full.startswith(base + os.sep):
+    if not is_within(base, full):
         raise ValueError(f"dub segment path escapes DUB_DIR: {job_id!r}/{seg_id!r}")
     return full
 PREVIEW_DIR = os.path.join(DATA_DIR, "preview")

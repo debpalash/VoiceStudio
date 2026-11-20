@@ -17,6 +17,7 @@ import zipfile
 from dataclasses import dataclass
 from typing import Optional
 
+from core.path_security import is_within
 from core.safe_archive import ArchiveError, copy_member, open_bounded_zip, read_member
 
 # ── Format constants ─────────────────────────────────────────────────────────
@@ -180,7 +181,7 @@ def _resolve_voice_file(filename: Optional[str]) -> Optional[str]:
     from core.config import VOICES_DIR
     root = os.path.realpath(VOICES_DIR)
     path = os.path.realpath(os.path.join(root, filename))
-    if not path.startswith(root + os.sep):
+    if not is_within(root, path):
         return None
     return path if os.path.isfile(path) else None
 

@@ -127,6 +127,29 @@ def contained_child(root: os.PathLike[str] | str, rel: object) -> Path:
     return parent / parts[-1]
 
 
+def is_within(root: os.PathLike[str] | str, candidate: os.PathLike[str] | str) -> bool:
+    """Whether *candidate* is *root* itself or a path below it, by components.
+
+    The obvious spelling, ``candidate.startswith(root + os.sep)``, is wrong when
+    *root* is a filesystem root: on POSIX ``"/" + os.sep`` is ``"//"``, which no
+    real child starts with, and ``"D:\\\\"`` behaves the same way on Windows. Every
+    legitimate path under such a root then looks like an escape, so a configuration
+    like ``OMNIVOICE_DATA_DIR=/`` turned a normal call into a spurious rejection.
+    Comparing components also collapses ``..`` for free.
+
+    This is a pure string check -- it neither reads the filesystem nor follows
+    symlinks -- so a caller that must defeat a symlinked parent still uses
+    :func:`contained_child` or :func:`resolve_within`. Callers here pass paths they
+    have already resolved.
+    """
+    root_path = os.path.abspath(os.fspath(root))
+    candidate_path = os.path.abspath(os.fspath(candidate))
+    try:
+        return os.path.commonpath((root_path, candidate_path)) == root_path
+    except ValueError:  # different Windows drives, or absolute vs relative
+        return False
+
+
 def resolve_within(root: os.PathLike[str] | str, value: os.PathLike[str] | str) -> Path:
     """Resolve *value* beneath *root*, rejecting traversal and symlink escapes.
 
