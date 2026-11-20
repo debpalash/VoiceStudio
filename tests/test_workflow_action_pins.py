@@ -6,9 +6,10 @@ or v5.0.0 in four, `actions/setup-python` at v7.1.0 everywhere except the recipe
 job (v5.6.0), and `astral-sh/setup-uv` at v6.8.0 in ten places and v3.2.4 in
 seven. A pin that only some jobs get is a pin nobody can reason about.
 
-The checks discover references first — `uses:` with any ref form, optional quotes,
-and subpath actions such as `gradle/actions/setup-gradle` — and then validate the
-ref, so a tag reference cannot slip past an unanchored pattern.
+References are found by parsing the YAML of every workflow and composite action and
+collecting each value under a `uses` key (aliases resolve), not by scanning text, so
+quoting, flow style, anchors and `uses : x` spacing cannot hide one and a `run:`
+script that mentions `uses:` is never mistaken for one.
 """
 from __future__ import annotations
 
@@ -20,47 +21,78 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
+ACTIONS = ROOT / ".github" / "actions"
 
-USES = re.compile(
-    r"['\"]?uses['\"]?[ \t]*:\s*['\"]?(?P<action>[\w.-]+/[\w.-]+(?:/[\w.-]+)*)@(?P<ref>[^'\"\s#]+)"
-    r"['\"]?[ \t]*(?:#\s*(?P<label>.*))?"
-)
 # A comment that names what the SHA is: a version, a release channel or a branch.
 LABEL = re.compile(r"^(?:v?\d[\w.-]*|stable|nightly|latest|beta)$", re.IGNORECASE)
 SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _workflow_files() -> list[Path]:
-    """Every workflow file, `.yml` and `.yaml` alike: GitHub reads both."""
+    """Every workflow and composite-action file, `.yml` and `.yaml` alike: GitHub reads both."""
     return sorted(
         path
-        for path in WORKFLOWS.iterdir()
+        for base in (WORKFLOWS, ACTIONS)
+        if base.is_dir()
+        for path in base.rglob("*")
         if path.suffix in {".yml", ".yaml"} and path.is_file()
     )
 
 
+def _uses_nodes(node: yaml.Node, found: list[yaml.ScalarNode], path: frozenset[int]) -> None:
+    """Collect every scalar value whose mapping key is `uses`, at any depth.
+
+    The YAML composer resolves aliases to the anchored node, so `uses: *co` is seen
+    as the reference it stands for. Only text inside a real `uses` key counts: a
+    `run:` script or a comment that mentions `uses:` is never a mapping key.
+    """
+    if id(node) in path:
+        return
+    path = path | {id(node)}
+    if isinstance(node, yaml.MappingNode):
+        for key, value in node.value:
+            if isinstance(key, yaml.ScalarNode) and key.value == "uses" and isinstance(value, yaml.ScalarNode):
+                found.append(value)
+            _uses_nodes(key, found, path)
+            _uses_nodes(value, found, path)
+    elif isinstance(node, yaml.SequenceNode):
+        for item in node.value:
+            _uses_nodes(item, found, path)
+
+
 def _references(text: str, file: str) -> list[dict[str, str | None]]:
-    """Action references in one workflow, ignoring anything commented out."""
-    active = "\n".join(
-        line for line in text.splitlines() if not line.lstrip().startswith("#")
-    )
+    """Remote action references in one YAML document, found by parsing it."""
+    lines = text.splitlines()
     found: list[dict[str, str | None]] = []
-    for match in USES.finditer(active):
-        found.append(
-            {
-                "file": file,
-                "action": match.group("action"),
-                "ref": match.group("ref"),
-                "label": (match.group("label") or "").strip() or None,
-            }
-        )
+    for document in yaml.compose_all(text, Loader=yaml.SafeLoader):
+        if document is None:
+            continue
+        nodes: list[yaml.ScalarNode] = []
+        _uses_nodes(document, nodes, frozenset())
+        for node in nodes:
+            value = node.value.strip()
+            if value.startswith(("./", "docker://")):
+                continue
+            action, _, ref = value.partition("@")
+            # The version label is a comment, which the parser drops: read it from the
+            # line the value ends on.
+            tail = lines[node.end_mark.line][node.end_mark.column :]
+            comment = re.match(r"\s*#\s*(.*)", tail)
+            found.append(
+                {
+                    "file": file,
+                    "action": action,
+                    "ref": ref,
+                    "label": (comment.group(1).strip() if comment else "") or None,
+                }
+            )
     return found
 
 
 def _uses() -> list[dict[str, str | None]]:
     found: list[dict[str, str | None]] = []
     for path in _workflow_files():
-        found.extend(_references(path.read_text(encoding="utf-8"), path.name))
+        found.extend(_references(path.read_text(encoding="utf-8"), str(path.relative_to(ROOT / ".github"))))
     return found
 
 
@@ -207,3 +239,31 @@ def test_space_before_the_colon_is_still_discovered() -> None:
     found = _references("      - uses : actions/checkout@v4\n", "probe.yml")
     assert [use["ref"] for use in found] == ["v4"]
     assert not SHA.match(str(found[0]["ref"]))
+
+
+def test_anchored_reference_is_resolved() -> None:
+    text = "a:\n  - uses: &co actions/checkout@v4\n  - uses: *co\n"
+    assert [(u["action"], u["ref"]) for u in _references(text, "probe.yml")] == [
+        ("actions/checkout", "v4"),
+        ("actions/checkout", "v4"),
+    ]
+
+
+def test_uses_text_in_scripts_and_comments_is_not_a_reference() -> None:
+    text = (
+        "steps:\n"
+        "  - run: echo ok # uses: actions/checkout@v4\n"
+        "  - run: |\n"
+        "      uses: actions/cache@v3\n"
+    )
+    assert _references(text, "probe.yml") == []
+
+
+def test_local_and_docker_references_are_not_remote_pins() -> None:
+    text = "steps:\n  - uses: ./.github/actions/x\n  - uses: docker://alpine:3\n"
+    assert _references(text, "probe.yml") == []
+
+
+def test_version_label_is_read_from_the_value_line() -> None:
+    text = f"steps:\n  - uses: actions/checkout@{'a' * 40} # v7.0.1\n"
+    assert _references(text, "probe.yml")[0]["label"] == "v7.0.1"

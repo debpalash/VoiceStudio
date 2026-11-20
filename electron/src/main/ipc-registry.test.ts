@@ -128,8 +128,13 @@ function isGuarded(body: string): boolean {
   for (const m of body.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*trustedOwner\(/g)) {
     const name = m[1];
     const rest = body.slice((m.index ?? 0) + m[0].length);
-    // The owner must gate the handler (`if (!win) return`) or be what the action runs on.
-    if (new RegExp(`if\\s*\\(\\s*!\\s*${name}\\s*\\)|\\b${name}\\s*\\??\\.`).test(rest)) return true;
+    // The null guard must terminate (`if (!win) return` / `throw`), or the action must run
+    // on the returned owner. A guard that only logs and falls through authorizes nothing.
+    const terminates = new RegExp(
+      `if\\s*\\(\\s*!\\s*${name}\\s*\\)\\s*(?:\\{[^}]*\\b(?:return|throw)\\b|(?:return|throw)\\b)`,
+    );
+    const used = new RegExp(`\\b${name}\\s*\\??\\.`);
+    if (terminates.test(rest) || used.test(rest)) return true;
   }
   return false;
 }
@@ -221,5 +226,12 @@ describe('authorization pattern check', () => {
   it('rejects an assigned but unused trustedOwner result', () => {
     expect(isGuarded('const win = trustedOwner(e, w); getMainWindow()?.close();')).toBe(false);
     expect(isGuarded('trustedOwner(e, w); getMainWindow()?.close();')).toBe(false);
+  });
+
+  it('rejects a null guard that does not terminate', () => {
+    expect(isGuarded('const win = trustedOwner(e, w); if (!win) reportRejection(); getMainWindow()?.close();')).toBe(false);
+    expect(isGuarded('const win = trustedOwner(e, w); if (!win) { reportRejection(); } getMainWindow()?.close();')).toBe(false);
+    expect(isGuarded('const win = trustedOwner(e, w); if (!win) { reportRejection(); return; } getMainWindow()?.close();')).toBe(true);
+    expect(isGuarded('const win = trustedOwner(e, w); if (!win) throw new Error("x"); getMainWindow()?.close();')).toBe(true);
   });
 });
