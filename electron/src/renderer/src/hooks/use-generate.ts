@@ -56,6 +56,32 @@ import {
 
 const TIMER_TICK_MS = 100;
 const PROGRESS_THROTTLE_MS = 100;
+/**
+ * Seconds of elapsed time that are still sampled at the display's full
+ * resolution. Tenths are watched while the first seconds tick over; after that
+ * the clock reads as whole seconds.
+ */
+export const ELAPSED_TENTHS_UNTIL_S = 10;
+
+/**
+ * Whether this timer tick should publish a new elapsed value.
+ *
+ * Every publish replaces the whole generation context value, so each one
+ * re-renders *all* of its consumers. Sampling tenths for the entire render meant
+ * a multi-minute dub or longform job re-rendered every one of them ten times a
+ * second for a clock nobody reads that closely; past the tenths window the clock
+ * advances once a second instead. The displayed value never lags by more than one
+ * tick.
+ */
+export function shouldPublishElapsed(
+  elapsedSeconds: number,
+  tick: number,
+  tickMs: number = TIMER_TICK_MS,
+): boolean {
+  if (elapsedSeconds < ELAPSED_TENTHS_UNTIL_S) return true;
+  const ticksPerSecond = Math.max(1, Math.round(1000 / tickMs));
+  return tick % ticksPerSecond === 0;
+}
 const MODEL_NOT_DOWNLOADED = 'model_not_downloaded';
 /** A deliberate queue validation outcome, rather than an engine failure. */
 class QueuedVoiceChangedError extends Error {}
@@ -591,8 +617,12 @@ function useGenerateController(): UseGenerateClone {
       setModelStage(null);
       setModelProgress(null);
       const startedAt = Date.now();
+      let ticks = 0;
       timerRef.current = setInterval(() => {
-        setElapsedSeconds(Math.round((Date.now() - startedAt) / TIMER_TICK_MS) / 10);
+        ticks += 1;
+        const elapsed = (Date.now() - startedAt) / 1000;
+        if (!shouldPublishElapsed(elapsed, ticks)) return;
+        setElapsedSeconds(Math.round(elapsed * 10) / 10);
       }, TIMER_TICK_MS);
       const controller = new AbortController();
       abortRef.current = controller;

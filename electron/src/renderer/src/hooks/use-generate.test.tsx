@@ -2,7 +2,7 @@ import { toast } from 'sonner';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GenerationProvider, useGenerateClone } from './use-generate';
+import { GenerationProvider, shouldPublishElapsed, useGenerateClone } from './use-generate';
 import {
   beginTranscriptSave,
   beginVoiceChange,
@@ -1316,5 +1316,52 @@ describe('generation queue', () => {
     expect(vi.mocked(generateClone).mock.calls[0]![1]!.signal!.aborted).toBe(true);
     await waitFor(() => expect(statuses()).toEqual(['cancelled', 'cancelled']));
     expect(generateClone).toHaveBeenCalledTimes(1);
+  });
+});
+
+// A publish replaces the whole generation context value, so each one re-renders
+// every consumer of the provider. Sampling tenths for the whole render meant a
+// multi-minute dub or longform job re-rendered all of them ten times a second.
+describe('elapsed clock cadence', () => {
+  function publishesFor(seconds: number, tickMs = 100): number {
+    let published = 0;
+    const ticks = (seconds * 1000) / tickMs;
+    for (let tick = 1; tick <= ticks; tick += 1) {
+      if (shouldPublishElapsed((tick * tickMs) / 1000, tick, tickMs)) published += 1;
+    }
+    return published;
+  }
+
+  it('samples tenths while the first seconds tick over', () => {
+    for (const tick of [1, 5, 37, 99]) {
+      expect(shouldPublishElapsed(tick / 10, tick)).toBe(true);
+    }
+  });
+
+  it('samples whole seconds after the tenths window', () => {
+    // 10.0 s is the boundary: still inside the window ...
+    expect(shouldPublishElapsed(10.0, 100)).toBe(true);
+    // ... and a second later only every tenth tick publishes.
+    const tenths = [101, 102, 103, 104, 105, 106, 107, 108, 109];
+    for (const tick of tenths) expect(shouldPublishElapsed(10 + tick / 100, tick)).toBe(false);
+    expect(shouldPublishElapsed(11, 110)).toBe(true);
+  });
+
+  it('cuts consumer re-renders several times over on a long render', () => {
+    // Five minutes = 3000 ticks. The tenths window still publishes its 100, then
+    // one update a second: about 390 publishes, so at least 7x fewer re-renders
+    // of every consumer of the provider.
+    const fiveMinutes = publishesFor(300);
+    expect(fiveMinutes).toBeLessThan(400);
+    expect(fiveMinutes * 7).toBeLessThanOrEqual(3000);
+    // A one-minute render is ~4x cheaper than one update per tick.
+    expect(publishesFor(60)).toBeLessThan(160);
+    expect(publishesFor(60)).toBeGreaterThan(140);
+  });
+
+  it('honours a different tick interval', () => {
+    // 1 s ticks: the tenths window passes after ten publishes, then every tick.
+    expect(shouldPublishElapsed(11, 11, 1000)).toBe(true);
+    expect(shouldPublishElapsed(5, 5, 1000)).toBe(true);
   });
 });
