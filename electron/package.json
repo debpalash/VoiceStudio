@@ -14,7 +14,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:software-compositing": "node scripts/dev.mjs -- --disable-gpu-compositing",
-    "locale:check": "node tests/locale-encoding.mjs && node tests/locale-source-keys.mjs && node tests/locale-coverage.mjs",
+    "locale:check": "node tests/locale-encoding.mjs && node tests/locale-source-keys.mjs && node tests/locale-dynamic-families.mjs && node tests/locale-coverage.mjs",
     "build": "bun run locale:check && electron-vite build",
     "build:web": "bun run locale:check && vite build --config vite.web.config.ts",
     "dev:web": "vite --config vite.web.config.ts",
