@@ -255,6 +255,25 @@ def test_mobile_contract_artifacts_are_pinned_to_lf():
     assert lexicon.is_file(), "the pinned bundled lexicon is missing"
 
 
+def _android_domain_config_hosts(root: ElementTree.Element) -> set[str]:
+    """Every host named by a `domain-config`, including ones nested in another."""
+    return {
+        domain.text.strip()
+        for config in root.iter("domain-config")
+        for domain in config.findall("domain")
+        if domain.text
+    }
+
+
+def test_android_domain_config_hosts_include_nested_configs():
+    root = ElementTree.fromstring(
+        "<network-security-config><domain-config><domain>localhost</domain>"
+        "<domain-config><domain>example.com</domain></domain-config>"
+        "</domain-config></network-security-config>"
+    )
+    assert _android_domain_config_hosts(root) == {"localhost", "example.com"}
+
+
 def test_mobile_platform_network_security_configs_stay_private():
     """Plain HTTP stays tied to the same private hosts the contract allows.
 
@@ -272,12 +291,7 @@ def test_mobile_platform_network_security_configs_stay_private():
     android = ElementTree.parse(
         ROOT / "mobile/android/app/src/main/res/xml/network_security_config.xml"
     ).getroot()
-    permitted = {
-        domain.text.strip()
-        for config in android.findall("domain-config")
-        for domain in config.findall("domain")
-        if domain.text
-    }
+    permitted = _android_domain_config_hosts(android)
     assert permitted == {"localhost", "local", "ts.net", "127.0.0.1", "::1"}, (
         "the Android cleartext exception list changed: " + ", ".join(sorted(permitted))
     )
