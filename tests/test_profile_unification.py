@@ -815,3 +815,67 @@ def test_migration_0005_downgrade_drops_columns(tmp_path):
     _run_alembic("downgrade", str(db), target="0003_voice_profile_consent")
     cols = _columns(db, "voice_profiles")
     assert "kind" not in cols and "vd_states" not in cols
+
+
+def _design_row(ref_text):
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    return conn.execute(
+        "SELECT 'design' AS kind, 0 AS is_locked, NULL AS locked_audio_path, "
+        "'sample.wav' AS ref_audio_path, ? AS ref_text, "
+        "'female, young adult' AS instruct, 7 AS seed, NULL AS language, "
+        "NULL AS design_recipe",
+        (ref_text,),
+    ).fetchone()
+
+
+@pytest.mark.parametrize("stored", ["", None])
+def test_cleared_design_transcript_is_never_guessed_at_generation(stored):
+    """A sample kept after the user cleared its line must be transcribed, not
+    paired with words it never spoke."""
+    from api.routers.generation import _resolve_profile_conditioning
+    cond = _resolve_profile_conditioning(_design_row(stored), engine_id="omnivoice")
+    assert not cond["ref_text"]
+
+
+def test_padded_legacy_cut_transcript_is_still_cleared_for_transcription():
+    """The stored text is compared raw: a padded 100-character lock cut keeps
+    its length, is recognised as cut, and is transcribed again."""
+    import sqlite3
+    from api.routers.generation import _resolve_profile_conditioning
+    text = "  " + "x" * 96 + "  "
+    assert len(text) == 100
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT 'clone' AS kind, 1 AS is_locked, 'take.wav' AS locked_audio_path, "
+        "'ref.wav' AS ref_audio_path, ? AS ref_text, NULL AS instruct, 7 AS seed, "
+        "NULL AS language, NULL AS design_recipe, 'p1' AS id",
+        (text,),
+    ).fetchone()
+    cond = _resolve_profile_conditioning(row, engine_id="omnivoice")
+    assert not cond["ref_text"]
+
+
+def test_fresh_design_sample_stores_its_script_and_generation_pairs_it(
+    app_client, fake_render,
+):
+    """A sample rendered without a custom line records the fallback script in
+    the same write, so generation pairs it without a speech-to-text pass."""
+    from api.routers.archetypes import _FALLBACK_SCRIPT
+    from api.routers.generation import _resolve_profile_conditioning
+    from core.db import db_conn
+    client, _ = app_client
+    r = client.post("/profiles", data={
+        "name": "No line", "kind": "design", "vd_states": json.dumps(_VD),
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["ref_audio_path"]
+    assert r.json()["ref_text"] == _FALLBACK_SCRIPT
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM voice_profiles WHERE id=?", (r.json()["id"],),
+        ).fetchone()
+    cond = _resolve_profile_conditioning(row, engine_id="omnivoice")
+    assert cond["ref_text"] == _FALLBACK_SCRIPT
