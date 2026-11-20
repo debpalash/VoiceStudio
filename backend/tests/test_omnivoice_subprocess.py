@@ -957,6 +957,47 @@ def test_cached_model_load_emits_periodic_heartbeats(monkeypatch):
     assert len(loading) >= 3, "cached model load went silent between 0% and 100%"
 
 
+def test_load_heartbeat_never_reports_less_after_completion(monkeypatch):
+    """A heartbeat that fires after the 100% frame must not report 0% (flaky on Windows CI)."""
+    from engines.omnivoice_subprocess import main as sidecar
+    from services import model_manager
+    from utils import hf_progress
+
+    frames = []
+
+    class FakeTorch:
+        float16 = object()
+
+    class FakeOmniVoice:
+        @classmethod
+        def from_pretrained(cls, *_args, **_kwargs):
+            return object()
+
+    def send(_stream, frame):
+        frames.append(frame)
+        if frame.get("percent") == 100:
+            # Hold the load context open so heartbeats fire after completion.
+            time.sleep(0.08)
+
+    monkeypatch.setattr(sidecar, "_model", None)
+    monkeypatch.setattr(sidecar, "_LOAD_HEARTBEAT_S", 0.01)
+    monkeypatch.setattr(sidecar, "_send", send)
+    monkeypatch.setattr(model_manager, "_lazy_torch", lambda: FakeTorch())
+    monkeypatch.setattr(model_manager, "_lazy_omnivoice", lambda: FakeOmniVoice)
+    monkeypatch.setattr(model_manager, "resolve_omnivoice_checkpoint", lambda: "cached")
+    monkeypatch.setattr(model_manager, "get_best_device", lambda: "mps")
+    monkeypatch.setattr(model_manager, "should_preload_tts_asr", lambda: False)
+    monkeypatch.setattr(hf_progress, "register_listener", lambda _listener: 1)
+    monkeypatch.setattr(hf_progress, "unregister_listener", lambda _listener_id: None)
+
+    sidecar._load_model(object())
+
+    loading = [frame["percent"] for frame in frames if frame.get("stage") == "loading_model"]
+    done = loading.index(100)
+    assert len(loading) > done + 1, "no heartbeat fired after completion; the test proves nothing"
+    assert all(percent == 100 for percent in loading[done:])
+
+
 def test_sidecar_forwards_native_controls_and_applies_seed(monkeypatch):
     import torch
     from engines.omnivoice_subprocess import main as sidecar
