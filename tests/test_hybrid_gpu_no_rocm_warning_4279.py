@@ -2,7 +2,15 @@
 import sys
 import types
 
-from api.routers.setup import wizard
+import pytest
+
+
+@pytest.fixture
+def wizard():
+    # Resolved per test: a collection-time import goes stale under sys.modules swaps.
+    from api.routers.setup import wizard as mod
+
+    return mod
 
 
 def _torch(cuda_ok, cuda="12.8", hip=None):
@@ -15,7 +23,7 @@ def _torch(cuda_ok, cuda="12.8", hip=None):
     return t
 
 
-def _hybrid(monkeypatch, torch_mod):
+def _hybrid(monkeypatch, wizard, torch_mod):
     # nvidia-smi missing/failing, Radeon iGPU visible via rocm-smi / sysfs.
     monkeypatch.setattr(wizard, "_run_cmd", lambda args, timeout=2.0: (
         (0, "AMD Radeon Graphics\n") if args[0] == "rocm-smi" else (-1, "")))
@@ -25,15 +33,15 @@ def _hybrid(monkeypatch, torch_mod):
     monkeypatch.setattr(dc, "arch_unsupported", lambda t: None)
 
 
-def test_hybrid_cuda_host_is_cuda_not_amd(monkeypatch):
-    _hybrid(monkeypatch, _torch(True))
+def test_hybrid_cuda_host_is_cuda_not_amd(monkeypatch, wizard):
+    _hybrid(monkeypatch, wizard, _torch(True))
     info = wizard._detect_gpu()
     assert info["vendor"] == "nvidia" and info["available"] and info["backend"] == "cuda"
     assert not any("ROCm" in n for n in info["notes"])
 
 
-def test_amd_only_host_keeps_rocm_advice(monkeypatch):
-    _hybrid(monkeypatch, _torch(False))
+def test_amd_only_host_keeps_rocm_advice(monkeypatch, wizard):
+    _hybrid(monkeypatch, wizard, _torch(False))
     info = wizard._detect_gpu()
     assert info["vendor"] == "amd" and not info["available"]
     assert "OMNIVOICE_TORCH_VARIANT=rocm" in " ".join(info["notes"])

@@ -289,10 +289,11 @@ def _detect_gpu() -> dict:
                 if mismatch is not None and not cuda_forced():
                     info["kernels_missing"] = mismatch[0]
             except Exception:
-                pass
+                logger.debug("CUDA kernel-support check failed", exc_info=True)
             return info
     except Exception:
-        pass
+        # No usable CUDA build: fall through to the AMD and CPU probes below.
+        logger.debug("CUDA build probe failed", exc_info=True)
 
     # AMD. rocm-smi only exists where a ROCm userspace is installed - never on
     # a stock Windows box - so fall back to the OS adapter inventory (registry /
