@@ -390,3 +390,19 @@ def test_a_remote_caller_is_refused_regardless_of_the_marker():
     for headers in (CSRF_PROOF, MARKER):
         with pytest.raises(HTTPException):
             dependencies.require_native_access(_request(host="10.0.0.5", headers=headers))
+
+
+@pytest.mark.parametrize("guard_name", ["require_loopback", "require_admin_action"])
+def test_a_delegated_loopback_caller_with_the_api_key_passes_in_server_mode(monkeypatch, guard_name):
+    monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
+    monkeypatch.setenv("OMNIVOICE_API_KEY", "s3cret")
+    guard = getattr(_dependencies(), guard_name)
+    marked = {**MARKER, "authorization": "Bearer s3cret"}
+
+    guard(_request(headers=marked, method="GET"))
+
+    with pytest.raises(HTTPException) as excinfo:
+        guard(_request(headers={**MARKER, "authorization": "Bearer nope"}, method="GET"))
+    assert excinfo.value.status_code == 403
+    with pytest.raises(HTTPException):
+        guard(_request(headers=MARKER, method="GET"))

@@ -60,7 +60,7 @@ def _is_delegated_caller(request) -> bool:
     return str(value or "").strip().lower() in _TRUTHY
 
 
-def _delegated_presents_admin_credential(request) -> bool:
+def _delegated_presents_admin_credential(request, *, side_effectful_get: bool = False) -> bool:
     """Credential check for a delegated request, ignoring its peer address.
 
     :func:`_request_presents_admin_credential` reads the canonical principal,
@@ -75,8 +75,9 @@ def _delegated_presents_admin_credential(request) -> bool:
     if principal is None:
         return False
     if (principal.transport in {CredentialTransport.COOKIE, CredentialTransport.LEGACY_COOKIE}
-            and str(getattr(request, "method", "GET")).upper() not in SAFE_HTTP_METHODS):
-        return cookie_csrf_allowed(request)
+            and (side_effectful_get
+                 or str(getattr(request, "method", "GET")).upper() not in SAFE_HTTP_METHODS)):
+        return cookie_csrf_allowed(request, side_effectful_get=side_effectful_get)
     return True
 
 
@@ -227,7 +228,11 @@ def require_loopback(request: Request) -> None:
             return
         if not _admin_credential_configured(request):
             return
-        if _request_presents_admin_credential(request):
+        if (
+            _delegated_presents_admin_credential(request)
+            if delegated
+            else _request_presents_admin_credential(request)
+        ):
             return
     raise HTTPException(status_code=403, detail="loopback origin required")
 
@@ -356,9 +361,10 @@ def require_admin_action(request: Request) -> None:
     delegated = _is_delegated_caller(request)
     if is_loopback(host) and not delegated:
         return
-    if _server_mode() and _request_presents_admin_credential(
-        request,
-        side_effectful_get=True,
+    if _server_mode() and (
+        _delegated_presents_admin_credential(request, side_effectful_get=True)
+        if delegated
+        else _request_presents_admin_credential(request, side_effectful_get=True)
     ):
         return
     _admin_gate_403()
