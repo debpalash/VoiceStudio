@@ -14,6 +14,8 @@ import tomllib
 from pathlib import Path
 
 from packaging.markers import Marker
+from packaging.utils import parse_wheel_filename
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -21,6 +23,13 @@ ROOT = Path(__file__).resolve().parent.parent
 # its demucs 4.0.1 pin is never installed on Windows, Linux or Apple Silicon.
 _ALLOWED_SDIST_ONLY: dict[tuple[str, str], str] = {
     ("demucs", "4.0.1"): "Intel-Mac-only resolution; no Windows/Linux install",
+}
+# Packages with wheels everywhere except one platform: (name, version, sys_platform, machine).
+_ALLOWED_PLATFORM_SDIST: dict[tuple[str, str, str, str], str] = {
+    ("sphn", "0.2.1", "linux", "aarch64"): (
+        "upstream publishes no Linux ARM64 wheel; Linux ARM64 is a source-only target, "
+        "not a packaged installer"
+    ),
 }
 
 _PLATFORMS = [
@@ -43,22 +52,63 @@ def _reachable(lock: dict, env: dict[str, str], extra: str) -> set[tuple[str, st
     for p in lock["package"]:
         pkgs.setdefault(p["name"], []).append(p)
     root = next(p for p in lock["package"] if "editable" in p["source"] or "virtual" in p["source"])
-    seen: set[tuple[str, str]] = set()
-    stack = [root]
+    seen: set[tuple[str, str, str]] = set()
+    stack: list[tuple[dict, tuple[str, ...]]] = [(root, ())]
     while stack:
-        pkg = stack.pop()
-        for dep in pkg.get("dependencies", []):
+        pkg, extras = stack.pop()
+        deps = list(pkg.get("dependencies", []))
+        # A dependency requested with extras also pulls that package's optional deps.
+        for name in extras:
+            deps += pkg.get("optional-dependencies", {}).get(name, [])
+        for dep in deps:
             marker = dep.get("marker")
             if marker and not Marker(marker).evaluate({**env, "extra": extra}):
                 continue
+            wanted = tuple(sorted(dep.get("extra", [])))
             for cand in pkgs.get(dep["name"], []):
                 if "version" in dep and cand.get("version") != dep["version"]:
                     continue
-                key = (cand["name"], cand.get("version", ""))
+                key = (cand["name"], cand.get("version", ""), ",".join(wanted))
                 if key not in seen:
                     seen.add(key)
-                    stack.append(cand)
-    return seen
+                    stack.append((cand, wanted))
+    return {(name, version) for name, version, _ in seen}
+
+
+def _platform_tag_matches(tag: str, env: dict[str, str]) -> bool:
+    if tag == "any":
+        return True
+    system, machine = env["sys_platform"], env["platform_machine"]
+    if system == "win32":
+        # Windows ARM64 runs the x64 runtime under emulation when no ARM64 wheel exists.
+        return tag == "win_amd64" or (machine == "ARM64" and tag == "win_arm64")
+    if system == "darwin":
+        return tag.startswith("macosx_") and tag.endswith(("_arm64", "_universal2"))
+    arch = "x86_64" if machine == "x86_64" else "aarch64"
+    return tag.startswith(("manylinux", "musllinux", "linux_")) and tag.endswith(arch)
+
+
+def _interpreter_tag_matches(interpreter: str, abi: str, py: str) -> bool:
+    nodot = py.replace(".", "")
+    if interpreter in {"py3", f"py{nodot}"}:
+        return True
+    if interpreter == f"cp{nodot}":
+        return True
+    # abi3 wheels built for an older CPython still load on newer ones.
+    return abi == "abi3" and interpreter.startswith("cp3") and int(interpreter[3:]) <= int(nodot[1:])
+
+
+def _has_wheel_for(pkg: dict, env: dict[str, str], py: str) -> bool:
+    for wheel in pkg.get("wheels", []):
+        name = unquote((wheel.get("url") or wheel.get("path") or wheel.get("filename") or "").rsplit("/", 1)[-1])
+        try:
+            *_, tags = parse_wheel_filename(name)
+        except Exception:
+            continue
+        if any(_platform_tag_matches(t.platform, env) and _interpreter_tag_matches(t.interpreter, t.abi, py)
+               for t in tags):
+            return True
+    return False
 
 
 def test_default_install_never_builds_an_sdist() -> None:
@@ -71,7 +121,9 @@ def test_default_install_never_builds_an_sdist() -> None:
             for extra in _EXTRAS:
                 for key in _reachable(lock, full, extra):
                     p = by_key[key]
-                    if "wheels" not in p and key not in _ALLOWED_SDIST_ONLY:
+                    platform_key = (*key, env["sys_platform"], env["platform_machine"])
+                    if (not _has_wheel_for(p, env, py) and key not in _ALLOWED_SDIST_ONLY
+                            and platform_key not in _ALLOWED_PLATFORM_SDIST):
                         offenders.add(key)
     assert not offenders, (
         f"locked without a wheel, so first-run setup would compile them: {sorted(offenders)}. "
