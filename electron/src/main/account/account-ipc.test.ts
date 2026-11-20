@@ -51,6 +51,7 @@ function ctl(over: Partial<ConstructorParameters<typeof AccountController>[0]> =
       profile: 'https://app.example/app/settings/profile',
       plan: 'https://app.example/app/settings/plan',
       deletion: 'https://app.example/app/settings/deletion-review',
+      proDownload: 'https://app.example/app/pro/download',
     },
     ...over,
   });
@@ -251,6 +252,7 @@ it('hands the renderer the dashboard profile and plan links only while signed in
     profile: 'https://app.example/app/settings/profile',
     plan: 'https://app.example/app/settings/plan',
     deletion: 'https://app.example/app/settings/deletion-review',
+    proDownload: 'https://app.example/app/pro/download',
   });
   const signedOut = ctl({
     session: { state: () => ({ signedIn: false, signingIn: false, notice: null }) } as never,

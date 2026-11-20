@@ -2956,6 +2956,8 @@
     "free": "Free",
     "pro": "Pro",
     "get_pro": "Get Pro",
+    "upgrade_pro": "Upgrade to Pro",
+    "get_pro_app": "Get Pro app",
     "sponsor_bar": "Sponsor bar",
     "visible": "Visible",
     "hideable": "Can be hidden",
