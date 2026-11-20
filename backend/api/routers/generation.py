@@ -624,7 +624,7 @@ def _wants_edge_trim(effect_preset, duration=None):
 
 def _render_with_pauses(gen_span, segments, sample_rate, *, trim_spans=False,
                         max_chunk_chars=0, crossfade_ms=0, dropped_sink=None,
-                        pause_fill=None):
+                        pause_fill=None, trim_chunks=False):
     """Synthesize ``[(text, pause_ms), ...]`` spans and stitch silence between
     them (issue #276).
 
@@ -649,6 +649,11 @@ def _render_with_pauses(gen_span, segments, sample_rate, *, trim_spans=False,
 
     ``pause_fill`` is ``"silence"`` or ``"room_tone"`` (#3611); None uses the
     Settings choice (``services.audio_dsp.pause_fill_mode``).
+
+    A segment may carry a third item, a speed multiplier from SSML-lite
+    (``[slow]``/``[fast]``/``[emphasis]``); when it is not None, ``gen_span``
+    also receives ``speed_factor=``. ``trim_chunks`` strips engine padding
+    from every chunk of a split span before the crossfade (Trim engine silence).
     """
     import torch
 
@@ -656,13 +661,20 @@ def _render_with_pauses(gen_span, segments, sample_rate, *, trim_spans=False,
 
     items = []  # ('a', tensor) for audio, ('s', n_samples) for silence
     calls = 0  # engine calls so far — the chunk index handed to gen_span
-    for span_text, pause_ms in segments:
+    for segment in segments:
+        span_text, pause_ms = segment[0], segment[1]
+        factor = segment[2] if len(segment) > 2 else None
+        # Old callers' gen_span takes no speed_factor: pass it only when set.
+        extra = {} if factor is None else {"speed_factor": factor}
         if span_text and span_text.strip():
             chunks = split_text_into_chunks(span_text, max_chunk_chars) if max_chunk_chars > 0 else [span_text]
             if len(chunks) > 1:
                 parts = []
                 for chunk_text in chunks:
-                    parts.append(gen_span(chunk_text, chunk_index=calls))
+                    part = gen_span(chunk_text, chunk_index=calls, **extra)
+                    if trim_chunks and part is not None:
+                        part = _trim_output_edges(part, sample_rate)
+                    parts.append(part)
                     calls += 1
                     _note_generate_progress()
                 audio = concatenate_audio_chunks(
@@ -672,7 +684,7 @@ def _render_with_pauses(gen_span, segments, sample_rate, *, trim_spans=False,
                     # the span out so its 1-D fallback cannot break the final join.
                     audio = None
             else:
-                audio = gen_span(span_text)
+                audio = gen_span(span_text, **extra)
                 calls += 1
                 _note_generate_progress()
             if audio is not None:
@@ -695,6 +707,28 @@ def _render_with_pauses(gen_span, segments, sample_rate, *, trim_spans=False,
 
     # Digital silence or room tone, per Settings (#3611).
     return torch.cat(fill_gaps(items, sample_rate, pause_fill), dim=-1)
+
+
+def _plan_generate(text, joins, effect_preset):
+    """Plan a Generate render: ``(segments, use_span_renderer, trim_spans)``.
+
+    ``joins`` is a :class:`services.generate_markup.JoinOptions` or None.
+    Trim engine silence trims every span even for the raw preset; otherwise
+    spans are trimmed whenever the whole take would be.
+    """
+    from services.generate_markup import needs_span_render, plan_spans
+
+    segments = plan_spans(text, joins)
+    use_spans = needs_span_render(segments, joins)
+    trim_spans = bool(joins and joins.trim_engine_silence) or _wants_edge_trim(effect_preset)
+    return segments, use_spans, trim_spans
+
+
+def _span_speed(speed, factor):
+    """The request speed scaled by a span's SSML-lite factor (None = unchanged)."""
+    if factor is None or speed is None:
+        return speed if factor is None else factor
+    return speed * factor
 
 
 def _sanitize_audio(audio_out):
@@ -1318,6 +1352,7 @@ def _run_inference(
     postprocess_output, layer_penalty_factor, position_temperature,
     class_temperature, used_seed, effect_preset="broadcast",
     max_chunk_chars=None, crossfade_ms=None, *, dropped_sink=None,
+    joins=None,
 ):
     import torch
     try:
@@ -1334,22 +1369,21 @@ def _run_inference(
 
         from services.tts_backend import generate_with_cached_ref, seed_engine_call
 
-        def _gen(gen_text, gen_duration):
+        def _gen(gen_text, gen_duration, gen_speed=speed):
             """One generate call for this request's voice, reference encoded once."""
             return trace_call("synthesis", generate_with_cached_ref,
                 model, ref_audio=ref_audio_path, ref_text=ref_text,
                 text=gen_text, language=language, instruct=instruct,
                 duration=gen_duration, num_step=num_step,
-                guidance_scale=guidance_scale, speed=speed, denoise=denoise,
+                guidance_scale=guidance_scale, speed=gen_speed, denoise=denoise,
                 postprocess_output=postprocess_output, **kwargs
             )
 
-        # Inline [pause Nms] markers (issue #276): split the text and stitch
-        # silence between independently-synthesized spans. Fully opt-in — text
-        # without a marker takes the unchanged single-shot path below.
-        from omnivoice.utils.text import parse_pause_markers
-        segments = parse_pause_markers(text)
-        has_pause = len(segments) > 1 or (segments and segments[0][1] > 0)
+        # Inline [pause Nms] markers (issue #276), SSML-lite tags and the
+        # opt-in sentence/paragraph gaps: split the text and stitch silence
+        # between independently-synthesized spans. Plain text with default
+        # joins takes the unchanged single-shot path below.
+        segments, has_pause, trim_spans = _plan_generate(text, joins, effect_preset)
 
         from services.chunked_tts import (
             DEFAULT_CROSSFADE_MS, DEFAULT_MAX_CHUNK_CHARS,
@@ -1359,15 +1393,16 @@ def _run_inference(
         _xfade_ms = DEFAULT_CROSSFADE_MS if crossfade_ms is None else crossfade_ms
 
         if has_pause:
-            def _gen_span(span_text, chunk_index=None):
+            def _gen_span(span_text, chunk_index=None, speed_factor=None):
                 # Per-span duration is left to the model; an explicit overall
                 # `duration` can't be meaningfully split across spans. Every
                 # span and chunk restarts from the take's seed (#3730).
                 seed_engine_call(used_seed)
-                return _gen(span_text, None)[0]
+                return _gen(span_text, None, _span_speed(speed, speed_factor))[0]
             audio_out = _render_with_pauses(
-                _gen_span, segments, sr, trim_spans=_wants_edge_trim(effect_preset),
-                max_chunk_chars=_max_chars, crossfade_ms=_xfade_ms, dropped_sink=dropped_sink)
+                _gen_span, segments, sr, trim_spans=trim_spans,
+                max_chunk_chars=_max_chars, crossfade_ms=_xfade_ms, dropped_sink=dropped_sink,
+                trim_chunks=bool(joins and joins.trim_engine_silence))
         else:
             # Wave 1.2: long text is split at sentence boundaries and the
             # per-chunk audio crossfaded — removes the length ceiling. Short
@@ -1418,7 +1453,7 @@ def _run_backend_inference(
     max_chunk_chars=None, crossfade_ms=None, *, t_shift=None,
     layer_penalty_factor=None, position_temperature=None,
     class_temperature=None, dropped_sink=None, preset_voice=None,
-    emotion_kwargs=None,
+    emotion_kwargs=None, joins=None,
 ):
     """Engine-aware twin of :func:`_run_inference` (issue #312).
 
@@ -1460,11 +1495,9 @@ def _run_backend_inference(
             })
         sr = backend.sample_rate
 
-        # Inline [pause Nms] markers (issue #276) work for every engine — the
-        # silence stitching is model-free.
-        from omnivoice.utils.text import parse_pause_markers
-        segments = parse_pause_markers(text)
-        has_pause = len(segments) > 1 or (segments and segments[0][1] > 0)
+        # Inline [pause Nms] markers (issue #276), SSML-lite tags and the
+        # opt-in gaps work for every engine — the silence stitching is model-free.
+        segments, has_pause, trim_spans = _plan_generate(text, joins, effect_preset)
 
         from services.chunked_tts import (
             DEFAULT_CROSSFADE_MS, DEFAULT_MAX_CHUNK_CHARS,
@@ -1474,16 +1507,18 @@ def _run_backend_inference(
         _xfade_ms = DEFAULT_CROSSFADE_MS if crossfade_ms is None else crossfade_ms
 
         if has_pause:
-            def _gen_span(span_text, chunk_index=None):
+            def _gen_span(span_text, chunk_index=None, speed_factor=None):
                 # Per-span duration is left to the engine; an explicit overall
                 # `duration` can't be meaningfully split across spans. Every
                 # span and chunk gets the take's seed, forwarded to engines
                 # that accept one on every call, not only the first (#3730).
                 span_kwargs = {**gen_kwargs, **seed_engine_call(used_seed, backend)}
+                span_kwargs["speed"] = _span_speed(speed, speed_factor)
                 return trace_call("synthesis", backend.generate, span_text, duration=None, **span_kwargs)
             audio_out = _render_with_pauses(
-                _gen_span, segments, sr, trim_spans=_wants_edge_trim(effect_preset),
-                max_chunk_chars=_max_chars, crossfade_ms=_xfade_ms, dropped_sink=dropped_sink)
+                _gen_span, segments, sr, trim_spans=trim_spans,
+                max_chunk_chars=_max_chars, crossfade_ms=_xfade_ms, dropped_sink=dropped_sink,
+                trim_chunks=bool(joins and joins.trim_engine_silence))
         else:
             # Wave 1.2: sentence-boundary chunking for long text (see
             # _run_inference for the rationale; behavior is identical here).
@@ -1941,6 +1976,12 @@ async def generate_speech(
     # boundaries and crossfaded. 0 disables chunking (whole text to engine).
     max_chunk_chars: int = Form(800, ge=0),
     crossfade_ms: int = Form(50, ge=0, le=1000),
+    # Optional silence after sentence-final punctuation (. ! ? and full-width) and at blank
+    # lines, and per-chunk engine-padding trim — the Audiobook join controls
+    # for one-shot generation. All off by default: renders are unchanged.
+    sentence_gap_ms: int = Form(0, ge=0, le=5000),
+    paragraph_gap_ms: int = Form(0, ge=0, le=5000),
+    trim_engine_silence: bool = Form(False),
     # Expressive-TTS Spec 01: apply the user pronunciation dictionary + inline
     # [[…]] overrides to the text before synthesis. Default ON; the
     # OMNIVOICE_PRONUNCIATION env var can disable it for power users. Omitting it
@@ -1969,6 +2010,15 @@ async def generate_speech(
     # (utils/duration.py) so the estimate and the synthesis see the same text.
     import unicodedata
     text = unicodedata.normalize("NFC", text)
+
+    from services.generate_markup import JoinOptions, plan_spans
+
+    joins = JoinOptions(sentence_gap_ms, paragraph_gap_ms, trim_engine_silence)
+    try:
+        # Refuse an over-long silence budget before any model or GPU work.
+        plan_spans(text, joins)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     # ── Engine resolution (issue #312) ──────────────────────────────────────
     # The request runs on the engine selected in Settings (POST /engines/select,
@@ -2393,11 +2443,9 @@ async def generate_speech(
     # budget on generation only — and each chunk gets its own budget, so a
     # long script can't time out merely for being long.
     if stream:
-        from omnivoice.utils.text import parse_pause_markers
         from services.chunked_tts import split_text_into_chunks
 
-        _segments = parse_pause_markers(text)
-        _has_pause = len(_segments) > 1 or (_segments and _segments[0][1] > 0)
+        _segments, _has_pause, _ = _plan_generate(text, joins, effect_preset)
         _text_chunks = [] if _has_pause else split_text_into_chunks(text, max_chunk_chars)
         # #1330 — see the non-streaming path: chunks the engine rendered to
         # nothing land here so the stream can say the take is missing text
@@ -2519,6 +2567,7 @@ async def generate_speech(
                                     dropped_sink=_dropped_sink,
                                     preset_voice=preset_voice,
                                     emotion_kwargs=emotion_kwargs,
+                                    joins=joins,
                                 ),
                                 what="TTS generate",
                                 min_vram_gb=_engine_min_vram_gb,
@@ -2546,6 +2595,7 @@ async def generate_speech(
                                     layer_penalty_factor, position_temperature,
                                     class_temperature, used_seed, effect_preset,
                                     max_chunk_chars, crossfade_ms, dropped_sink=_dropped_sink,
+                                    joins=joins,
                                 ),
                                 what="TTS generate",
                                 min_vram_gb=_engine_min_vram_gb,
@@ -2764,6 +2814,7 @@ async def generate_speech(
                 dropped_sink=_dropped_text,
                 preset_voice=preset_voice,
                 emotion_kwargs=emotion_kwargs,
+                joins=joins,
             )
         else:
             _local_render = functools.partial(
@@ -2773,6 +2824,7 @@ async def generate_speech(
                 postprocess_output, layer_penalty_factor, position_temperature,
                 class_temperature, used_seed, effect_preset,
                 max_chunk_chars, crossfade_ms, dropped_sink=_dropped_text,
+                joins=joins,
             )
         audio_tensor = await _run_with_reference_lease(
             ref_lease,

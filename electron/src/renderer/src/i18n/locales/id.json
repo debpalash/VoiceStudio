@@ -3352,7 +3352,9 @@
     "denoise": "Bersihkan derau referensi",
     "polish": "Sempurnakan audio yang dihasilkan",
     "basics": "1× adalah kecepatan normal. Kosongkan durasi untuk irama alami.",
-    "hint": "Biasanya biarkan nilai bawaan. Panduan mengatur pengaruh instruksi; kontrol lain mengubah cara model membentuk suara. Ubah satu per satu."
+    "hint": "Biasanya biarkan nilai bawaan. Panduan mengatur pengaruh instruksi; kontrol lain mengubah cara model membentuk suara. Ubah satu per satu.",
+    "sentence_gap": "Jeda setelah kalimat",
+    "pauses_hint": "Menambahkan jeda setelah setiap kalimat dan pada baris kosong. 0 mempertahankan tempo bawaan mesin."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} hanya punya satu model {{language}}, jadi aksennya mengikuti suara referensi.",

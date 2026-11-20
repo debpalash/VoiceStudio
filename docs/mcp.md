@@ -10,7 +10,7 @@ start once VoiceStudio is open.
 
 | Tool | What it does |
 |---|---|
-| `generate_speech` | Turns text into WAV by default, using the agent-bound voice unless `profile_id` is supplied. An omitted `language` uses the profile language; explicit `Auto` overrides it. In `files` or `both` mode, `format="opus"` or `"ogg"` provides Ogg/Opus at both `audio_url` and `output_path`; ffmpeg must be installed. |
+| `generate_speech` | Turns text into WAV by default, using the agent-bound voice unless `profile_id` is supplied. An omitted `language` uses the profile language; explicit `Auto` overrides it. In `files` or `both` mode, `format="opus"` or `"ogg"` provides Ogg/Opus at both `audio_url` and `output_path`; ffmpeg must be installed. Optional `sentence_gap_ms`, `paragraph_gap_ms` (0–5000) and `trim_engine_silence` add narration pauses ([Sentence and paragraph gaps](expressive-speech.md#sentence-and-paragraph-gaps)); `[pause 800ms]`, `[slow]`, `[fast]`, `[emphasis]` and `[spell]` in the text work too. |
 | `clone_voice` | reference audio (base64, or a `ref_audio_path` under the base path) → new voice profile. Returns a `profile_id` for use with `generate_speech`. |
 | `describe_voice` | Maps free text to design attributes (gender, age, pitch, style, accent) and reports words it could not map, without saving anything. |
 | `design_voice` | Creates a **design** profile from a matching description and returns its `profile_id` for `generate_speech`. Its stable, fixed-seed identity sample renders while saving, or on first use if the engine is not ready. Descriptions mapping to no attribute are refused. |

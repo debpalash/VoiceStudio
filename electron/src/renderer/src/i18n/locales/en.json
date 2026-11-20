@@ -3352,7 +3352,9 @@
     "denoise": "Clean reference noise",
     "polish": "Polish generated audio",
     "basics": "1× is normal speed. Leave duration blank for natural timing.",
-    "hint": "Usually leave these at defaults. Guidance adjusts prompt influence; the other controls change how the model builds the sound. Change one at a time."
+    "hint": "Usually leave these at defaults. Guidance adjusts prompt influence; the other controls change how the model builds the sound. Change one at a time.",
+    "sentence_gap": "Silence after sentences",
+    "pauses_hint": "Adds silence after each sentence and at blank lines. 0 keeps the engine's own pacing."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} has one {{language}} model, so the accent follows the reference voice.",

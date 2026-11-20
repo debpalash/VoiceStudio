@@ -3354,7 +3354,9 @@
     "denoise": "Rimuovi rumore dal riferimento",
     "polish": "Rifinisci l’audio generato",
     "basics": "1× è la velocità normale. Lascia vuota la durata per un ritmo naturale.",
-    "hint": "Di solito vanno bene i valori predefiniti. La guida regola l’influenza del prompt; gli altri controlli cambiano come il modello costruisce il suono. Modificane uno alla volta."
+    "hint": "Di solito vanno bene i valori predefiniti. La guida regola l’influenza del prompt; gli altri controlli cambiano come il modello costruisce il suono. Modificane uno alla volta.",
+    "sentence_gap": "Silenzio dopo le frasi",
+    "pauses_hint": "Aggiunge silenzio dopo ogni frase e alle righe vuote. 0 mantiene il ritmo proprio del motore."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} ha un solo modello ({{language}}), quindi l’accento segue la voce di riferimento.",
