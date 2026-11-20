@@ -118,8 +118,21 @@ function registrations(text: string, aliased = false): Registration[] {
  * the result has to be kept (`const win = trustedOwner(...)`) or dereferenced
  * (`trustedOwner(...)?.minimize()`).
  */
-const GUARDED_BODY =
-  /\b(?:assertTrustedMainFrame|assertTrustedTopLevel|assertTrustedTopLevelFrame|assertMain|assertRecorder|trusted|guard|entryFor|requireTrusted)\s*\(|=\s*trustedOwner\(|trustedOwner\([^\n]*?\)\s*\??\./;
+const GUARD_CALL =
+  /\b(?:assertTrustedMainFrame|assertTrustedTopLevel|assertTrustedTopLevelFrame|assertMain|assertRecorder|trusted|guard|entryFor|requireTrusted)\s*\(/;
+
+/** True when the body authorizes: a gate call, or a `trustedOwner` result that is null-checked or dereferenced. */
+function isGuarded(body: string): boolean {
+  if (GUARD_CALL.test(body)) return true;
+  if (/\btrustedOwner\([^\n;]*?\)\s*\??\./.test(body)) return true;
+  for (const m of body.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*trustedOwner\(/g)) {
+    const name = m[1];
+    const rest = body.slice((m.index ?? 0) + m[0].length);
+    // The owner must gate the handler (`if (!win) return`) or be what the action runs on.
+    if (new RegExp(`if\\s*\\(\\s*!\\s*${name}\\s*\\)|\\b${name}\\s*\\??\\.`).test(rest)) return true;
+  }
+  return false;
+}
 
 /**
  * Registrations whose handler authorizes without the shared predicate.
@@ -170,7 +183,7 @@ describe('IPC trust gate', () => {
       if (DISPATCH_MODULES.has(relative)) continue;
       const text = read(file);
       registrations(text, relative === 'ipc.ts').forEach(({ channel, body }, index) => {
-        if (GUARDED_BODY.test(code(body))) return;
+        if (isGuarded(code(body))) return;
         // The exemption covers its own registration only: another handler in the
         // same file still has to carry a check.
         if (GATED_WITHOUT_THE_PREDICATE.some((name) => channel.includes(name))) return;
@@ -196,5 +209,17 @@ describe('IPC trust gate', () => {
     expect(gate).toContain('export function onTrusted');
     // Both wrappers assert before the handler runs.
     expect(gate.match(/assertTrustedTopLevel\(event\)/g) ?? []).toHaveLength(2);
+  });
+});
+
+describe('authorization pattern check', () => {
+  it('accepts a used trustedOwner result', () => {
+    expect(isGuarded('const win = trustedOwner(e, w); if (!win) return; win.close();')).toBe(true);
+    expect(isGuarded('trustedOwner(e, w)?.close();')).toBe(true);
+  });
+
+  it('rejects an assigned but unused trustedOwner result', () => {
+    expect(isGuarded('const win = trustedOwner(e, w); getMainWindow()?.close();')).toBe(false);
+    expect(isGuarded('trustedOwner(e, w); getMainWindow()?.close();')).toBe(false);
   });
 });

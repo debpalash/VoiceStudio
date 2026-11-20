@@ -22,11 +22,11 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 
 USES = re.compile(
-    r"['\"]?uses['\"]?:\s*['\"]?(?P<action>[\w.-]+/[\w.-]+(?:/[\w.-]+)*)@(?P<ref>[^'\"\s#]+)"
+    r"['\"]?uses['\"]?[ \t]*:\s*['\"]?(?P<action>[\w.-]+/[\w.-]+(?:/[\w.-]+)*)@(?P<ref>[^'\"\s#]+)"
     r"['\"]?[ \t]*(?:#\s*(?P<label>.*))?"
 )
 # A comment that names what the SHA is: a version, a release channel or a branch.
-LABEL = re.compile(r"^(?:v?\d[\w.-]*|stable|nightly|latest|main|master|beta)$", re.IGNORECASE)
+LABEL = re.compile(r"^(?:v?\d[\w.-]*|stable|nightly|latest|beta)$", re.IGNORECASE)
 SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -201,3 +201,9 @@ def test_every_workflow_parses_without_duplicate_keys() -> None:
     assert not broken, "workflows must parse and must not repeat a mapping key:\n  " + "\n  ".join(
         broken[:10]
     )
+
+def test_space_before_the_colon_is_still_discovered() -> None:
+    """`uses : x@v4` is the same key to YAML and must not escape the pin check."""
+    found = _references("      - uses : actions/checkout@v4\n", "probe.yml")
+    assert [use["ref"] for use in found] == ["v4"]
+    assert not SHA.match(str(found[0]["ref"]))
