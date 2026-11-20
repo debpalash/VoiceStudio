@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, mkdir, symlink, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve, win32 } from 'node:path';
@@ -12,6 +13,24 @@ async function fixture() { const root = await mkdtemp(join(tmpdir(), 'python-dis
 const WIN = process.platform === 'win32';
 const BIN = WIN ? 'Scripts' : 'bin';
 const PY = WIN ? 'python.exe' : 'python';
+
+// Creating a *file* symlink needs a privilege a stock Windows host does not grant
+// (Developer Mode or SeCreateSymbolicLinkPrivilege). The alias cases below are
+// exactly about symlinked interpreters, so they run wherever the host allows it
+// and skip with a reason where it does not.
+const symlinkHostTest = (() => {
+  const dir = mkdtempSync(join(tmpdir(), 'python-discovery-probe-'));
+  try {
+    const target = join(dir, 'target');
+    writeFileSync(target, 'x');
+    symlinkSync(target, join(dir, 'link'));
+    return test;
+  } catch {
+    return test.skip;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
 const PY3 = WIN ? 'python3.exe' : 'python3';
 async function makeVenv(root: string, name: string, version = '3.12.1') {
   const env = join(root, name); await mkdir(join(env, BIN), { recursive: true });
@@ -30,13 +49,13 @@ describe('discoverPythonRuntimes', () => {
     expect(result.candidates).toContainEqual({ pythonPath: join(env, BIN, PY), source: 'venv', version: '3.12.1' });
     expect(await readFile(join(env,BIN,PY),'utf8')).toBe('not executed');
   });
-  test('deduplicates command aliases', async () => {
+  symlinkHostTest('deduplicates command aliases', async () => {
     const root = await fixture(), bin = join(root,BIN); await mkdir(bin);
     await writeFile(join(bin,PY),'not executed'); await symlink(join(bin,PY),join(bin,PY3));
     const result = await discoverPythonRuntimes({roots:[],homeDir:root,env:{PATH:bin}});
     expect(result.candidates).toHaveLength(1);
   });
-  test('preserves separate PATH virtualenvs sharing one base Python and deduplicates each environment', async () => {
+  symlinkHostTest('preserves separate PATH virtualenvs sharing one base Python and deduplicates each environment', async () => {
     const root = await fixture(), a = await makeVenv(root,'a/.venv'), b = await makeVenv(root,'b/.venv');
     const base=join(root,'base');await writeFile(base,'not executed');
     for(const env of [a,b]) {await rm(join(env,BIN,PY));await symlink(base,join(env,BIN,PY));await symlink(base,join(env,BIN,PY3));}

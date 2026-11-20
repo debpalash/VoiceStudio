@@ -39,7 +39,27 @@ function fixture() {
 // run on POSIX hosts only.
 const posixTest = test.skipIf(process.platform === 'win32');
 
-test('startup links the bundled CLI without touching shell profiles', () => {
+// Creating a *file* symlink is the one filesystem operation a stock Windows host
+// refuses (EPERM, unless Developer Mode or SeCreateSymbolicLinkPrivilege is
+// granted). These cases simulate Linux/macOS options but still create the link on
+// the host filesystem, so they can only run where the host allows it. Probing the
+// capability keeps them running on a Windows machine that does, instead of
+// skipping every Windows host.
+const symlinkHostTest = (() => {
+  const dir = mkdtempSync(join(tmpdir(), 'vs-symlink-probe-'));
+  try {
+    const target = join(dir, 'target');
+    writeFileSync(target, 'x');
+    symlinkSync(target, join(dir, 'link'));
+    return test;
+  } catch {
+    return test.skip;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
+
+symlinkHostTest('startup links the bundled CLI without touching shell profiles', () => {
   const f = fixture();
   writeFileSync(join(f.home, '.zshrc'), '# existing preferences\n');
   expect(linkTerminalCommand(f)).toBe('linked');
@@ -51,7 +71,7 @@ test('startup links the bundled CLI without touching shell profiles', () => {
   expect(terminalCommandStatus(f)).toMatchObject({ supported: true, linked: true, onPath: false });
 });
 
-test('adding to PATH is explicit, idempotent and keeps profile content', () => {
+symlinkHostTest('adding to PATH is explicit, idempotent and keeps profile content', () => {
   const f = fixture();
   writeFileSync(join(f.home, '.zshrc'), '# existing preferences\n');
   expect(addTerminalCommandToPath(f)).toMatchObject({ linked: true, onPath: true });
@@ -65,7 +85,7 @@ test('adding to PATH is explicit, idempotent and keeps profile content', () => {
   expect(existsSync(join(f.home, '.config/fish'))).toBe(false);
 });
 
-test('macOS gets a zsh profile even when the user has none', () => {
+symlinkHostTest('macOS gets a zsh profile even when the user has none', () => {
   const f = fixture();
   addTerminalCommandToPath(f);
   expect(readFileSync(join(f.home, '.zshrc'), 'utf8')).toContain('.local/bin');
@@ -95,7 +115,7 @@ posixTest('preserves custom wrappers and commands belonging to uv or another ins
   expect(readlinkSync(command)).toBe('/missing/other-installation');
 });
 
-test('repairs its own link after the AppImage moved, never a live one', () => {
+symlinkHostTest('repairs its own link after the AppImage moved, never a live one', () => {
   const f = fixture();
   const appImage = join(f.home, 'Apps/VoiceStudio-0.5.9-linux-x64.AppImage');
   mkdirSync(join(f.home, 'Apps'));
@@ -112,7 +132,7 @@ test('repairs its own link after the AppImage moved, never a live one', () => {
   expect(readlinkSync(command)).toBe(appImage);
 });
 
-test('AppImage links the persistent image, rather than its temporary mount', () => {
+symlinkHostTest('AppImage links the persistent image, rather than its temporary mount', () => {
   const f = fixture();
   const appImage = join(f.home, 'VoiceStudio.AppImage');
   writeFileSync(appImage, 'fixture');
@@ -139,7 +159,7 @@ posixTest('a live relative link is kept, whatever the working directory', () => 
   expect(readlinkSync(command)).toBe('../../Apps/VoiceStudio-mine.AppImage');
 });
 
-test('a .bash_login that Bash reads gets the PATH entry; absent login files stay absent', () => {
+symlinkHostTest('a .bash_login that Bash reads gets the PATH entry; absent login files stay absent', () => {
   const f = fixture();
   const appImage = join(f.home, 'VoiceStudio.AppImage');
   writeFileSync(appImage, 'fixture');
@@ -149,7 +169,7 @@ test('a .bash_login that Bash reads gets the PATH entry; absent login files stay
   expect(existsSync(join(f.home, '.bash_profile'))).toBe(false);
 });
 
-test('bash login shells that read .bash_profile get the PATH entry there', () => {
+symlinkHostTest('bash login shells that read .bash_profile get the PATH entry there', () => {
   const f = fixture();
   const appImage = join(f.home, 'VoiceStudio.AppImage');
   writeFileSync(appImage, 'fixture');
@@ -160,7 +180,7 @@ test('bash login shells that read .bash_profile get the PATH entry there', () =>
   expect(profile).toContain('.local/bin');
 });
 
-test('first launch makes the command work in new terminals, like the installers do', () => {
+symlinkHostTest('first launch makes the command work in new terminals, like the installers do', () => {
   const f = fixture();
   const state = join(f.home, 'terminal-command.json');
   expect(setUpTerminalCommand(f, state)).toMatchObject({ linked: true, onPath: true });
@@ -177,7 +197,7 @@ posixTest('first launch leaves profiles alone when new shells already find the c
   expect(existsSync(join(f.home, '.profile'))).toBe(false);
 });
 
-test('setup runs once: lines the user removed are not added back', () => {
+symlinkHostTest('setup runs once: lines the user removed are not added back', () => {
   const f = fixture();
   const state = join(f.home, 'terminal-command.json');
   setUpTerminalCommand(f, state);
@@ -198,7 +218,7 @@ test('setup never edits profiles for a command owned by another installation', (
   expect(existsSync(state)).toBe(false);
 });
 
-test('a setup that failed halfway is finished on the next launch, not marked done', () => {
+symlinkHostTest('a setup that failed halfway is finished on the next launch, not marked done', () => {
   const f = fixture();
   const state = join(f.home, 'terminal-command.json');
   // The first launch wrote .profile, then failed before .zshrc.
@@ -210,7 +230,7 @@ test('a setup that failed halfway is finished on the next launch, not marked don
   expect(readFileSync(join(f.home, '.profile'), 'utf8').match(/# VoiceStudio/g)).toHaveLength(1);
 });
 
-test('a marker without its PATH lines, or an empty fish file, is repaired, not trusted', () => {
+symlinkHostTest('a marker without its PATH lines, or an empty fish file, is repaired, not trusted', () => {
   const f = { ...fixture(), platform: 'linux' as const };
   const appImage = join(f.home, 'VoiceStudio.AppImage');
   writeFileSync(appImage, 'fixture');
@@ -231,7 +251,7 @@ test('a marker without its PATH lines, or an empty fish file, is repaired, not t
   );
 });
 
-test('a Linux zsh user without .zshrc gets one; other Linux shells do not', () => {
+symlinkHostTest('a Linux zsh user without .zshrc gets one; other Linux shells do not', () => {
   const f = fixture();
   const appImage = join(f.home, 'VoiceStudio.AppImage');
   writeFileSync(appImage, 'fixture');
