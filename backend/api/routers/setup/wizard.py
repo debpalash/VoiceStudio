@@ -263,6 +263,38 @@ def _detect_gpu() -> dict:
             pass
         return info
 
+    # A CUDA build of PyTorch that already drives a device settles it, whatever
+    # else the board carries. nvidia-smi can be missing or slow (a hybrid
+    # laptop whose GPU is asleep, a .deb without the userland tools), and the
+    # Radeon iGPU of a Ryzen would then be reported as "ROCm not configured"
+    # and the user told to move the whole install to ROCm (#4279).
+    try:
+        import torch
+
+        if (
+            getattr(torch.version, "cuda", None)
+            and not getattr(torch.version, "hip", None)
+            and torch.cuda.is_available()
+        ):
+            info.update({"vendor": "nvidia", "backend": "cuda", "available": True,
+                         "torch_build": "cuda", "driver_meets_floor": True})
+            try:
+                info["device_name"] = torch.cuda.get_device_name(0)
+            except Exception:
+                info["device_name"] = "NVIDIA GPU"
+            try:
+                from core.device_caps import arch_unsupported, cuda_forced
+
+                mismatch = arch_unsupported(torch)
+                if mismatch is not None and not cuda_forced():
+                    info["kernels_missing"] = mismatch[0]
+            except Exception:
+                logger.debug("CUDA kernel-support check failed", exc_info=True)
+            return info
+    except Exception:
+        # No usable CUDA build: fall through to the AMD and CPU probes below.
+        logger.debug("CUDA build probe failed", exc_info=True)
+
     # AMD. rocm-smi only exists where a ROCm userspace is installed - never on
     # a stock Windows box - so fall back to the OS adapter inventory (registry /
     # sysfs, no subprocess), which sees a Radeon whatever PyTorch can do with it.
@@ -678,7 +710,10 @@ def preflight():
             gpu_fix = legacy_cuda_repair_advice()
     elif gpu["vendor"] == "nvidia" and gpu["available"]:
         gpu_status, gpu_fix = "pass", None
-        gpu_detail = f"{gpu['device_name']} (driver {gpu['driver']}) — CUDA ready"
+        gpu_detail = (
+            f"{gpu['device_name']} (driver {gpu['driver']}) — CUDA ready"
+            if gpu["driver"] else f"{gpu['device_name']} — CUDA ready"
+        )
     elif gpu["vendor"] == "nvidia" and not gpu["available"]:
         # Acceleration is optional: CPU wheels or an unusable driver must not
         # block CPU-capable engines. Active-engine compatibility is checked below.
