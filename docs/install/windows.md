@@ -293,3 +293,12 @@ If the engine stops with a Windows exit code, the failure screen names it:
 - **`4294967295` (`-1`)**: the engine exited with `-1`. With no traceback, the likely cause is something outside the app ending it, often security software, but the engine can also exit with `-1` itself.
 
 Migration configuration is kept ASCII so Alembic can read it under Windows locale code pages as well as UTF-8. This applies to source installs and direct Alembic commands.
+
+
+## Export filenames
+
+Suggested export filenames replace Windows device names with an underscore prefix,
+including superscript variants such as `COM¹.wav` → `_COM¹.wav` and
+`LPT².srt` → `_LPT².srt`. The same naming rule applies on macOS and Linux so
+exports remain portable. Windows reserves these names even when they have a file
+extension. See [Microsoft's filename rules](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file).
