@@ -80,23 +80,47 @@ class SyncStore:
                      json.loads(row["choices_json"] or "{}"), row["last_full_sync_at"],
                      json.loads(row["needs_update_json"] or "{}"), json.loads(row["full_pull_json"] or "[]"))
 
+    #: ``State`` field -> (column, encoder). The dict is the closed allowlist the
+    #: ``save_state`` statement is built from, so no caller string ever reaches the
+    #: SQL text.
+    _STATE_COLUMNS = {
+        "device_id": ("device_id", lambda value: value),
+        "cursor": ("cursor", lambda value: value),
+        "enabled": ("enabled", lambda value: int(bool(value))),
+        "choices": ("choices_json", lambda value: json.dumps(value)),
+        "last_full_sync_at": ("last_full_sync_at", lambda value: value),
+        "needs_update": ("needs_update_json", lambda value: json.dumps(value)),
+        "full_pull": ("full_pull_json", lambda value: json.dumps(sorted(set(value)))),
+    }
+
     def save_state(self, org: str, **fields: Any) -> State:
+        """Write only the fields the caller provides.
+
+        Rewriting every column from a snapshot read in a separate connection drops
+        a concurrent writer's change: the engine writes ``needs_update``/``full_pull``
+        on its own path while a Settings toggle writes ``choices``/``enabled``, and
+        whichever commits second republishes its stale copy of the other's field.
+        The failure is silent -- a collection is simply never pulled again, or a
+        cursor advances without its bases. ``save_page`` (cursor) and ``queue``
+        (``gen=gen+1``) are already field-scoped; this makes the rest match.
+        """
+        unknown = set(fields) - set(self._STATE_COLUMNS)
+        if unknown:
+            raise ValueError(f"unknown cloud_sync_state field(s): {sorted(unknown)}")
         current = self.state(org) or State(org)
         for key, value in fields.items():
             setattr(current, key, value)
+        if not fields:
+            return current
+        columns = [self._STATE_COLUMNS[key][0] for key in fields]
+        values = [self._STATE_COLUMNS[key][1](fields[key]) for key in fields]
+        assignments = ", ".join(f"{column}=excluded.{column}" for column in columns)
         with core_db.db_conn() as conn:
             conn.execute(
-                """INSERT INTO cloud_sync_state
-                   (organization_id, device_id, cursor, enabled, choices_json, last_full_sync_at,
-                    needs_update_json, full_pull_json)
-                   VALUES (?,?,?,?,?,?,?,?)
-                   ON CONFLICT(organization_id) DO UPDATE SET device_id=excluded.device_id,
-                     cursor=excluded.cursor, enabled=excluded.enabled,
-                     choices_json=excluded.choices_json, last_full_sync_at=excluded.last_full_sync_at,
-                     needs_update_json=excluded.needs_update_json, full_pull_json=excluded.full_pull_json""",
-                (org, current.device_id, current.cursor, int(current.enabled),
-                 json.dumps(current.choices), current.last_full_sync_at,
-                 json.dumps(current.needs_update), json.dumps(sorted(set(current.full_pull)))),
+                f"""INSERT INTO cloud_sync_state (organization_id, {", ".join(columns)})
+                    VALUES ({", ".join("?" for _ in range(len(columns) + 1))})
+                    ON CONFLICT(organization_id) DO UPDATE SET {assignments}""",
+                (org, *values),
             )
         return current
 
