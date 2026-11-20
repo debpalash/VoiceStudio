@@ -19,6 +19,7 @@ describe('generationFailureMessage', () => {
     ['transcription_media_tool', 'tts_errors.transcription_media_tool'],
     ['transcription_pipe_lost', 'tts_errors.transcription_pipe_lost'],
     ['transcription_disk_full', 'tts_errors.disk_full'],
+    ['reference_transcript_required', 'tts_errors.reference_transcript_required'],
   ])('localizes the %s transcription failure code', (code, key) => {
     const translate = vi.fn((k: string) => `t:${k}`);
     expect(generationFailureMessage({ code }, translate)).toBe(`t:${key}`);
