@@ -1,15 +1,15 @@
-import { CrownIcon, SproutIcon } from "lucide-react";
-import type { AccountPublicState } from "../../../../preload/index.d";
+import { CrownIcon, SproutIcon } from 'lucide-react';
+import type { AccountPublicState } from '../../../../preload/index.d';
 
-type Plan = NonNullable<AccountPublicState["plan"]>;
+type Plan = NonNullable<AccountPublicState['plan']>;
 
 /** Up to two initials for an account without a photo; an email stays one initial. */
 export function initials(name: string): string {
-  const words = name.includes("@") ? [name] : name.trim().split(/\s+/);
+  const words = name.includes('@') ? [name] : name.trim().split(/\s+/);
   return words
     .slice(0, 2)
-    .map((w) => w[0] ?? "")
-    .join("")
+    .map((w) => w[0] ?? '')
+    .join('')
     .toUpperCase();
 }
 
@@ -33,18 +33,15 @@ export function storageShare(plan: Plan): number {
 }
 
 /**
- * Whether the signed-in account has Pro. The one rule every Pro surface uses.
- * `pro.desktop` is authoritative when the entitlements were read (true or false);
- * when they could not be (null), fall back to the plan itself so a lifetime or
- * purchased plan is never shown as Free: any non-free plan code, or a plan that
- * came from a purchase or grant rather than the default.
+ * Whether the signed-in account has Pro: the one rule every Pro surface uses.
+ * `pro.desktop` decides when the entitlements were read (true or false). When they
+ * could not be read (null), a Pro or lifetime plan code (`pro`, `pro_yearly`,
+ * `pro_lifetime`, …) still counts, so a paid Pro account is never shown as Free (#4264).
  */
 export function isProPlan(plan: Plan | null | undefined): boolean {
   if (!plan) return false;
-  if (typeof plan.proDesktop === "boolean") return plan.proDesktop;
-  const code = plan.planCode.trim().toLowerCase();
-  if (/pro|lifetime/.test(code)) return true;
-  return code !== "" && code !== "free" && plan.planOrigin !== "default";
+  if (typeof plan.proDesktop === 'boolean') return plan.proDesktop;
+  return /^pro(?:$|[_-])|lifetime/.test(plan.planCode.trim().toLowerCase());
 }
 
 /** Whether the plan is Pro, and the icon its badge shows. */
