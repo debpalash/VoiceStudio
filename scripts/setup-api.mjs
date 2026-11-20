@@ -10,6 +10,10 @@ import {
   torchSyncArgs,
   windowsRocmSyncArgs,
 } from "../electron/scripts/torch-variant.mjs";
+import {
+  windowsRocmPythonRequest,
+  windowsRocmPythonVersion,
+} from "../electron/scripts/windows-rocm-python.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -36,12 +40,19 @@ export async function setupApi({
     );
   const variant = await selectVariant({ env, platform, arch });
   const windowsRocm = platform === "win32" && variant === "rocm";
+  // The reviewed interpreter comes from the recipe, never from a literal here.
+  const rocmRecipe = windowsRocm
+    ? JSON.parse(readFileSync(resolve(root, "scripts/windows-rocm-recipe.json"), "utf8"))
+    : null;
   if (windowsRocm && arch !== "x64")
-    throw new Error("Windows ROCm requires Windows x64 Python 3.12 (cp312).");
+    throw new Error(
+      `Windows ROCm requires Windows x64 Python ${windowsRocmPythonVersion(rocmRecipe)} ` +
+        `(${rocmRecipe.python.abi}).`,
+    );
   const environment = windowsRocm ? { ...env, OMNIVOICE_TORCH_VARIANT: "rocm" } : env;
   // The matched torch stack has no native Windows ARM64 torchaudio wheel.
   const pythonArgs = windowsRocm
-    ? ["--python", "cpython-3.12-windows-x86_64"]
+    ? ["--python", windowsRocmPythonRequest(rocmRecipe)]
     : platform === "win32" && arch === "arm64"
       ? ["--python", "cpython-3.11-windows-x86_64"]
       : [];

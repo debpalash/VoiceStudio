@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron';
 import type { BackendSupervisor } from './backend';
 import { startRepairApiBridge, type RepairApiBridge } from './repair-api-bridge';
-import { isTrustedRenderer } from './trusted-renderer';
+import { assertTrustedMainFrame } from './trusted-ipc';
 import {
   agentUsesAppWorkspace,
   featureGuidance,
@@ -142,13 +142,7 @@ export function agentCommandMatchesPlatform(
 }
 
 function trusted(event: IpcMainInvokeEvent, owner: BrowserWindow | null) {
-  if (
-    !owner ||
-    event.sender !== owner.webContents ||
-    event.senderFrame !== owner.webContents.mainFrame ||
-    !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-  )
-    throw new Error('Untrusted repair-agent request');
+  assertTrustedMainFrame(event, owner, 'Untrusted repair-agent request');
 }
 
 const PROBE_TIMEOUT_MS = 4_000;

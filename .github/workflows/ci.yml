@@ -198,7 +198,7 @@ jobs:
       # turns `uv sync` from ~45 s cold to ~5 s warm.
       - name: Install uv
         if: steps.pass.outputs.hit != 'true'
-        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1053,7 +1053,7 @@ jobs:
 
       - name: Install uv
         if: steps.pass.outputs.hit != 'true'
-        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"

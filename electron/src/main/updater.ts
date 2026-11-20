@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import updaterPackage, { type ProgressInfo, type UpdateInfo } from 'electron-updater';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isTrustedRenderer } from './trusted-renderer';
+import { assertTrustedMainFrame } from './trusted-ipc';
 import type { UpdateErrorKind, UpdateReleaseInfo, UpdateState } from '../preload/index.d';
 import { isLiveWindow, sendToLiveWindow } from './window-safety';
 import { applicationUpdatesUnsupportedReason, CURRENT_DISTRIBUTION } from './distribution';
@@ -1054,16 +1054,8 @@ export function registerUpdateIpc(
   getMainWindow: () => BrowserWindow | null,
   beforeInstall: () => Promise<void>,
 ): () => void {
-  const trusted = (event: Electron.IpcMainInvokeEvent) => {
-    const owner = getMainWindow();
-    if (
-      !owner ||
-      event.sender !== owner.webContents ||
-      event.senderFrame !== owner.webContents.mainFrame ||
-      !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-    )
-      throw new Error('Untrusted update request');
-  };
+  const trusted = (event: Electron.IpcMainInvokeEvent) =>
+    assertTrustedMainFrame(event, getMainWindow(), 'Untrusted update request');
   ipcMain.handle(UPDATE_CHANNELS.getState, (event) => {
     trusted(event);
     return updater.snapshot();
