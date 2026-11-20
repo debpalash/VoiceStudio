@@ -4067,7 +4067,7 @@ wheels = [
 
 [[package]]
 name = "omnivoice"
-version = "0.5.9b6"
+version = "0.5.9b7"
 source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
