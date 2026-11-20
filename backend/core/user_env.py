@@ -97,7 +97,7 @@ def _write_lines(path: str, lines: list[str]) -> None:
         try:
             os.unlink(tmp)
         except OSError:
-            pass
+            pass  # the temp file may already be renamed or gone; the original error matters
         raise
 
 
