@@ -945,7 +945,8 @@
     "retry": "もう一度試してください",
     "confirm": "確認",
     "details": "詳細",
-    "unknown": "未知"
+    "unknown": "未知",
+    "link_blocked": "このリンクは開けません。Web とメールのリンクのみ使用できます。"
   },
   "dubWorkspace": {
     "transcriptIssues": "文字起こしの問題",

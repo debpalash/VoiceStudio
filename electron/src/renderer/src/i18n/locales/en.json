@@ -753,7 +753,8 @@
     "unknown": "unknown",
     "remove": "Remove {{term}}",
     "not_set": "Not set",
-    "details": "Details"
+    "details": "Details",
+    "link_blocked": "This link can't be opened. Only web and email links are allowed."
   },
   "preferences": {
     "title": "Settings",

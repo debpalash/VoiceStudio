@@ -945,7 +945,8 @@
     "retry": "Probeer het opnieuw",
     "confirm": "Bevestigen",
     "details": "Details",
-    "unknown": "onbekend"
+    "unknown": "onbekend",
+    "link_blocked": "Deze link kan niet worden geopend. Alleen web- en e-maillinks zijn toegestaan."
   },
   "dubWorkspace": {
     "transcriptIssues": "Problemen in transcript",

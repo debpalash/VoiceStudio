@@ -67,7 +67,7 @@ const invoke = (channel: string, sender: unknown, raw?: unknown) =>
   Promise.resolve().then(() => native.handlers.get(channel)!(sender, raw));
 const privileged = [
   [CHANNELS.filesOpenExternal, 'https://fixture.invalid/docs'],
-  [CHANNELS.filesOpenExternal, join(tmpdir(), 'fixture.wav')],
+  [CHANNELS.filesOpenExternal, 'mailto:fixture@fixture.invalid'],
   [CHANNELS.filesRevealPath, join(tmpdir(), 'fixture.wav')],
 ] as const;
 

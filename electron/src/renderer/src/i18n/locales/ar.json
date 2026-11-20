@@ -973,7 +973,8 @@
     "retry": "حاول مرة أخرى",
     "confirm": "تأكيد",
     "details": "التفاصيل",
-    "unknown": "مجهول"
+    "unknown": "مجهول",
+    "link_blocked": "تعذّر فتح هذا الرابط. يُسمح فقط بروابط الويب والبريد الإلكتروني."
   },
   "dubWorkspace": {
     "transcriptIssues": "مشكلات النص",

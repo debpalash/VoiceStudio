@@ -945,7 +945,8 @@
     "retry": "Coba lagi",
     "confirm": "Konfirmasi",
     "details": "Detail",
-    "unknown": "tidak dikenal"
+    "unknown": "tidak dikenal",
+    "link_blocked": "Tautan ini tidak dapat dibuka. Hanya tautan web dan email yang diizinkan."
   },
   "dubWorkspace": {
     "transcriptIssues": "Masalah transkrip",

@@ -945,7 +945,8 @@
     "retry": "Försök igen",
     "confirm": "Bekräfta",
     "details": "Detaljer",
-    "unknown": "okänd"
+    "unknown": "okänd",
+    "link_blocked": "Länken kan inte öppnas. Endast webb- och e-postlänkar är tillåtna."
   },
   "dubWorkspace": {
     "transcriptIssues": "Problem i transkriptionen",
