@@ -1300,7 +1300,8 @@ def _log(job: dict, line: str) -> None:
     the sanctioned-call list explicitly supports, is echoed back into a log the
     install panel renders and a user may paste into a bug report. Redact before
     either sink, exactly as ``subprocess_backend`` does for sidecar stderr.
-    Best-effort: a redaction failure must never fail an install.
+    A redaction failure never fails an install, but it never records the raw
+    line either: a marker is logged instead.
     """
     line = line.rstrip()
     if not line:
@@ -1309,8 +1310,10 @@ def _log(job: dict, line: str) -> None:
         from core.scrub import scrub_text
 
         line = scrub_text(line)
-    except Exception:  # noqa: BLE001 - redaction is defence in depth, never fatal
-        logger.debug("Install log redaction failed", exc_info=True)
+    except Exception:  # noqa: BLE001 - never fatal, never raw
+        # No exc_info: a traceback would add source and home paths to the log.
+        logger.debug("Install log redaction unavailable; line withheld")
+        line = "***REDACTED*** (install output withheld: redaction unavailable)"
     with _log_lock:
         job["log"].append(line)
     logger.info("[%s install] %s", job["engine_id"], line)

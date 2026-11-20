@@ -71,7 +71,11 @@ _MAX_QUERY_NAME_CHARS = 3 * max(map(len, _URL_SECRET_NAMES))
 
 # Inline URL credentials: ``https://user:token@host``. http(s) only — see
 # ``_scrub_url_userinfo`` for why an SSH-style identity is left alone.
-_URL_USERINFO = re.compile(r"(?P<scheme>https?://)(?P<userinfo>[^\s/@\"'\\]+)@", re.IGNORECASE)
+# Userinfo ends at the last ``@`` before the host, so the class is greedy over
+# ``@`` itself (an unencoded ``@`` in a password still redacts whole) and over
+# ``'``/``&``/``=``, which RFC 3986 allows in userinfo. ``/ ? #`` end the
+# authority, and whitespace/quotes end the URL in free text.
+_URL_USERINFO = re.compile(r"(?P<scheme>https?://)(?P<userinfo>[^\s/?#\"\\]+)@", re.IGNORECASE)
 
 
 def _raw_quote_end(text: str, start: int, limit: int | None = None) -> int:
@@ -292,8 +296,11 @@ def scrub_text(text: str | None) -> str:
     try:
         # Preserve quote delimiters for the scanner before free-text matching
         # can replace a long escaped prefix while leaving its value visible.
-        s = _scrub_url_queries(s)
+        # Userinfo first: a credential such as ``user:pw&token=x@host`` would
+        # otherwise be consumed through its ``@`` by the query scanner, leaving
+        # the password prefix visible with nothing left for this pass to match.
         s = _scrub_url_userinfo(s)
+        s = _scrub_url_queries(s)
         s = _URL_SECRET_RE.sub(lambda m: m.group(1) + REDACTED, s)
     except Exception:
         return REDACTED

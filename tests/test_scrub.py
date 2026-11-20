@@ -443,3 +443,21 @@ def test_an_ssh_identity_is_not_userinfo_and_stays_readable():
 
 def test_a_path_handle_is_not_userinfo():
     assert scrub_text("https://example.com/@alice") == "https://example.com/@alice"
+
+
+def test_userinfo_with_an_apostrophe_is_redacted():
+    scrubbed = scrub_text("https://user:orchid'river@proxy.internal:8080/simple/")
+    assert "orchid" not in scrubbed and "river" not in scrubbed
+    assert "proxy.internal:8080/simple/" in scrubbed
+
+
+def test_userinfo_containing_a_query_style_name_is_redacted_whole():
+    scrubbed = scrub_text("https://user:orchid&token=river@mirror.example/simple/")
+    assert "orchid" not in scrubbed and "river" not in scrubbed
+    assert "mirror.example/simple/" in scrubbed
+
+
+def test_userinfo_with_an_unencoded_at_sign_is_redacted_whole():
+    scrubbed = scrub_text("https://user:pa@ss@mirror.example/simple/")
+    assert "pa@ss" not in scrubbed and "ss@" not in scrubbed
+    assert "mirror.example/simple/" in scrubbed
