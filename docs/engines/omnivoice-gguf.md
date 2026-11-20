@@ -372,8 +372,10 @@ by default.
   refuses a request hands that request to the per-request binary; the log
   says why.
 - Requests that set duration, chunk duration or threshold, no-denoise,
-  no-preprocess-prompt, or a reference clip without a transcript always use
-  the per-request binary, because the server does not take those controls.
+  or no-preprocess-prompt always use the per-request binary, because the
+  server does not take those controls. A reference clip without a transcript
+  is refused before either path runs: the CLI requires `--ref-text` next to
+  `--ref-wav`, and the server needs a transcript to register a cloned voice.
 - The server needs omnivoice.cpp `040c8b344d8c` or newer (voice registry).
   An older server is detected at start-up and not used.
 - Upstream `tts-server` has no API key and answers any origin
@@ -400,7 +402,8 @@ log says why once.
 ## Behaviour notes
 
 - Output is 24 kHz mono — same model, same rate as in-process OmniVoice.
-- Cloning from a reference clip (with optional transcript), style
+- Cloning from a reference clip (which must come with its transcript — the
+  pinned CLI refuses `--ref-wav` without `--ref-text`), style
   instructions, voice design (describe a voice with no reference clip) and
   the non-verbal tags (`[laughter]`, `[sigh]`, ...) work as on the PyTorch
   engine.

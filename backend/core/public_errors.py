@@ -64,6 +64,13 @@ _CPU_GENERATION_TIMEOUT_DETAIL = (
 )
 
 
+def _reference_transcript_required_detail() -> str:
+    """Owned remedy for a transcript-less clone, shared with the 400 detail."""
+    from core.failure import REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE
+
+    return REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE
+
+
 def stream_failure(code: str, *, device: str | None = None) -> dict[str, object]:
     """Return stable stream metadata selected only from an internal code.
 
@@ -90,6 +97,13 @@ def stream_failure(code: str, *, device: str | None = None) -> dict[str, object]
         "invalid_request": {
             "code": "invalid_request",
             "detail": "The generation request could not be processed.",
+            "retryable": False,
+        },
+        "reference_transcript_required": {
+            "code": "reference_transcript_required",
+            # Same owned wording the 400 detail carries (core.failure's
+            # ReferenceTranscriptRequiredError default) — #4223.
+            "detail": _reference_transcript_required_detail(),
             "retryable": False,
         },
         "generation_failed": {
