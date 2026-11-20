@@ -830,13 +830,52 @@ def _design_row(ref_text):
     ).fetchone()
 
 
-@pytest.mark.parametrize("stored,expected", [
-    ("", None), (None, None), ("  ", None), ("Hello there.", "Hello there."),
-])
-def test_design_sample_is_paired_with_the_script_it_speaks(stored, expected):
-    """A design sample saved without a sample line still carries a transcript,
-    so no speech-to-text model is needed to generate with it."""
-    from api.routers.archetypes import _FALLBACK_SCRIPT
+@pytest.mark.parametrize("stored", ["", None])
+def test_cleared_design_transcript_is_never_guessed_at_generation(stored):
+    """A sample kept after the user cleared its line must be transcribed, not
+    paired with words it never spoke."""
     from api.routers.generation import _resolve_profile_conditioning
     cond = _resolve_profile_conditioning(_design_row(stored), engine_id="omnivoice")
-    assert cond["ref_text"] == (expected or _FALLBACK_SCRIPT)
+    assert not cond["ref_text"]
+
+
+def test_padded_legacy_cut_transcript_is_still_cleared_for_transcription():
+    """The stored text is compared raw: a padded 100-character lock cut keeps
+    its length, is recognised as cut, and is transcribed again."""
+    import sqlite3
+    from api.routers.generation import _resolve_profile_conditioning
+    text = "  " + "x" * 96 + "  "
+    assert len(text) == 100
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT 'clone' AS kind, 1 AS is_locked, 'take.wav' AS locked_audio_path, "
+        "'ref.wav' AS ref_audio_path, ? AS ref_text, NULL AS instruct, 7 AS seed, "
+        "NULL AS language, NULL AS design_recipe, 'p1' AS id",
+        (text,),
+    ).fetchone()
+    cond = _resolve_profile_conditioning(row, engine_id="omnivoice")
+    assert not cond["ref_text"]
+
+
+def test_fresh_design_sample_stores_its_script_and_generation_pairs_it(
+    app_client, fake_render,
+):
+    """A sample rendered without a custom line records the fallback script in
+    the same write, so generation pairs it without a speech-to-text pass."""
+    from api.routers.archetypes import _FALLBACK_SCRIPT
+    from api.routers.generation import _resolve_profile_conditioning
+    from core.db import db_conn
+    client, _ = app_client
+    r = client.post("/profiles", data={
+        "name": "No line", "kind": "design", "vd_states": json.dumps(_VD),
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["ref_audio_path"]
+    assert r.json()["ref_text"] == _FALLBACK_SCRIPT
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM voice_profiles WHERE id=?", (r.json()["id"],),
+        ).fetchone()
+    cond = _resolve_profile_conditioning(row, engine_id="omnivoice")
+    assert cond["ref_text"] == _FALLBACK_SCRIPT
