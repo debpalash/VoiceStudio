@@ -9,7 +9,7 @@ import { restoreBookOptions, lexiconMap, type BookOptions } from './book-options
 import { createCoalescedJsonStorage } from '@shared/utils/coalescedJsonStorage';
 import { Store } from '@tanstack/store';
 import { useStore } from '@tanstack/react-store';
-import { absoluteApiBase, apiFetch } from '@/lib/api/client';
+import { absoluteApiBase, apiFetch, apiJson } from '@/lib/api/client';
 import { ADMIN_SESSION_STORAGE_KEY, getAdminSession } from '@shared/api/authSession';
 import {
   getBackendStatusSnapshot,
@@ -681,6 +681,35 @@ export function renderBody(mode: Mode, draft: Draft) {
         chapters: storyToSpans(draft.lines, draft.cast, draft.globalSpeed),
       };
 }
+/** The `done` event the backend recorded for a render whose live stream was lost. */
+async function persistedDoneEvent(
+  jobId: string,
+  signal: AbortSignal,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const path = '/jobs/' + encodeURIComponent(jobId) + '/events';
+    interface Page {
+      job: { status?: string };
+      events: { seq: number; payload: string }[];
+      event_watermark: { seq: number };
+    }
+    let page = await apiJson<Page>(path + '?limit=500', { signal });
+    if (page.job.status !== 'done') return null;
+    const last = page.events[page.events.length - 1]?.seq ?? 0;
+    if (page.event_watermark.seq > last)
+      page = await apiJson<Page>(
+        path + '?after_seq=' + Math.max(0, page.event_watermark.seq - 20),
+        { signal },
+      );
+    for (const { payload } of [...page.events].reverse()) {
+      const event = JSON.parse(payload) as Record<string, unknown>;
+      if (event.type === 'done') return event;
+    }
+  } catch {
+    // Unreadable history leaves the original stream error visible.
+  }
+  return null;
+}
 export async function renderLongform(mode: Mode, resumeId?: string) {
   if (controller || persistenceClosed) return;
   cancelRecovery(mode);
@@ -714,6 +743,7 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
     lastActivityAt: Date.now(),
   });
   let done = false;
+  let jobId = '';
   let outputChapters: AudiobookRenderChapter[] = [];
   try {
     const draft = longformSession.state.drafts[mode];
@@ -742,109 +772,118 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
             }),
       },
     );
-    await consumeLongformStream(
-      response,
-      (event) => {
-        if (current.signal.aborted || persistenceClosed || draftGeneration[mode] !== generation)
-          return;
-        if (event.type === 'error') {
-          const failure = publicFailureFromEvent(event, 'Render failed');
-          if (mayPresent()) patch({ failure });
-          throw new Error(failure.reason);
-        }
-        if (event.type === 'started') {
-          outputChapters = Array.from({ length: Number(event.chapters) || 0 }, () => ({
-            title: '',
-            status: 'pending',
-          }));
-          if (mayPresent())
-            patch({
-              stage: 'rendering',
-              startedAt: Date.now(),
-              lastActivityAt: Date.now(),
-              total: Number(event.chapters) || 0,
-              chapters: outputChapters.map((chapter, index) => ({
-                ...chapter,
-                status: index === 0 ? 'rendering' : 'pending',
-              })),
-            });
-        }
-        if (event.type === 'progress') {
-          const progress = parseProgressEvent(event, Date.now());
-          if (progress && mayPresent()) patch({ progress, lastActivityAt: progress.receivedAt });
-        }
-        if (event.type === 'chapter' || event.type === 'chapter_error') {
-          const index = Number(event.index);
-          if (Number.isInteger(index) && index >= 0 && index < outputChapters.length) {
-            const exactMilliseconds = optionalFiniteNumber(event.duration_ms);
-            const chapterUpdate: AudiobookRenderChapter = {
-              title: typeof event.title === 'string' ? event.title : '',
-              status: event.type === 'chapter_error' ? 'failed' : event.cached ? 'cached' : 'done',
-              ...(Number.isFinite(Number(event.duration_s))
-                ? { duration_s: Number(event.duration_s) }
-                : {}),
-              ...(event.type === 'chapter_error'
-                ? {
-                    error:
-                      typeof event.reason === 'string'
-                        ? event.reason
-                        : typeof event.error === 'string'
-                          ? event.error
-                          : '',
-                  }
-                : {}),
-            };
-            if (exactMilliseconds !== undefined) chapterUpdate.duration_ms = exactMilliseconds;
-            outputChapters[index] = chapterUpdate;
-          }
-          if (mayPresent())
-            patch({
-              lastActivityAt: Date.now(),
-              completed: Number(event.index) + 1,
-              chapters: outputChapters.map((chapter, chapterIndex) => ({
-                ...chapter,
-                status:
-                  chapterIndex === index + 1 && chapter.status === 'pending'
-                    ? 'rendering'
-                    : chapter.status,
-              })),
-            });
-        }
-        if (event.type === 'assembling' && mayPresent()) patch({ stage: 'assembling' });
-        if (event.type === 'stopped') {
-          done = true;
-          if (mayPresent()) patch({ stopped: true });
-        }
-        if (event.type === 'done' && typeof event.output === 'string' && event.output) {
-          done = true;
-          const failed = Array.isArray(event.failed_chapters)
-            ? event.failed_chapters.length
-            : Number(event.failed_chapters) || 0;
-          const result: CompletedResult = {
-            output: event.output,
-            outputOwner: owner,
-            outputScript: mode === 'audiobook' && !resumeId ? draft.script : '',
-            outputChapters: outputChapters.map((chapter) => ({ ...chapter })),
-            outputCachedChapters: Number(event.cached_chapters) || 0,
-            outputFailedChapters: failed,
+    const onEvent = (event: Record<string, unknown>) => {
+      if (current.signal.aborted || persistenceClosed || draftGeneration[mode] !== generation)
+        return;
+      if (event.type === 'error') {
+        const failure = publicFailureFromEvent(event, 'Render failed');
+        if (mayPresent()) patch({ failure });
+        throw new Error(failure.reason);
+      }
+      if (event.type === 'started') {
+        if (typeof event.job_id === 'string') jobId = event.job_id;
+        outputChapters = Array.from({ length: Number(event.chapters) || 0 }, () => ({
+          title: '',
+          status: 'pending',
+        }));
+        if (mayPresent())
+          patch({
+            stage: 'rendering',
+            startedAt: Date.now(),
+            lastActivityAt: Date.now(),
+            total: Number(event.chapters) || 0,
+            chapters: outputChapters.map((chapter, index) => ({
+              ...chapter,
+              status: index === 0 ? 'rendering' : 'pending',
+            })),
+          });
+      }
+      if (event.type === 'progress') {
+        const progress = parseProgressEvent(event, Date.now());
+        if (progress && mayPresent()) patch({ progress, lastActivityAt: progress.receivedAt });
+      }
+      if (event.type === 'chapter' || event.type === 'chapter_error') {
+        const index = Number(event.index);
+        if (Number.isInteger(index) && index >= 0 && index < outputChapters.length) {
+          const exactMilliseconds = optionalFiniteNumber(event.duration_ms);
+          const chapterUpdate: AudiobookRenderChapter = {
+            title: typeof event.title === 'string' ? event.title : '',
+            status: event.type === 'chapter_error' ? 'failed' : event.cached ? 'cached' : 'done',
+            ...(Number.isFinite(Number(event.duration_s))
+              ? { duration_s: Number(event.duration_s) }
+              : {}),
+            ...(event.type === 'chapter_error'
+              ? {
+                  error:
+                    typeof event.reason === 'string'
+                      ? event.reason
+                      : typeof event.error === 'string'
+                        ? event.error
+                        : '',
+                }
+              : {}),
           };
-          if (
-            !persistenceClosed &&
-            draftGeneration[mode] === generation &&
-            latestRender[mode].get(owner) === operation
-          ) {
-            if (owner) resultSlots[mode].set(owner, result);
-            else legacyResults[mode] = result;
-            preferredResults[mode] = result;
-            projectResult(mode);
-            queuePersistence();
-          }
-          if (mayPresent()) patch({ failed });
+          if (exactMilliseconds !== undefined) chapterUpdate.duration_ms = exactMilliseconds;
+          outputChapters[index] = chapterUpdate;
         }
-      },
-      { signal: current.signal },
-    );
-    if (!done && !current.signal.aborted) throw new Error('Render stream ended before completion');
+        if (mayPresent())
+          patch({
+            lastActivityAt: Date.now(),
+            completed: Number(event.index) + 1,
+            chapters: outputChapters.map((chapter, chapterIndex) => ({
+              ...chapter,
+              status:
+                chapterIndex === index + 1 && chapter.status === 'pending'
+                  ? 'rendering'
+                  : chapter.status,
+            })),
+          });
+      }
+      if (event.type === 'assembling' && mayPresent()) patch({ stage: 'assembling' });
+      if (event.type === 'stopped') {
+        done = true;
+        if (mayPresent()) patch({ stopped: true });
+      }
+      if (event.type === 'done' && typeof event.output === 'string' && event.output) {
+        done = true;
+        const failed = Array.isArray(event.failed_chapters)
+          ? event.failed_chapters.length
+          : Number(event.failed_chapters) || 0;
+        const result: CompletedResult = {
+          output: event.output,
+          outputOwner: owner,
+          outputScript: mode === 'audiobook' && !resumeId ? draft.script : '',
+          outputChapters: outputChapters.map((chapter) => ({ ...chapter })),
+          outputCachedChapters: Number(event.cached_chapters) || 0,
+          outputFailedChapters: failed,
+        };
+        if (
+          !persistenceClosed &&
+          draftGeneration[mode] === generation &&
+          latestRender[mode].get(owner) === operation
+        ) {
+          if (owner) resultSlots[mode].set(owner, result);
+          else legacyResults[mode] = result;
+          preferredResults[mode] = result;
+          projectResult(mode);
+          queuePersistence();
+        }
+        if (mayPresent()) patch({ failed });
+      }
+    };
+    try {
+      await consumeLongformStream(response, onEvent, { signal: current.signal });
+      if (!done && !current.signal.aborted)
+        throw new Error('Render stream ended before completion');
+    } catch (streamError) {
+      // The backend persists every event, `done` included, before it streams it, so a
+      // connection that drops near the end of a long render (a loaded machine, a
+      // reload) still has a finished result to attach (#4090).
+      if (done || current.signal.aborted || !jobId) throw streamError;
+      const finished = await persistedDoneEvent(jobId, current.signal);
+      if (!finished) throw streamError;
+      onEvent(finished);
+    }
   } catch (error) {
     if (mayPresent()) patch({ error: error instanceof Error ? error.message : String(error) });
   } finally {
