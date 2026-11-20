@@ -8,27 +8,16 @@ import React, {
   useId,
 } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  pinnedRows,
+  readRecents,
+  withCommittedOption,
+  writeRecents,
+} from './searchable-select-helpers';
 import { Search, ChevronDown, Check, Star, Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const MAX_DISPLAY = 200;
-
-const readRecents = (key) => {
-  if (!key || typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-
-const writeRecents = (key, list) => {
-  if (!key || typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(list.slice(0, 8)));
-  } catch {}
-};
 
 const normalize = (s) => (s || '').toString().toLowerCase();
 
@@ -118,33 +107,14 @@ function ClassicSearchableSelect({
     );
   }, [options, query, getLabel, getVal]);
 
-  const pinned = useMemo(() => {
-    if (query) return [];
-    const out = [];
-    const seen = new Set();
-    for (const v of recents) {
-      const o = byVal.get(v);
-      if (o && !seen.has(v)) {
-        out.push({ o, kind: 'recent' });
-        seen.add(v);
-      }
-      if (out.length >= 5) break;
-    }
-    for (const v of popular) {
-      if (seen.has(v)) continue;
-      const o = byVal.get(v);
-      if (o) {
-        out.push({ o, kind: 'popular' });
-        seen.add(v);
-      }
-      if (out.length >= 12) break;
-    }
-    return out;
-  }, [query, recents, popular, byVal]);
+  const pinned = useMemo(
+    () => pinnedRows({ recents, popular, byValue: byVal, getValue: getVal, query }),
+    [recents, popular, byVal, getVal, query],
+  );
 
   const displayed = useMemo(() => {
     const seen = new Set(pinned.map(({ o }) => getVal(o)));
-    return filtered
+    const rows = filtered
       .filter((option) => {
         const key = getVal(option);
         if (seen.has(key)) return false;
@@ -152,7 +122,13 @@ function ClassicSearchableSelect({
         return true;
       })
       .slice(0, MAX_DISPLAY);
-  }, [filtered, pinned, getVal]);
+    // A saved value past the slice would otherwise have no row, which lets Enter
+    // replace it without a choice. Keep it first so the arrow keys start there.
+    return withCommittedOption(rows, filtered, value, getVal, {
+      query,
+      pinnedValues: new Set(pinned.map(({ o }) => getVal(o))),
+    });
+  }, [filtered, pinned, getVal, value, query]);
 
   const flatItems = useMemo(() => {
     const list = [];
@@ -271,6 +247,51 @@ function ClassicSearchableSelect({
   // that directly on the trigger now that the descendant selectors are gone.
   const triggerSizeCls = size === 'sm' ? 'text-[0.65rem] px-[8px] py-[4px]' : 'text-[0.75rem]';
 
+  // WAI-ARIA combobox pattern: the collapsed trigger is the focusable control,
+  // so it must open the popup from the keyboard. Without this, ArrowDown/ArrowUp
+  // on the focused trigger did nothing — the key handler lives on the search
+  // input *inside* the popup and is therefore unreachable while collapsed, and
+  // only Enter/Space worked (through the native button activation). Opening the
+  // popup keeps the committed value highlighted for ArrowDown (Enter then keeps
+  // it, the collapsed-combobox convention) and steps to the previous value for
+  // ArrowUp, wrapping at the ends; Home/End jump to the first/last row. The
+  // highlight is set before opening so the first paint lands on the intended row.
+  const onTriggerKeyDown = (e) => {
+    if (disabled || open) return;
+    const options = flatItems;
+    if (!options.length) {
+      // A picker whose list loads while it is open (the gallery, for example) has
+      // no rows yet, and a click still opens it. Give the keyboard the same door.
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      setHighlight(-1);
+      setOpen(true);
+      return;
+    }
+    const selected = options.findIndex(({ o }) => getVal(o) === value);
+    // A committed value can be outside the rows this menu renders: the list stops
+    // at MAX_DISPLAY, so a saved language past the cap has no row here at all.
+    // Opening on the first row would let Enter overwrite that saved value without
+    // the user having chosen anything, so open with no highlight and let them move
+    // deliberately.
+    const committedOffscreen = selected < 0 && Boolean(value);
+    let next;
+    if (e.key === 'ArrowDown') next = selected >= 0 ? selected : committedOffscreen ? -1 : 0;
+    else if (e.key === 'ArrowUp')
+      next =
+        selected >= 0
+          ? (selected - 1 + options.length) % options.length
+          : committedOffscreen
+            ? -1
+            : options.length - 1;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = options.length - 1;
+    else return;
+    e.preventDefault();
+    setHighlight(next);
+    setOpen(true);
+  };
+
   // Escape clipping ancestors (overflow:auto / react-window rows) by portaling
   // the dropdown to <body>; otherwise render it inline as an absolute child.
   const wrapMenu = (el) => (menuPortal ? createPortal(el, document.body) : el);
@@ -296,6 +317,7 @@ function ClassicSearchableSelect({
           }
           setOpen(!open);
         }}
+        onKeyDown={onTriggerKeyDown}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
