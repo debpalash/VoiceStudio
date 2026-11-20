@@ -97,7 +97,10 @@ network delivery or flush a crash dump.
 
 The durable queue is limited to 64 records and 512 KiB per installation, expires
 after seven days, coalesces repeated failures and uses bounded retries with
-stable report IDs. Desktop allocates that total between main and the Python
+stable report IDs. One fingerprint may hold at most eight of those slots, so a
+failure that repeats often enough drops its own oldest record rather than
+evicting unrelated evidence that is still inside its retention window. Desktop
+allocates that total between main and the Python
 inbox. Recovered crashes retain the original accepted fault or heartbeat timestamp;
 restarting does not extend their retention. Turning reports off stops delivery
 immediately, cancels active transport, invalidates the consent epoch and purges

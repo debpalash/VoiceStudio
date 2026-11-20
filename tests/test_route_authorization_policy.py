@@ -261,6 +261,115 @@ ALLOWLIST: dict[str, str] = {
         "(services/telephony/session.py CallTokens.redeem)."
     ),
 }
+# GET routes that ship without an authorization dependency, frozen so the set
+# cannot grow unnoticed. The checks above classify by HTTP method, so a GET was
+# never asked for a decision — a GET that reaches the network or starts a job
+# could ship from any router without one. Every key below is a read the loopback
+# or paired tier may call; a new dependency-free GET states its decision here, and
+# a GET that starts doing real work carries a dependency instead of a line here.
+_DEPENDENCY_FREE_GETS: frozenset[str] = frozenset(
+    {
+        "GET /.well-known/voicestudio-speech",
+        "GET /archetypes",
+        "GET /archetypes/{archetype_id}",
+        "GET /archetypes/{archetype_id}/preview",
+        "GET /archetypes/{archetype_id}/preview/state",
+        "GET /archetypes/categories",
+        "GET /archetypes/previews/status",
+        "GET /audio/{audio_id}.mp3",
+        "GET /audio/{audio_id}.ogg",
+        "GET /audio/{audio_id}.opus",
+        "GET /audio/{audio_id}/quality",
+        "GET /community/items",
+        "GET /community/items/{item_id}/preview",
+        "GET /community/manifest",
+        "GET /community/sources",
+        "GET /community/submit-url",
+        "GET /docs",
+        "GET /dub/ass/{job_id}",
+        "GET /dub/ass/{job_id}/{filename}",
+        "GET /dub/audio/{job_id}",
+        "GET /dub/download/{job_id}",
+        "GET /dub/download/{job_id}/{filename}",
+        "GET /dub/download-audio/{job_id}",
+        "GET /dub/download-audio/{job_id}/{filename}",
+        "GET /dub/download-mp3/{job_id}",
+        "GET /dub/download-mp3/{job_id}/{filename}",
+        "GET /dub/export-segments/{job_id}",
+        "GET /dub/export-stems/{job_id}",
+        "GET /dub/history",
+        "GET /dub/media/{job_id}",
+        "GET /dub/onsets/{job_id}",
+        "GET /dub/preview/{job_id}/{segment_index}",
+        "GET /dub/preview-video/{job_id}",
+        "GET /dub/segments-text/{job_id}",
+        "GET /dub/srt/{job_id}",
+        "GET /dub/srt/{job_id}/{filename}",
+        "GET /dub/thumb/{job_id}",
+        "GET /dub/tracks/{job_id}",
+        "GET /dub/transcribe-stream/{job_id}",
+        "GET /dub/txt/{job_id}",
+        "GET /dub/vtt/{job_id}",
+        "GET /dub/vtt/{job_id}/{filename}",
+        "GET /engines",
+        "GET /engines/asr",
+        "GET /engines/diarisation",
+        "GET /engines/effects/presets",
+        "GET /engines/llm",
+        "GET /engines/omnivoice-gguf/gpu-offer",
+        "GET /engines/omnivoice-gguf/quants",
+        "GET /engines/sonitranslate/status",
+        "GET /engines/translation",
+        "GET /engines/tts",
+        "GET /generate/budget",
+        "GET /health",
+        "GET /history",
+        "GET /jobs",
+        "GET /jobs/{job_id}",
+        "GET /jobs/{job_id}/events",
+        "GET /longform/jobs",
+        "GET /models",
+        "GET /models/access/status",
+        "GET /models/install/status",
+        "GET /models/licenses/acceptance/{repo_id:path}",
+        "GET /models/licenses/details/{repo_id:path}",
+        "GET /models/licenses/receipts/{plan_digest}",
+        "GET /openapi.json",
+        "GET /preview/{filename}",
+        "GET /profile-images/search",
+        "GET /setup/download-stream",
+        "GET /setup/preflight",
+        "GET /setup/recommendations",
+        "GET /setup/status",
+        "GET /startup/progress",
+        "GET /system/activity",
+        "GET /tasks/stream/{task_id}",
+        "GET /tools/effects",
+        "GET /tools/plugins",
+        "GET /v1/audio/capabilities",
+    }
+)
+
+
+def _dependency_free_get_keys(route: dict) -> list[str]:
+    """``"GET /path"`` keys of a route that carries no authorization dependency."""
+    if route["websocket"] or route["auth_dependencies"]:
+        return []
+    return [f"GET {route['path']}" for method in route["methods"] if method == "GET"]
+
+
+def _frozen_get_drift(routes: list[dict], frozen: frozenset[str]) -> tuple[list[str], list[str]]:
+    """(new dependency-free GETs not frozen, frozen keys with no live GET at all).
+
+    A frozen route that gained a dependency is still live, so it is not stale.
+    """
+    free = {key for route in routes for key in _dependency_free_get_keys(route)}
+    every = {
+        f"GET {route['path']}"
+        for route in routes
+        if not route["websocket"] and "GET" in route["methods"]
+    }
+    return sorted(free - frozen), sorted(frozen - every)
 
 
 @pytest.fixture(scope="module")
@@ -359,6 +468,46 @@ def test_allowlist_entries_still_resolve_to_live_routes(live_auth_routes):
         "ALLOWLIST entries that no longer match any route on the live app "
         "(delete them):\n  " + "\n  ".join(stale)
     )
+
+
+def test_no_new_dependency_free_get_ships_undecided(live_auth_routes):
+    """GETs are a route surface too: a new one needs a decision, not silence.
+
+    `_MUTATING_METHODS` asks POST/PUT/PATCH/DELETE for an authorization decision,
+    so a GET that spends unbounded work or changes state shipped outside this guard
+    entirely — `/profile-images/search` reaches the network from a GET with no
+    dependency at all. The set below is the frozen inventory at the commit that
+    added this check: growing it is a review decision, and a route that later gains
+    a real dependency simply leaves the set behind.
+    """
+    added, gone = _frozen_get_drift(live_auth_routes["routes"], _DEPENDENCY_FREE_GETS)
+    assert not added, (
+        "GET routes with no authorization dependency that are not in the frozen set:\n  "
+        + "\n  ".join(added)
+        + "\n\nGive the route a dependency (Depends(require_admin), require_local, "
+        "require_consumer, ...) or, when leaving a read open to the loopback and paired "
+        "tiers is a decision you can defend in one line, add it to "
+        "_DEPENDENCY_FREE_GETS in tests/test_route_authorization_policy.py."
+    )
+    assert not gone, (
+        "Frozen dependency-free GETs that no longer match any live GET route "
+        "(remove them from _DEPENDENCY_FREE_GETS):\n  " + "\n  ".join(gone)
+    )
+
+
+def test_a_frozen_get_that_gains_a_dependency_is_not_stale():
+    """Tightening a frozen GET must not fail the freeze; only a removed route does."""
+    guarded = {
+        "websocket": False,
+        "methods": ["GET"],
+        "path": "/health",
+        "auth_dependencies": ["require_local"],
+    }
+    other = {**guarded, "path": "/new", "auth_dependencies": []}
+    frozen = frozenset({"GET /health", "GET /removed"})
+    added, gone = _frozen_get_drift([guarded, other], frozen)
+    assert added == ["GET /new"]
+    assert gone == ["GET /removed"]
 
 
 def test_allowlist_reasons_are_one_line_justifications():
