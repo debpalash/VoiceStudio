@@ -945,7 +945,8 @@
     "retry": "再試一次",
     "confirm": "確認",
     "details": "詳細資料",
-    "unknown": "未知"
+    "unknown": "未知",
+    "link_blocked": "無法開啟此連結。僅允許網頁和電子郵件連結。"
   },
   "dubWorkspace": {
     "transcriptIssues": "轉錄問題",

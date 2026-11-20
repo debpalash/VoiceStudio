@@ -753,7 +753,8 @@
     "unknown": "descoñecido",
     "remove": "Eliminar {{term}}",
     "not_set": "Non definido",
-    "details": "Detalles"
+    "details": "Detalles",
+    "link_blocked": "Non se pode abrir esta ligazón. Só se permiten ligazóns web e de correo."
   },
   "preferences": {
     "title": "Configuración",

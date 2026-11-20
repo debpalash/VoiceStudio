@@ -178,7 +178,13 @@ async function openPermissionSettings(kind: unknown): Promise<boolean> {
 
 const RELOCATION_SELECTION_TTL_MS = 10 * 60 * 1000;
 
-const OPEN_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'file:', 'mailto:']);
+// Web and mail only. A `file:` URL, and an absolute path handed to
+// `shell.openPath`, both launch a local file through its OS association — the
+// renderer has `files:revealPath` for showing a saved file, and nothing in the
+// app needs openExternal to run a local path. Keeping the two local forms out
+// means a hostile or compromised backend reply (a notification's `action`,
+// a gallery item's link) cannot become local code execution on a click.
+const OPEN_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
 function windowFor(event: IpcMainInvokeEvent | Electron.IpcMainEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -863,12 +869,15 @@ export function registerIpc(
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
     const target = assertString(raw, 'url');
-    if (isAbsolute(target)) {
-      const failure = await shell.openPath(target);
-      if (failure) throw new Error(failure);
-      return;
+    // Web and mail only. A local path is not a URL at all (`new URL` refuses a
+    // POSIX path) and `file:` is in no allowlist here: both would launch a local
+    // file through its OS association, which is what `files:revealPath` is for.
+    let url: URL;
+    try {
+      url = new URL(target);
+    } catch {
+      throw new Error('Refusing to open a non-URL target');
     }
-    const url = new URL(target);
     if (!OPEN_EXTERNAL_PROTOCOLS.has(url.protocol)) {
       throw new Error(`Refusing to open ${url.protocol} URLs`);
     }

@@ -14,6 +14,7 @@ import { getBridge } from '@/components/bridge';
 import { Button } from '@/components/ui/button';
 import { apiFetch, apiJson } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { DownloadActivityList, useDownloadActivity } from './download-activity';
 import { LongformActivityCard, longformActivityStatus } from '@/components/longform-activity-card';
@@ -132,9 +133,25 @@ export function SystemNotifications({
       return;
     }
     if (note.action.type === 'link') {
+      // The target is backend JSON, so it is untrusted input to a call that hands
+      // a string to the OS. Validate the same way the gallery's author links are:
+      // web and mail only. The main-process allowlist refuses the rest too; this
+      // keeps the refusal in the hand that decided to act on the string.
+      const target = note.action.target;
+      let url: URL;
+      try {
+        url = new URL(target);
+      } catch {
+        toast.error(t('common.link_blocked'));
+        return;
+      }
+      if (url.protocol !== 'https:' && url.protocol !== 'http:' && url.protocol !== 'mailto:') {
+        toast.error(t('common.link_blocked'));
+        return;
+      }
       const bridge = getBridge();
-      if (bridge) await bridge.files.openExternal(note.action.target);
-      else window.open(note.action.target, '_blank', 'noopener,noreferrer');
+      if (bridge) await bridge.files.openExternal(url.toString());
+      else window.open(url.toString(), '_blank', 'noopener,noreferrer');
       return;
     }
     if (note.action.type === 'api' && note.action.target.startsWith('/')) {

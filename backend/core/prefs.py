@@ -59,14 +59,27 @@ def _save(data: dict) -> None:
     # Atomic write — no half-written JSON if the process dies mid-flush.
     # Derive temp-dir from _PREFS_PATH (not DATA_DIR) so os.replace() always
     # operates within the same filesystem — important when tests redirect the path.
+    #
+    # os.replace makes this atomic against a *process* dying, not against the
+    # *machine* losing power: the rename can reach the disk before the file's data
+    # does, leaving the published name holding an empty or torn file. That is the
+    # hole core/durable_io.py exists to close, and diagnostic_reports._atomic
+    # already does it; prefs.json holds every UI preference (engine picks,
+    # translator provider, the analytics/diagnostics consents, the cloud-sync
+    # allowlist's Pref slot), so losing it silently reverts settings.
+    from core import durable_io  # imported late: prefs loads before everything else
+
     target_dir = os.path.dirname(_PREFS_PATH) or DATA_DIR
     os.makedirs(target_dir, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".prefs.", suffix=".tmp", dir=target_dir)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+            f.flush()
+            durable_io.flush_fd(f.fileno())
         os.replace(tmp, _PREFS_PATH)
         os.chmod(_PREFS_PATH, 0o600)
+        durable_io.flush_dir(target_dir)
     except Exception:
         try:
             os.unlink(tmp)

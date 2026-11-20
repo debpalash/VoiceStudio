@@ -947,7 +947,8 @@
     "retry": "Inténtalo de nuevo",
     "confirm": "Confirmar",
     "details": "Detalles",
-    "unknown": "desconocido"
+    "unknown": "desconocido",
+    "link_blocked": "No se puede abrir este enlace. Solo se permiten enlaces web y de correo."
   },
   "dubWorkspace": {
     "transcriptIssues": "Problemas de la transcripción",
