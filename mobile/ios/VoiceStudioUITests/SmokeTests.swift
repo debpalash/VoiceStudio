@@ -10,6 +10,13 @@ extension XCUIElement {
     /// only once it is in the accessibility hierarchy; a row of a lazy stack, grid or list
     /// that has not been scrolled to is not, so reach those with `reveal` instead.
     @MainActor func tapReady(timeout: TimeInterval = uiReadyTimeout, file: StaticString = #filePath, line: UInt = #line) {
+        // Fast path: an element that is already there and hittable is tapped at once. The
+        // predicate wait below costs a fresh accessibility query and a polling interval even
+        // when nothing needs waiting for, which added several seconds to every tap on CI.
+        if exists && isHittable {
+            tap()
+            return
+        }
         guard waitReady(timeout: timeout, file: file, line: line) else { return }
         // An element that exists can still be animating (a sheet or picker that just closed):
         // a bare tap then fails with "Failed to not hittable". Wait for it to settle.
