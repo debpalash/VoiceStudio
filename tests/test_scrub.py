@@ -409,3 +409,37 @@ def test_provider_exact_key_redaction_failure_is_fail_closed():
             raise RuntimeError("key inspection failed")
 
     assert scrub_provider_error("provider echoed a credential", _BrokenKey()) == REDACTED
+
+# ── Inline URL credentials (`https://user:token@host`) ──────────────────────
+# An index, mirror or proxy URL can carry its credential in the userinfo, which
+# is a sanctioned configuration for restricted networks and was not covered by
+# the query-parameter pass. uv/pip/git echo those URLs verbatim into logs.
+
+def test_inline_url_userinfo_is_redacted():
+    scrubbed = scrub_text("Collecting from https://user:s3cr3t@mirror.example/simple/ ...")
+    assert "s3cr3t" not in scrubbed
+    assert "mirror.example/simple/" in scrubbed
+
+
+def test_inline_url_userinfo_is_redacted_inside_an_env_assignment():
+    scrubbed = scrub_text("HTTP_PROXY=https://ops:hunter2@proxy.internal:8080")
+    assert "hunter2" not in scrubbed
+    assert "proxy.internal:8080" in scrubbed
+
+
+def test_token_as_username_is_redacted_too():
+    # GitHub's documented form puts the token in the username, with no colon.
+    scrubbed = scrub_text("remote: https://ghp_abcdefghijklmnopqrstuvwxyz012345@github.com/x/y.git")
+    assert "ghp_abcdefghijklmnopqrstuvwxyz012345" not in scrubbed
+
+
+def test_an_ssh_identity_is_not_userinfo_and_stays_readable():
+    # No secret, and mangling it would make an error message useless.
+    assert scrub_text("fatal: could not read from ssh://git@github.com/o/r.git") == (
+        "fatal: could not read from ssh://git@github.com/o/r.git"
+    )
+    assert scrub_text("git@github.com:owner/repo.git") == "git@github.com:owner/repo.git"
+
+
+def test_a_path_handle_is_not_userinfo():
+    assert scrub_text("https://example.com/@alice") == "https://example.com/@alice"
