@@ -15,9 +15,10 @@ A new mutating route with no decision fails here by default, which is the point:
 the failure is the missing decision, not a missing list entry somewhere.
 
 The allowlist is also checked for rot (each key must still resolve to a real
-route) and for honesty (each reason is a non-empty single line). A listed route
-that later *gains* a real dependency is deliberately still accepted, so sibling
-PRs can tighten routes and land in any order.
+route), for honesty (each reason is a non-empty single line) and for currency: a
+reason claiming the gate is missing must not sit on a route that now carries one.
+A closed-gap entry keeps its place as the decision record, so sibling PRs may
+tighten a route and land in any order -- but its text is rewritten to say so.
 """
 from __future__ import annotations
 
@@ -42,8 +43,9 @@ _MUTATING_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 # Every mutating route that carries no authorization dependency AT THIS COMMIT,
 # with the decision written out. Reasons are grouped by the decision they record:
 # "by design" (the route must stay reachable pre-credential, or is a stateless
-# computation) versus "known gap" (the documented policy says admin, the route
-# has no dependency yet — sibling PRs wire it and the entry then goes unused).
+# computation) versus "gap closed" (the documented policy said admin, the route
+# was unguarded when the entry was written, and a later PR wired the dependency;
+# the entry stays as the decision record and a test proves the text is current).
 ALLOWLIST: dict[str, str] = {
     # ── Credential bootstrap ─────────────────────────────────────────────
     # These three mint or revoke the credential a gate would check, so they
@@ -102,20 +104,16 @@ ALLOWLIST: dict[str, str] = {
         "a job or reading host files; no separate route authorization dependency."
     ),
     "POST /dub/import-srt/{job_id}": (
-        "KNOWN GAP: replaces an existing job's stored segments from an SRT; importing "
-        "stored content is documented admin-only but this route has no dependency yet."
+        "Gap closed: replaces an existing job's stored segments from an SRT - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /dub/use-downloaded-captions/{job_id}": (
-        "KNOWN GAP: replaces a stored job's segments with its downloaded captions; editing "
-        "stored content is documented admin-only but this route has no dependency yet."
+        "Gap closed: replaces a stored job's segments with its downloaded captions - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /dub/cleanup-segments/{job_id}": (
-        "KNOWN GAP: merges and rewrites stored job segments; editing stored content is "
-        "documented admin-only but this route has no dependency yet."
+        "Gap closed: merges and rewrites stored job segments - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /dub/sync-transcript/{job_id}": (
-        "KNOWN GAP: rewrites a stored job's transcript and segments; editing stored content "
-        "is documented admin-only but this route has no dependency yet."
+        "Gap closed: rewrites a stored job's transcript and segments - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /dub/abort/{job_id}": (
         "Dub consumption: aborts a running job by ID with no per-caller ownership check; "
@@ -137,33 +135,28 @@ ALLOWLIST: dict[str, str] = {
         "Task consumption: cancels a task by ID with no per-caller ownership check; still "
         "missing the consumer reads/admin writes router guard."
     ),
-    # ── Stored-content edit/delete — known gaps, documented as admin-only ──
+    # ── Stored-content edit/delete — documented as admin-only, now guarded ──
     # docs/api-auth.md §Admin routes: "Editing, deleting and importing stored
     # content ... also uses this admin gate." These five do not yet.
     "DELETE /history": (
-        "KNOWN GAP: deleting stored generation history is documented admin-only but has no "
-        "dependency yet; requires the consumer reads/admin writes guard."
+        "Gap closed: deleting stored generation history is documented admin-only - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "DELETE /history/{history_id}": (
-        "KNOWN GAP: deleting one stored generation is documented admin-only but has no "
-        "dependency yet; requires the consumer reads/admin writes guard."
+        "Gap closed: deleting one stored generation is documented admin-only - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "PUT /history/{history_id}/starred": (
-        "KNOWN GAP: editing stored generation metadata is documented admin-only but has no "
-        "dependency yet; requires the consumer reads/admin writes guard."
+        "Gap closed: editing stored generation metadata is documented admin-only - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "DELETE /dub/history": (
-        "KNOWN GAP: clearing stored dub history is documented admin-only but has no dependency "
-        "yet; requires the consumer reads/admin writes guard."
+        "Gap closed: clearing stored dub history is documented admin-only - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "DELETE /dub/history/{history_id}": (
-        "KNOWN GAP: deleting one stored dub job is documented admin-only but has no dependency "
-        "yet; requires the consumer reads/admin writes guard."
+        "Gap closed: deleting one stored dub job is documented admin-only - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     # ── First-run setup: must work before any admin credential exists ─────
     "POST /models/install": (
         "First-run setup downloads a catalogue model before any admin credential exists; "
-        "this route has no dependency yet, including in bare-server mode."
+        "it now carries require_consumer, the tier that keeps it reachable in bare-server mode."
     ),
     "POST /models/install/cancel": (
         "Cancels the in-flight first-run model download; setup-time surface, same pre-credential "
@@ -191,33 +184,26 @@ ALLOWLIST: dict[str, str] = {
     # three are still open (only /engines/sonitranslate/dub carries
     # require_native_access).
     "POST /engines/sonitranslate/install": (
-        "KNOWN GAP: installs an opt-in external engine (~15 GB clone), admin-class per "
-        "docs/api-auth.md but carries no dependency yet."
+        "Gap closed: installs an opt-in external engine (~15 GB clone), admin-class per docs/api-auth.md - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /engines/sonitranslate/start": (
-        "KNOWN GAP: starts the installed SoniTranslate sidecar process, admin-class per "
-        "docs/api-auth.md but carries no dependency yet."
+        "Gap closed: starts the installed SoniTranslate sidecar process, admin-class per docs/api-auth.md - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /engines/sonitranslate/stop": (
-        "KNOWN GAP: stops the SoniTranslate sidecar process, admin-class per docs/api-auth.md "
-        "but carries no dependency yet."
+        "Gap closed: stops the SoniTranslate sidecar process, admin-class per docs/api-auth.md - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     # ── Catalog browsing side effects (profile creation / consent) ────────
     "PUT /archetypes/previews": (
-        "KNOWN GAP: changes gallery consent and can enable outbound fetching; this "
-        "settings mutation has no authorization dependency yet."
+        "Gap closed: changes gallery consent and can enable outbound fetching - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /archetypes/previews/check": (
-        "KNOWN GAP: forces an outbound preview-catalog check when the gallery is enabled; "
-        "this host-side action has no authorization dependency yet."
+        "Gap closed: forces an outbound preview-catalog check when the gallery is enabled - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /archetypes/{archetype_id}/use": (
-        "KNOWN GAP: saves an archetype recipe as a stored profile; importing stored "
-        "content is documented admin-only but this route has no dependency yet."
+        "Gap closed: saves an archetype recipe as a stored profile - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /community/items/{item_id}/use": (
-        "KNOWN GAP: imports a community recipe or verified clip into a stored profile; "
-        "importing stored content is documented admin-only but has no dependency here yet."
+        "Gap closed: imports a community recipe or verified clip into a stored profile - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     # ── Computation on caller input and host-side tools ──────────────────
     "POST /tools/incremental": (
@@ -225,16 +211,13 @@ ALLOWLIST: dict[str, str] = {
         "text/hashes; touches no stored state or path."
     ),
     "POST /tools/direction": (
-        "KNOWN GAP: direction parsing can call the configured LLM provider; no authorization "
-        "dependency yet. The privileged tool gate is handled by the route-hardening PR."
+        "Gap closed: direction parsing can call the configured LLM provider - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /tools/rate-fit": (
-        "KNOWN GAP: slot fitting can call the configured LLM provider; no authorization "
-        "dependency yet. The privileged tool gate is handled by the route-hardening PR."
+        "Gap closed: slot fitting can call the configured LLM provider - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /tools/video-context/{job_id}": (
-        "KNOWN GAP: runs FFmpeg analysis on a stored job's validated source path; this "
-        "host-side media tool has no authorization dependency yet."
+        "Gap closed: runs FFmpeg analysis on a stored job's validated source path - the route now carries its authorization dependency; the entry records the decision and keeps a revert to the unguarded shape a reviewed change."
     ),
     "POST /tools/normalize-speech": (
         "Bounded in-memory peak-normalise of a caller-supplied WAV, re-marked synthetic via "
@@ -649,3 +632,28 @@ print(json.dumps(results))
     )
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
+
+def test_a_reason_reporting_a_missing_gate_is_not_on_a_guarded_route(live_auth_routes):
+    """The allowlist is a written security policy; its text must still be true.
+
+    An entry stays in place when its route gains a dependency, so sibling PRs can
+    land in any order. But once the route carries a gate, a reason still saying it
+    has none is a false statement in the document reviewers read -- and it hides
+    the fact that a revert to the unguarded shape would now pass unreviewed.
+    """
+    guarded = {
+        key
+        for route in live_auth_routes["routes"]
+        if route["auth_dependencies"]
+        for key in _mutating_keys(route)
+    }
+    stale = sorted(
+        key
+        for key, reason in ALLOWLIST.items()
+        if key in guarded and "no dependency" in reason.lower()
+    )
+    assert not stale, (
+        "These routes carry an authorization dependency now, but their allowlist "
+        "reason still says the gate is missing. Rewrite the reason to record the "
+        "closed gap (the entry itself stays):\n" + "\n".join(stale)
+    )
