@@ -945,7 +945,8 @@
     "retry": "Thử lại",
     "confirm": "Xác nhận",
     "details": "Chi tiết",
-    "unknown": "không rõ"
+    "unknown": "không rõ",
+    "link_blocked": "Không thể mở liên kết này. Chỉ cho phép liên kết web và email."
   },
   "dubWorkspace": {
     "transcriptIssues": "Vấn đề trong bản chép lời",

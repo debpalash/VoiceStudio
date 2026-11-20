@@ -959,7 +959,8 @@
     "details": "详情",
     "error": "出现了问题",
     "loading": "正在加载…",
-    "saving": "正在保存…"
+    "saving": "正在保存…",
+    "link_blocked": "无法打开此链接。仅允许网页和电子邮件链接。"
   },
   "dubWorkspace": {
     "transcriptIssues": "转录问题",

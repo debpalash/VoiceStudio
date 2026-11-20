@@ -14,6 +14,7 @@ import { getBridge } from '@/components/bridge';
 import { Button } from '@/components/ui/button';
 import { apiFetch, apiJson } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { DownloadActivityList, useDownloadActivity } from './download-activity';
 import { LongformActivityCard, longformActivityStatus } from '@/components/longform-activity-card';
@@ -141,9 +142,13 @@ export function SystemNotifications({
       try {
         url = new URL(target);
       } catch {
+        toast.error(t('common.link_blocked'));
         return;
       }
-      if (url.protocol !== 'https:' && url.protocol !== 'http:' && url.protocol !== 'mailto:') return;
+      if (url.protocol !== 'https:' && url.protocol !== 'http:' && url.protocol !== 'mailto:') {
+        toast.error(t('common.link_blocked'));
+        return;
+      }
       const bridge = getBridge();
       if (bridge) await bridge.files.openExternal(url.toString());
       else window.open(url.toString(), '_blank', 'noopener,noreferrer');

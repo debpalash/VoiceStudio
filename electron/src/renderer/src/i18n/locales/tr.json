@@ -945,7 +945,8 @@
     "retry": "Tekrar dene",
     "confirm": "Onayla",
     "details": "Ayrıntılar",
-    "unknown": "bilinmiyor"
+    "unknown": "bilinmiyor",
+    "link_blocked": "Bu bağlantı açılamıyor. Yalnızca web ve e-posta bağlantılarına izin verilir."
   },
   "dubWorkspace": {
     "transcriptIssues": "Transkript sorunları",

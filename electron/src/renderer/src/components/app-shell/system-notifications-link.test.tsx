@@ -13,6 +13,7 @@ import { apiJson } from '@/lib/api/client';
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   openExternal: vi.fn(async () => {}),
+  toastError: vi.fn(),
   state: {
     status: 'idle',
     currentVersion: '0.5.2',
@@ -42,6 +43,7 @@ vi.mock('@/lib/api/client', () => ({
   apiJson: vi.fn(async () => ({ notifications: [] })),
   apiFetch: vi.fn(),
 }));
+vi.mock('sonner', () => ({ toast: { error: mocks.toastError } }));
 vi.mock('./download-activity', () => ({
   useDownloadActivity: () => ({ items: [], active: 0, pending: null }),
   DownloadActivityList: () => null,
@@ -74,6 +76,7 @@ function renderWithTarget(target: string) {
 beforeEach(() => {
   mocks.openExternal.mockClear();
   mocks.navigate.mockClear();
+  mocks.toastError.mockClear();
 });
 afterEach(() => cleanup());
 
@@ -100,4 +103,5 @@ test.each([
   await clickAction();
   expect(mocks.openExternal).not.toHaveBeenCalled();
   expect(mocks.navigate).not.toHaveBeenCalled();
+  expect(mocks.toastError).toHaveBeenCalledWith('common.link_blocked');
 });
