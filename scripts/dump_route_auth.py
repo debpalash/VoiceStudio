@@ -30,6 +30,11 @@ only when their directory exists) and the read-only bare ``GET /`` frontend
 fallback are excluded, so the output is identical between a dev checkout and a
 fresh runner. A *mutating* route at ``/`` is kept: it is a real surface, and
 dropping it would let an unguarded ``POST /`` ship unnoticed.
+
+More than one app serves routes: the telephony gateway runs its own FastAPI app on
+its own loopback listener, so main.app alone is not the whole surface. Every app
+is walked and each record carries the ``app`` it belongs to, which is why the
+output also lists the apps the census covered.
 """
 import json
 import os
@@ -78,7 +83,7 @@ def auth_dependencies(route) -> list[str]:
     return sorted(found)
 
 
-def route_records(app) -> list[dict]:
+def route_records(app, app_name: str = "main") -> list[dict]:
     """One record per HTTP/WebSocket route on ``app``, sorted for a stable diff."""
     from starlette.routing import Mount
 
@@ -104,6 +109,7 @@ def route_records(app) -> list[dict]:
         endpoint = getattr(r, "endpoint", None)
         records.append(
             {
+                "app": app_name,
                 "path": path,
                 "methods": methods,
                 "websocket": websocket,
@@ -116,20 +122,41 @@ def route_records(app) -> list[dict]:
     return records
 
 
-def load_app():
+def load_apps() -> list[tuple[str, object]]:
+    """Every app that serves routes, with the name the census reports for it.
+
+    The telephony gateway (`api/routers/telephony_twilio.py`) builds a second
+    FastAPI app for its own loopback listener, and its media-stream WebSocket lives
+    there. Walking only `main.app` left that route outside the policy guard.
+    """
     os.environ.setdefault("OMNIVOICE_MODEL", "test")
     os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
     # Early-bind refactor: a bare (non-pytest) import defers routers behind
     # the startup gate — this dump needs the fully-built app at import.
     os.environ["OMNIVOICE_EAGER_INIT"] = "1"
     sys.path.insert(0, str(_REPO / "backend"))
-    from main import app
-    return app
+    from main import app as main_app
+    from api.routers.telephony_twilio import build_gateway_app
+
+    return [("main", main_app), ("telephony", build_gateway_app())]
+
+
+def load_app():
+    """The main app alone, for callers that only need its routes.
+
+    The census itself walks every app through `load_apps()`.
+    """
+    return load_apps()[0][1]
 
 
 def main():
-    routes = route_records(load_app())
-    json.dump({"routes": routes, "count": len(routes)}, sys.stdout)
+    routes: list[dict] = []
+    apps: list[str] = []
+    for name, app in load_apps():
+        apps.append(name)
+        routes.extend(route_records(app, name))
+    routes.sort(key=lambda rec: (rec["path"], rec["methods"], rec["app"]))
+    json.dump({"apps": apps, "routes": routes, "count": len(routes)}, sys.stdout)
     sys.stdout.write("\n")
 
 
