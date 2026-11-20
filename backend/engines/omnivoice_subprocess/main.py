@@ -270,6 +270,10 @@ def _construct_model(stdout, progress: dict):
         )
     finally:
         unregister_listener(lid)
+    # Record completion before announcing it: the heartbeat thread repeats
+    # progress["percent"] until the load context exits, and a stale 0 sent
+    # after this frame would move the reported progress backwards.
+    progress["percent"] = 100
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})
     return _model
 
