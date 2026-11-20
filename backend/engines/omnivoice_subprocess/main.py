@@ -59,6 +59,9 @@ _GEN_KW_ALLOWLIST = (
 
 _model = None
 _SEND_LOCK = threading.Lock()
+# Orders progress snapshots with their transmission: a heartbeat must not read
+# a percent, pause, and send it after a newer value (100 included) went out.
+_PROGRESS_LOCK = threading.Lock()
 _LOAD_HEARTBEAT_S = 5.0
 
 
@@ -75,11 +78,12 @@ def _heartbeating(stdout, stage: str, progress: dict | None = None):
 
     def beat() -> None:
         while not stop.wait(_LOAD_HEARTBEAT_S):
-            _send(stdout, {
-                "op": "progress",
-                "stage": stage,
-                "percent": (progress or {}).get("percent", 0),
-            })
+            with _PROGRESS_LOCK:
+                _send(stdout, {
+                    "op": "progress",
+                    "stage": stage,
+                    "percent": (progress or {}).get("percent", 0),
+                })
 
     thread = threading.Thread(target=beat, name=f"omnivoice-{stage}-heartbeat", daemon=True)
     thread.start()
@@ -220,7 +224,8 @@ def _load_model(stdout):
 
 def _construct_model(stdout, progress: dict):
     global _model
-    _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 0})
+    with _PROGRESS_LOCK:
+        _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 0})
 
     _ensure_backend_on_path()
     # Reuse the parent's own load primitives (same interpreter): the checkpoint
@@ -241,9 +246,10 @@ def _construct_model(stdout, progress: dict):
     def _on_progress(ev):
         pct = ev.get("pct", 0.0)
         if pct:
-            progress["percent"] = min(round(pct * 100), 99)
-            _send(stdout, {"op": "progress", "stage": "loading_model",
-                           "percent": progress["percent"]})
+            with _PROGRESS_LOCK:
+                progress["percent"] = min(round(pct * 100), 99)
+                _send(stdout, {"op": "progress", "stage": "loading_model",
+                               "percent": progress["percent"]})
 
     checkpoint = resolve_omnivoice_checkpoint()
     stop_prefetch = threading.Event()
@@ -273,8 +279,9 @@ def _construct_model(stdout, progress: dict):
     # Record completion before announcing it: the heartbeat thread repeats
     # progress["percent"] until the load context exits, and a stale 0 sent
     # after this frame would move the reported progress backwards.
-    progress["percent"] = 100
-    _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})
+    with _PROGRESS_LOCK:
+        progress["percent"] = 100
+        _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})
     return _model
 
 

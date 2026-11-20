@@ -958,12 +958,18 @@ def test_cached_model_load_emits_periodic_heartbeats(monkeypatch):
 
 
 def test_load_heartbeat_never_reports_less_after_completion(monkeypatch):
-    """A heartbeat that fires after the 100% frame must not report 0% (flaky on Windows CI)."""
+    """Heartbeats after the 100% frame report 100, and every load frame is
+    built and sent under the progress lock, so a stale snapshot cannot be
+    sent after completion (flaky on Windows CI before)."""
+    import threading
+
     from engines.omnivoice_subprocess import main as sidecar
     from services import model_manager
     from utils import hf_progress
 
     frames = []
+    completed = threading.Event()
+    late_heartbeat = threading.Event()
 
     class FakeTorch:
         float16 = object()
@@ -974,14 +980,26 @@ def test_load_heartbeat_never_reports_less_after_completion(monkeypatch):
             return object()
 
     def send(_stream, frame):
+        if frame.get("stage") == "loading_model":
+            assert sidecar._PROGRESS_LOCK.locked(), "progress frame sent outside the lock"
         frames.append(frame)
-        if frame.get("percent") == 100:
-            # Hold the load context open so heartbeats fire after completion.
-            time.sleep(0.08)
+        if frame.get("percent") == 100 and not completed.is_set():
+            completed.set()
+        elif completed.is_set():
+            late_heartbeat.set()
+
+    construct = sidecar._construct_model
+
+    def construct_then_wait(stdout, progress):
+        model = construct(stdout, progress)
+        # Keep the heartbeat context open until one fires after completion.
+        assert late_heartbeat.wait(5), "no heartbeat fired after completion"
+        return model
 
     monkeypatch.setattr(sidecar, "_model", None)
     monkeypatch.setattr(sidecar, "_LOAD_HEARTBEAT_S", 0.01)
     monkeypatch.setattr(sidecar, "_send", send)
+    monkeypatch.setattr(sidecar, "_construct_model", construct_then_wait)
     monkeypatch.setattr(model_manager, "_lazy_torch", lambda: FakeTorch())
     monkeypatch.setattr(model_manager, "_lazy_omnivoice", lambda: FakeOmniVoice)
     monkeypatch.setattr(model_manager, "resolve_omnivoice_checkpoint", lambda: "cached")
@@ -994,7 +1012,7 @@ def test_load_heartbeat_never_reports_less_after_completion(monkeypatch):
 
     loading = [frame["percent"] for frame in frames if frame.get("stage") == "loading_model"]
     done = loading.index(100)
-    assert len(loading) > done + 1, "no heartbeat fired after completion; the test proves nothing"
+    assert len(loading) > done + 1
     assert all(percent == 100 for percent in loading[done:])
 
 
