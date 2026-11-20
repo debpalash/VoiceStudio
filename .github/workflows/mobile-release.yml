@@ -105,7 +105,7 @@ jobs:
       # release_ref may check out a tag older than the installer, so it comes from the
       # workflow's own commit, like the iOS signing tools below.
       - name: Checkout Android SDK installer
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}

@@ -39,6 +39,36 @@ def test_openapi_operation_ids_are_unique():
     assert len(ids) == len(set(ids))
 
 
+def test_plural_rules_cover_the_same_languages_on_both_platforms():
+    """Both native readers answer the same CLDR categories from the same catalogs.
+
+    `mobile/android/core/l10n` and the iOS `L10n` reader each implement the plural
+    categories by hand, and the iOS one answered only `one`/`other` until it was
+    brought in line. A language added to one side has to reach the other, so the
+    two switch statements are compared here.
+    """
+    kotlin = (
+        ROOT / "mobile/android/core/l10n/src/main/kotlin/com/voicestudio/mobile/l10n/L10n.kt"
+    ).read_text(encoding="utf-8")
+    swift = (
+        ROOT / "mobile/ios/VoiceStudioKit/Sources/VoiceStudioKit/Localization/L10n.swift"
+    ).read_text(encoding="utf-8")
+
+    def language_codes(text: str, marker: str, span: int) -> set[str]:
+        start = text.index(marker)
+        return set(re.findall(r'"([a-z]{2})"', text[start : start + span]))
+
+    android_codes = language_codes(kotlin, "pluralFor", 1200)
+    ios_codes = language_codes(swift, "private static func plural", 1400)
+
+    assert android_codes, "the Android plural switch was not found"
+    assert ios_codes, "the iOS plural switch was not found"
+    assert android_codes == ios_codes, (
+        f"the two plural implementations handle different languages: Android only "
+        f"{sorted(android_codes - ios_codes)}, iOS only {sorted(ios_codes - android_codes)}"
+    )
+
+
 def test_workflow_does_not_cancel_a_running_main_build():
     """A push to main must not cancel the mobile verification that is still running.
 
