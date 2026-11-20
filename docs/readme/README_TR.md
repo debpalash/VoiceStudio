@@ -120,12 +120,12 @@ Yukarıdakilerin tümü ücretsizdir, kendi donanımınızda çalışır ve hesa
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       Birden fazla makinede ücretli müşteri işleri için.
       <ul>
-        <li>Müşteri işleriniz için e-postayla gönderilen Ticari Lisans</li>
+        <li>Müşteri işlerinizde VoiceStudio kodu için e-postayla gönderilen Ticari Lisans</li>
         <li>Aynı anda en fazla 3 cihazda bir kullanıcı</li>
         <li>Projeleriniz yerelde kalırken işleri diğer GPU'larınıza gönderin</li>
         <li>Yeni özellikler ve düzeltmeler önce sizde</li>
       </ul>
-      <sub>Kapalı kaynak sürüm, hesap gerekir, 7 gün içinde tam iade. AGPL-3.0 uygulaması, koşullarına uygun ticari kullanım dahil ücretsiz kalır.</sub><br /><br />
+      <sub>Kapalı kaynak sürüm, hesap gerekir, 7 gün içinde tam iade. AGPL-3.0 uygulaması, koşullarına uygun ticari kullanım dahil ücretsiz kalır. Hiçbir lisans model ağırlıklarını kapsamaz: varsayılan OmniVoice ağırlıkları ticari değildir (CC-BY-NC), bu yüzden müşteri işinden önce Model Yöneticisinde her modelin lisansını kontrol edin.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro planlarını görün →</a></strong>
     </td>
     <td width="50%" valign="top">
