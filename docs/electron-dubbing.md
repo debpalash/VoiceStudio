@@ -151,6 +151,8 @@ generation actions.
 Import .srt replaces the current segment text and timings after source preparation.
 The backend retains voice references only where their timing overlaps the new cues.
 Malformed, overlapping, or duration-clamped cue counts remain visible in the sidebar.
+Timestamp millisecond fields longer than three digits are skipped and counted as
+malformed, rather than truncated; one- and two-digit millisecond fields remain accepted.
 Failed imports preserve the current edits. Generated track buttons clear on successful
 replacement to avoid presenting older audio as the new subtitles' output.
 Ruby pronunciation guides in SRT/VTT captions are excluded from the spoken text
