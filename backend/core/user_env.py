@@ -61,6 +61,9 @@ def _write_lines(path: str, lines: list[str]) -> None:
 
     from core import durable_io
 
+    # Write through a symlinked env file to its target: replacing the link itself
+    # would detach VoiceStudio from the file the user (or a dotfile manager) owns.
+    path = os.path.realpath(path) if os.path.islink(path) else path
     parent = os.path.dirname(path)
     if parent:  # bare filename (e.g. an OMNIVOICE_ENV_FILE override) has no parent
         os.makedirs(parent, exist_ok=True)
@@ -81,11 +84,12 @@ def _write_lines(path: str, lines: list[str]) -> None:
         try:
             os.chmod(path, 0o600)  # tighten an existing file that predates the opener
         except OSError as exc:
-            # Best-effort: some filesystems and Windows don't support chmod.
+            # Best-effort: some filesystems and Windows don't support chmod. Log the
+            # errno only: the path and message can carry the user's home directory.
             import logging
 
             logging.getLogger("omnivoice.user_env").debug(
-                "could not tighten %s to 0600: %s", path, exc
+                "could not tighten the env file to 0600 (errno %s)", exc.errno
             )
         # A bare filename has no dirname; flush_dir treats "" as the current dir.
         durable_io.flush_dir(parent or ".")

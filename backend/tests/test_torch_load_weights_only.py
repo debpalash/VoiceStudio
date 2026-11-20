@@ -41,12 +41,10 @@ def _is_torch_load(node: ast.AST) -> bool:
 def _unsafe(call: ast.Call) -> bool:
     """True unless the call's own ``weights_only`` is literally ``True``.
 
-    ``**kwargs`` forwarding is accepted (a helper may set the flag); any
-    explicit ``weights_only`` other than the literal ``True`` is not.
+    ``**kwargs`` forwarding is not proof: the expansion may carry no flag, so only
+    an explicit literal ``weights_only=True`` counts.
     """
     for keyword in call.keywords:
-        if keyword.arg is None:
-            return False
         if keyword.arg == "weights_only":
             return not (isinstance(keyword.value, ast.Constant) and keyword.value.value is True)
     return True
@@ -60,7 +58,7 @@ def _python_files() -> list[pathlib.Path]:
     return [
         path
         for path in _ROOT.rglob("*.py")
-        if not _SKIP_PARTS.intersection(path.parts)
+        if not _SKIP_PARTS.intersection(path.relative_to(_ROOT).parts)
     ]
 
 
@@ -100,9 +98,11 @@ def test_the_guard_classifies_calls():
         "torch.load(resolve(weights_only=True))",
         "torch.load(paths[2**0])",
         "f'{torch.load(p)}'",
+        "torch.load(p, **kw)",
+        "torch.load(p, **{}, weights_only=False)",
     ]
     for src in flagged:
         calls = _calls(src)
         assert calls and all(_unsafe(c) for c in calls), src
-    for src in ("torch.load(p, weights_only=True)", "torch.load(p, **kw)", "'torch.load(p)'"):
+    for src in ("torch.load(p, weights_only=True)", "torch.load(p, **kw, weights_only=True)", "'torch.load(p)'"):
         assert not any(_unsafe(c) for c in _calls(src)), src

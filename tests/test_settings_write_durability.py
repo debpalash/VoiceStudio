@@ -132,3 +132,24 @@ def test_a_bare_filename_env_override_flushes_the_current_directory(tmp_path, mo
 
     assert flushed == ["."]
     assert (tmp_path / "env").read_text(encoding="utf-8").strip() == "OMNIVOICE_CACHE_DIR=/models"
+
+
+def test_a_symlinked_env_file_is_written_through_to_its_target(tmp_path, monkeypatch, user_env):
+    target = tmp_path / "dotfiles" / "voicestudio.env"
+    target.parent.mkdir()
+    target.write_text("HF_ENDPOINT=https://hf-mirror.com\n", encoding="utf-8")
+    link = tmp_path / "env"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("this host cannot create symlinks")
+    monkeypatch.setattr(user_env, "USER_ENV_PATH", str(link))
+    monkeypatch.delenv("OMNIVOICE_ENV_FILE", raising=False)
+
+    user_env.set_user_env("OMNIVOICE_CACHE_DIR", "/models")
+
+    assert link.is_symlink()
+    assert target.read_text(encoding="utf-8").splitlines() == [
+        "HF_ENDPOINT=https://hf-mirror.com",
+        "OMNIVOICE_CACHE_DIR=/models",
+    ]
