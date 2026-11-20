@@ -7,8 +7,7 @@ const RESERVED = new Set([
   'PRN',
   'AUX',
   'NUL',
-  ...Array.from({ length: 9 }, (_, i) => `COM${i + 1}`),
-  ...Array.from({ length: 9 }, (_, i) => `LPT${i + 1}`),
+  ...Array.from('123456789¹²³').flatMap((digit) => [`COM${digit}`, `LPT${digit}`]),
 ]);
 const encoder = new TextEncoder();
 
