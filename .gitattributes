@@ -27,3 +27,6 @@ mobile/android/core/designsystem/src/main/kotlin/com/voicestudio/mobile/designsy
 # Pinned upstream MP3 encoder; provenance and checksums are reviewed separately.
 mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/** text eol=lf linguist-vendored
 mobile/native/ios/patches/*.patch text eol=lf
+
+# Vendored wheels are hash-pinned in uv.lock: never rewrite line endings.
+*.whl binary

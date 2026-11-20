@@ -877,6 +877,10 @@
 
             install -Dm644 pyproject.toml "$resources/pyproject.toml"
             install -Dm644 uv.lock "$resources/uv.lock"
+            # uv.lock points source-only deps at these wheels (#4253).
+            mkdir -p "$resources/vendor/wheels"
+            install -m644 vendor/wheels/*.whl "$resources/vendor/wheels/"
+            install -m644 vendor/wheels/LICENSE-*.txt "$resources/vendor/wheels/"
             install -Dm644 README.md "$resources/README.md"
             install -Dm644 LICENSE "$resources/LICENSE"
             install -Dm644 LICENSE-NOTICE.md "$resources/LICENSE-NOTICE.md"
@@ -1136,6 +1140,7 @@
               frontend/dist/index.html \
               pyproject.toml \
               uv.lock \
+              vendor/wheels \
               README.md \
               LICENSE \
               LICENSE-NOTICE.md \

@@ -1871,6 +1871,22 @@ def _mask_mod_packed(document_ids, b, h, q_idx, kv_idx):
     return same_doc
 
 
+def _base_language_candidates(language: str) -> list:
+    """Base-language spellings of a regional form.
+
+    ``pt-BR`` / ``pt_br`` / ``zh-Hans`` -> ``pt`` / ``zh``; the picker's
+    ``Portuguese (Brazil)`` -> ``Portuguese``. Plain input yields nothing.
+    """
+    text = " ".join(language.split())
+    out = []
+    if "(" in text and text.endswith(")"):
+        out.append(text.split("(", 1)[0].strip())
+    parts = re.split(r"[-_]", text)
+    if len(parts) > 1 and " " not in text:
+        out.append(parts[0])
+    return [c for c in out if c]
+
+
 def _resolve_language(language: Optional[str]) -> Union[str, None]:
     from omnivoice.utils.lang_map import (
         APP_LANGUAGE_IDS,
@@ -1879,16 +1895,27 @@ def _resolve_language(language: Optional[str]) -> Union[str, None]:
         LANG_NAME_TO_ID,
     )
 
+    def _lookup_language(value: str) -> Union[str, None]:
+        if value in LANG_IDS:
+            return value
+        key = value.lower()
+        if key in LANG_NAME_TO_ID:
+            return LANG_NAME_TO_ID[key]
+        if key in LANG_IDS:
+            return key
+        return APP_LANGUAGE_NAMES.get(key) or APP_LANGUAGE_IDS.get(key)
+
     if language is None or language.lower() == "none":
         return None
-    if language in LANG_IDS:
-        return language
-    key = language.lower()
-    if key in LANG_NAME_TO_ID:
-        return LANG_NAME_TO_ID[key]
-    alias = APP_LANGUAGE_NAMES.get(key) or APP_LANGUAGE_IDS.get(key)
-    if alias:
-        return alias
+    resolved = _lookup_language(language)
+    if resolved:
+        return resolved
+    # Region-tagged ("pt-BR", "es_MX") and picker variant ("Portuguese
+    # (Brazil)") forms speak the base language; the dialect is applied upstream.
+    for base in _base_language_candidates(language):
+        resolved = _lookup_language(base)
+        if resolved:
+            return resolved
     logger.warning(
         f"Language '{language}' is not recognized. "
         f"Please use a valid language ID (e.g., 'en', 'zh', 'ja', 'de') "
