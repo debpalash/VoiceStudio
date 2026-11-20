@@ -69,7 +69,29 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/omnivoice-run.log"
 
 # ── Start backend ──────────────────────────────────────────────────────────
-PORT="${OMNIVOICE_PORT:-$(python3 -c 'import json; print(json.load(open("config/app.json", encoding="utf-8"))["ports"]["backend"])')}"
+PORT="${OMNIVOICE_PORT-$(python3 -c 'import json; print(json.load(open("config/app.json", encoding="utf-8"))["ports"]["backend"])')}"
+    # Every other consumer of OMNIVOICE_PORT parses it as an integer (backend/main.py,
+    # docker_entrypoint.py, network_share.py, the MCP shim, the CLI). This script is
+    # the only one that interpolates it into a URL, which is then handed to a
+    # PowerShell command on WSL — a value containing a quote could close that
+    # string. Validate once here: it keeps the launcher on the same contract as the
+    # backend and turns a malformed value into one clear error instead of a URL the
+    # browser cannot open.
+# `${VAR-...}` rather than `${VAR:-...}`: an explicitly empty value must reach the
+# guard below and be rejected, not silently replaced by the configured port.
+case "$PORT" in
+    ''|*[!0-9]*) printf "${C_ERR}✗ OMNIVOICE_PORT must be a number (got %s).${C_RST}\n" "$PORT" >&2; exit 1 ;;
+esac
+# A long enough digit string overflows an arithmetic comparison, so bound the
+# length before comparing. Five digits covers the whole valid range.
+if [ "${#PORT}" -gt 5 ]; then
+    printf "${C_ERR}✗ OMNIVOICE_PORT must be between 1 and 65535 (got %s).${C_RST}\n" "$PORT" >&2
+    exit 1
+fi
+if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+    printf "${C_ERR}✗ OMNIVOICE_PORT must be between 1 and 65535 (got %s).${C_RST}\n" "$PORT" >&2
+    exit 1
+fi
 export OMNIVOICE_PORT="$PORT"
 echo "${C_OK}▸${C_RST} Starting backend on port ${PORT} (log: ${C_DIM}${LOG_FILE}${C_RST})…"
 
@@ -130,9 +152,12 @@ if [ "$NO_OPEN" != true ]; then
     if [ "$OS" = "macos" ] && have open; then
         open "$URL"
     elif [ "$OS" = "wsl" ]; then
-        # WSL: use Windows browser via PowerShell or cmd.exe
+        # WSL: use Windows browser via PowerShell or cmd.exe. The URL travels in
+        # the environment, not in the command text: `-Command` treats everything
+        # after it as more script, so a trailing argument never reaches `$args`.
         if have powershell.exe; then
-            powershell.exe -NoProfile -Command "Start-Process '$URL'" >/dev/null 2>&1 &
+            WSLENV="${WSLENV:+$WSLENV:}VOICESTUDIO_OPEN_URL/u" VOICESTUDIO_OPEN_URL="$URL" \
+                powershell.exe -NoProfile -Command "Start-Process \$env:VOICESTUDIO_OPEN_URL; exit 0" >/dev/null 2>&1 &
         elif have cmd.exe; then
             cmd.exe /c start "" "$URL" >/dev/null 2>&1 &
         elif have xdg-open; then
