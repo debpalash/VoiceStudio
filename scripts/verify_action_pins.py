@@ -35,6 +35,11 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 ACTIONS = ROOT / ".github" / "actions"
 API = "https://api.github.com"
 SHA = re.compile(r"^[0-9a-f]{40}$")
+_MAX_TAG_DEPTH = 10
+
+
+class LookupFailed(Exception):
+    """A GitHub lookup failed (not a confirmed absence), so the pin is unverified."""
 
 
 def _uses_nodes(node: yaml.Node, found: list[yaml.ScalarNode], path: frozenset[int]) -> None:
@@ -104,6 +109,11 @@ class Resolver:
         self.rate_limited = False
 
     def _get(self, url: str) -> object | None:
+        """Parsed JSON, None for a confirmed 404, or LookupFailed for anything else.
+
+        A transient failure must never read as "absent": the caller would fall
+        through to branch resolution and could pass a pin it never compared.
+        """
         request = urllib.request.Request(
             url,
             headers={
@@ -116,31 +126,40 @@ class Resolver:
             with urllib.request.urlopen(request, timeout=30) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as error:
+            if error.code == 404:
+                return None
             if error.code in (403, 429) and not self.token:
                 self.rate_limited = True
-            return None
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-            return None
+            raise LookupFailed(f"HTTP {error.code} for {url}") from error
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+            raise LookupFailed(f"{type(error).__name__} for {url}") from error
 
     def _ref_commit(self, repo: str, kind: str, label: str) -> str | None:
-        """The commit a `refs/<kind>/<label>` points at, following an annotated tag."""
+        """The commit a `refs/<kind>/<label>` points at, following annotated tags.
+
+        None means the ref is confirmed absent; a failed lookup raises LookupFailed.
+        """
         query = urllib.parse.quote(label, safe="")
         refs = self._get(f"{API}/repos/{repo}/git/matching-refs/{kind}/{query}")
-        if not isinstance(refs, list):
+        if refs is None:
             return None
+        if not isinstance(refs, list):
+            raise LookupFailed(f"unexpected matching-refs payload for {repo} {label}")
         for ref in refs:
             if not isinstance(ref, dict) or ref.get("ref") != f"refs/{kind}/{label}":
                 continue
             target = ref.get("object") or {}
-            if target.get("type") == "tag" and isinstance(target.get("sha"), str):
+            # An annotated tag may point at another tag; peel until a commit.
+            for _ in range(_MAX_TAG_DEPTH):
+                if not isinstance(target.get("sha"), str):
+                    raise LookupFailed(f"ref {label} of {repo} has no object sha")
+                if target.get("type") != "tag":
+                    return target["sha"]
                 tag = self._get(f"{API}/repos/{repo}/git/tags/{target['sha']}")
-                if isinstance(tag, dict):
-                    inner = tag.get("object") or {}
-                    if isinstance(inner.get("sha"), str):
-                        return inner["sha"]
-                return None
-            if isinstance(target.get("sha"), str):
-                return target["sha"]
+                if not isinstance(tag, dict):
+                    raise LookupFailed(f"tag object {target['sha']} of {repo} unreadable")
+                target = tag.get("object") or {}
+            raise LookupFailed(f"tag {label} of {repo} nests deeper than {_MAX_TAG_DEPTH}")
         return None
 
     def resolve(self, action: str, label: str) -> tuple[str, str] | None:
@@ -176,7 +195,11 @@ def main() -> int:
     for use in references:
         pair = f"{use['action']} ({use['label']})"
         where = f"{use['file']}: {use['action']}@{use['ref']} ({use['label']})"
-        resolved = resolver.resolve(use["action"], use["label"])
+        try:
+            resolved = resolver.resolve(use["action"], use["label"])
+        except LookupFailed as error:
+            unresolved.setdefault(pair, f"{where} — lookup failed: {error}")
+            continue
         if resolved is None:
             unresolved.setdefault(pair, where)
         elif resolved[0] == "branch":
