@@ -120,12 +120,12 @@
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       لأعمال العملاء المدفوعة على أكثر من جهاز.
       <ul>
-        <li>ترخيص تجاري لأعمال عملائك يصلك عبر البريد الإلكتروني</li>
+        <li>ترخيص تجاري لشيفرة VoiceStudio في أعمال عملائك يصلك عبر البريد الإلكتروني</li>
         <li>مستخدم واحد على ما يصل إلى 3 أجهزة في الوقت نفسه</li>
         <li>أرسل المهام إلى وحدات GPU الأخرى لديك بينما تبقى مشاريعك محلية</li>
         <li>الميزات والإصلاحات الجديدة أولًا</li>
       </ul>
-      <sub>إصدار مغلق المصدر، يتطلب حسابًا، واسترداد كامل خلال 7 أيام. يبقى تطبيق AGPL-3.0 مجانيًا، بما في ذلك الاستخدام التجاري وفق شروطه.</sub><br /><br />
+      <sub>إصدار مغلق المصدر، يتطلب حسابًا، واسترداد كامل خلال 7 أيام. يبقى تطبيق AGPL-3.0 مجانيًا، بما في ذلك الاستخدام التجاري وفق شروطه. لا يغطي أي من الترخيصين أوزان النماذج: أوزان OmniVoice الافتراضية غير تجارية (CC-BY-NC)، لذا تحقق من ترخيص كل نموذج في Model Manager قبل العمل مع العملاء.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">← اطّلع على خطط Pro</a></strong>
     </td>
     <td width="50%" valign="top">

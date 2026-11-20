@@ -120,12 +120,12 @@
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       एक से ज़्यादा मशीनों पर सशुल्क क्लाइंट काम के लिए।
       <ul>
-        <li>आपके क्लाइंट काम के लिए व्यावसायिक लाइसेंस, ईमेल से भेजा जाता है</li>
+        <li>आपके क्लाइंट काम में VoiceStudio के कोड के लिए व्यावसायिक लाइसेंस, ईमेल से भेजा जाता है</li>
         <li>एक उपयोगकर्ता, एक साथ अधिकतम 3 डिवाइस</li>
         <li>अपने दूसरे GPU पर काम भेजें, जबकि आपके प्रोजेक्ट लोकल रहते हैं</li>
         <li>नई सुविधाएँ और सुधार सबसे पहले</li>
       </ul>
-      <sub>बंद-स्रोत बिल्ड, खाता ज़रूरी, 7 दिनों में पूरा रिफ़ंड। AGPL-3.0 ऐप मुफ़्त रहता है, उसकी शर्तों के तहत व्यावसायिक उपयोग सहित।</sub><br /><br />
+      <sub>बंद-स्रोत बिल्ड, खाता ज़रूरी, 7 दिनों में पूरा रिफ़ंड। AGPL-3.0 ऐप मुफ़्त रहता है, उसकी शर्तों के तहत व्यावसायिक उपयोग सहित। कोई भी लाइसेंस मॉडल वेट को कवर नहीं करता: डिफ़ॉल्ट OmniVoice वेट गैर-व्यावसायिक (CC-BY-NC) हैं, इसलिए क्लाइंट काम से पहले मॉडल मैनेजर में हर मॉडल का लाइसेंस जाँच लें।</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro प्लान देखें →</a></strong>
     </td>
     <td width="50%" valign="top">
