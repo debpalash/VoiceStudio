@@ -1292,11 +1292,34 @@ def _missing_compiler_remediation(platform: str = sys.platform) -> str:
 
 
 def _log(job: dict, line: str) -> None:
+    """Append one line of install output to the job record and the logger.
+
+    Every streamed line here is raw ``git``/``uv`` output, and uv runs with an
+    environment derived from ``os.environ`` (``uv_subprocess_env``) -- so a
+    regional-mirror or proxy URL of the form ``https://user:token@host``, which
+    the sanctioned-call list explicitly supports, is echoed back into a log the
+    install panel renders and a user may paste into a bug report. Redact before
+    either sink, exactly as ``subprocess_backend`` does for sidecar stderr.
+    Best-effort: a redaction failure must never fail an install.
+    """
     line = line.rstrip()
-    if line:
-        with _log_lock:
-            job["log"].append(line)
-        logger.info("[%s install] %s", job["engine_id"], line)
+    if not line:
+        return
+    try:
+        from core.scrub import scrub_text
+
+        line = scrub_text(line)
+    except Exception:  # noqa: BLE001 - a redaction failure must not fail the install
+        # Never fall back to the raw line. This log is rendered in the install panel
+        # and a user may paste it into a bug report, so an unredacted credential is
+        # the one outcome worth avoiding; withholding the line costs a diagnostic
+        # detail, and the marker says that is what happened. No traceback either:
+        # an exception's frames name paths under the user's home.
+        logger.debug("Install log redaction failed; the line was withheld")
+        line = "[line withheld: redaction failed]"
+    with _log_lock:
+        job["log"].append(line)
+    logger.info("[%s install] %s", job["engine_id"], line)
 
 
 def _serialize_job(job: Optional[dict]) -> Optional[dict]:
