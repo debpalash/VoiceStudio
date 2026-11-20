@@ -14,9 +14,15 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from typing import Optional
 
 USER_ENV_PATH = os.path.expanduser("~/.config/omnivoice/env")
+
+#: Serializes the read-modify-write in :func:`set_user_env` /
+#: :func:`unset_user_env` within this process. Cross-process writers (Electron's
+#: torch-choice) are ordered by the atomic replace instead.
+_WRITE_LOCK = threading.RLock()
 # Not a Settings choice: Electron saves it here, and a launch that sets another build
 # must still get that build (#3804).
 _LAUNCH_WINS = frozenset({"OMNIVOICE_TORCH_VARIANT"})
@@ -41,27 +47,51 @@ def _read_lines(path: str) -> list[str]:
     # keys (e.g. a persisted HF_TOKEN) when it rewrites the file.
 
 
-def _opener_0600(path: str, flags: int) -> int:
-    # Create the file with 0600 from the start (no world-readable window before
-    # a follow-up chmod) — it can hold secrets like HF_TOKEN. The mode is
-    # masked by umask but only ever *more* restrictive; non-POSIX platforms
-    # ignore the mode bits.
-    return os.open(path, flags, 0o600)
-
-
 def _write_lines(path: str, lines: list[str]) -> None:
+    """Publish ``lines`` to ``path`` atomically and durably.
+
+    The previous implementation opened the live file with ``"w"``, which
+    truncates it before a single byte is written: a crash (or a second writer)
+    between truncate and write left an empty baseline, and the next upsert then
+    dropped every other key -- exactly the loss mode :func:`_read_lines`
+    documents. Write beside the target, flush it to the disk, then rename over
+    the old file, so a reader sees either the old content or the new one.
+    """
+    import tempfile
+
+    from core import durable_io
+
     parent = os.path.dirname(path)
     if parent:  # bare filename (e.g. an OMNIVOICE_ENV_FILE override) has no parent
         os.makedirs(parent, exist_ok=True)
     body = "\n".join(lines)
     if body and not body.endswith("\n"):
         body += "\n"
-    with open(path, "w", encoding="utf-8", opener=_opener_0600) as f:
-        f.write(body)
+    # mkstemp creates the file 0600, so there is no world-readable window before
+    # the follow-up chmod — the file can hold secrets like HF_TOKEN. The mode is
+    # masked by umask but only ever *more* restrictive; non-POSIX platforms ignore
+    # the mode bits.
+    fd, tmp = tempfile.mkstemp(prefix=".env.", suffix=".tmp", dir=parent or ".")
     try:
-        os.chmod(path, 0o600)  # tighten an existing file that predates the opener
-    except OSError:
-        pass  # best-effort; some filesystems/Windows don't support chmod
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(body)
+            f.flush()
+            durable_io.flush_fd(f.fileno())
+        os.replace(tmp, path)
+        try:
+            os.chmod(path, 0o600)  # tighten an existing file that predates the opener
+        except OSError:
+            pass  # best-effort; some filesystems/Windows don't support chmod
+        # Flush the directory that holds the new entry. A bare filename (an
+        # OMNIVOICE_ENV_FILE override) resolves against the process's working
+        # directory, so its entry lives in "." and must be flushed too.
+        durable_io.flush_dir(parent or ".")
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass  # the temp file is already gone, or the volume is read-only
+        raise
 
 
 # Characters that never need quoting; ordinary values (URLs, tokens, simple
@@ -103,24 +133,31 @@ def set_user_env(key: str, value: str, path: Optional[str] = None) -> None:
     path = path or os.environ.get("OMNIVOICE_ENV_FILE") or USER_ENV_PATH
     prefix = f"{key}="
     encoded = _encode_value(value)
-    lines = _read_lines(path)
-    replaced = False
-    for i, line in enumerate(lines):
-        if line.startswith(prefix):
-            lines[i] = f"{key}={encoded}"
-            replaced = True
-            break
-    if not replaced:
-        lines.append(f"{key}={encoded}")
-    _write_lines(path, lines)
+    # The read and the write must be one critical section: both Settings handlers
+    # that upsert here are sync FastAPI routes running in the shared threadpool,
+    # and Electron's torch-choice writes the same file from another process.
+    # Without the lock a concurrent upsert can publish a list it read before the
+    # other one's change, dropping that change.
+    with _WRITE_LOCK:
+        lines = _read_lines(path)
+        replaced = False
+        for i, line in enumerate(lines):
+            if line.startswith(prefix):
+                lines[i] = f"{key}={encoded}"
+                replaced = True
+                break
+        if not replaced:
+            lines.append(f"{key}={encoded}")
+        _write_lines(path, lines)
 
 
 def unset_user_env(key: str, path: Optional[str] = None) -> None:
     """Remove ``KEY=...`` if present, preserving all other lines."""
     path = path or os.environ.get("OMNIVOICE_ENV_FILE") or USER_ENV_PATH
     prefix = f"{key}="
-    lines = [ln for ln in _read_lines(path) if not ln.startswith(prefix)]
-    _write_lines(path, lines)
+    with _WRITE_LOCK:
+        lines = [ln for ln in _read_lines(path) if not ln.startswith(prefix)]
+        _write_lines(path, lines)
 
 
 def load_into_environ(path: Optional[str] = None) -> bool:
