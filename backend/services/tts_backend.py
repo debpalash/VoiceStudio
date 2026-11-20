@@ -1005,8 +1005,10 @@ def omnivoice_ref_text(ref_audio, ref_text):
 # must not reuse a passage it did not choose (#2281).
 _PASSAGE_CHOICE_MAX = 64
 # index < 0 means the clip was ranked and no installed recognizer produced words.
+# The bool is False when the pause-trimmed window had no words and the raw
+# window was chosen instead.
 _NO_PASSAGE = -1
-_passage_choices: "OrderedDict[tuple, tuple[int, str]]" = OrderedDict()
+_passage_choices: "OrderedDict[tuple, tuple[int, str, bool]]" = OrderedDict()
 # Env pins mirrored from the ASR backends. A model change must change this key
 # even when the backend id stays the same (#2281).
 _ASR_MODEL_PINS = {
@@ -1182,7 +1184,7 @@ def _passage_choice_key(ref_audio: str) -> tuple:
     return (os.path.abspath(ref_audio), version, _reference_asr_identity())
 
 
-def _recall_passage(ref_audio: str) -> Optional[tuple[int, str]]:
+def _recall_passage(ref_audio: str) -> Optional[tuple[int, str, bool]]:
     if not _reference_asr_identity():
         return None
     key = _passage_choice_key(ref_audio)
@@ -1194,12 +1196,12 @@ def _recall_passage(ref_audio: str) -> Optional[tuple[int, str]]:
         return hit
 
 
-def _remember_passage(ref_audio: str, index: int, text: str) -> None:
+def _remember_passage(ref_audio: str, index: int, text: str, trimmed: bool = True) -> None:
     if not _reference_asr_identity():
         return
     key = _passage_choice_key(ref_audio)
     with _prompt_cache_lock:
-        _passage_choices[key] = (index, text)
+        _passage_choices[key] = (index, text, trimmed)
         _passage_choices.move_to_end(key)
         while len(_passage_choices) > _PASSAGE_CHOICE_MAX:
             _passage_choices.popitem(last=False)
@@ -1246,8 +1248,8 @@ def _read_reference_mono(path: str):
     return audio, sr
 
 
-def _window_samples(audio, sr: int, index: int):
-    """Window ``index`` of a mono clip, with both edges pulled into a pause.
+def _window_samples(audio, sr: int, index: int, trimmed: bool = True):
+    """Window ``index`` of a mono clip. When ``trimmed``, both edges move into a pause.
 
     Fixed 15 s windows are cut at arbitrary times. A window that ends in the
     first sound of the next word gets a transcript without that sound, and the
@@ -1259,7 +1261,7 @@ def _window_samples(audio, sr: int, index: int):
 
     window = int(CLONE_REF_WINDOW_SECONDS * sr)
     chunk = audio[index * window:(index + 1) * window]
-    if len(chunk) == 0:
+    if len(chunk) == 0 or not trimmed:
         return chunk
     return trim_passage_to_pauses(torch.from_numpy(chunk[None].copy()), sr)[0].numpy()
 
@@ -1301,11 +1303,9 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
     best_path: Optional[str] = None
     best_text = ""
     best_index = 0
-    n_windows = min(CLONE_REF_MAX_WINDOWS, (len(audio) + window - 1) // window)
-    for index in range(n_windows):
-        chunk = _window_samples(audio, sr, index)
-        if len(chunk) == 0:
-            continue
+    best_trimmed = True
+
+    def transcribe_chunk(chunk):
         fd, path = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
         try:
@@ -1314,7 +1314,27 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
         except Exception:
             logger.warning("window transcription failed")
             text = ""
+        return path, text
+
+    n_windows = min(CLONE_REF_MAX_WINDOWS, (len(audio) + window - 1) // window)
+    for index in range(n_windows):
+        chunk = _window_samples(audio, sr, index)
+        if len(chunk) == 0:
+            continue
+        trimmed = True
+        path, text = transcribe_chunk(chunk)
         score = _speech_score(text)
+        raw = _window_samples(audio, sr, index, trimmed=False)
+        if score == 0 and len(raw) != len(chunk):
+            # The trim can cut off sparse speech at an edge. The raw window
+            # is still a valid passage, so try it before giving up.
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            chunk, trimmed = raw, False
+            path, text = transcribe_chunk(chunk)
+            score = _speech_score(text)
         activity = float((chunk.astype("float64") ** 2).sum()) if score else 0.0
         if score > 0 and (
             score > best_score or (score == best_score and activity > best_activity)
@@ -1329,6 +1349,7 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
             best_path = path
             best_text = text
             best_index = index
+            best_trimmed = trimmed
         else:
             try:
                 os.remove(path)
@@ -1337,17 +1358,17 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
     if best_path is None:
         _remember_passage(ref_audio, _NO_PASSAGE, "")
         return None
-    _remember_passage(ref_audio, best_index, best_text)
+    _remember_passage(ref_audio, best_index, best_text, best_trimmed)
     return best_path, best_text
 
 
-def _materialize_window(ref_audio: str, index: int) -> Optional[str]:
+def _materialize_window(ref_audio: str, index: int, trimmed: bool = True) -> Optional[str]:
     """Write one previously chosen 15 s window. The caller deletes the file."""
     loaded = _read_reference_mono(ref_audio)
     if loaded is None or index < 0:
         return None
     audio, sr = loaded
-    chunk = _window_samples(audio, sr, index)
+    chunk = _window_samples(audio, sr, index, trimmed)
     if len(chunk) == 0:
         return None
     import soundfile as sf
@@ -1378,7 +1399,7 @@ def _reuse_or_rank_passage(ref_audio: str) -> Optional[tuple[str, str]]:
         if recalled is not None:
             if recalled[0] < 0:
                 return None
-            path = _materialize_window(ref_audio, recalled[0])
+            path = _materialize_window(ref_audio, recalled[0], recalled[2])
             if path is not None:
                 return path, recalled[1]
     return _omnivoice_installed_passage(ref_audio)
@@ -1521,6 +1542,7 @@ def _get_clone_prompt(
     passage_file = None
     passage_context = None
     recalled_index = None
+    recalled_trimmed = True
     cacheable = True
     try:
         if duration is not None and duration > CLONE_REF_TEXT_MAX_SECONDS:
@@ -1530,19 +1552,22 @@ def _get_clone_prompt(
             identity = _reference_asr_identity()
             recalled = _recall_passage(ref_audio) if identity else None
             if recalled is not None and recalled[0] >= 0:
-                recalled_index, ref_text = recalled
+                recalled_index, ref_text, recalled_trimmed = recalled
             elif recalled is None:
                 selected = _reuse_or_rank_passage(ref_audio)
                 if selected is not None:
                     passage_file, ref_text = selected
                     recalled = _recall_passage(ref_audio) if identity else None
                     if recalled is not None:
-                        recalled_index = recalled[0]
+                        recalled_index, _, recalled_trimmed = recalled
             if not identity:
                 # The selected recognizer is unknown; a reusable prompt could
                 # belong to another window with exactly the same transcript.
                 cacheable = False
             passage_context = (identity, recalled_index)
+            if not recalled_trimmed:
+                # Raw and trimmed cuts of one window are different audio.
+                passage_context += ("raw",)
         elif ref_audio and not ref_text:
             try:
                 unresolved_key = _clone_prompt_key(
@@ -1601,7 +1626,7 @@ def _get_clone_prompt(
         # A recalled passage is materialized only when neither cache hits.
         prompt = _prompt_disk_load(key) if cacheable else None
         if prompt is None and recalled_index is not None:
-            passage_file = _materialize_window(ref_audio, recalled_index)
+            passage_file = _materialize_window(ref_audio, recalled_index, recalled_trimmed)
         encode_audio = ref_audio
         if passage_file is not None:
             encode_audio = passage_file
@@ -1814,8 +1839,8 @@ def clear_clone_prompt_cache(*, keep_passage_choices: bool = False) -> None:
         if not keep_passage_choices:
             _passage_choices.clear()
         else:
-            for key, (index, _text) in list(_passage_choices.items()):
-                if index == _NO_PASSAGE:
+            for key, choice in list(_passage_choices.items()):
+                if choice[0] == _NO_PASSAGE:
                     del _passage_choices[key]
         _unresolved_prompt_recognizers.clear()
 
