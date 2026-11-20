@@ -80,10 +80,15 @@ def _write_lines(path: str, lines: list[str]) -> None:
         os.replace(tmp, path)
         try:
             os.chmod(path, 0o600)  # tighten an existing file that predates the opener
-        except OSError:
-            pass  # best-effort; some filesystems/Windows don't support chmod
-        if parent:
-            durable_io.flush_dir(parent)
+        except OSError as exc:
+            # Best-effort: some filesystems and Windows don't support chmod.
+            import logging
+
+            logging.getLogger("omnivoice.user_env").debug(
+                "could not tighten %s to 0600: %s", path, exc
+            )
+        # A bare filename has no dirname; flush_dir treats "" as the current dir.
+        durable_io.flush_dir(parent or ".")
     except BaseException:
         try:
             os.unlink(tmp)
