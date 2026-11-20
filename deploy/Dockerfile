@@ -107,6 +107,8 @@ RUN python3 -m pip install --no-cache-dir uv
 
 # Copy python packaging specs (README.md required by hatchling metadata)
 COPY pyproject.toml uv.lock README.md ./
+# [tool.uv.sources] points source-only deps at these wheels (#4253).
+COPY vendor/wheels/ ./vendor/wheels/
 COPY deploy/torch-constraints.txt ./deploy/torch-constraints.txt
 COPY deploy/uv-overrides.txt ./deploy/uv-overrides.txt
 COPY deploy/security-constraints.txt deploy/security_floors.py ./deploy/
