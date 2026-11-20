@@ -15,6 +15,7 @@ from api.dependencies import consumer_generation, require_consumer_reads_admin_w
 from fastapi.responses import Response
 
 from services.ffmpeg_utils import find_ffmpeg, spawn_subprocess
+from core.scrub import scrub_text
 from core.http_headers import content_disposition
 
 router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
@@ -72,7 +73,7 @@ async def stories_encode(
         )
         _, stderr = await proc.communicate()
         if proc.returncode != 0 or not os.path.exists(out_path):
-            detail = (stderr.decode(errors="replace") if stderr else "") or "encode failed"
+            detail = scrub_text((stderr.decode(errors="replace") if stderr else "")) or "encode failed"
             raise HTTPException(status_code=500, detail=detail[:300])
         with open(out_path, "rb") as fh:
             encoded = fh.read()

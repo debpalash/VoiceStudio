@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException, Q
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.scrub import scrub_text
 from core.db import db_conn
 from core.config import VOICES_DIR, OUTPUTS_DIR
 from core import event_bus
@@ -201,7 +202,7 @@ async def search_youtube(
         if result.returncode != 0:
             logger.error(f"yt-dlp search failed: {stderr.decode()}")
             raise HTTPException(
-                status_code=500, detail=f"YouTube search failed: {stderr.decode()}"
+                status_code=500, detail=f"YouTube search failed: {scrub_text(stderr.decode(errors='replace'))}",
             )
 
         lines = stdout.decode().strip().split("\n")
@@ -284,7 +285,7 @@ async def download_youtube_clip(
                 if policy_detail in error_text:
                     raise HTTPException(status_code=400, detail=policy_detail)
             raise HTTPException(
-                status_code=500, detail=f"Download failed: {error_text}"
+                status_code=500, detail=f"Download failed: {scrub_text(error_text)}",
             )
 
         downloaded_files = [
@@ -381,7 +382,7 @@ async def _cut_local_clip(source: str, output_path: str, start: float, duration:
     if process.returncode != 0:
         raise HTTPException(
             status_code=500,
-            detail=f"Could not cut the clip: {stderr.decode(errors='replace').strip()}",
+            detail=f"Could not cut the clip: {scrub_text(stderr.decode(errors='replace').strip())}",
         )
     try:
         info = sf.info(output_path)

@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from services import director, speech_rate, incremental
 from services.ffmpeg_utils import find_ffprobe, spawn_subprocess
 from api.dependencies import require_admin, require_native_access
+from core.scrub import scrub_text
 from core.path_security import UnsafePath, resolve_within
 
 logger = logging.getLogger("omnivoice.tools")
@@ -68,7 +69,7 @@ async def probe(req: ProbeReq):
     if proc.returncode != 0:
         raise HTTPException(
             status_code=500,
-            detail=f"ffprobe failed: {stderr.decode(errors='replace')[:400]}",
+            detail=f"ffprobe failed: {scrub_text(stderr.decode(errors='replace'))[:400]}",
         )
     try:
         return json.loads(stdout.decode("utf-8"))
