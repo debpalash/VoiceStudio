@@ -17,7 +17,14 @@ const readRecents = (key) => {
   if (!key || typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    // Any JSON value can be stored under this key — an older build, a foreign
+    // app on the same origin, or a hand-edited devtools value. The caller
+    // iterates the result during render, so a non-array would throw
+    // "recents is not iterable" and take the whole workspace to the crash
+    // screen. Keep only the strings this component is able to render.
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === 'string') : [];
   } catch {
     return [];
   }

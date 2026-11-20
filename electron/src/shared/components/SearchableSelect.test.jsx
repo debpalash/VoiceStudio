@@ -1,9 +1,13 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SearchableSelect from './SearchableSelect';
 
 describe('SearchableSelect menu', () => {
+  // The recents cases below seed localStorage; keep them from leaking into the
+  // cases that assert what an empty store renders.
+  beforeEach(() => window.localStorage.clear());
+
   it('shows pinned options only once and keeps keyboard selection aligned', () => {
     const onChange = vi.fn();
     render(
@@ -79,4 +83,78 @@ describe('SearchableSelect menu', () => {
     expect(screen.getByRole('listbox').parentElement.style.width).toBe('700px');
     expect(screen.getByRole('listbox').parentElement.className).not.toContain('360px');
   });
+
+  // A recents key is raw localStorage: an older build, a foreign app on the same
+  // origin or a hand-edited devtools value can leave any JSON value there. The
+  // component iterates the parsed value during render, so a non-array used to be
+  // a TypeError that the error boundary turned into the crash screen.
+  it.each([['a number', '5'], ['an object', '{"Alpha":1}'], ['a bare string', '"Alpha"']])(
+    'renders instead of crashing when the stored recents value is %s',
+    (_label, stored) => {
+      window.localStorage.setItem('test.recents.invalid', stored);
+      render(
+        <SearchableSelect
+          options={['Alpha', 'Beta']}
+          recentsKey="test.recents.invalid"
+          ariaLabel="Voice"
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
+      expect(screen.getAllByRole('option')).toHaveLength(2);
+    },
+  );
+
+  it('keeps only string entries from a mixed recents array', () => {
+    window.localStorage.setItem(
+      'test.recents.mixed',
+      JSON.stringify(['Alpha', 7, null, { v: 'Beta' }]),
+    );
+    render(
+      <SearchableSelect
+        options={['Alpha', 'Beta']}
+        recentsKey="test.recents.mixed"
+        ariaLabel="Voice"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
+    expect(screen.getAllByRole('option', { name: 'Alpha' })).toHaveLength(1);
+    expect(screen.getAllByRole('option', { name: 'Beta' })).toHaveLength(1);
+  });
+
+  it('ignores a recents entry that is not one of the options', () => {
+    window.localStorage.setItem('test.recents.stale', JSON.stringify(['Ghost', 'Alpha']));
+    render(
+      <SearchableSelect
+        options={['Alpha', 'Beta']}
+        recentsKey="test.recents.stale"
+        ariaLabel="Voice"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
+    expect(screen.queryByRole('option', { name: 'Ghost' })).toBeNull();
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+  });
+});
+
+
+// The read guard is only half of it: a corrupted key must also be rewritten as a
+// real list once the user picks something, or the next read meets the same junk.
+it('rewrites a corrupted recents key as a list after a selection', () => {
+  window.localStorage.setItem('test.recents.repair', '{"Alpha":1}');
+  const onChange = vi.fn();
+  render(
+    <SearchableSelect
+      options={['Alpha', 'Beta']}
+      recentsKey="test.recents.repair"
+      onChange={onChange}
+      ariaLabel="Voice"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
+  const input = screen.getByRole('combobox', { name: 'Voice' });
+  fireEvent.keyDown(input, { key: 'ArrowDown' });
+  fireEvent.keyDown(input, { key: 'Enter' });
+
+  expect(onChange).toHaveBeenCalledWith('Beta');
+  expect(JSON.parse(window.localStorage.getItem('test.recents.repair'))).toEqual(['Beta']);
 });
