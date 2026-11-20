@@ -12,10 +12,8 @@ cannot quietly reintroduce the pattern.
 """
 from __future__ import annotations
 
-import io
+import ast
 import pathlib
-import re
-import tokenize
 
 # ``backend/tests/<this file>`` -> repository root is three levels up, not two:
 # the offline eval suite that motivated this guard lives under ``omnivoice/``.
@@ -28,41 +26,34 @@ _SKIP_PARTS = frozenset(
      "codex-security", "superpowers", "humanizer", "artifacts"}
 )
 
-_LOAD = re.compile(r"torch\.load\s*\(")
+
+def _is_torch_load(node: ast.AST) -> bool:
+    func = getattr(node, "func", None)
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(func, ast.Attribute)
+        and func.attr == "load"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "torch"
+    )
 
 
-def _executable_source(path: pathlib.Path) -> str:
-    """Return source with comments and string literals stripped.
+def _unsafe(call: ast.Call) -> bool:
+    """True unless the call's own ``weights_only`` is literally ``True``.
 
-    The rule is about executable calls; a docstring that documents
-    ``torch.load(weights_only=True)`` (or the rationale for the rule) must not be
-    mistaken for a call site.
+    ``**kwargs`` forwarding is accepted (a helper may set the flag); any
+    explicit ``weights_only`` other than the literal ``True`` is not.
     """
-    text = path.read_text(encoding="utf-8", errors="replace")
-    try:
-        tokens = tokenize.generate_tokens(io.StringIO(text).readline)
-        return "".join(
-            token.string
-            for token in tokens
-            if token.type not in (tokenize.COMMENT, tokenize.STRING)
-        )
-    except (tokenize.TokenError, IndentationError, SyntaxError):
-        # Unparseable file: fall back to the raw text so it still gets checked.
-        return text
+    for keyword in call.keywords:
+        if keyword.arg is None:
+            return False
+        if keyword.arg == "weights_only":
+            return not (isinstance(keyword.value, ast.Constant) and keyword.value.value is True)
+    return True
 
 
-def _call_arguments(source: str, start: int) -> str:
-    """Text of the call whose opening parenthesis is at ``start``."""
-    depth = 0
-    for index in range(start, len(source)):
-        char = source[index]
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-            if depth == 0:
-                return source[start + 1 : index]
-    return source[start + 1 :]
+def _calls(source: str) -> list[ast.Call]:
+    return [node for node in ast.walk(ast.parse(source)) if _is_torch_load(node)]
 
 
 def _python_files() -> list[pathlib.Path]:
@@ -73,29 +64,45 @@ def _python_files() -> list[pathlib.Path]:
     ]
 
 
+def _parsed_calls(path: pathlib.Path) -> list[ast.Call]:
+    try:
+        return _calls(path.read_text(encoding="utf-8", errors="replace"))
+    except SyntaxError:
+        return []
+
+
 def test_the_scan_finds_torch_load_call_sites():
     # Guard against a vacuous pass if the layout or the skip list changes.
-    found = [
-        path
-        for path in _python_files()
-        if _LOAD.search(_executable_source(path))
-    ]
-    assert found, "the torch.load scan found no call sites at all"
+    assert any(_parsed_calls(path) for path in _python_files()), (
+        "the torch.load scan found no call sites at all"
+    )
 
 
 def test_every_torch_load_passes_weights_only():
-    offenders: list[str] = []
-    for path in _python_files():
-        source = _executable_source(path)
-        for match in _LOAD.finditer(source):
-            arguments = _call_arguments(source, match.end() - 1)
-            # ``**kwargs`` forwarded from a helper that sets it is acceptable;
-            # anything else must name the flag explicitly.
-            if "weights_only" not in arguments and "**" not in arguments:
-                offenders.append(f"{path.relative_to(_ROOT)}: torch.load({arguments.strip()[:60]}...)")
+    offenders = [
+        f"{path.relative_to(_ROOT)}:{call.lineno}"
+        for path in _python_files()
+        for call in _parsed_calls(path)
+        if _unsafe(call)
+    ]
     assert not offenders, (
         "These torch.load calls do not pass weights_only=True, so a hostile "
         "checkpoint could execute code through the pickle unpickler. Pass "
         "weights_only=True, or register the specific pickled classes with "
         "torch.serialization.add_safe_globals:\n" + "\n".join(offenders)
     )
+
+
+def test_the_guard_classifies_calls():
+    flagged = [
+        "torch.load(p)",
+        "torch.load(p, weights_only=False)",
+        "torch.load(resolve(weights_only=True))",
+        "torch.load(paths[2**0])",
+        "f'{torch.load(p)}'",
+    ]
+    for src in flagged:
+        calls = _calls(src)
+        assert calls and all(_unsafe(c) for c in calls), src
+    for src in ("torch.load(p, weights_only=True)", "torch.load(p, **kw)", "'torch.load(p)'"):
+        assert not any(_unsafe(c) for c in _calls(src)), src
