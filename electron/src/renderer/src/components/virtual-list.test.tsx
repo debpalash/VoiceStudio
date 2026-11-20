@@ -3,7 +3,10 @@ import { useRef } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { VirtualGrid, VirtualList, gridColumns } from './virtual-list';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 function mockSizes() {
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(300);
@@ -150,4 +153,53 @@ it('grid: keeps the full height spacer when the virtualizer has no rows yet', ()
   expect(spacer).not.toBeNull();
   // 500 rows of 100px + 499 gaps of 12px.
   expect(parseFloat(spacer!.style.height)).toBeGreaterThan(50000);
+});
+
+// The grid measures the visible window on every render, and the virtualizer
+// re-renders it on every scroll frame. Constructing a ResizeObserver, observing
+// every visible card and disconnecting it again on each of those renders is work
+// that grows with the window for no benefit -- one observer serves the grid's
+// whole lifetime, with subscriptions reconciled as the window moves.
+it('grid: reuses its ResizeObserver across renders instead of rebuilding it', async () => {
+  mockSizes();
+  let constructed = 0;
+  let disconnects = 0;
+  const observed = new Set<Element>();
+  class FakeResizeObserver {
+    constructor(_callback: ResizeObserverCallback) {
+      constructed += 1;
+    }
+    observe(node: Element) {
+      observed.add(node);
+    }
+    unobserve(node: Element) {
+      observed.delete(node);
+    }
+    disconnect() {
+      disconnects += 1;
+      observed.clear();
+    }
+  }
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+
+  const onPick = vi.fn();
+  const { rerender } = render(<GridHarness count={300} onPick={onPick} />);
+  await screen.findAllByRole('button');
+  // However many times the mount itself runs the effect (StrictMode re-runs it),
+  // later renders must not add to this and must not disconnect anything.
+  const afterMount = constructed;
+  expect(afterMount).toBeGreaterThan(0);
+
+  rerender(<GridHarness count={320} onPick={onPick} />);
+  rerender(<GridHarness count={340} onPick={onPick} />);
+  rerender(<GridHarness count={360} onPick={onPick} />);
+  await screen.findAllByRole('button');
+
+  expect(constructed, 'a render rebuilt the observer').toBe(afterMount);
+  expect(disconnects, 'a render disconnected the live observer').toBe(0);
+  expect(observed.size).toBeGreaterThan(0);
+
+  // Unmounting is what releases it.
+  rerender(<div />);
+  expect(disconnects).toBeGreaterThan(0);
 });

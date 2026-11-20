@@ -160,6 +160,12 @@ export function VirtualGrid<T>({
   const controlled = columnCount !== undefined || pinnedKeys !== undefined;
   const listRef = useRef<HTMLDivElement>(null);
   const cardNodes = useRef(new Map<Key, HTMLDivElement>());
+  // One observer for the grid's lifetime. Rebuilding it every render meant a new
+  // ResizeObserver, a full observe() pass and a disconnect on every scroll frame,
+  // for the whole list. The window changes far more often than the set of visible
+  // rows does, so reconcile subscriptions instead of recreating the observer.
+  const gridObserver = useRef<ResizeObserver | null>(null);
+  const gridObserved = useRef(new Map<Element, number>());
   const [width, setWidth] = useState(0);
   const [margin, setMargin] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -267,20 +273,33 @@ export function VirtualGrid<T>({
     };
     elements.forEach((index, node) => measure(node, index));
     if (typeof ResizeObserver === 'undefined') return;
-    let active = true;
-    const observer = new ResizeObserver((entries) => {
-      if (!active) return;
-      for (const entry of entries) {
-        const index = elements.get(entry.target);
-        if (index !== undefined) measure(entry.target, index);
-      }
+    if (!gridObserver.current) {
+      gridObserver.current = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const index = gridObserved.current.get(entry.target);
+          if (index !== undefined) measure(entry.target, index);
+        }
+      });
+    }
+    const observer = gridObserver.current;
+    const previouslyObserved = gridObserved.current;
+    gridObserved.current = elements;
+    previouslyObserved.forEach((_index, node) => {
+      if (!elements.has(node)) observer.unobserve(node);
     });
-    elements.forEach((_, node) => observer.observe(node));
-    return () => {
-      active = false;
-      observer.disconnect();
-    };
+    elements.forEach((_index, node) => {
+      if (!previouslyObserved.has(node)) observer.observe(node);
+    });
   });
+  // The observer outlives every render, so unmount is the only place to release it.
+  useEffect(
+    () => () => {
+      gridObserver.current?.disconnect();
+      gridObserver.current = null;
+      gridObserved.current = new Map();
+    },
+    [],
+  );
 
   if (controlled) {
     const children: ReactNode[] = [];
