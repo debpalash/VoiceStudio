@@ -121,6 +121,34 @@ describe('SearchableSelect menu', () => {
     expect(screen.getAllByRole('option', { name: 'Beta' })).toHaveLength(1);
   });
 
+  it('stores only string entries after a selection on top of a bad recents value', () => {
+    window.localStorage.setItem('test.recents.write', JSON.stringify(['Alpha', 7, null]));
+    render(
+      <SearchableSelect
+        options={['Alpha', 'Beta']}
+        recentsKey="test.recents.write"
+        ariaLabel="Voice"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'Beta' }));
+    expect(JSON.parse(window.localStorage.getItem('test.recents.write'))).toEqual(['Beta', 'Alpha']);
+  });
+
+  it('writes a fresh list when the stored recents value is a bare string', () => {
+    window.localStorage.setItem('test.recents.bare', '"Alpha"');
+    render(
+      <SearchableSelect
+        options={['Alpha', 'Beta']}
+        recentsKey="test.recents.bare"
+        ariaLabel="Voice"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'Beta' }));
+    expect(JSON.parse(window.localStorage.getItem('test.recents.bare'))).toEqual(['Beta']);
+  });
+
   it('ignores a recents entry that is not one of the options', () => {
     window.localStorage.setItem('test.recents.stale', JSON.stringify(['Ghost', 'Alpha']));
     render(
