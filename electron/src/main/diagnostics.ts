@@ -22,6 +22,7 @@ import {
   sanitizeRecord,
   validConsent,
   TTL_MS,
+  MAX_PER_FINGERPRINT,
   type DiagnosticConsent,
   type DiagnosticEvent,
   type DiagnosticIdentity,
@@ -648,6 +649,24 @@ export class DiagnosticReports {
         Number(duplicate.props.occurrences) + Number(record.props.occurrences),
       );
     } else this.records.push(record);
+    // Recycle this failure's own oldest slots before the global bound below runs.
+    // That bound evicts by arrival, so without this budget a failure that repeats
+    // often enough empties the outbox of unrelated still-valid evidence while its
+    // own retention window is still running.
+    let family = this.records.filter(
+      (old) =>
+        !old.completed &&
+        old.id !== this.activeId &&
+        !this.activeIds.has(old.id) &&
+        old.props.fingerprint === record.props.fingerprint,
+    );
+    while (family.length > MAX_PER_FINGERPRINT) {
+      const index = this.records.indexOf(family[0]);
+      if (index < 0) break;
+      this.records.splice(index, 1);
+      this.dropped = Math.min(1_000_000, this.dropped + 1);
+      family = family.slice(1);
+    }
     while (
       this.records.length > MAX_RECORDS ||
       // Reserve the terminal flag and maximum counter width before admission,

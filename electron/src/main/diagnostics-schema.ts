@@ -114,6 +114,16 @@ export const MAX_QUEUE_BYTES = Math.min(
 );
 export const TTL_MS = Math.min(7 * 86400_000, diagnosticLimit('ttl_ms', 7 * 86400_000));
 
+/**
+ * How many queue slots one repeating failure may hold.
+ *
+ * Eviction is arrival-ordered, so a crash that repeats often enough pushes
+ * unrelated still-valid evidence out of the outbox long before its own TTL
+ * expires: the operator then sees one loud failure and none of the others.
+ * Budget per fingerprint keeps a repeat recycling its own slots.
+ */
+export const MAX_PER_FINGERPRINT = 8;
+
 export function enumValue(field: string, value: unknown): string | undefined {
   const allowed = enums.get(field);
   if (typeof value === 'string' && allowed?.has(value)) return value;
