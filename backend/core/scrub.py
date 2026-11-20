@@ -69,6 +69,10 @@ _URL_SECRET_RE = re.compile(
 # scans on malformed query text; matched values are consumed only once.
 _MAX_QUERY_NAME_CHARS = 3 * max(map(len, _URL_SECRET_NAMES))
 
+# Inline URL credentials: ``https://user:token@host``. http(s) only — see
+# ``_scrub_url_userinfo`` for why an SSH-style identity is left alone.
+_URL_USERINFO = re.compile(r"(?P<scheme>https?://)(?P<userinfo>[^\s/@\"'\\]+)@", re.IGNORECASE)
+
 
 def _raw_quote_end(text: str, start: int, limit: int | None = None) -> int:
     quote = text[start]
@@ -244,6 +248,23 @@ def _env_secret_values() -> list[str]:
     return sorted(vals, key=len, reverse=True)
 
 
+def _scrub_url_userinfo(text: str) -> str:
+    """Redact ``scheme://credential@host`` userinfo from http(s) URLs.
+
+    An index, mirror or proxy URL can carry its credential inline
+    (``https://user:token@mirror.example/simple/``), which is a sanctioned
+    configuration for restricted networks. Unlike a query parameter it is not
+    covered by ``_scrub_url_queries``, so uv, pip or git echo it verbatim into a
+    log.
+
+    Only ``http(s)`` is matched: there, userinfo is a credential by definition.
+    SSH-style identities (``ssh://git@host``, ``git@host:owner/repo``) carry no
+    secret and are deliberately left readable, and ``https://host/@handle`` is a
+    path, not userinfo, because the host cannot contain ``/``.
+    """
+    return _URL_USERINFO.sub(lambda m: m.group("scheme") + REDACTED + "@", text)
+
+
 def scrub_text(text: str | None) -> str:
     """Return ``text`` with secrets and home paths redacted.
 
@@ -262,7 +283,7 @@ def scrub_text(text: str | None) -> str:
     except Exception:
         return REDACTED
 
-    # 2. Credential-shaped substrings + URL query secrets.
+    # 2. Credential-shaped substrings + URL query secrets + URL userinfo.
     for pat in _TOKEN_PATTERNS:
         try:
             s = pat.sub(REDACTED, s)
@@ -272,6 +293,7 @@ def scrub_text(text: str | None) -> str:
         # Preserve quote delimiters for the scanner before free-text matching
         # can replace a long escaped prefix while leaving its value visible.
         s = _scrub_url_queries(s)
+        s = _scrub_url_userinfo(s)
         s = _URL_SECRET_RE.sub(lambda m: m.group(1) + REDACTED, s)
     except Exception:
         return REDACTED
