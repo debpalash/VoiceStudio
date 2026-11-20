@@ -559,3 +559,24 @@ def test_stream_sends_blank_keepalives_during_slow_render(
     assert b"" in lines[:-1]
     events = [json.loads(line) for line in lines if line.strip()]
     assert [event["type"] for event in events] == ["start", "chunk", "done"]
+
+
+def test_classic_transcript_less_clone_carries_a_localizable_code(
+    client, monkeypatch, no_omnivoice_model
+):
+    """#4223: the non-streaming 400 carries the stable code the app localizes."""
+    from core.failure import (
+        REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE,
+        ReferenceTranscriptRequiredError,
+    )
+
+    fake = _make_deterministic_engine(
+        fail_on_call=1, fail_exception=ReferenceTranscriptRequiredError,
+    )
+    monkeypatch.setitem(_tts_mod()._REGISTRY, "stream-fake", fake)
+
+    res = client.post("/generate", data={"text": "Hello.", "engine": "stream-fake"})
+    assert res.status_code == 400
+    detail = res.json()["detail"]
+    assert detail["code"] == "reference_transcript_required"
+    assert detail["message"] == REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE
