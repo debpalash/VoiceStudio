@@ -113,6 +113,23 @@ def _is_closed_client_error(e) -> bool:
     return False
 
 
+def _curated_revision_kwargs(checkpoint: str) -> dict:
+    """The reviewed revision for a curated repo, as ``from_pretrained`` kwargs.
+
+    ``services.hf_revisions`` resolves every repo the product offers to a
+    reviewed commit SHA and its module docstring requires download paths to use
+    it "instead of following ``main``". An explicitly configured checkpoint that
+    is not curated stays unpinned on purpose -- that setting is the user's own
+    opt-in -- so a missing pin is not an error here.
+    """
+    from services.hf_revisions import revision_for
+
+    try:
+        return {"revision": revision_for(checkpoint)}
+    except ValueError:
+        return {}
+
+
 def _retry_once_with_fresh_hf_client(loader, what: str):
     """Run ``loader()`` — a model constructor that may download from the HF
     Hub on first use — retrying transient download failures.
@@ -2363,7 +2380,10 @@ class VoxCPM2Backend(TTSBackend):
         # isolated sidecar (engines/voxcpm2_subprocess) already loads this way.
         self._model = _retry_once_with_fresh_hf_client(
             lambda: VoxCPM.from_pretrained(
-                checkpoint, load_denoiser=False, optimize=False
+                checkpoint,
+                load_denoiser=False,
+                optimize=False,
+                **_curated_revision_kwargs(checkpoint),
             ),
             "VoxCPM2",
         )
@@ -2515,12 +2535,20 @@ class MossTTSNanoBackend(TTSBackend):
             raise RuntimeError(
                 "moss_tts_nano exposes no usable model class; see Model Catalogue"
             )
+        # The curated registry pins ``OpenMOSS-Team/MOSS-TTS-Nano-100M`` to a
+        # reviewed commit; the unversioned ``MOSS-TTS-Nano`` is recorded as an
+        # external (unpinned) repository. This adapter's own docstring names the
+        # -100M id, so the default now matches the documented identity and the
+        # load passes its pin. An explicit OMNIVOICE_MOSS_TTS_MODEL override is
+        # still honoured as-is.
         checkpoint = os.environ.get(
-            "OMNIVOICE_MOSS_TTS_MODEL", "OpenMOSS-Team/MOSS-TTS-Nano"
+            "OMNIVOICE_MOSS_TTS_MODEL", "OpenMOSS-Team/MOSS-TTS-Nano-100M"
         )
         logger.info("Loading MOSS-TTS-Nano from %s", checkpoint)
         self._model = _retry_once_with_fresh_hf_client(
-            lambda: model_cls.from_pretrained(checkpoint, trust_remote_code=True),
+            lambda: model_cls.from_pretrained(
+                checkpoint, trust_remote_code=True, **_curated_revision_kwargs(checkpoint)
+            ),
             "MOSS-TTS-Nano",
         )
 
