@@ -809,6 +809,38 @@ it('budgets queue slots per repeating failure instead of evicting other evidence
   expect(categories).toContain('backend_crash');
 });
 
+it('counts an in-flight batch toward the per-failure budget and never evicts other evidence for it', async () => {
+  let clock = Date.now();
+  const reports = reporter({ now: () => clock });
+  await reports.initialize();
+  await reports.setConsent(true);
+  reports.capture({ category: 'backend_crash', stage: 'startup' });
+  for (let index = 0; index < MAX_PER_FINGERPRINT; index += 1) {
+    clock += 61_000;
+    reports.capture({ category: 'generation_failed', stage: 'generation' });
+  }
+  const internal = reports as unknown as {
+    records: Array<{ id: string; props: { category?: string } }>;
+    activeIds: Set<string>;
+  };
+  const batch = internal.records.filter((r) => r.props.category === 'generation_failed');
+  expect(batch).toHaveLength(MAX_PER_FINGERPRINT);
+  // The whole family is mid-upload: it cannot be evicted, and it already fills the budget.
+  internal.activeIds = new Set(batch.map((r) => r.id));
+  clock += 61_000;
+  reports.capture({ category: 'generation_failed', stage: 'generation' });
+  let categories = internal.records.map((r) => r.props.category);
+  expect(categories).toContain('backend_crash');
+  expect(categories.filter((c) => c === 'generation_failed')).toHaveLength(MAX_PER_FINGERPRINT);
+  // The batch fails and is released: the budget still holds.
+  internal.activeIds = new Set();
+  clock += 61_000;
+  reports.capture({ category: 'generation_failed', stage: 'generation' });
+  categories = internal.records.map((r) => r.props.category);
+  expect(categories.filter((c) => c === 'generation_failed')).toHaveLength(MAX_PER_FINGERPRINT);
+  expect(categories).toContain('backend_crash');
+});
+
 it('expires offline records after the seven-day retention window', async () => {
   const first = reporter();
   await first.initialize();

@@ -653,19 +653,20 @@ export class DiagnosticReports {
     // That bound evicts by arrival, so without this budget a failure that repeats
     // often enough empties the outbox of unrelated still-valid evidence while its
     // own retention window is still running.
-    let family = this.records.filter(
-      (old) =>
-        !old.completed &&
-        old.id !== this.activeId &&
-        !this.activeIds.has(old.id) &&
-        old.props.fingerprint === record.props.fingerprint,
+    // Records in an in-flight batch count toward the budget but cannot be evicted:
+    // only inactive ones (the incoming record last) are recycled, so a failed
+    // batch never leaves more than MAX_PER_FINGERPRINT of one failure behind.
+    const family = this.records.filter(
+      (old) => !old.completed && old.props.fingerprint === record.props.fingerprint,
     );
-    while (family.length > MAX_PER_FINGERPRINT) {
-      const index = this.records.indexOf(family[0]);
-      if (index < 0) break;
+    const evictable = family.filter(
+      (old) => old.id !== this.activeId && !this.activeIds.has(old.id),
+    );
+    for (let over = family.length - MAX_PER_FINGERPRINT; over > 0 && evictable.length; over--) {
+      const index = this.records.indexOf(evictable.shift()!);
+      if (index < 0) continue;
       this.records.splice(index, 1);
       this.dropped = Math.min(1_000_000, this.dropped + 1);
-      family = family.slice(1);
     }
     while (
       this.records.length > MAX_RECORDS ||
