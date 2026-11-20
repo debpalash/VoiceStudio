@@ -70,19 +70,21 @@ async def start_gateway_if_enabled() -> None:
 
 def _state() -> dict:
     cfg = config.load()
-    token_present = config.has_auth_token()
+    token_state = config.auth_token_state()
+    token_present = token_state == "configured"
     calls = session.registry.snapshot()
     return {
         "enabled": cfg.enabled,
         "account_sid": cfg.account_sid,
         "has_auth_token": token_present,
+        "auth_token_state": token_state,
         "public_base_url": cfg.public_base_url,
         "voice_id": cfg.voice_id,
         "engine": cfg.engine,
         "language": cfg.language,
         "greeting": cfg.greeting,
         "webhook_url": cfg.webhook_url,
-        "missing": config.missing_for_enable(cfg, token_present),
+        "missing": config.missing_for_enable(cfg, token_present, token_state=token_state),
         "listener": gateway.state(),
         "calls": {**calls, "max_concurrent": config.max_concurrent_calls()},
         "limits": {
@@ -144,7 +146,9 @@ async def put_config(body: _ConfigBody):
         raise _config_error(exc) from exc
     if body.auth_token is not None:
         config.set_auth_token(body.auth_token)
-    missing = config.missing_for_enable(updated, config.has_auth_token())
+    missing = config.missing_for_enable(
+        updated, config.has_auth_token(), token_state=config.auth_token_state()
+    )
     if updated.enabled and missing:
         # Save the fields, but never switch on a half-configured endpoint.
         config.save(config.TwilioConfig(**{**updated.__dict__, "enabled": False}))

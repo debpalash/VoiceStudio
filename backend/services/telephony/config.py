@@ -116,10 +116,25 @@ def auth_token() -> str:
     return settings_store.get_secret(SECRET_NAME) or ""
 
 
-def has_auth_token() -> bool:
+def auth_token_state() -> str:
+    """``configured`` / ``absent`` / ``unreadable`` for the stored auth token.
+
+    A credential store that cannot be read is not the same as one that is empty:
+    reporting the second sends the user to re-enter a token that is already stored
+    correctly. The lenient list answers the common case; the strict variant is
+    consulted only when the name is missing from it, so a caller that supplies the
+    list through the usual seam keeps working.
+    """
     from services import settings_store
 
-    return SECRET_NAME in settings_store.list_secret_names()
+    if SECRET_NAME in settings_store.list_secret_names():
+        return "configured"
+    readable, _names = settings_store.secret_names_state()
+    return "absent" if readable else "unreadable"
+
+
+def has_auth_token() -> bool:
+    return auth_token_state() == "configured"
 
 
 def save(cfg: TwilioConfig) -> None:
@@ -137,18 +152,29 @@ def set_auth_token(value: str) -> None:
     settings_store.set_secret(SECRET_NAME, value.strip())
 
 
-def missing_for_enable(cfg: TwilioConfig, token_present: bool, inbound_mode: str | None = None) -> list[str]:
+def missing_for_enable(
+    cfg: TwilioConfig,
+    token_present: bool,
+    inbound_mode: str | None = None,
+    token_state: str | None = None,
+) -> list[str]:
     """Fields that must be set before the listener may run (UI codes).
 
     The greeting is only required while incoming calls are answered with it;
     in agent mode the call agent answers instead.
+
+    ``token_state`` distinguishes a missing token from a credential store that
+    could not be read, so the UI can ask the user to retry rather than to re-enter
+    a working token.
     """
     if inbound_mode is None:
         inbound_mode = load_call_settings().inbound_mode
     missing = []
     if not cfg.account_sid:
         missing.append("account_sid")
-    if not token_present:
+    if token_state == "unreadable":
+        missing.append("auth_token_unreadable")
+    elif not token_present:
         missing.append("auth_token")
     if not cfg.public_base_url:
         missing.append("public_base_url")

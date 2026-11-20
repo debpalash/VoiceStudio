@@ -515,16 +515,27 @@ def readiness() -> list[dict]:
 
     cfg = config.load()
     settings = config.load_call_settings()
-    token = config.has_auth_token()
+    token_state = config.auth_token_state()
+    token = token_state == "configured"
     listener = gateway.state()
     items = []
 
-    missing = [n for n, ok in (("Account SID", cfg.account_sid), ("Auth Token", token)) if not ok]
-    items.append({
-        "id": "credentials",
-        "ok": not missing,
-        "detail": "Twilio credentials saved" if not missing else f"Add your Twilio {' and '.join(missing)} in Integrations → Twilio",
-    })
+    if token_state == "unreadable":
+        items.append({
+            "id": "credentials",
+            "ok": False,
+            "detail": (
+                "Stored Twilio credentials could not be read. Retry, and repair "
+                "the settings database if it persists — do not re-enter the token."
+            ),
+        })
+    else:
+        missing = [n for n, ok in (("Account SID", cfg.account_sid), ("Auth Token", token)) if not ok]
+        items.append({
+            "id": "credentials",
+            "ok": not missing,
+            "detail": "Twilio credentials saved" if not missing else f"Add your Twilio {' and '.join(missing)} in Integrations → Twilio",
+        })
     if not cfg.public_base_url:
         tunnel = (False, "Add your public tunnel URL in Integrations → Twilio")
     elif not cfg.enabled or not listener.get("running"):
@@ -561,7 +572,16 @@ def readiness() -> list[dict]:
 def _require_ready(cfg: config.TwilioConfig, settings: config.CallSettings) -> None:
     from services.telephony import gateway
 
-    if not cfg.account_sid or not config.has_auth_token():
+    token_state = config.auth_token_state()
+    if token_state == "unreadable":
+        # Fail closed, but say why: the credential is stored, the store is not
+        # readable. "Add your Auth Token" would send the user to overwrite it.
+        raise CallError(
+            409,
+            "credentials_unreadable",
+            "Stored Twilio credentials could not be read; retry, and repair the settings database if it persists",
+        )
+    if not cfg.account_sid or token_state != "configured":
         raise CallError(409, "not_configured", "Add your Twilio Account SID and Auth Token first")
     if not cfg.enabled or not cfg.public_base_url:
         raise CallError(409, "integration_disabled", "Turn on the Twilio integration first")
