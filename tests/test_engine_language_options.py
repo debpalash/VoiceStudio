@@ -227,3 +227,23 @@ def test_translation_only_dub_targets_resolve_to_nllb_codes():
     assert _nllb_language("ceb") == "ceb_Latn"
     assert _nllb_language("kab") == "kab_Latn"
     assert _nllb_language("ug") == "uig_Arab"
+
+
+@pytest.mark.parametrize('language,expected', [
+    ('pt-BR', 'pt'), ('pt_br', 'pt'), ('PT-PT', 'pt'), ('es-MX', 'es'), ('en-US', 'en'),
+    ('zh-Hans', 'zh'), ('Portuguese (Brazil)', 'pt'), ('Portuguese (Portugal)', 'pt'),
+    ('Spanish (Mexico)', 'es'), ('xx-YY', None), ('Klingon (Empire)', None),
+])
+def test_omnivoice_resolves_region_tagged_and_variant_languages(language, expected):
+    """Region tags and picker variant names speak their base language instead of
+    silently falling back to language-agnostic mode."""
+    from omnivoice.models.omnivoice import _resolve_language
+    assert _resolve_language(language) == expected
+
+
+def test_every_picker_variant_name_resolves_for_omnivoice():
+    from core.language_variants import VARIANT_NAMES
+    from omnivoice.models.omnivoice import _resolve_language
+    for name, (_base, dialect) in VARIANT_NAMES.items():
+        assert _resolve_language(name) == dialect.split('-')[0]
+        assert _resolve_language(dialect) == dialect.split('-')[0]
