@@ -756,7 +756,11 @@ test-only PR. Docker Hub overview edits still publish through the small
   are authorized in Electron main (native save dialog), never via HTTP params.
 - **CI supply chain:** every remote action in `.github/workflows/` is pinned
   to a full 40-char commit SHA with a trailing `# vX.Y.Z` comment
-  (`tests/test_actions_pinned.py`); Dependabot bumps the pins weekly.
+  (`tests/test_actions_pinned.py`); Dependabot bumps the pins weekly. Shape
+  checks cannot prove a pin *is* the commit its comment names, so the weekly
+  `action-pin-verify.yml` run resolves every distinct action/label pair
+  (`scripts/verify_action_pins.py`); reproduce it locally with
+  `VOICESTUDIO_VERIFY_ACTION_PINS=1 uv run pytest tests/test_workflow_action_pins.py`.
 
 ## Contribution licensing
 
