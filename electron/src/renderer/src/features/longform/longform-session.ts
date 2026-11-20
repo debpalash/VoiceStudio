@@ -702,7 +702,10 @@ async function persistedFinish(
     let after = 0;
     for (let pages = 0; pages < 50; pages++) {
       const page = await apiJson<Page>(path + '?limit=2000&after_seq=' + after, { signal });
-      if (page.job.status !== 'done') return null;
+      // A stored `done` event is the completion rule: the backend records it before it
+      // marks the job row done, in a separate write, so a still-running status alone
+      // must not discard a finished render. A failed or cancelled job never finished.
+      if (page.job.status === 'failed' || page.job.status === 'cancelled') return null;
       for (const { seq, payload } of page.events) {
         after = Math.max(after, seq);
         const event = JSON.parse(payload) as Record<string, unknown>;
