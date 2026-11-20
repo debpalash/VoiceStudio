@@ -53,6 +53,15 @@ os.environ.setdefault("OMNIVOICE_ALLOWED_HOSTS", "testserver")
 # different value monkeypatch it explicitly.
 os.environ["OMNIVOICE_MODEL"] = "test"
 
+# These two mirror tests/conftest.py (issue #1175 follow-up): a backend test that
+# boots the app lifespan can leave the deferred preload task pending, and 35s
+# later it loads real models under whichever test is running; and the physical-GPU
+# inventory reads the developer's registry/sysfs, so a routing test would resolve
+# differently on their machine than on a runner. Unconditional, like the root
+# suite: a stray shell export must not re-enable either.
+os.environ["OMNIVOICE_PRELOAD_WATERMARK"] = "0"
+os.environ["OMNIVOICE_DISABLE_GPU_INVENTORY"] = "1"
+
 
 import functools
 import shutil

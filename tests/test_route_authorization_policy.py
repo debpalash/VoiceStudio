@@ -245,6 +245,21 @@ ALLOWLIST: dict[str, str] = {
         "Authorizes in-body with check_admin(request); registered on the bare app so Electron's "
         "quit clears the crash sentinel while the system router is still gated."
     ),
+    # ── Telephony gateway (its own app, its own loopback listener) ────────
+    # The gateway cannot use a VoiceStudio credential: the caller is Twilio.
+    "POST /integrations/twilio/voice": (
+        "Twilio voice webhook; the handler verifies X-Twilio-Signature with the user's Auth "
+        "Token before answering, and must stay reachable without a VoiceStudio credential."
+    ),
+    "POST /integrations/twilio/status": (
+        "Twilio call-status callback; the same in-body signature check runs before the status "
+        "is recorded, for the same reason the voice webhook cannot demand one."
+    ),
+    "WS /integrations/twilio/stream": (
+        "Twilio media stream; the start event must present the single-use per-call token "
+        "issued in the TwiML for the same CallSid within 60 s "
+        "(services/telephony/session.py CallTokens.redeem)."
+    ),
 }
 
 
@@ -286,6 +301,18 @@ def _mutating_keys(route: dict) -> list[str]:
         for method in route["methods"]
         if method in _MUTATING_METHODS
     ]
+
+
+def test_the_census_covers_every_route_serving_app(live_auth_routes):
+    """A second FastAPI app on its own listener is still a route surface.
+
+    The telephony gateway builds its own app; walking only `main.app` left its
+    voice, status and media-stream routes outside this guard, so a route added
+    there could have shipped undecided.
+    """
+    assert live_auth_routes["apps"] == ["main", "telephony"]
+    apps_with_routes = {route["app"] for route in live_auth_routes["routes"]}
+    assert apps_with_routes == set(live_auth_routes["apps"])
 
 
 def test_every_mutating_route_has_an_authorization_decision(live_auth_routes):
