@@ -153,3 +153,27 @@ def test_a_symlinked_env_file_is_written_through_to_its_target(tmp_path, monkeyp
         "HF_ENDPOINT=https://hf-mirror.com",
         "OMNIVOICE_CACHE_DIR=/models",
     ]
+
+
+def test_a_transient_sharing_violation_on_publish_is_retried(env_file, monkeypatch, user_env):
+    import importlib
+    import os
+
+    fs_retry = importlib.import_module("core.fs_retry")
+    monkeypatch.setattr(fs_retry, "LOCK_RETRY_DELAYS", (0, 0))
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(src, dst):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            err = PermissionError(13, "The process cannot access the file")
+            err.winerror = 32  # ERROR_SHARING_VIOLATION
+            raise err
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", flaky_replace)
+    user_env.set_user_env("HF_ENDPOINT", "https://hf-mirror.com")
+
+    assert calls["n"] == 2
+    assert env_file.read_text(encoding="utf-8").splitlines() == ["HF_ENDPOINT=https://hf-mirror.com"]

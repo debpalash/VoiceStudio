@@ -80,7 +80,11 @@ def _write_lines(path: str, lines: list[str]) -> None:
             f.write(body)
             f.flush()
             durable_io.flush_fd(f.fileno())
-        os.replace(tmp, path)
+        # Windows refuses the rename while a reader or a scanner briefly holds
+        # either file; retry those transient sharing violations like other writers.
+        from core.fs_retry import retry_on_lock
+
+        retry_on_lock(lambda: os.replace(tmp, path))
         try:
             os.chmod(path, 0o600)  # tighten an existing file that predates the opener
         except OSError as exc:
