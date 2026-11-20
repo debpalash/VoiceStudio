@@ -27,3 +27,19 @@ it('truncates by UTF-8 bytes without splitting a character or losing the extensi
   expect(name.endsWith('.mp4')).toBe(true);
   expect(name).not.toContain('�');
 });
+
+it.each(['COM', 'LPT', 'com', 'lpt'])('repairs superscript device names for %s', (prefix) => {
+  for (const digit of ['¹', '²', '³']) {
+    for (const suffix of ['', '.wav', '.tar.gz']) {
+      const name = prefix + digit + suffix;
+      expect(portableFilename(name)).toBe('_' + name);
+    }
+  }
+});
+
+it.each(['COM⁴.wav', 'LPT⁰.srt', 'COM¹_notes.wav'])(
+  'preserves the ordinary filename %s',
+  (name) => {
+    expect(portableFilename(name)).toBe(name);
+  },
+);
