@@ -1331,7 +1331,7 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
             try:
                 os.remove(path)
             except OSError:
-                pass
+                pass  # a leftover temp transcription clip is harmless; the retry continues
             chunk, trimmed = raw, False
             path, text = transcribe_chunk(chunk)
             score = _speech_score(text)
