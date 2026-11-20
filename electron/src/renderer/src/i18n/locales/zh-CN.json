@@ -2880,6 +2880,7 @@
     "source_language_required": "语音识别未报告此视频所用的语言，因此无法在此翻译。请在配音中打开该视频并选择其源语言，或选择能检测语言的语音识别模型。",
     "transcription_media_tool": "转录需要 ffmpeg，但 VoiceStudio 无法找到或运行它。请打开设置 → 音频工具并使用下载/修复，或安装 ffmpeg（macOS：brew install ffmpeg；Windows：winget install Gyan.FFmpeg；Linux：你的包管理器），然后重启 VoiceStudio。你也可以将 FFMPEG_PATH 指向 ffmpeg 可执行文件。",
     "transcription_pipe_lost": "转录期间后端丢失了通往应用的输出管道（broken pipe）。请重启 VoiceStudio 后重试。",
+    "reference_transcript_required": "此声音的参考音频没有文字稿，而该引擎克隆声音需要它。请将文字稿添加到声音配置文件，或安装语音转文字模型以自动转写。",
     "gpu_oom": "GPU 显存不足。请关闭其他占用 GPU 的应用或卸载模型后重试。你也可以在 设置 → 性能与设备 中选择 CPU，或选择更小的 TTS 引擎。",
     "host_memory_exhausted": "电脑内存不足。请关闭其他占用内存的应用和浏览器标签页，卸载不用的模型，生成较短的片段，或选择更轻量的 TTS 引擎。",
     "disk_full": "磁盘已满。请在存放 VoiceStudio 数据、模型缓存或临时文件夹的磁盘上释放空间，然后重试。设置 → 存储会显示磁盘用量，并可清理临时文件。",

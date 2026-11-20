@@ -1246,6 +1246,24 @@ def _read_reference_mono(path: str):
     return audio, sr
 
 
+def _window_samples(audio, sr: int, index: int):
+    """Window ``index`` of a mono clip, with both edges pulled into a pause.
+
+    Fixed 15 s windows are cut at arbitrary times. A window that ends in the
+    first sound of the next word gets a transcript without that sound, and the
+    clone then starts its output with it. Ranking and recall both use this
+    cut, so the transcript always matches the audio that is encoded.
+    """
+    import torch
+    from omnivoice.utils.audio import CLONE_REF_WINDOW_SECONDS, trim_passage_to_pauses
+
+    window = int(CLONE_REF_WINDOW_SECONDS * sr)
+    chunk = audio[index * window:(index + 1) * window]
+    if len(chunk) == 0:
+        return chunk
+    return trim_passage_to_pauses(torch.from_numpy(chunk[None].copy()), sr)[0].numpy()
+
+
 def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
     """Pick a long clip's best 15 s window with the installed recognizer.
 
@@ -1285,7 +1303,7 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
     best_index = 0
     n_windows = min(CLONE_REF_MAX_WINDOWS, (len(audio) + window - 1) // window)
     for index in range(n_windows):
-        chunk = audio[index * window:(index + 1) * window]
+        chunk = _window_samples(audio, sr, index)
         if len(chunk) == 0:
             continue
         fd, path = tempfile.mkstemp(suffix=".wav")
@@ -1325,16 +1343,11 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
 
 def _materialize_window(ref_audio: str, index: int) -> Optional[str]:
     """Write one previously chosen 15 s window. The caller deletes the file."""
-    from omnivoice.utils.audio import CLONE_REF_WINDOW_SECONDS
-
     loaded = _read_reference_mono(ref_audio)
     if loaded is None or index < 0:
         return None
     audio, sr = loaded
-    window = int(CLONE_REF_WINDOW_SECONDS * sr)
-    if window <= 0:
-        return None
-    chunk = audio[index * window:(index + 1) * window]
+    chunk = _window_samples(audio, sr, index)
     if len(chunk) == 0:
         return None
     import soundfile as sf
@@ -1432,46 +1445,6 @@ def _speech_score(text: str) -> int:
     return len(re.sub(r"[^\w]+", "", text or "", flags=re.UNICODE))
 
 
-def _trim_selected_passage(path: str, text: str) -> tuple[str, str, Optional[str]]:
-    """Pull a backend-selected long-reference window's edges into pauses.
-
-    The model trims and re-reads a passage only when it picks one itself
-    (``ref_text is None``). A window chosen here arrives with its transcript, so
-    without this a window cut mid-word would carry that fragment into the
-    generated speech. Returns ``(path, text, owned_path)``: the trimmed copy and
-    its re-read transcript (``owned_path`` is the temp file the caller deletes),
-    or the original window and transcript when nothing needed trimming, the
-    trimmed copy has no words, or any step fails.
-    """
-    out = None
-    try:
-        import soundfile as sf
-        import tempfile
-        import torch
-        from omnivoice.utils.audio import trim_passage_to_pauses
-        from services.asr_backend import transcribe_reference
-
-        data, sr = sf.read(path, dtype="float32", always_2d=True)
-        wav = torch.from_numpy(data.T.copy())
-        trimmed = trim_passage_to_pauses(wav, sr)
-        if trimmed.size(-1) == wav.size(-1):
-            return path, text, None
-        fd, out = tempfile.mkstemp(suffix=".wav")
-        os.close(fd)
-        sf.write(out, trimmed.T.numpy(), sr)
-        new_text = (transcribe_reference(out) or "").strip()
-        if _speech_score(new_text) > 0:
-            return out, new_text, out
-    except Exception:  # noqa: BLE001 — the untrimmed window is still valid
-        logger.debug("selected-window trim failed; keeping the untrimmed window")
-    if out is not None:
-        try:
-            os.remove(out)
-        except OSError:
-            pass
-    return path, text, None
-
-
 def _unresolved_prompt_is_current(key: tuple) -> bool:
     """True when the cached transcript-free prompt under ``key`` was built under
     the recognizer chain that is selected now.
@@ -1546,7 +1519,6 @@ def _get_clone_prompt(
 
     duration = reference_duration_s(ref_audio)
     passage_file = None
-    trimmed_file = None
     passage_context = None
     recalled_index = None
     cacheable = True
@@ -1631,14 +1603,8 @@ def _get_clone_prompt(
         if prompt is None and recalled_index is not None:
             passage_file = _materialize_window(ref_audio, recalled_index)
         encode_audio = ref_audio
-        encode_text = ref_text
         if passage_file is not None:
             encode_audio = passage_file
-            if prompt is None:
-                # Only when a prompt is actually built (a cache hit needs none).
-                encode_audio, encode_text, trimmed_file = _trim_selected_passage(
-                    passage_file, ref_text
-                )
         if prompt is None:
             # Passage selection and trimming are done: unload the installed
             # recognizers now, because the model's own fallback may load another
@@ -1655,7 +1621,7 @@ def _get_clone_prompt(
                 # would do inline for this ref (omnivoice.py:964-978), so output is
                 # identical.
                 prompt = model.create_voice_clone_prompt(
-                    encode_audio, ref_text=encode_text, preprocess_prompt=preprocess_prompt
+                    encode_audio, ref_text=ref_text, preprocess_prompt=preprocess_prompt
                 )
             except Exception as e:  # noqa: BLE001 — fall back, never break synthesis
                 # #1790/#1777: a GPU OOM is the one failure this fallback cannot
@@ -1696,7 +1662,7 @@ def _get_clone_prompt(
                     except Exception:  # noqa: BLE001 — reclaim is best-effort
                         logger.debug("VRAM reclaim before OOM retry failed", exc_info=True)
                     prompt = model.create_voice_clone_prompt(
-                        encode_audio, ref_text=encode_text, preprocess_prompt=preprocess_prompt
+                        encode_audio, ref_text=ref_text, preprocess_prompt=preprocess_prompt
                     )
                 else:
                     logger.warning(
@@ -1723,11 +1689,6 @@ def _get_clone_prompt(
                 _unresolved_prompt_recognizers.pop(evicted, None)
         return prompt
     finally:
-        if trimmed_file is not None:
-            try:
-                os.remove(trimmed_file)
-            except OSError:
-                logger.debug("failed to remove trimmed reference window")
         if passage_file is not None:
             try:
                 os.remove(passage_file)
