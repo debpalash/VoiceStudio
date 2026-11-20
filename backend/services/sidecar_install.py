@@ -886,12 +886,25 @@ def installable_engine_ids() -> frozenset[str]:
     return frozenset(eid for eid, spec in SPECS.items() if host_support(spec)[0])
 
 
+_CHECKOUT_PLACEHOLDER = re.compile(r"\{(checkout_uri|checkout_repr|checkout)\}")
+
+
 def _expand(value: str, checkout: Path) -> str:
-    return value.replace("{checkout_uri}", checkout.resolve().as_uri()).replace(
-        "{checkout_repr}", repr(str(checkout))
-    ).replace(
-        "{checkout}", str(checkout)
-    )
+    """Substitute the checkout placeholders in one pass.
+
+    A chain of ``str.replace`` calls re-scans text it has already substituted, so
+    an engines directory whose path literally contains ``{checkout}`` (the root is
+    user-choosable via ``OMNIVOICE_ENGINES_DIR``) was rewritten inside the
+    inserted path -- corrupting the ``uv`` argv and the ``python -c`` probe with
+    an error that reads like a broken engine. One regex pass cannot revisit what
+    it produced.
+    """
+    table = {
+        "checkout_uri": checkout.resolve().as_uri(),
+        "checkout_repr": repr(str(checkout)),
+        "checkout": str(checkout),
+    }
+    return _CHECKOUT_PLACEHOLDER.sub(lambda match: table[match.group(1)], value)
 
 
 def get_spec(engine_id: str) -> Optional[SidecarSpec]:
