@@ -1718,18 +1718,43 @@ def _source_present(spec: SidecarSpec, checkout: Path) -> bool:
     return marker == spec.source_revision
 
 
-def _download_and_extract(job: dict, url: str, dest: Path, work_root: Path, env_var: str) -> None:
+def _download_and_extract(
+    job: dict,
+    url: str,
+    dest: Path,
+    work_root: Path,
+    env_var: str,
+    *,
+    expected_revision: str | None = None,
+) -> None:
     """Download a GitHub source tarball and move its one top-level directory
     to *dest* (no git required).
 
     Extraction is member-validated (no absolute paths / parent escapes) and
     never uses symlinks, so it behaves identically on Windows.
+
+    When ``expected_revision`` is given, the archive is tied to that commit: the
+    URL must name it (when the URL pins a commit at all) and the extracted tree
+    must be the ``<repo>-<commit>`` directory GitHub generates. Without this the
+    git-less fallback accepted *any* archive that unpacked to a single directory
+    and then handed the tree to ``uv pip install``, which runs its build backend;
+    the pinned SHA appeared only in the URL text and in a marker this installer
+    wrote itself.
     """
     import httpx
 
+    if expected_revision:
+        pinned_in_url = re.search(r"/([0-9a-f]{40})(?:\.tar\.gz)?$", url)
+        if pinned_in_url and pinned_in_url.group(1) != expected_revision:
+            raise _StepError(
+                f"Source URL pins {pinned_in_url.group(1)[:8]} but the spec expects "
+                f"{expected_revision[:8]}.",
+                "This is a packaging bug; update VoiceStudio and re-run the install.",
+            )
+
     root = work_root
     root.mkdir(parents=True, exist_ok=True)
-    _log(job, f"Downloading {url} …")
+    _log(job, f"Downloading {url} ...")
     fd, tmp_tar = tempfile.mkstemp(suffix=".tar.gz", dir=str(root))
     try:
         with os.fdopen(fd, "wb") as out:
@@ -1740,17 +1765,24 @@ def _download_and_extract(job: dict, url: str, dest: Path, work_root: Path, env_
                 resp.raise_for_status()
                 for chunk in resp.iter_bytes():
                     out.write(chunk)
-        _log(job, "Extracting source tarball …")
+        _log(job, "Extracting source tarball ...")
         with tempfile.TemporaryDirectory(dir=str(root)) as tmp_dir:
             with tarfile.open(tmp_tar, "r:gz") as tf:
                 try:
                     tf.extractall(tmp_dir, members=_members_without_links(tf), filter="data")
-                except TypeError:  # pragma: no cover — pre-filter= interpreters
+                except TypeError:  # pragma: no cover - pre-filter= interpreters
                     _safe_extract_members(tf, tmp_dir)
             entries = [p for p in Path(tmp_dir).iterdir() if p.is_dir()]
             if len(entries) != 1:
                 raise _StepError(
                     f"Unexpected tarball layout ({len(entries)} top-level dirs).",
+                    "Re-run the install; if it keeps failing, clone the repository "
+                    f"manually and set {env_var} (see the engine docs).",
+                )
+            if expected_revision and not entries[0].name.endswith(f"-{expected_revision}"):
+                raise _StepError(
+                    "Downloaded source does not match the pinned commit "
+                    f"{expected_revision[:8]} (the archive contains {entries[0].name!r}).",
                     "Re-run the install; if it keeps failing, clone the repository "
                     f"manually and set {env_var} (see the engine docs).",
                 )
@@ -1765,7 +1797,10 @@ def _download_and_extract(job: dict, url: str, dest: Path, work_root: Path, env_
 
 def _fetch_tarball(spec: SidecarSpec, job: dict, checkout: Path) -> None:
     """Download + extract the engine's GitHub source tarball (no git required)."""
-    _download_and_extract(job, spec.tarball_url, checkout, managed_root(spec), spec.env_var)
+    _download_and_extract(
+        job, spec.tarball_url, checkout, managed_root(spec), spec.env_var,
+        expected_revision=spec.source_revision,
+    )
 
 
 def _extra_source_present(extra: ExtraSource, dest: Path) -> bool:
@@ -1786,7 +1821,10 @@ def _ensure_extra_sources(spec: SidecarSpec, job: dict, checkout: Path) -> None:
         shutil.rmtree(dest, ignore_errors=True)
         dest.parent.mkdir(parents=True, exist_ok=True)
         _log(job, f"Fetching {extra.path} at {extra.revision[:8]} …")
-        _download_and_extract(job, extra.tarball_url, dest, managed_root(spec), spec.env_var)
+        _download_and_extract(
+            job, extra.tarball_url, dest, managed_root(spec), spec.env_var,
+            expected_revision=extra.revision,
+        )
         if not (dest / extra.required_path).is_file():
             raise _StepError(
                 f"Fetched {extra.path} has no {extra.required_path}; the download "
