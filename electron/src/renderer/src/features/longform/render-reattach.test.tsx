@@ -221,7 +221,7 @@ it('shows one card per interrupted project, explains a disabled Resume and can b
 });
 
 /** A render whose connection drops right after the last chapter, before `done` arrives. */
-function startDroppedRender() {
+function startDroppedRender(chapters = 1) {
   const encoder = new TextEncoder();
   fetchMock.mockImplementation(
     () =>
@@ -229,7 +229,7 @@ function startDroppedRender() {
         new ReadableStream({
           start(stream) {
             for (const event of [
-              { type: 'started', job_id: 'job9', chapters: 1 },
+              { type: 'started', job_id: 'job9', chapters },
               { type: 'chapter', index: 0, title: 'One', duration_s: 1 },
               { type: 'assembling' },
             ])
@@ -271,4 +271,24 @@ it('keeps the stream error when the backend has no finished result for the dropp
   await startDroppedRender();
   expect(longformSession.state.error).toBe('network error');
   expect(apiJsonMock).toHaveBeenCalledTimes(1);
+});
+
+it('restores chapter results lost with done, so cue timings stay complete (#4090)', async () => {
+  const lost = { type: 'chapter', index: 1, title: 'Two', duration_s: 2 };
+  const done = { type: 'done', output: 'story_job9.m4b', cached_chapters: 0, failed_chapters: 0 };
+  apiJsonMock.mockResolvedValue({
+    job: { status: 'done' },
+    events: [
+      { seq: 2, payload: JSON.stringify({ type: 'chapter', index: 0, title: 'One', duration_s: 1 }) },
+      { seq: 3, payload: JSON.stringify(lost) },
+      { seq: 5, payload: JSON.stringify(done) },
+    ],
+    event_watermark: { seq: 5 },
+  });
+  await startDroppedRender(2);
+  expect(longformSession.state.error).toBeNull();
+  expect(longformSession.state.drafts.stories.outputChapters.map((c) => c.title)).toEqual([
+    'One',
+    'Two',
+  ]);
 });

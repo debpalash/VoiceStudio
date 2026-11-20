@@ -681,11 +681,15 @@ export function renderBody(mode: Mode, draft: Draft) {
         chapters: storyToSpans(draft.lines, draft.cast, draft.globalSpeed),
       };
 }
-/** The `done` event the backend recorded for a render whose live stream was lost. */
-async function persistedDoneEvent(
+/**
+ * The chapter results and `done` event the backend recorded for a finished render
+ * whose live stream was lost, in order. Replaying the chapters too keeps the cue
+ * sheet and player timings complete when the final chapter event was lost with `done`.
+ */
+async function persistedFinish(
   jobId: string,
   signal: AbortSignal,
-): Promise<Record<string, unknown> | null> {
+): Promise<Record<string, unknown>[] | null> {
   try {
     const path = '/jobs/' + encodeURIComponent(jobId) + '/events';
     interface Page {
@@ -693,23 +697,27 @@ async function persistedDoneEvent(
       events: { seq: number; payload: string }[];
       event_watermark: { seq: number };
     }
-    let page = await apiJson<Page>(path + '?limit=500', { signal });
-    if (page.job.status !== 'done') return null;
-    const last = page.events[page.events.length - 1]?.seq ?? 0;
-    if (page.event_watermark.seq > last)
-      page = await apiJson<Page>(
-        path + '?after_seq=' + Math.max(0, page.event_watermark.seq - 20),
-        { signal },
-      );
-    for (const { payload } of [...page.events].reverse()) {
-      const event = JSON.parse(payload) as Record<string, unknown>;
-      if (event.type === 'done') return event;
+    const replay: Record<string, unknown>[] = [];
+    let done: Record<string, unknown> | null = null;
+    let after = 0;
+    for (let pages = 0; pages < 50; pages++) {
+      const page = await apiJson<Page>(path + '?limit=2000&after_seq=' + after, { signal });
+      if (page.job.status !== 'done') return null;
+      for (const { seq, payload } of page.events) {
+        after = Math.max(after, seq);
+        const event = JSON.parse(payload) as Record<string, unknown>;
+        if (event.type === 'chapter' || event.type === 'chapter_error') replay.push(event);
+        if (event.type === 'done') done = event;
+      }
+      if (!page.events.length || after >= page.event_watermark.seq) break;
     }
+    return done ? [...replay, done] : null;
   } catch {
     // Unreadable history leaves the original stream error visible.
   }
   return null;
 }
+
 export async function renderLongform(mode: Mode, resumeId?: string) {
   if (controller || persistenceClosed) return;
   cancelRecovery(mode);
@@ -880,9 +888,9 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
       // connection that drops near the end of a long render (a loaded machine, a
       // reload) still has a finished result to attach (#4090).
       if (done || current.signal.aborted || !jobId) throw streamError;
-      const finished = await persistedDoneEvent(jobId, current.signal);
+      const finished = await persistedFinish(jobId, current.signal);
       if (!finished) throw streamError;
-      onEvent(finished);
+      for (const event of finished) onEvent(event);
     }
   } catch (error) {
     if (mayPresent()) patch({ error: error instanceof Error ? error.message : String(error) });
