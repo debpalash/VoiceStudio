@@ -1007,13 +1007,16 @@ def _publish_design_preview(
 
         restore, finalize = _install_staged(str(staged), str(target))
         try:
+            # A blank transcript is filled with the script the sample was
+            # rendered from, in the same write that records the audio. Blank
+            # uses the renderer's own test (str.strip): SQLite TRIM keeps tabs
+            # and newlines, which the renderer treats as no transcript.
+            ref_text = current["ref_text"]
+            if not (ref_text or "").strip():
+                ref_text = script or None
             conn.execute(
-                # An empty transcript is filled with the script the sample was
-                # rendered from, in the same write that records the audio.
-                "UPDATE voice_profiles SET ref_audio_path=?, "
-                "ref_text=CASE WHEN COALESCE(TRIM(ref_text), '') = '' THEN ? "
-                "ELSE ref_text END WHERE id=?",
-                (filename, script or None, profile_id),
+                "UPDATE voice_profiles SET ref_audio_path=?, ref_text=? WHERE id=?",
+                (filename, ref_text, profile_id),
             )
             # Commit *before* leaving the protected section, so a failed
             # commit can restore the previous WAV (DB and file stay in sync).
