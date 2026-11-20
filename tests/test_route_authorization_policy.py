@@ -358,6 +358,20 @@ def _dependency_free_get_keys(route: dict) -> list[str]:
     return [f"GET {route['path']}" for method in route["methods"] if method == "GET"]
 
 
+def _frozen_get_drift(routes: list[dict], frozen: frozenset[str]) -> tuple[list[str], list[str]]:
+    """(new dependency-free GETs not frozen, frozen keys with no live GET at all).
+
+    A frozen route that gained a dependency is still live, so it is not stale.
+    """
+    free = {key for route in routes for key in _dependency_free_get_keys(route)}
+    every = {
+        f"GET {route['path']}"
+        for route in routes
+        if not route["websocket"] and "GET" in route["methods"]
+    }
+    return sorted(free - frozen), sorted(frozen - every)
+
+
 @pytest.fixture(scope="module")
 def live_auth_routes():
     """Route+guard records from a fresh subprocess — isolated from this process.
@@ -466,12 +480,7 @@ def test_no_new_dependency_free_get_ships_undecided(live_auth_routes):
     added this check: growing it is a review decision, and a route that later gains
     a real dependency simply leaves the set behind.
     """
-    live = {
-        key
-        for route in live_auth_routes["routes"]
-        for key in _dependency_free_get_keys(route)
-    }
-    added = sorted(key for key in live if key not in _DEPENDENCY_FREE_GETS)
+    added, gone = _frozen_get_drift(live_auth_routes["routes"], _DEPENDENCY_FREE_GETS)
     assert not added, (
         "GET routes with no authorization dependency that are not in the frozen set:\n  "
         + "\n  ".join(added)
@@ -480,11 +489,25 @@ def test_no_new_dependency_free_get_ships_undecided(live_auth_routes):
         "tiers is a decision you can defend in one line, add it to "
         "_DEPENDENCY_FREE_GETS in tests/test_route_authorization_policy.py."
     )
-    gone = sorted(key for key in _DEPENDENCY_FREE_GETS if key not in live)
     assert not gone, (
-        "Frozen dependency-free GETs that no longer match a live dependency-free route "
+        "Frozen dependency-free GETs that no longer match any live GET route "
         "(remove them from _DEPENDENCY_FREE_GETS):\n  " + "\n  ".join(gone)
     )
+
+
+def test_a_frozen_get_that_gains_a_dependency_is_not_stale():
+    """Tightening a frozen GET must not fail the freeze; only a removed route does."""
+    guarded = {
+        "websocket": False,
+        "methods": ["GET"],
+        "path": "/health",
+        "auth_dependencies": ["require_local"],
+    }
+    other = {**guarded, "path": "/new", "auth_dependencies": []}
+    frozen = frozenset({"GET /health", "GET /removed"})
+    added, gone = _frozen_get_drift([guarded, other], frozen)
+    assert added == ["GET /new"]
+    assert gone == ["GET /removed"]
 
 
 def test_allowlist_reasons_are_one_line_justifications():
