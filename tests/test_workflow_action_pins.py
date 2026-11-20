@@ -13,7 +13,10 @@ script that mentions `uses:` is never mistaken for one.
 """
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -267,3 +270,34 @@ def test_local_and_docker_references_are_not_remote_pins() -> None:
 def test_version_label_is_read_from_the_value_line() -> None:
     text = f"steps:\n  - uses: actions/checkout@{'a' * 40} # v7.0.1\n"
     assert _references(text, "probe.yml")[0]["label"] == "v7.0.1"
+
+
+def test_pins_resolve_to_the_version_they_name() -> None:
+    """Opt-in: the checks above are shape-only, so a swapped SHA passes all of them.
+
+    `test_each_pin_names_the_version_it_holds` matches the comment against a regex
+    and never resolves it, so a well-formed pin whose label says `v7.0.1` but whose
+    SHA belongs to another commit is accepted. Resolving the 30 distinct
+    action/label pairs needs the GitHub API, which PR CI must not depend on, so
+    this runs on demand:
+
+        VOICESTUDIO_VERIFY_ACTION_PINS=1 GITHUB_TOKEN=... \
+            pytest tests/test_workflow_action_pins.py
+
+    `.github/workflows/action-pin-verify.yml` runs the same script weekly with a
+    token, which is what keeps the check from being a file nobody executes.
+    """
+    if os.environ.get("VOICESTUDIO_VERIFY_ACTION_PINS") != "1":
+        pytest.skip("set VOICESTUDIO_VERIFY_ACTION_PINS=1 to resolve pins over the network")
+    script = ROOT / "scripts" / "verify_action_pins.py"
+    proc = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert proc.returncode == 0, (
+        "these pins do not match the version comments they carry:\n"
+        f"{proc.stdout}\n{proc.stderr}"
+    )
