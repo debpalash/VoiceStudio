@@ -199,11 +199,11 @@ metadata and the backend fallback mirror it.
 
 **Highlights**
 
-- Optional automatic error reports stay off until separately allowed in Privacy
-- Android Stories and Audiobook keep long manuscripts scrollable and recover drafts through activity recreation
-- Stories can merge adjacent lines with compatible speaker and voice settings
-- Linux ROCm setup preserves its installed PyTorch stack, and GPU readiness reflects failed self-tests
-- Phone dub exports check available space and avoid false low-space errors on iOS
+- Windows first-run setup no longer fails building docopt, antlr4 and dora-search from source (#4268)
+- Setup downloads work behind Windows system proxies such as Clash and v2rayN (#4265)
+- OmniVoice speaks region-tagged languages such as pt-BR, and saved design voices generate without a speech-to-text model (#4269)
+- Settings no longer shows a permanent voice gallery "HTTP 404" banner (#4260)
+- A failure that keeps repeating can no longer push other diagnostic reports out of the outbox (#4277)
 
 ### Changed
 
@@ -375,6 +375,10 @@ metadata and the backend fallback mirror it.
 
 ### Bug reporters
 
+- @jailbird147 — Windows setup failing to build source-only packages (#4253)
+- @Wahap404 — setup downloads failing behind a system proxy (#4262)
+- @baoyu0 — the voice gallery 404 banner (#4251)
+- @kirussantos — region-tagged OmniVoice languages (#4269)
 - @gaino-svg — long Android manuscripts (#4201)
 - @renaldyramadani123-code and @freemood36-svg — native-crash evidence that improved manual reports; the underlying Windows crash remains unresolved (#4142, #4158, #4162)
 - @rockziepromax — MOSS-TTS-Nano voice cloning (#4063)
