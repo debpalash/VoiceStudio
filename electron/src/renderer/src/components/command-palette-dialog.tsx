@@ -73,13 +73,15 @@ export function CommandPaletteDialog({
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
-  const [active, setActive] = useState(0);
+  // The highlight follows the command, not its position, so results arriving
+  // (a saved profile, history) cannot shift Enter onto a different command.
+  const [activeId, setActiveId] = useState<string | null>(null);
   const history = useHistory();
   const profiles = useProfiles();
   const generation = useGenerateClone();
   useEffect(() => {
     setQuery('');
-    setActive(0);
+    setActiveId(null);
   }, [openNonce]);
   const workspaceGroup = t('nav.workspaces');
   const actionGroup = t('nav.clone');
@@ -348,6 +350,11 @@ export function CommandPaletteDialog({
   const items = [...source, ...settingsItems]
     .filter((item) => commandMatches(item, query))
     .slice(0, 30);
+  const active = Math.max(
+    0,
+    items.findIndex((item) => item.id === activeId),
+  );
+  const setActive = (index: number) => setActiveId(items[index]?.id ?? null);
   const run = (index: number) => {
     const item = items[index];
     if (!item) return;
@@ -370,7 +377,7 @@ export function CommandPaletteDialog({
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
-              setActive(0);
+              setActiveId(null);
             }}
             className="mr-8 h-10 w-[calc(100%-2rem)]"
             onKeyDown={(event) => {
@@ -438,7 +445,11 @@ export function CommandPaletteDialog({
           </div>
           {!items.length && (
             <p className="p-4 text-center text-sm text-muted-foreground">
-              {t('preferences.no_matches')}
+              {history.isFetching || profiles.isFetching
+                ? t('common.loading')
+                : history.isError || profiles.isError
+                  ? t('common.error')
+                  : t('preferences.no_matches')}
             </p>
           )}
         </DialogContent>

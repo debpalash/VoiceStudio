@@ -16,7 +16,7 @@ export function RepairAgentDock() {
     agentConversation,
     (state) => state.messages.length > 0 || Boolean(state.activeId),
   );
-  const translationActive = useStore(translationActivity, (state) => Boolean(state));
+  const translationActive = useStore(translationActivity, (state) => state.runs.length > 0);
   const [mounted, setMounted] = useState(() => conversationActive || translationActive);
 
   useEffect(() => {

@@ -622,13 +622,6 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
         );
         closeDevProxy = proxy.close;
       }
-      // Start backend boot immediately so Python initialization overlaps with
-      // window creation, renderer parse/paint, tray setup, and repair agents.
-      observeMainProcessTask(
-        runDiagnosticOperation(reports, () => backend.start()),
-        mainErrors,
-        'Backend startup',
-      );
       const repairAgentsReady = registerRepairAgents(
         backend,
         backendRoot(),
@@ -639,6 +632,16 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
         else closeRepairAgents = close;
       });
       observeMainProcessTask(repairAgentsReady, mainErrors, 'Repair agents');
+      // The backend inherits VOICESTUDIO_LLM_AGENT* from this process's env, which
+      // registerRepairAgents sets, so Python must not spawn before it settles. The
+      // window, tray, updater and watch folders below still overlap with it.
+      observeMainProcessTask(
+        repairAgentsReady
+          .catch(() => undefined)
+          .then(() => runDiagnosticOperation(reports, () => backend.start())),
+        mainErrors,
+        'Backend startup',
+      );
       const updater = new DesktopUpdater();
       const closeUpdateIpc = registerUpdateIpc(
         updater,
