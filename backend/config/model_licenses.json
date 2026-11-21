@@ -3165,7 +3165,7 @@
         "omnivoice"
       ],
       "configured_at": "backend/services/hf_revisions.py CURATED_REVISIONS; backend/services/model_manager.py repair",
-      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review.",
+      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review. Gated only when an installed OmniVoice lacks its bundled audio_tokenizer/ and would load this fallback repo (backend/services/model_acceptance.py).",
       "runtime_revision": "528e871c2a26c4f0f7773b9754e2e1acae20899d",
       "runtime_pin_scope": "central",
       "runtime_pin_source": "backend/services/hf_revisions.py",

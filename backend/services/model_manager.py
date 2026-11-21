@@ -2755,6 +2755,9 @@ def _load_model_sync():
             for nested_exc in _exception_chain(exc):
                 repository_id = getattr(nested_exc, "repository_id", None)
                 if repository_id == "eustlb/higgs-audio-v2-tokenizer":
+                    # Never download an unaccepted repo, even to repair it.
+                    from services.model_acceptance import ensure_accepted
+                    ensure_accepted([repository_id])
                     repair_checkpoint = repository_id
                     break
             asset_label = (
