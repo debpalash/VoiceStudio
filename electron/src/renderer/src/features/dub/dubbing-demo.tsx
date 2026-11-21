@@ -75,6 +75,7 @@ export function DubbingDemo({
   const mirroring = useRef(false);
   const activePlayer = useRef<MediaPlayerInstance | null>(null);
   const pendingDubbedPosition = useRef<number | null>(null);
+  const initialStatus = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -87,8 +88,9 @@ export function DubbingDemo({
   // Local state only (never touches the network), so it also works offline.
   useEffect(() => {
     const controller = new AbortController();
+    initialStatus.current = controller;
     void apiJson<DemoDownloadStatus>('/demo/dubbing/status', { signal: controller.signal })
-      .then(setDownload)
+      .then((next) => !controller.signal.aborted && setDownload(next))
       .catch(() => {});
     return () => controller.abort();
   }, []);
@@ -105,6 +107,8 @@ export function DubbingDemo({
   }, [downloading]);
 
   const startDownload = () => {
+    // A slow initial status answer must not overwrite the newer download state.
+    initialStatus.current?.abort();
     setDownload((cur) => ({
       total_bytes: cur?.total_bytes ?? 0,
       downloaded_bytes: 0,

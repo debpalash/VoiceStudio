@@ -266,3 +266,26 @@ it('keeps posters and the download button when the status call fails', async () 
   expect(await screen.findByRole('button', { name: 'demo.dubbing_download' })).toBeTruthy();
   expect(mocks.videoProps).toHaveLength(0);
 });
+
+it('ignores a slow initial status answer that arrives after Download was clicked', async () => {
+  let answerStatus: (s: Status) => void = () => {};
+  let statusCalls = 0;
+  mocks.api.mockImplementation(async (path: string) => {
+    if (path.endsWith('/manifest.json')) return manifest;
+    if (path === '/demo/dubbing/status') {
+      statusCalls += 1;
+      if (statusCalls === 1) return new Promise<Status>((resolve) => { answerStatus = resolve; });
+      return READY;
+    }
+    return { state: 'downloading', total_bytes: 100, downloaded_bytes: 10 } satisfies Status;
+  });
+  render(<DubbingDemo onDismiss={vi.fn()} onTry={vi.fn()} onEdit={vi.fn()} />);
+  await screen.findByRole('textbox', {}, { timeout: 2000 }).catch(() => {});
+  fireEvent.click(await screen.findByRole('button', { name: 'demo.dubbing_download' }));
+  await screen.findByRole('progressbar');
+  answerStatus(IDLE);
+  await Promise.resolve();
+  expect(screen.getByRole('progressbar')).toBeTruthy();
+  // Polling then reaches ready.
+  await screen.findByRole('button', { name: 'dubbing-demo-comparison-demo.original_tag' }, { timeout: 3000 });
+});
