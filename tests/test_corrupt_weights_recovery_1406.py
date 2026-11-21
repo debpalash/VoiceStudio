@@ -239,6 +239,56 @@ def test_fallback_tokenizer_failure_identifies_its_repository(monkeypatch, tmp_p
     assert exc_info.value.__cause__ is corrupt
 
 
+def _patched_loader(monkeypatch, model_module, snapshot, loaded):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        model_module.PreTrainedModel, "from_pretrained",
+        classmethod(lambda cls, *a, **k: SimpleNamespace(device="cpu")),
+    )
+    monkeypatch.setattr(model_module.AutoTokenizer, "from_pretrained", lambda *a, **k: object())
+    monkeypatch.setattr(model_module, "_resolve_snapshot_dir", lambda _c: str(snapshot))
+
+    class Tok:
+        @classmethod
+        def from_pretrained(cls, path, **kwargs):
+            loaded.append(path)
+            raise RuntimeError("stop after the load was attempted")
+
+    monkeypatch.setattr(model_module, "_audio_tokenizer_cls", lambda: Tok)
+
+
+def test_uncached_custom_checkpoint_fallback_is_licence_guarded(monkeypatch, tmp_path):
+    """#4329: the gate cannot see a not-yet-downloaded custom checkpoint, so the
+    loader must stop before using the unreviewed fallback repo."""
+    from omnivoice.models import omnivoice as model_module
+
+    loaded: list[str] = []
+    _patched_loader(monkeypatch, model_module, tmp_path, loaded)  # no audio_tokenizer/
+
+    def deny(repo_id):
+        raise PermissionError(repo_id)
+
+    with pytest.raises(PermissionError):
+        model_module.OmniVoice.from_pretrained("org/custom", tokenizer_fallback_guard=deny)
+    assert loaded == []
+
+
+def test_bundled_tokenizer_never_calls_the_fallback_guard(monkeypatch, tmp_path):
+    from omnivoice.models import omnivoice as model_module
+
+    (tmp_path / "audio_tokenizer").mkdir()
+    loaded: list[str] = []
+    _patched_loader(monkeypatch, model_module, tmp_path, loaded)
+
+    def deny(repo_id):
+        raise AssertionError("guard must not run")
+
+    with pytest.raises(RuntimeError, match="stop after"):
+        model_module.OmniVoice.from_pretrained("org/custom", tokenizer_fallback_guard=deny)
+    assert loaded == [str(tmp_path / "audio_tokenizer")]
+
+
 def test_resume_that_exposes_corruption_switches_to_forced_repair(mm, monkeypatch):
     """A missing shard can mask a corrupt one until resume fills the gap."""
     calls = _drive_load(

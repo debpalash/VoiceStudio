@@ -553,6 +553,9 @@ class OmniVoice(PreTrainedModel):
         train_mode = kwargs.pop("train", False)
         load_asr = kwargs.pop("load_asr", False)
         asr_model_name = kwargs.pop("asr_model_name", _DEFAULT_ASR_MODEL)
+        # Called with the fallback repo id right before it is used; the host
+        # raises there if the user has not accepted that repo's licence.
+        tokenizer_fallback_guard = kwargs.pop("tokenizer_fallback_guard", None)
 
         # Suppress noisy INFO logs from transformers/huggingface_hub during
         # loading. Scoped to those two logger trees — NOT logging.disable(),
@@ -601,6 +604,8 @@ class OmniVoice(PreTrainedModel):
                         raise FileNotFoundError("The local OmniVoice checkpoint is missing audio_tokenizer")
                     # Fallback to the HuggingFace Hub path of transformers'
                     # HiggsAudioV2Tokenizer if the local subdirectory doesn't exist.
+                    if tokenizer_fallback_guard is not None:
+                        tokenizer_fallback_guard(_AUDIO_TOKENIZER_FALLBACK_REPO)
                     audio_tokenizer_path = _AUDIO_TOKENIZER_FALLBACK_REPO
 
                 # higgs-audio-v2-tokenizer does not support MPS (output channels > 65536)

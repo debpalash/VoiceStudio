@@ -69,6 +69,7 @@ def test_sync_load_keeps_asr_out_of_from_pretrained_by_default(manager, monkeypa
     assert result is loaded
     assert calls == [(('example/test-checkpoint',), {
         "device_map": "cuda", "dtype": "half", "load_asr": False,
+        "tokenizer_fallback_guard": manager._guard_tokenizer_fallback,
     })]
     assert result.llm is not None
     assert result._voicestudio_checkpoint == "example/test-checkpoint"

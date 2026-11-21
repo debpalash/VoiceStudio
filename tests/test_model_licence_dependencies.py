@@ -197,7 +197,7 @@ def _fake_hf(monkeypatch, ma, snapshot_dir, *, missing=False):
     import huggingface_hub
     from huggingface_hub.errors import LocalEntryNotFoundError
 
-    mm = importlib.import_module("services.model_manager")
+    mm = importlib.import_module("services.omnivoice_checkpoint")
     monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: OMNI)
 
     def snapshot_download(repo, local_files_only=False, **_):
@@ -222,7 +222,7 @@ def test_fallback_check_not_installed_needs_nothing(ma, monkeypatch, tmp_path):
 
 
 def test_fallback_check_fails_closed(ma, monkeypatch):
-    mm = importlib.import_module("services.model_manager")
+    mm = importlib.import_module("services.omnivoice_checkpoint")
 
     def boom():
         raise RuntimeError("unreadable")
@@ -232,7 +232,7 @@ def test_fallback_check_fails_closed(ma, monkeypatch):
 
 
 def test_local_checkpoint_folder_is_checked_in_place(ma, monkeypatch, tmp_path):
-    mm = importlib.import_module("services.model_manager")
+    mm = importlib.import_module("services.omnivoice_checkpoint")
     monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: str(tmp_path))
     assert ma.omnivoice_tokenizer_fallback_needed() is True
     (tmp_path / "audio_tokenizer").mkdir()

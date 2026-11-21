@@ -337,12 +337,13 @@ def omnivoice_tokenizer_fallback_needed() -> bool:
 
     Local cache lookup only, never the network. An OmniVoice that is not
     installed yet downloads its bundled tokenizer with the snapshot, so it does
-    not need the fallback. Anything unreadable fails closed (needs it).
+    not need the fallback (a custom checkpoint that turns out to lack it is
+    stopped at the loader, which calls the same acceptance check). Anything unreadable fails closed (needs it).
     """
     try:
         import os
 
-        from services.model_manager import resolve_omnivoice_checkpoint
+        from services.omnivoice_checkpoint import resolve_omnivoice_checkpoint
 
         checkpoint = resolve_omnivoice_checkpoint()
         if os.path.isdir(checkpoint):
@@ -351,7 +352,12 @@ def omnivoice_tokenizer_fallback_needed() -> bool:
         from huggingface_hub.errors import LocalEntryNotFoundError
 
         try:
-            snapshot = snapshot_download(checkpoint, local_files_only=True)
+            # The loader resolves the cached ``main`` ref the same way
+            # (omnivoice.models.omnivoice._resolve_snapshot_dir), so the gate
+            # and the loader read the same snapshot.
+            snapshot = snapshot_download(  # nosec B615 — local cache only, same ref as the loader
+                checkpoint, revision="main", local_files_only=True
+            )
         except (LocalEntryNotFoundError, FileNotFoundError):
             return False
         return not os.path.isdir(os.path.join(snapshot, "audio_tokenizer"))
