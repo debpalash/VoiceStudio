@@ -493,6 +493,36 @@ def transcribe_request_kwargs(backend, options: dict) -> dict:
 WHISPER_LONG_FORM_OPTIONS = {"condition_on_previous_text": False}
 
 
+def _whisper_thread_kwargs(device: str) -> dict:
+    """CPU decode threads: all cores up to 8 (CTranslate2 defaults to 4)."""
+    if device != "cpu":
+        return {}
+    return {"cpu_threads": min(os.cpu_count() or 4, 8)}
+
+
+def whisper_batching_enabled() -> bool:
+    """CUDA batched decode is OPT-IN (``OMNIVOICE_ASR_BATCHED=1``).
+
+    faster-whisper's batched decoder has no temperature-fallback retries and
+    other sequential-path quality checks, so it is faster but can transcribe
+    worse; dub quality wins by default.
+    """
+    return os.environ.get("OMNIVOICE_ASR_BATCHED", "0").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+# The batched pipeline keeps per-call pause-correction state on the shared
+# instance; serialize batched decodes so concurrent requests cannot mix it.
+_BATCHED_DECODE_LOCK = threading.Lock()
+
+
+def whisper_batch_size() -> int:
+    try:
+        return max(1, min(32, int(os.environ.get("OMNIVOICE_ASR_BATCH_SIZE", "12"))))
+    except ValueError:
+        return 12
+
+
 def whisper_request_options(language, initial_prompt, temperature, task) -> dict:
     """Whisper-family decode kwargs for the options that were actually set."""
     opts: dict = {}
@@ -1375,7 +1405,8 @@ class FasterWhisperBackend(ASRBackend):
             for ct in candidates:
                 try:
                     self._model = WhisperModel(
-                        _local_model_source(self._model_name), device=device, compute_type=ct
+                        _local_model_source(self._model_name), device=device, compute_type=ct,
+                        **_whisper_thread_kwargs(device),
                     )
                     self._device, self._compute_type = device, ct
                     return
@@ -1416,6 +1447,26 @@ class FasterWhisperBackend(ASRBackend):
             # the last error.
             raise last_err
 
+    def _batched_pipeline(self):
+        """Lazily wrap the model in BatchedInferencePipeline (CUDA only), else None."""
+        if getattr(self, "_batched", None) is False or getattr(self, "_device", None) != "cuda":
+            return None
+        if not whisper_batching_enabled():
+            return None
+        cached = getattr(self, "_batched_pipe", None)
+        if cached is not None and getattr(self, "_batched_for", None) is self._model:
+            return cached
+        try:
+            from faster_whisper import BatchedInferencePipeline
+
+            self._batched_pipe = BatchedInferencePipeline(self._model)
+            self._batched_for = self._model
+            return self._batched_pipe
+        except Exception as e:  # noqa: BLE001 — older faster-whisper: stay sequential
+            logger.info("faster-whisper batched pipeline unavailable (%s) — sequential decode", e)
+            self._batched = False
+            return None
+
     def supports_translation(self) -> bool:
         return whisper_checkpoint_translates(self._model_name)
 
@@ -1440,15 +1491,42 @@ class FasterWhisperBackend(ASRBackend):
         # index / re-iterate.
         from services.performance_profiles import asr_decode_defaults
 
-        segments_iter, info = self._model.transcribe(
-            audio_path,
+        decode_kwargs = dict(
             word_timestamps=word_timestamps,
             vad_filter=True,  # built-in Silero VAD — cleaner segment starts
             **asr_decode_defaults(),
             **WHISPER_LONG_FORM_OPTIONS,
             **whisper_request_options(language, initial_prompt, temperature, task),
         )
-        segments = list(segments_iter)
+        segments = info = None
+        pipeline = self._batched_pipeline()
+        if pipeline is not None:
+            try:
+                with _BATCHED_DECODE_LOCK:
+                    segments_iter, info = pipeline.transcribe(
+                        audio_path, batch_size=whisper_batch_size(),
+                        without_timestamps=False, **decode_kwargs)
+                    segments_iter = list(segments_iter)
+                # The batched decoder (faster-whisper 1.2.x) skips the sequential
+                # path's no-speech rejection; apply the same rule (defaults:
+                # no_speech_threshold 0.6, log_prob_threshold -1.0).
+                segments = [
+                    seg for seg in segments_iter
+                    if not (
+                        (getattr(seg, "no_speech_prob", None) or 0.0) > 0.6
+                        and (getattr(seg, "avg_logprob", None) if getattr(seg, "avg_logprob", None) is not None else 0.0) < -1.0
+                    )
+                ]
+            except Exception as e:  # noqa: BLE001 — any batched failure → sequential path
+                from core.scrub import scrub_text
+                logger.warning(
+                    "faster-whisper batched decode failed (%s: %s) — falling back "
+                    "to sequential decode", type(e).__name__, scrub_text(str(e)))
+                self._batched = False
+                segments = info = None
+        if segments is None:
+            segments_iter, info = self._model.transcribe(audio_path, **decode_kwargs)
+            segments = list(segments_iter)
         # Normalise to the shape segment_transcript(...) expects: a dict with
         # `chunks` (for backwards compat with mlx output) AND `segments` +
         # `language` (so callers that peek at language metadata keep working).
@@ -1496,6 +1574,10 @@ class FasterWhisperBackend(ASRBackend):
         if unload_isolated(self):
             return
         self._model = None
+        # The batched wrapper and its cache key both reference the model; drop
+        # them too or the CUDA weights outlive the unload.
+        self._batched_pipe = None
+        self._batched_for = None
         self._asr = None  # harmless if a subclass ever used it; keeps idempotence
         import gc
         gc.collect()

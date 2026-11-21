@@ -12565,7 +12565,22 @@
     "summary": "Clear Dub History"
    },
    "get": {
+    "description": "Recent dub rows. The list omits ``job_data`` (every segment and path of\neach job, often megabytes) unless ``?full=1``; nothing in the apps reads it\nfrom here \u2014 a single job loads through its own routes.",
     "operationId": "list_dub_history_dub_history_get",
+    "parameters": [
+     {
+      "description": "Include each row's full `job_data` blob (large).",
+      "in": "query",
+      "name": "full",
+      "required": false,
+      "schema": {
+       "default": false,
+       "description": "Include each row's full `job_data` blob (large).",
+       "title": "Full",
+       "type": "boolean"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "content": {
@@ -12574,6 +12589,16 @@
        }
       },
       "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
      }
     },
     "summary": "List Dub History"
