@@ -166,6 +166,10 @@ def fetch_expected_files(**download_kwargs) -> "list[tuple[str, int]] | None":
         return None
 
 
+# HF's own partial download, and the segmented downloader's, both named after the blob.
+_PARTIAL_SUFFIXES = (".incomplete", ".part")
+
+
 def revision_verified_complete(repo_dir: str, revision: str, expected_files=None) -> bool:
     """True only when every expected file of ``revision`` is present and whole.
 
@@ -185,9 +189,14 @@ def revision_verified_complete(repo_dir: str, revision: str, expected_files=None
                 return False
             if size > 0 and actual != size:
                 return False
-        blobs = repo / "blobs"
-        if blobs.is_dir() and any(n.endswith((".incomplete", ".part")) for n in os.listdir(blobs)):
-            return False
+            if size > 0:
+                # A blob at the Hub's exact size is whole; a partial beside it is a
+                # stale leftover, and transfers of other files never matter here.
+                continue
+            blob = Path(os.path.realpath(path))
+            if blob.parent.name == "blobs" and any(
+                    Path(str(blob) + suffix).exists() for suffix in _PARTIAL_SUFFIXES):
+                return False
     except OSError:
         return False
     return True
@@ -202,13 +211,25 @@ def _catalogue_entry(repo_id: str) -> dict:
         return {}
 
 
+def declared_assets(model: "dict | None") -> list[str]:
+    """Files a catalogue entry declares as the minimum a finished install holds.
+
+    ``known_files`` (``known_weights`` is the older name for the same list).
+    Not a strict file list like ``required_files``: it backs only the fallback
+    proof used when the Hub's file list is unavailable.
+    """
+    model = model or {}
+    return [str(n) for n in (model.get("known_files") or model.get("known_weights") or ())]
+
+
 def fallback_verified_complete(repo_dir: str, revision: str, model: "dict | None" = None) -> bool:
     """Completeness proof for when the Hub's file list is unavailable.
 
-    Weaker than :func:`revision_verified_complete`, but it still catches the
-    unfinished-transfer states: no partial blob in the repo, every entry of the
-    revision's snapshot resolves to a non-empty blob, a plausible weight is
-    present and any weights the catalogue entry declares are all there.
+    Best-effort by design: without Hub metadata completeness cannot be proven.
+    It catches the known unfinished-transfer states: no HF partial blob (and no
+    in-flight segmented one), every entry of the revision's snapshot resolves
+    to a non-empty blob, a plausible weight is present and every file the
+    catalogue entry declares (``known_files``) exists.
     """
     from services.model_catalogue import snapshot_has_weights
 
@@ -216,8 +237,14 @@ def fallback_verified_complete(repo_dir: str, revision: str, model: "dict | None
     snapshot = repo / "snapshots" / revision
     try:
         blobs = repo / "blobs"
-        if blobs.is_dir() and any(n.endswith((".incomplete", ".part")) for n in os.listdir(blobs)):
-            return False
+        if blobs.is_dir():
+            for n in os.listdir(blobs):
+                if n.endswith(".incomplete"):
+                    return False  # HF's own unfinished transfer
+                # A segmented .part blocks only while its blob does not exist yet;
+                # beside a finished blob it is a stale leftover.
+                if n.endswith(".part") and not (blobs / n[: -len(".part")]).exists():
+                    return False
         found = False
         for root, _dirs, files in os.walk(snapshot):
             for name in files:
@@ -228,8 +255,8 @@ def fallback_verified_complete(repo_dir: str, revision: str, model: "dict | None
             return False
         if not (model or {}).get("config_only") and not snapshot_has_weights(str(snapshot)):
             return False
-        for weight in (model or {}).get("known_weights") or ():
-            if (snapshot / weight).stat().st_size <= 0:
+        for asset in declared_assets(model):
+            if (snapshot / asset).stat().st_size <= 0:
                 return False
     except OSError:
         return False

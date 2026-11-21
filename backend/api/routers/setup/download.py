@@ -374,6 +374,27 @@ def _segmented_snapshot(repo_id: str, *, endpoint: "str | None", revision: str) 
     return snap_dir
 
 
+def _discard_segmented_leftovers(repo_id: str) -> None:
+    """Remove the segmented downloader's partials once it hands over to the plain one.
+
+    ``snapshot_download`` knows nothing of ``<blob>.part`` / ``.part.done`` and
+    never cleans them, so they would linger beside the finished blob.
+    """
+    from huggingface_hub import constants as _C
+    from huggingface_hub.file_download import repo_folder_name
+
+    blobs = os.path.join(_C.HF_HUB_CACHE, repo_folder_name(repo_id=repo_id, repo_type="model"), "blobs")
+    try:
+        names = [n for n in os.listdir(blobs) if n.endswith((".part", ".part.done", ".part.done.tmp"))]
+    except OSError:
+        return
+    for name in names:
+        try:
+            os.remove(os.path.join(blobs, name))
+        except OSError:
+            pass  # best-effort; a leftover beside a finished blob is ignored by the completeness proof
+
+
 # ── SSE Download Stream ───────────────────────────────────────────────────
 
 def _safe_put(queue: asyncio.Queue, event) -> None:
@@ -908,6 +929,7 @@ async def install_model(req: InstallModelRequest):
                             if _retry:
                                 raise
                             _snapshot_path = None
+                            _discard_segmented_leftovers(hub_repo)
                     if _snapshot_path is None:
                         _snapshot_path = snapshot_download(**dl_kwargs)  # nosec B615 -- immutable revision_for pin
                     # snapshot_download can return an existing incomplete snapshot

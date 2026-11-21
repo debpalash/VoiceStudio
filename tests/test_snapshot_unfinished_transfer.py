@@ -65,7 +65,9 @@ def _snapshot(cache: Path, revision: str = COMMIT, *, main_weight: bool = False)
     snapshot = cache / FOLDER / "snapshots" / revision
     (snapshot / "audio_tokenizer").mkdir(parents=True, exist_ok=True)
     (snapshot / "audio_tokenizer" / "model.safetensors").write_bytes(b"\0" * WEIGHT)
-    (snapshot / "config.json").write_text("{}")
+    for name in ("config.json", "tokenizer.json", "audio_tokenizer/config.json",
+                 "audio_tokenizer/preprocessor_config.json"):
+        (snapshot / name).write_text("{}")
     if main_weight:
         (snapshot / "model.safetensors").write_bytes(b"\0" * WEIGHT)
     return snapshot
@@ -287,16 +289,24 @@ def test_a_complete_repair_writes_no_marker(download, catalogue, cache, monkeypa
     assert catalogue.snapshot_is_complete(MODEL, str(snapshot))
 
 
-def test_an_unfinished_transfer_blob_is_not_a_finished_repair(download, cache):
+def test_a_finished_repair_needs_a_known_complete_plan(download, cache):
     _snapshot(cache, main_weight=True)
     repo_dir = str(cache / FOLDER)
-    blobs = cache / FOLDER / "blobs"
-    blobs.mkdir()
-    (blobs / "abc.incomplete").write_bytes(b"\0")
-    assert not download._is_finished_repair(_full_plan(), repo_dir, COMMIT)
-    (blobs / "abc.incomplete").unlink()
     assert download._is_finished_repair(_full_plan(), repo_dir, COMMIT)
     assert not download._is_finished_repair(None, repo_dir, COMMIT)
+
+
+def test_a_partial_beside_a_size_unknown_blob_blocks_the_strict_proof(revisions, cache, symlink_or_skip):
+    _snapshot(cache, main_weight=True)
+    blob = cache / FOLDER / "blobs" / "abc"
+    blob.parent.mkdir(parents=True)
+    blob.write_bytes(b"\0" * 8)
+    link = cache / FOLDER / "snapshots" / COMMIT / "extra.bin"
+    symlink_or_skip(link, blob)
+    plan = [("extra.bin", 0)]
+    assert revisions.revision_verified_complete(str(cache / FOLDER), COMMIT, plan)
+    (blob.parent / "abc.part").write_bytes(b"\0")
+    assert not revisions.revision_verified_complete(str(cache / FOLDER), COMMIT, plan)
 
 
 def test_install_keeps_the_marker_when_download_returns_an_incomplete_snapshot(download, catalogue, cache, monkeypatch):
@@ -337,7 +347,7 @@ def test_unknown_file_list_with_a_dangling_link_keeps_the_marker(download, cache
         if kwargs.get("dry_run"):
             raise OSError("metadata timeout")
         snapshot = _snapshot(cache, main_weight=True)
-        link = snapshot / "tokenizer.json"
+        link = snapshot / "dangling.bin"
         if not link.is_symlink():  # the installer retries, so this runs again
             symlink_or_skip(link, cache / "missing-blob")
         return str(snapshot)
@@ -350,16 +360,71 @@ def test_unknown_file_list_with_a_dangling_link_keeps_the_marker(download, cache
 
 def test_fallback_requires_the_weights_the_catalogue_declares(revisions, cache):
     _snapshot(cache)  # the tokenizer weight only
-    model = {"repo_id": REPO, "known_weights": ["model.safetensors", "audio_tokenizer/model.safetensors"]}
+    model = {"repo_id": REPO, "known_files": ["model.safetensors", "audio_tokenizer/model.safetensors"]}
     assert not revisions.fallback_verified_complete(str(cache / FOLDER), COMMIT, model)
     _snapshot(cache, main_weight=True)
     assert revisions.fallback_verified_complete(str(cache / FOLDER), COMMIT, model)
 
 
-def test_omnivoice_declares_both_weights_without_strict_mode(catalogue):
+LOAD_SET = [
+    "config.json", "tokenizer.json", "model.safetensors", "audio_tokenizer/config.json",
+    "audio_tokenizer/model.safetensors", "audio_tokenizer/preprocessor_config.json",
+]
+
+
+def test_omnivoice_declares_its_load_set_without_strict_mode(catalogue):
     entry = next(m for m in catalogue.KNOWN_MODELS if m["repo_id"] == REPO)
-    assert entry["known_weights"] == ["model.safetensors", "audio_tokenizer/model.safetensors"]
+    assert entry["known_files"] == LOAD_SET
     assert "required_files" not in entry
+
+
+def test_the_older_known_weights_key_is_still_read(revisions):
+    assert revisions.declared_assets({"known_weights": ["a.safetensors"]}) == ["a.safetensors"]
+
+
+def test_fallback_needs_the_tokenizer_settings_too(revisions, catalogue, cache):
+    """Both weights present but audio_tokenizer/preprocessor_config.json missing."""
+    entry = next(m for m in catalogue.KNOWN_MODELS if m["repo_id"] == REPO)
+    snapshot = _snapshot(cache, main_weight=True)
+    (snapshot / "audio_tokenizer" / "preprocessor_config.json").unlink()
+    assert not revisions.fallback_verified_complete(str(cache / FOLDER), COMMIT, entry)
+    (snapshot / "audio_tokenizer" / "preprocessor_config.json").write_text("{}")
+    assert revisions.fallback_verified_complete(str(cache / FOLDER), COMMIT, entry)
+
+
+def _blobs(cache):
+    blobs = cache / FOLDER / "blobs"
+    blobs.mkdir(parents=True, exist_ok=True)
+    return blobs
+
+
+def test_strict_proof_ignores_leftovers_of_unrelated_blobs(revisions, cache):
+    _snapshot(cache, main_weight=True)
+    (_blobs(cache) / "feedface.part").write_bytes(b"\0")
+    (_blobs(cache) / "feedface.incomplete").write_bytes(b"\0")
+    plan = [("model.safetensors", WEIGHT), ("audio_tokenizer/model.safetensors", WEIGHT)]
+    assert revisions.revision_verified_complete(str(cache / FOLDER), COMMIT, plan)
+
+
+def test_fallback_ignores_a_stale_part_beside_a_finished_blob(revisions, cache):
+    _snapshot(cache, main_weight=True)
+    blobs = _blobs(cache)
+    (blobs / "abc123").write_bytes(b"\0" * 8)
+    (blobs / "abc123.part").write_bytes(b"\0")
+    assert revisions.fallback_verified_complete(str(cache / FOLDER), COMMIT, {})
+    (blobs / "def456.part").write_bytes(b"\0")  # in flight: its blob is not there yet
+    assert not revisions.fallback_verified_complete(str(cache / FOLDER), COMMIT, {})
+    (blobs / "def456.part").unlink()
+    (blobs / "def456.incomplete").write_bytes(b"\0")  # HF's own partial always blocks
+    assert not revisions.fallback_verified_complete(str(cache / FOLDER), COMMIT, {})
+
+
+def test_giving_up_on_the_segmented_downloader_removes_its_partials(download, cache):
+    blobs = _blobs(cache)
+    for name in ("aa.part", "aa.part.done", "bb.part", "keep", "cc.incomplete"):
+        (blobs / name).write_bytes(b"\0")
+    download._discard_segmented_leftovers(REPO)
+    assert sorted(p.name for p in blobs.iterdir()) == ["cc.incomplete", "keep"]
 
 
 def test_load_time_repair_clears_the_marker(revisions, cache, monkeypatch):

@@ -30,11 +30,13 @@
 #                            rocm | cpu (cpu = no GPU acceleration on this host).
 #                            Unlike `platforms` this never hides a model — it
 #                            only drives recommendations.
-#   known_weights (optional) — weight paths a finished install always holds. Not
-#                            a strict file list (unlike required_files): it only
-#                            backs the completeness proof used when the Hub file
-#                            list is unavailable, so an install is never judged
-#                            finished with one of them still missing.
+#   known_files (optional) — files a finished install always holds (weights and
+#                            the configs needed to load them; the older name
+#                            known_weights is still read). Not a strict list like
+#                            required_files: it only backs the best-effort
+#                            completeness proof used when the Hub file list is
+#                            unavailable, so an install is never judged finished
+#                            with one of them missing.
 #   note       (optional) — shown in the UI as a tooltip/footnote
 #   config_only (optional) — true for pipeline repos that ship no weight file of
 #                            their own (weights live in referenced sub-repos). Such
@@ -54,7 +56,13 @@ models:
     engines: [omnivoice, omnivoice-subprocess]
     size_gb: 2.4
     required: true
-    known_weights: ["model.safetensors", "audio_tokenizer/model.safetensors"]
+    known_files:
+      - config.json
+      - tokenizer.json
+      - model.safetensors
+      - audio_tokenizer/config.json
+      - audio_tokenizer/model.safetensors
+      - audio_tokenizer/preprocessor_config.json
     curated_on: [all]
 
   - repo_id: "audio-cpp/audio.cpp-gguf"
