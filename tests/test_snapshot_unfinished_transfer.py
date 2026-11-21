@@ -280,13 +280,13 @@ def test_load_time_repair_clears_the_marker(revisions, cache, monkeypatch):
     assert not _marker(cache).exists()
 
 
-def test_cache_self_heal_clears_the_marker(revisions, cache, monkeypatch):
+def test_cache_self_heal_clears_the_marker(revisions, cache, monkeypatch, symlink_or_skip):
     from services import hf_cache_repair
     import huggingface_hub
 
     snapshot = _snapshot(cache)
     broken = snapshot / "model.safetensors"
-    broken.symlink_to(cache / "nowhere")
+    symlink_or_skip(broken, cache / "nowhere")
     revisions.mark_install_pending(REPO, COMMIT, str(cache))
     monkeypatch.setattr(revisions, "installed_revision", lambda *a, **k: COMMIT)
     monkeypatch.setattr(huggingface_hub, "snapshot_download", lambda **k: str(snapshot))
@@ -311,3 +311,22 @@ def test_marker_writes_use_unique_temp_files(revisions, tmp_path, monkeypatch):
     assert len(set(seen)) == 3
     assert sorted(p.name for p in (tmp_path / FOLDER).iterdir()) == [
         "voicestudio-installing", "voicestudio-revision"]
+
+
+def test_failed_copy_mode_recovery_keeps_the_marker(revisions, catalogue, cache, monkeypatch, symlink_or_skip):
+    from services import hf_cache_repair
+    import huggingface_hub
+
+    snapshot = _snapshot(cache)
+    broken = snapshot / "model.safetensors"
+    symlink_or_skip(broken, cache / "nowhere")
+    revisions.mark_install_pending(REPO, COMMIT, str(cache))
+    monkeypatch.setattr(revisions, "installed_revision", lambda *a, **k: COMMIT)
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", lambda **k: str(snapshot))
+    monkeypatch.setattr(hf_cache_repair, "find_dangling_entries", lambda d: [str(broken)])
+    monkeypatch.setattr(hf_cache_repair, "_force_copy_mode", lambda root: False)
+
+    summary = hf_cache_repair.repair_repo_cache(REPO, str(cache))
+    assert summary["ok"] is False
+    assert _marker(cache).exists()
+    assert not catalogue.snapshot_is_complete(MODEL, str(snapshot))

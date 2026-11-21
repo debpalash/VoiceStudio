@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 from pathlib import Path
 
 _logger = logging.getLogger("omnivoice.hf_revisions")
@@ -85,7 +86,7 @@ def _write_marker(marker: Path, revision: str) -> None:
         try:
             os.unlink(name)
         except OSError:
-            pass
+            pass  # temp file already gone; the original error is re-raised below
         raise
 
 
@@ -106,6 +107,10 @@ def remember_revision(repo_id: str, revision: str, cache_dir: str) -> None:
 # installed. Other revisions in the same repository are unaffected.
 INSTALL_PENDING_MARKER = "voicestudio-installing"
 
+# Serializes the read-compare-unlink of a clear against a concurrent mark, so a
+# finishing install cannot remove the marker a newer install just wrote.
+_pending_lock = threading.Lock()
+
 
 def mark_install_pending(repo_id: str, revision: str, cache_dir: str) -> None:
     """Record that ``revision`` of ``repo_id`` is being downloaded."""
@@ -114,17 +119,20 @@ def mark_install_pending(repo_id: str, revision: str, cache_dir: str) -> None:
     repo_dir = _repo_dir(repo_id, cache_dir)
     repo_dir.mkdir(parents=True, exist_ok=True)
     marker = repo_dir / INSTALL_PENDING_MARKER
-    _write_marker(marker, revision)
+    with _pending_lock:
+        _write_marker(marker, revision)
 
 
 def clear_install_pending(repo_id: str, revision: str, cache_dir: str) -> None:
     """Remove the pending marker if it still names ``revision``. Never raises."""
     marker = _repo_dir(repo_id, cache_dir) / INSTALL_PENDING_MARKER
     try:
-        if marker.read_text(encoding="ascii").strip() == revision:
-            marker.unlink()
+        with _pending_lock:
+            if marker.read_text(encoding="ascii").strip() == revision:
+                marker.unlink()
     except (OSError, UnicodeError):
-        pass
+        # Missing or unreadable marker: nothing to clear, and clearing is best-effort.
+        logging.getLogger("omnivoice.hf_revisions").debug("pending marker not cleared", exc_info=True)
 
 
 def install_pending_revision(repo_dir: str) -> "str | None":
