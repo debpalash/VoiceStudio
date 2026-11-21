@@ -1,10 +1,12 @@
-import { createRef } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { createRef, useRef } from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 import { TranscriptSegments } from './transcript-segments';
+
+afterEach(() => vi.restoreAllMocks());
 
 const segments = (count: number) =>
   Array.from({ length: count }, (_, index) => ({
@@ -28,8 +30,19 @@ it('mounts no segment rows while the section is closed', () => {
   expect(screen.getByText('line 4')).toBeInTheDocument();
 });
 
-it('mounts only a window of a long transcript', () => {
-  render(<TranscriptSegments segments={segments(2000)} scrollRef={createRef()} />);
+it('mounts only a window of a long transcript', async () => {
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(300);
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(300);
+  function Harness() {
+    const ref = useRef<HTMLDivElement>(null);
+    return (
+      <div ref={ref} style={{ height: 300, overflow: 'auto' }}>
+        <TranscriptSegments segments={segments(2000)} scrollRef={ref} />
+      </div>
+    );
+  }
+  render(<Harness />);
   open();
+  await waitFor(() => expect(screen.queryAllByText(/^line \d+$/).length).toBeGreaterThan(0));
   expect(screen.queryAllByText(/^line \d+$/).length).toBeLessThan(200);
 });

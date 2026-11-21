@@ -1,5 +1,5 @@
 import { PauseIcon, PlayIcon } from 'lucide-react';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isAudioProvider, type MediaPlayerProps } from '@vidstack/react';
 import WaveSurfer from 'wavesurfer.js';
@@ -69,19 +69,22 @@ export function waveformUrl(src: string, base = document.baseURI): string {
  */
 export const WAVEFORM_MAX_SECONDS = 600;
 
-/** Whether a waveform may be decoded for a clip of this length (unknown length is allowed). */
+/**
+ * Whether a waveform may be decoded for a clip of this length. An unknown length
+ * (no hint and metadata not loaded yet) waits: the limit cannot be checked, and
+ * until then the seek bar is shown.
+ */
 export function waveformAllowed(duration: number): boolean {
-  return !(Number.isFinite(duration) && duration > WAVEFORM_MAX_SECONDS);
+  return Number.isFinite(duration) && duration > 0 && duration <= WAVEFORM_MAX_SECONDS;
 }
 
 /**
  * True once the element has been on screen. Sticky, so a waveform that was built is
  * not torn down and refetched on scroll. Without IntersectionObserver it is always true.
  */
-export function useSeenOnScreen(ref: React.RefObject<Element | null>): boolean {
+export function useSeenOnScreen(el: Element | null): boolean {
   const [seen, setSeen] = useState(() => typeof IntersectionObserver === 'undefined');
   useEffect(() => {
-    const el = ref.current;
     if (seen || !el) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
@@ -91,7 +94,7 @@ export function useSeenOnScreen(ref: React.RefObject<Element | null>): boolean {
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [ref, seen]);
+  }, [el, seen]);
   return seen;
 }
 
@@ -185,7 +188,13 @@ function WaveformControls({
 }) {
   const { t } = useTranslation();
   const { theme, paletteId } = useTheme();
-  const container = useRef<HTMLDivElement>(null);
+  const container = useRef<HTMLDivElement | null>(null);
+  // State copy of the node so effects rerun when an error unmounts or remounts it.
+  const [containerNode, setContainerNode] = useState<HTMLDivElement | null>(null);
+  const setContainer = useCallback((node: HTMLDivElement | null) => {
+    container.current = node;
+    setContainerNode(node);
+  }, []);
   const waveform = useRef<WaveSurfer | null>(null);
   const rangeEnd = useRef<number | null>(null);
   const [waveReady, setWaveReady] = useState(false);
@@ -198,7 +207,7 @@ function WaveformControls({
   const time = useMediaState('currentTime');
   const error = useMediaState('error');
   const seek = usePlaybackSeek(source);
-  const seen = useSeenOnScreen(container);
+  const seen = useSeenOnScreen(containerNode);
   const wantWaveform = showWaveform && seen && waveformAllowed(duration);
   useEffect(() => {
     if (!media) return;
@@ -244,7 +253,7 @@ function WaveformControls({
       ws.destroy();
       waveform.current = null;
     };
-  }, [media, src, height, wantWaveform]);
+  }, [media, src, height, wantWaveform, containerNode]);
   useEffect(() => {
     if (container.current) waveform.current?.setOptions(waveColors(container.current));
   }, [theme, paletteId]);
@@ -271,7 +280,7 @@ function WaveformControls({
         </p>
       ) : (
         <div className="relative min-w-0 flex-1" style={{ height }}>
-          <div ref={container} className="pointer-events-none" />
+          <div ref={setContainer} className="pointer-events-none" />
           <input
             type="range"
             min={0}
