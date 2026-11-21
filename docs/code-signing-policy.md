@@ -70,6 +70,9 @@ program makes, all started or consented to by the user, are listed in the
 - First-run setup the user starts: the pinned ffmpeg download from GitHub,
   Python and package downloads from their locked URLs or the chosen mirror,
   and Hugging Face model downloads.
+- The dubbing demo videos (~10 MB), only when the user clicks Download in
+  the Dub demo card: sha256-pinned GitHub Release assets of
+  `debpalash/omnivoice-gallery`.
 - Update checks of packaged builds against GitHub Releases, and the background
   download of a found update from that same release. Both are on by default
   (an owner-approved exception to the local-first rule). Settings, Updates,

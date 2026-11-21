@@ -525,6 +525,13 @@ test-only PR. Docker Hub overview edits still publish through the small
   and bundle signature checks, the packaged startup smoke test (on Linux through
   the `voicestudio` entry, as the AppImage starts it) and
   `electron/tests/cli-bundle-smoke.mjs`.
+- **Install smoke:** the three-OS install (`install-smoke.yml`, 6-10 minutes per system) runs on a
+  pull request only when it touches a file that affects installation: manifests and lockfiles,
+  the installer scripts, Electron packaging, the runtime setup code (`electron/src/main/` setup,
+  runtime, wheel-prefetch and pypi-mirror modules; `backend/services/sidecar_*.py`, `media_tools.py`,
+  `endpoint_race.py`), `deploy/install-worker/` or the workflow itself, and not for documentation or
+  test-only changes. Pushes to `main` use the same path list and the documentation/test-only skip;
+  manual runs always run it. A newer push cancels the superseded pull-request run. `tests/test_install_smoke_workflow.py` keeps the path list complete.
 - **CI scope:** the Electron-only jobs (UI crawler, Desktop UI, Linux native
   package, release smoke, `Tests (Electron)` and `Electron renderer smokes`) are skipped on a
   pull request whose every changed file is an *edit or addition* under `backend/`
@@ -695,6 +702,12 @@ test-only PR. Docker Hub overview edits still publish through the small
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
     downloads from `omnivoice-gallery` GitHub Releases, only after it is turned
     on in Settings (`backend/services/gallery.py`).
+  - **Dubbing demo videos, only when the user clicks Download** in the Dub
+    demo card (owner-approved 2026-11-21): five ~10 MB clips, sha256- and
+    size-pinned in `backend/assets/samples/demo/dubbing/demo_assets.json`, from
+    the `dub-demo-v1` pre-release of `debpalash/omnivoice-gallery`
+    (`backend/services/demo_assets.py`). Nothing is fetched at install or
+    startup; offline, the card shows bundled poster stills.
   - **Packaged-app update checks** against GitHub Releases, and the background
     download of a found update from the same release (on by default; Settings
     → Updates → Download updates automatically turns it off, so downloads wait

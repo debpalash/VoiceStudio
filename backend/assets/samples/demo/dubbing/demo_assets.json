@@ -1,0 +1,66 @@
+{
+  "tag": "dub-demo-v1",
+  "cache_dir": "dubbing-v1",
+  "files": [
+    {
+      "name": "dubbed_es.mp4",
+      "sha256": "b7e74d6c2eb77e37f1714cf08868fa318427585af725245da189474511bd0a5a",
+      "bytes": 1996376,
+      "kind": "video"
+    },
+    {
+      "name": "dubbed_es.src.wav",
+      "sha256": "0d917cb05721906322d19cab94e1dbaae446f4e48ef5bdfed1ff0c6045906231",
+      "bytes": 1210182,
+      "kind": "dev"
+    },
+    {
+      "name": "dubbed_fr.mp4",
+      "sha256": "ce6ae4c664d617e83d3a0a4d2ecbaeadaa1a78c2b62e504c691eb707c0a030d9",
+      "bytes": 1929364,
+      "kind": "video"
+    },
+    {
+      "name": "dubbed_fr.src.wav",
+      "sha256": "1aac16b185f5fabfec60f3da4f429c51f3895af624bf14691878227a03fce45c",
+      "bytes": 1323078,
+      "kind": "dev"
+    },
+    {
+      "name": "dubbed_ja.mp4",
+      "sha256": "a0978d2d8cf327938703a09ef5f79fe3053ca247743032b5628af1eb7bb469c7",
+      "bytes": 2126117,
+      "kind": "video"
+    },
+    {
+      "name": "dubbed_ja.src.wav",
+      "sha256": "65a9708ef01c5ae2d2e5a0a28d93eec0974578886fea6c586244a4dd090c19ff",
+      "bytes": 1460670,
+      "kind": "dev"
+    },
+    {
+      "name": "dubbed_zh.mp4",
+      "sha256": "a4f7a0e8a50c047283d2eb432ef1ab4ca5d60e522f13d52e7eb6fe469fe1e88f",
+      "bytes": 2140741,
+      "kind": "video"
+    },
+    {
+      "name": "dubbed_zh.src.wav",
+      "sha256": "9dada377a20c9b5b2b526208d37884d94d27c4ed16accd36eed08b117d6b5298",
+      "bytes": 1164318,
+      "kind": "dev"
+    },
+    {
+      "name": "source.mp4",
+      "sha256": "ba9895782bd6dac0bcc12f271af182d8b78bfad66b171e2453fd61ca18b473c5",
+      "bytes": 1541262,
+      "kind": "video"
+    },
+    {
+      "name": "source.src.wav",
+      "sha256": "9f6b19a20b59a21552465c7b958ee55fbcb7b0e9644d401b19c2ba7825f1e88f",
+      "bytes": 1005558,
+      "kind": "dev"
+    }
+  ]
+}
