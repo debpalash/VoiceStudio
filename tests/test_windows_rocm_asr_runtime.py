@@ -1,6 +1,7 @@
 """Exercise actual ASR loaders with a verified fake Windows HIP CT2 runtime."""
 import builtins
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -108,13 +109,13 @@ def test_stock_or_unusable_ct2_never_gets_hip_gpu(hip, monkeypatch, failure):
     else:
         monkeypatch.setattr(hip.ct2.metadata, "version", lambda name: "4.4.0")
     ab.FasterWhisperBackend()._ensure_model()
-    assert hip.loads == [{"device": "cpu", "compute_type": "int8"}]
+    assert hip.loads == [{"device": "cpu", "compute_type": "int8", "cpu_threads": min(os.cpu_count() or 4, 8)}]
 
 
 def test_explicit_cpu_override_stays_cpu(hip):
     hip.caps.family = "cpu"
     ab.FasterWhisperBackend()._ensure_model()
-    assert hip.loads == [{"device": "cpu", "compute_type": "int8"}]
+    assert hip.loads == [{"device": "cpu", "compute_type": "int8", "cpu_threads": min(os.cpu_count() or 4, 8)}]
 
 
 def test_cpu_auto_and_profile_never_probe_gpu(hip, monkeypatch):
