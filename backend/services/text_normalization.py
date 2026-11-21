@@ -987,7 +987,11 @@ def _numbers_to_words_native(text: str, lang: str) -> str:
 # so every engine reads them the same way.
 _VI_PLAIN_INT_RE = re.compile(r"(?<![\w.,:/#@+\-])([1-9]\d{3,11})(?![\w:/@]|[.,]\d)")
 _VI_NGHIN_RE = re.compile(r"(?<!\w)(nghìn)(?!\w)", re.IGNORECASE)
-_VI_YEAR_PREFIX_RE = re.compile(r"(?<!\w)năm\s+$", re.IGNORECASE)
+# "năm 2008, 2010 và 2025": a year, or a list/range of years opened by "năm".
+_VI_YEAR_PREFIX_RE = re.compile(
+    r"(?<!\w)năm\s+(?:\d{4}(?:\s*,\s*|\s+(?:và|hoặc|đến|tới)\s+|\s*[-–]\s*))*$",
+    re.IGNORECASE,
+)
 
 
 def _vi_group_thousands(text: str) -> str:
