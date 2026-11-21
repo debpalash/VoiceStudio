@@ -303,8 +303,10 @@ def test_resume_manifest_and_chapter_wav_are_published_durably(tmp_path, monkeyp
     monkeypatch.setattr(_mod("core.config"), "VOICES_DIR", str(tmp_path / "voices"))
     _render(_chapter("Flush."), _synth([]), _SR, "eng",
             _resolver(tmp_path / "voices"), str(tmp_path / "cache"))
-    # The voices-roots index, the segment, then the chapter — each durable.
-    assert events == ["flush-file", "rename", "flush-dir"] * 3
+    # The voices-roots index and the chapter are durable; the per-span cache
+    # WAV is not (a torn one is rejected on load and re-rendered).
+    durable = ["flush-file", "rename", "flush-dir"]
+    assert events == durable + ["rename"] + durable
 
 
 def test_durable_io_flushes_real_files(tmp_path):
