@@ -2444,6 +2444,8 @@ def _repair_model_cache(checkpoint: str, *, force: bool = False) -> bool:
     for attempt in range(1, retries + 1):
         try:
             _attempt()
+            from services.hf_revisions import clear_install_pending
+            clear_install_pending(checkpoint, revision, cache_root)
             logger.info("Auto-repair of %s completed; retrying model load.", checkpoint)
             return True
         except Exception as e:

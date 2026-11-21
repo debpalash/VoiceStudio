@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 from pathlib import Path
 
 _logger = logging.getLogger("omnivoice.hf_revisions")
@@ -73,6 +74,21 @@ def _repo_dir(repo_id: str, cache_dir: str) -> Path:
     return Path(cache_dir) / ("models--" + repo_id.replace("/", "--"))
 
 
+def _write_marker(marker: Path, revision: str) -> None:
+    """Atomically write ``marker`` via a unique temp file in the same directory."""
+    fd, name = tempfile.mkstemp(dir=marker.parent, prefix=marker.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="ascii") as handle:
+            handle.write(revision + "\n")
+        os.replace(name, marker)
+    except BaseException:
+        try:
+            os.unlink(name)
+        except OSError:
+            pass
+        raise
+
+
 def remember_revision(repo_id: str, revision: str, cache_dir: str) -> None:
     """Persist the exact installed revision for later in-place repair."""
     if not _SHA.fullmatch(revision):
@@ -80,9 +96,7 @@ def remember_revision(repo_id: str, revision: str, cache_dir: str) -> None:
     repo_dir = _repo_dir(repo_id, cache_dir)
     repo_dir.mkdir(parents=True, exist_ok=True)
     marker = repo_dir / "voicestudio-revision"
-    temporary = marker.with_suffix(f".tmp-{os.getpid()}")
-    temporary.write_text(revision + "\n", encoding="ascii")
-    os.replace(temporary, marker)
+    _write_marker(marker, revision)
 
 
 # Names the revision an install is still downloading. Written before the first
@@ -100,9 +114,7 @@ def mark_install_pending(repo_id: str, revision: str, cache_dir: str) -> None:
     repo_dir = _repo_dir(repo_id, cache_dir)
     repo_dir.mkdir(parents=True, exist_ok=True)
     marker = repo_dir / INSTALL_PENDING_MARKER
-    temporary = marker.with_suffix(f".tmp-{os.getpid()}")
-    temporary.write_text(revision + "\n", encoding="ascii")
-    os.replace(temporary, marker)
+    _write_marker(marker, revision)
 
 
 def clear_install_pending(repo_id: str, revision: str, cache_dir: str) -> None:

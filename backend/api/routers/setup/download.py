@@ -595,6 +595,25 @@ def _segmented_retry_log_phrase(disable: bool, retry: bool) -> str:
     return "accelerator disabled; falling back to the plain downloader now"
 
 
+def _is_finished_repair(summary: "dict | None", snapshot: str, model_spec: dict) -> bool:
+    """True when the install only re-verifies an install that is already whole.
+
+    One finished weight is not proof: an older interrupted install can hold only
+    the small tokenizer. The pre-flight plan names every file the revision still
+    needs, so a repair is "nothing left to download". Without a plan, fall back
+    to the catalogue's own check plus the absence of partial-transfer blobs.
+    """
+    if summary is not None and summary.get("n_files"):
+        return summary["to_download_bytes"] == 0 and summary["n_files"] == summary["n_cached"]
+    if not (os.path.isdir(snapshot) and snapshot_is_complete(model_spec, snapshot)):
+        return False
+    blobs = os.path.join(os.path.dirname(os.path.dirname(snapshot)), "blobs")
+    try:
+        return not any(n.endswith((".incomplete", ".part")) for n in os.listdir(blobs))
+    except OSError:
+        return True
+
+
 @router.post("/models/install", dependencies=[Depends(require_consumer)])
 async def install_model(req: InstallModelRequest):
     """Download one HF repo snapshot; progress goes through the shared
@@ -753,6 +772,7 @@ async def install_model(req: InstallModelRequest):
                 _preflight_kwargs["endpoint"] = _endpoint
             if _hub_token is not None:
                 _preflight_kwargs["token"] = _hub_token
+            _summary = None
             try:
                 _plan = list(snapshot_download(**_preflight_kwargs))  # nosec B615 -- immutable revision_for pin
                 for dependency in model_spec.get("dependencies") or ():
@@ -837,8 +857,7 @@ async def install_model(req: InstallModelRequest):
                 _pending_cache, "models--" + hub_repo.replace("/", "--"),
                 "snapshots", dl_kwargs["revision"],
             )
-            if not (os.path.isdir(_pending_snapshot)
-                    and snapshot_is_complete(model_spec, _pending_snapshot)):
+            if not _is_finished_repair(_summary, _pending_snapshot, model_spec):
                 # A repair of a finished install keeps it usable if it fails.
                 mark_install_pending(hub_repo, dl_kwargs["revision"], _pending_cache)
             _max_attempts = 5

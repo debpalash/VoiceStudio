@@ -212,3 +212,102 @@ def test_a_cancelled_install_removes_its_marker(download, cache, monkeypatch):
     _run_install(download)
 
     assert not _marker(cache).exists()
+
+
+def test_a_tokenizer_only_leftover_is_not_taken_for_a_finished_repair(download, catalogue, cache, monkeypatch):
+    """An older interrupted install holds only the tokenizer; the plan says the main
+    weight is still to download, so the marker is written and a failure keeps it."""
+    from types import SimpleNamespace
+
+    snapshot = _snapshot(cache)
+    plan = [
+        SimpleNamespace(file_size=WEIGHT, is_cached=True, will_download=False),
+        SimpleNamespace(file_size=WEIGHT, is_cached=False, will_download=True),
+    ]
+
+    def fake_snapshot_download(**kwargs):
+        if kwargs.get("dry_run"):
+            return plan
+        raise OSError("connection reset by peer")
+
+    _patch_install(download, monkeypatch, fake_snapshot_download)
+    _run_install(download)
+
+    assert _marker(cache).exists()
+    assert not catalogue.snapshot_is_complete(MODEL, str(snapshot))
+
+
+def test_a_fully_cached_plan_is_a_marker_free_repair(download, catalogue, cache, monkeypatch):
+    from types import SimpleNamespace
+
+    snapshot = _snapshot(cache, main_weight=True)
+    plan = [SimpleNamespace(file_size=WEIGHT, is_cached=True, will_download=False)] * 2
+
+    def fake_snapshot_download(**kwargs):
+        if kwargs.get("dry_run"):
+            return plan
+        raise OSError("connection reset by peer")
+
+    _patch_install(download, monkeypatch, fake_snapshot_download)
+    _run_install(download)
+
+    assert not _marker(cache).exists()
+    assert catalogue.snapshot_is_complete(MODEL, str(snapshot))
+
+
+def test_an_unfinished_transfer_blob_is_not_a_finished_repair(download, cache):
+    snapshot = _snapshot(cache, main_weight=True)
+    blobs = cache / FOLDER / "blobs"
+    blobs.mkdir()
+    (blobs / "abc.incomplete").write_bytes(b"\0")
+    assert not download._is_finished_repair(None, str(snapshot), MODEL)
+    (blobs / "abc.incomplete").unlink()
+    assert download._is_finished_repair(None, str(snapshot), MODEL)
+
+
+def test_load_time_repair_clears_the_marker(revisions, cache, monkeypatch):
+    from services import hf_cache_repair, model_manager
+    import huggingface_hub
+
+    _snapshot(cache)
+    revisions.mark_install_pending(REPO, COMMIT, str(cache))
+    monkeypatch.setattr(revisions, "installed_revision", lambda *a, **k: COMMIT)
+    monkeypatch.setattr(hf_cache_repair, "hf_cache_home", lambda: str(cache))
+    monkeypatch.setattr(model_manager, "_hf_offline", lambda: False)
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", lambda **k: str(cache))
+
+    assert model_manager._repair_model_cache(REPO) is True
+    assert not _marker(cache).exists()
+
+
+def test_cache_self_heal_clears_the_marker(revisions, cache, monkeypatch):
+    from services import hf_cache_repair
+    import huggingface_hub
+
+    snapshot = _snapshot(cache)
+    broken = snapshot / "model.safetensors"
+    broken.symlink_to(cache / "nowhere")
+    revisions.mark_install_pending(REPO, COMMIT, str(cache))
+    monkeypatch.setattr(revisions, "installed_revision", lambda *a, **k: COMMIT)
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", lambda **k: str(snapshot))
+
+    summary = hf_cache_repair.repair_repo_cache(REPO, str(cache))
+    assert summary["restored"] is True
+    assert not _marker(cache).exists()
+
+
+def test_marker_writes_use_unique_temp_files(revisions, tmp_path, monkeypatch):
+    seen = []
+    real_replace = os.replace
+
+    def spy(src, dst):
+        seen.append(src)
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", spy)
+    revisions.mark_install_pending(REPO, COMMIT, str(tmp_path))
+    revisions.mark_install_pending(REPO, OTHER, str(tmp_path))
+    revisions.remember_revision(REPO, COMMIT, str(tmp_path))
+    assert len(set(seen)) == 3
+    assert sorted(p.name for p in (tmp_path / FOLDER).iterdir()) == [
+        "voicestudio-installing", "voicestudio-revision"]

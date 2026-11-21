@@ -323,6 +323,8 @@ def repair_repo_cache(repo_id: str, cache_dir: str | None = None) -> dict:
             dl_kwargs["token"] = False  # a mirror never receives the HF token
         snapshot_download(**dl_kwargs)  # nosec B615 -- installed immutable revision
         summary["restored"] = True
+        from services.hf_revisions import clear_install_pending
+        clear_install_pending(repo_id, revision, cache_root)
 
         # Verify-after-repair: hub's memoized symlink probe can claim support
         # while the links it just recreated dangle again. If so, force copy
