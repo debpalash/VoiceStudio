@@ -1399,13 +1399,6 @@
       ],
       "title": "Seed"
      },
-     "sentence_gap_ms": {
-      "default": 0,
-      "maximum": 5000.0,
-      "minimum": 0.0,
-      "title": "Sentence Gap Ms",
-      "type": "integer"
-     },
      "speed": {
       "default": 1.0,
       "title": "Speed",

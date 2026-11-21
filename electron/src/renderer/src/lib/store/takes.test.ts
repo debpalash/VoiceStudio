@@ -199,7 +199,6 @@ describe('take metadata', () => {
       denoise: false,
       postprocess: false,
       duration: '12',
-      sentenceGapMs: 300,
       paragraphGapMs: 900,
       trimEngineSilence: true,
       showOverrides: true,

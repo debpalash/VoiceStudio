@@ -12,7 +12,7 @@ ignores.
 | You want | Do this | Works on |
 |---|---|---|
 | A pause | Type `[pause]`, `[pause 500ms]`, or `[pause 1.5s]` in the text | Every engine |
-| A pause after every sentence and paragraph | **Voice controls → Silence after sentences / between paragraphs** (or `sentence_gap_ms` / `paragraph_gap_ms` on `/generate` and MCP `generate_speech`). See [Sentence and paragraph gaps](#sentence-and-paragraph-gaps) | Every engine |
+| A pause between paragraphs | **Voice controls → Silence between paragraphs** (or `paragraph_gap_ms` on `/generate` and MCP `generate_speech`). See [Paragraph gaps](#paragraph-gaps) | Every engine |
 | A slower, faster or emphasized phrase | `[slow]…[/slow]`, `[fast]…[/fast]`, `[emphasis]…[/emphasis]`, `[spell]…[/spell]` in the text | Every engine |
 | Laughter or a sigh | ⊕ Insert → `[laughter]` / `[sigh]` | Default engine (VoiceStudio), CosyVoice 3 (`[laughter]`) |
 | An audible breath **on demand** | ⊕ Insert → `[breath]` | CosyVoice 3 only (opt-in) — see [Breaths](#breaths-specifically) |
@@ -85,33 +85,24 @@ lists the reaction tags its tokenizer renders.
   whole phrase or sentence rather than one word inside it. Tags are never read
   aloud.
 
-### Sentence and paragraph gaps
+### Paragraph gaps
 
-Long narration in one take can run sentences together: the engine decides the
-pacing, and on dense scripts (Chinese especially) the pause after a full stop
-can be under 80 ms. **Voice controls** (the sliders button beside Synthesize)
-has **Silence after sentences**, **Silence between paragraphs** and **Remove
-engine edge silence**; the API fields are `sentence_gap_ms`, `paragraph_gap_ms`
-(0–5000 ms each) and `trim_engine_silence` on `/generate` and the MCP
-`generate_speech` tool.
+Long narration in one take can run topic changes together: the engine decides
+the pacing. **Voice controls** (the sliders button beside Synthesize) has
+**Silence between paragraphs** and **Remove engine edge silence**; the API
+fields are `paragraph_gap_ms` (0–5000 ms) and `trim_engine_silence` on
+`/generate` and the MCP `generate_speech` tool.
 
-- A sentence ends at `.`, `!` or `?` followed by a space or line end (so `3.14`
-  and `example.com` stay whole), or at any full-width end mark such as the
-  Chinese and Japanese full stop, exclamation and question marks, with any
-  closing quotes kept on the sentence. Abbreviations like `e.g.` followed by a
-  space also count as an end.
-- A blank line gets the paragraph gap; with the paragraph gap at 0 it gets the
-  sentence gap. An explicit `[pause]` replaces the gap at its place, and the
-  end of the text never gets one.
-- With a gap on, each sentence is its own engine call (like `[pause]` spans),
-  so a long script makes more calls and the live preview arrives as one piece.
-  The gaps can add at most 15 minutes of silence to one take.
+- A blank line gets the paragraph gap. An explicit `[pause]` replaces the gap
+  at its place, and the end of the text never gets one.
+- With the gap on, each paragraph is its own engine call (like `[pause]`
+  spans), so a long script makes more calls and the live preview arrives as one
+  piece. The gaps can add at most 15 minutes of silence to one take.
 - **Remove engine edge silence** cuts each chunk's own lead-in and tail before
   joining, so the gap you set is the gap you hear, even with the Raw effect
   preset.
-- All three are off by default, so existing requests render exactly as before.
-  Around 250–400 ms after sentences and 700–1000 ms between paragraphs suits
-  most narration.
+- Both are off by default, so existing requests render exactly as before.
+  Around 700–1000 ms between paragraphs suits most narration.
 - **Punctuation** — ellipses, dashes, exclamation marks, and short fragments
   genuinely shape pacing and intonation. Cheap, underrated.
 - **The reference clip is a performance direction.** Zero-shot cloning mirrors

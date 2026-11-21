@@ -537,7 +537,6 @@ function useGenerateController(): UseGenerateClone {
         denoise: settings.denoise,
         postprocess: settings.postprocess,
         duration: settings.duration,
-        sentenceGapMs: settings.sentenceGapMs,
         paragraphGapMs: settings.paragraphGapMs,
         trimEngineSilence: settings.trimEngineSilence,
       };

@@ -3360,8 +3360,7 @@
     "polish": "Förfina genererat ljud",
     "basics": "1× är normal hastighet. Lämna längden tom för naturlig timing.",
     "hint": "Behåll vanligtvis standardvärdena. Vägledning styr instruktionens påverkan; övriga reglage ändrar hur modellen bygger ljudet. Ändra ett i taget.",
-    "sentence_gap": "Tystnad efter meningar",
-    "pauses_hint": "Lägger till tystnad efter varje mening och vid tomma rader. 0 behåller motorns eget tempo."
+    "pauses_hint": "Lägger till tystnad vid tomma rader. 0 behåller motorns eget tempo."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} har en enda modell för {{language}}, så accenten följer referensrösten.",

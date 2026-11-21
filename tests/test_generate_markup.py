@@ -1,10 +1,10 @@
-"""Generate honours sentence/paragraph gaps and SSML-lite like Audiobook does.
+"""Generate honours paragraph gaps and SSML-lite like Audiobook does.
 
-A 1,600-character Chinese narration rendered through Generate ran sentences
-and topic changes together (1,490 of ~1,500 word gaps under 80 ms), and
+A 1,600-character Chinese narration rendered through Generate ran topic
+changes together, and
 ``[emphasis]``/``[slow]`` reached the engine as text. ``/generate`` and the MCP
-``generate_speech`` tool now take ``sentence_gap_ms``, ``paragraph_gap_ms`` and
-``trim_engine_silence`` (all off by default) and parse SSML-lite tags.
+``generate_speech`` tool now take ``paragraph_gap_ms`` and
+``trim_engine_silence`` (both off by default) and parse SSML-lite tags.
 """
 import os
 
@@ -40,32 +40,17 @@ def test_default_options_keep_the_old_plan(text):
     assert all(s.speed_factor is None for s in spans)
 
 
-def test_chinese_sentences_and_paragraphs_get_their_gaps():
-    text = "第一件事很重要。第二件事呢？\n\n第三件事！最后一句。"
-    spans = plan_spans(text, JoinOptions(sentence_gap_ms=300, paragraph_gap_ms=900))
-    assert [s.pause_ms for s in spans] == [300, 900, 300, 0]
+def test_blank_lines_get_the_paragraph_gap_and_sentences_do_not():
+    text = "第一件事很重要。第二件事呢？\n\n第三件事！最后一句。\n \n结尾。"
+    spans = plan_spans(text, JoinOptions(paragraph_gap_ms=900))
+    assert [s.pause_ms for s in spans] == [900, 900, 0]
     assert "".join(s.text for s in spans) == text
 
 
-def test_ascii_periods_inside_numbers_and_urls_do_not_split():
-    spans = plan_spans("Pi is 3.14 at example.com today. Next!", JoinOptions(200))
-    assert [s.text for s in spans] == ["Pi is 3.14 at example.com today.", " Next!"]
-
-
-def test_closing_quotes_stay_with_their_sentence():
-    spans = plan_spans('他说：“走吧。”然后离开。 He said "Go." Then', JoinOptions(150))
-    assert [s.text for s in spans] == ["他说：“走吧。”", "然后离开。", ' He said "Go."', " Then"]
-
-
 def test_explicit_pause_replaces_the_gap_and_the_end_gets_none():
-    spans = plan_spans("One. [pause 1s] Two. Three.", JoinOptions(200))
+    spans = plan_spans("One.\n\n[pause 1s]Two.\n\nThree.", JoinOptions(paragraph_gap_ms=200))
     assert [(s.text.strip(), s.pause_ms) for s in spans] == [
         ("One.", 1000), ("Two.", 200), ("Three.", 0)]
-
-
-def test_paragraph_gap_falls_back_to_the_sentence_gap():
-    spans = plan_spans("A line\n\nB line", JoinOptions(sentence_gap_ms=250))
-    assert [s.pause_ms for s in spans] == [250, 0]
 
 
 def test_ssml_lite_tags_become_speed_factors_not_text():
@@ -84,9 +69,9 @@ def test_spell_tag_is_spelled_out():
 
 
 def test_silence_budget_is_enforced():
-    text = "好。" * (MAX_JOIN_SILENCE_MS // 5000 + 2)
+    text = "好。\n\n" * (MAX_JOIN_SILENCE_MS // 5000 + 2)
     with pytest.raises(ValueError, match="minutes"):
-        plan_spans(text, JoinOptions(sentence_gap_ms=5000))
+        plan_spans(text, JoinOptions(paragraph_gap_ms=5000))
 
 
 def test_trim_engine_silence_alone_takes_the_span_renderer():
@@ -119,9 +104,9 @@ def test_backend_render_inserts_the_gaps(monkeypatch):
     monkeypatch.setenv("OMNIVOICE_PAUSE_FILL", "silence")
     calls = []
     audio = _render("第一句。第二句！\n\n第三句。",
-                    JoinOptions(sentence_gap_ms=300, paragraph_gap_ms=900), calls)
-    assert [t.strip() for t, _ in calls] == ["第一句。", "第二句！", "第三句。"]
-    assert audio.shape[-1] == 3 * CHUNK + int(SR * 1.2)
+                    JoinOptions(paragraph_gap_ms=900), calls)
+    assert [t.strip() for t, _ in calls] == ["第一句。第二句！", "第三句。"]
+    assert audio.shape[-1] == 2 * CHUNK + int(SR * 0.9)
 
 
 def test_backend_render_scales_speed_for_tagged_runs():
@@ -165,13 +150,12 @@ def _mcp_generate(monkeypatch, **arguments):
 
 
 def test_mcp_forwards_the_join_options(monkeypatch):
-    form = _mcp_generate(monkeypatch, sentence_gap_ms=300, paragraph_gap_ms=900,
+    form = _mcp_generate(monkeypatch, paragraph_gap_ms=900,
                          trim_engine_silence=True)
-    assert form["sentence_gap_ms"] == "300"
     assert form["paragraph_gap_ms"] == "900"
     assert form["trim_engine_silence"] == "true"
 
 
 def test_mcp_default_request_is_unchanged(monkeypatch):
     form = _mcp_generate(monkeypatch)
-    assert not {"sentence_gap_ms", "paragraph_gap_ms", "trim_engine_silence"} & form.keys()
+    assert not {"paragraph_gap_ms", "trim_engine_silence"} & form.keys()

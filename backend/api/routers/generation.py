@@ -1380,7 +1380,7 @@ def _run_inference(
             )
 
         # Inline [pause Nms] markers (issue #276), SSML-lite tags and the
-        # opt-in sentence/paragraph gaps: split the text and stitch silence
+        # opt-in paragraph gaps: split the text and stitch silence
         # between independently-synthesized spans. Plain text with default
         # joins takes the unchanged single-shot path below.
         segments, has_pause, trim_spans = _plan_generate(text, joins, effect_preset)
@@ -1976,10 +1976,8 @@ async def generate_speech(
     # boundaries and crossfaded. 0 disables chunking (whole text to engine).
     max_chunk_chars: int = Form(800, ge=0),
     crossfade_ms: int = Form(50, ge=0, le=1000),
-    # Optional silence after sentence-final punctuation (. ! ? and full-width) and at blank
-    # lines, and per-chunk engine-padding trim — the Audiobook join controls
+    # Optional silence at blank lines, and per-chunk engine-padding trim — the Audiobook join controls
     # for one-shot generation. All off by default: renders are unchanged.
-    sentence_gap_ms: int = Form(0, ge=0, le=5000),
     paragraph_gap_ms: int = Form(0, ge=0, le=5000),
     trim_engine_silence: bool = Form(False),
     # Expressive-TTS Spec 01: apply the user pronunciation dictionary + inline
@@ -2013,7 +2011,7 @@ async def generate_speech(
 
     from services.generate_markup import JoinOptions, plan_spans
 
-    joins = JoinOptions(sentence_gap_ms, paragraph_gap_ms, trim_engine_silence)
+    joins = JoinOptions(paragraph_gap_ms, trim_engine_silence)
     try:
         # Refuse an over-long silence budget before any model or GPU work.
         plan_spans(text, joins)

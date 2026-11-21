@@ -17,7 +17,6 @@ import {
   ListPlusIcon,
   PlayIcon,
   LoaderCircleIcon,
-  PauseIcon,
   PilcrowIcon,
   RotateCcwIcon,
   ScissorsIcon,
@@ -68,7 +67,6 @@ type NumericKey =
   | 'posTemp'
   | 'classTemp'
   | 'layerPenalty'
-  | 'sentenceGapMs'
   | 'paragraphGapMs';
 
 interface SliderSpec {
@@ -133,17 +131,8 @@ const SLIDERS: SliderSpec[] = [
   },
 ];
 
-/** Silence between sentences and paragraphs, as Audiobook's join controls. */
+/** Silence between paragraphs, as Audiobook's join control. */
 const GAP_SLIDERS: SliderSpec[] = [
-  {
-    key: 'sentenceGapMs',
-    labelKey: 'voiceControls.sentence_gap',
-    icon: PauseIcon,
-    min: 0,
-    max: 2000,
-    step: 50,
-    suffix: ' ms',
-  },
   {
     key: 'paragraphGapMs',
     labelKey: 'audiobook.paragraph_gap',

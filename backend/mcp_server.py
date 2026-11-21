@@ -930,7 +930,6 @@ def create_mcp_server(app=None):
         speed: float = 1.0,
         steps: int = 16,
         format: str = "wav",
-        sentence_gap_ms: int = 0,
         paragraph_gap_ms: int = 0,
         trim_engine_silence: bool = False,
     ) -> str:
@@ -952,11 +951,8 @@ def create_mcp_server(app=None):
             steps: Diffusion steps (8=fast/draft, 16=balanced, 32=quality).
             format: File and URL format: wav (default), ogg or opus. Both
                 ogg and opus carry Opus in Ogg; requires files/both mode and ffmpeg.
-            sentence_gap_ms: Silence after each sentence that ends in . ! ? or
-                a full-width (CJK) end mark (0–5000 ms, default 0 = off).
-                Narration usually wants 200–400.
             paragraph_gap_ms: Silence at each blank line (0–5000 ms, default 0
-                = use sentence_gap_ms). Narration usually wants 600–1000.
+                = off). Narration usually wants 600–1000.
             trim_engine_silence: Strip the engine's own lead-in/tail silence from
                 every chunk so the gaps are exactly as long as asked.
 
@@ -998,8 +994,6 @@ def create_mcp_server(app=None):
         if instruct:
             form["instruct"] = instruct
         # Sent only when set, so the request stays identical for old backends.
-        if sentence_gap_ms:
-            form["sentence_gap_ms"] = str(int(sentence_gap_ms))
         if paragraph_gap_ms:
             form["paragraph_gap_ms"] = str(int(paragraph_gap_ms))
         if trim_engine_silence:

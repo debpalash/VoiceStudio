@@ -3360,8 +3360,7 @@
     "polish": "Trau chuốt âm thanh đã tạo",
     "basics": "1× là tốc độ bình thường. Để trống thời lượng để có nhịp tự nhiên.",
     "hint": "Thường nên giữ giá trị mặc định. Độ dẫn hướng điều chỉnh ảnh hưởng của lời nhắc; các nút khác thay đổi cách mô hình tạo âm thanh. Mỗi lần chỉ đổi một mục.",
-    "sentence_gap": "Khoảng lặng sau câu",
-    "pauses_hint": "Thêm khoảng lặng sau mỗi câu và ở dòng trống. 0 giữ nhịp riêng của công cụ."
+    "pauses_hint": "Thêm khoảng lặng ở dòng trống. 0 giữ nhịp riêng của công cụ."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} chỉ có một mô hình {{language}}, nên giọng vùng miền theo giọng tham chiếu.",

@@ -54,7 +54,6 @@ const settings = {
   denoise: false,
   postprocess: true,
   duration: '',
-  sentenceGapMs: 0,
   paragraphGapMs: 0,
   trimEngineSilence: false,
   showOverrides: true,
@@ -172,11 +171,10 @@ describe('ActionBar', () => {
     expect(resetVoiceControls).toHaveBeenCalled();
   });
 
-  it('offers sentence and paragraph pauses with engine-silence trimming', () => {
+  it('offers the paragraph pause with engine-silence trimming', () => {
     render(<ProductionSettings />);
-    expect(screen.getByText('Silence after sentences')).toBeVisible();
     expect(screen.getByText('Silence between paragraphs')).toBeVisible();
-    expect(screen.getByText(/Adds silence after each sentence/)).toBeVisible();
+    expect(screen.getByText(/Adds silence at blank lines/)).toBeVisible();
     fireEvent.click(screen.getByRole('switch', { name: 'Remove engine edge silence' }));
     expect(setCloneSetting).toHaveBeenCalledWith('trimEngineSilence', true);
   });

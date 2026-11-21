@@ -132,17 +132,15 @@ describe('toGenerateForm', () => {
     expect(toGenerateForm({ ...BASE_INPUT, presetVoice: 'F3' }).get('preset_voice')).toBe('F3');
   });
 
-  it('sends sentence/paragraph gaps and trim only when set', () => {
+  it('sends the paragraph gap and trim only when set', () => {
     const plain = toGenerateForm(BASE_INPUT);
-    for (const key of ['sentence_gap_ms', 'paragraph_gap_ms', 'trim_engine_silence'])
+    for (const key of ['paragraph_gap_ms', 'trim_engine_silence'])
       expect(plain.has(key), key).toBe(false);
     const joined = toGenerateForm({
       ...BASE_INPUT,
-      sentenceGapMs: 300,
       paragraphGapMs: 900,
       trimEngineSilence: true,
     });
-    expect(joined.get('sentence_gap_ms')).toBe('300');
     expect(joined.get('paragraph_gap_ms')).toBe('900');
     expect(joined.get('trim_engine_silence')).toBe('true');
   });
