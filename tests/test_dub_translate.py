@@ -1025,3 +1025,110 @@ def test_nllb_script_variants_and_aliases():
     assert _nllb_language("no") == _nllb_language("nb") == "nob_Latn"
     assert _nllb_language("jw") == "jav_Latn"
     assert _nllb_language("ne") == "npi_Deva"
+
+
+# ── NLLB half precision on CUDA only ───────────────────────────────────────
+
+class _Tensor:
+    def __init__(self, values):
+        self.values = values
+
+    def to(self, device):
+        return self
+
+
+class _Tok:
+    def __call__(self, texts, **kwargs):
+        return {"input_ids": _Tensor(texts)}
+
+    def convert_tokens_to_ids(self, target):
+        return target
+
+    def batch_decode(self, tokens, **kwargs):
+        return tokens
+
+
+class _Nllb:
+    def __init__(self, dtype, fail_fp16_generate=False, fail_cuda_move=False):
+        self.dtype = dtype
+        self.fail_fp16_generate = fail_fp16_generate
+        self.fail_cuda_move = fail_cuda_move
+
+    def to(self, device):
+        if self.fail_cuda_move and device == "cuda":
+            raise RuntimeError("fp16 unsupported here")
+        return self
+
+    def float(self):
+        self.dtype = "float32"
+        return self
+
+    def generate(self, *, input_ids, **kwargs):
+        if self.dtype == "float16" and self.fail_fp16_generate:
+            raise RuntimeError("probability tensor contains inf or nan")
+        return [f"t:{x}" for x in input_ids.values]
+
+
+async def _run_nllb(monkeypatch, *, cuda, mps=False, **model_kw):
+    import torch
+    from api.routers import dub_translate
+    from schemas.requests import TranslateRequest
+    from services import model_acceptance, translation_engines
+
+    loads = []
+
+    def _load(factory, **kwargs):
+        if factory.__name__ == "AutoTokenizer":
+            return _Tok()
+        loads.append(kwargs)
+        return _Nllb(str(kwargs.get("torch_dtype", "float32")).replace("torch.", ""), **model_kw)
+
+    monkeypatch.setattr(dub_translate, "_load_nllb_component", _load)
+    monkeypatch.setattr(dub_translate, "_nllb_model", None)
+    monkeypatch.setattr(dub_translate, "_nllb_tokenizer", None)
+    monkeypatch.setattr(dub_translate, "_nllb_device", None)
+    monkeypatch.setattr(dub_translate, "_nllb_fp16", False)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: cuda)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: mps)
+    monkeypatch.setattr(model_acceptance, "ensure_accepted", lambda _: None)
+    monkeypatch.setattr(translation_engines, "is_installed", lambda _: True)
+    monkeypatch.setattr(translation_engines, "is_ready", lambda _: True)
+    monkeypatch.setenv("OMNIVOICE_UNLOAD_NLLB", "0")
+    response = await dub_translate.dub_translate(TranslateRequest(
+        provider="nllb", source_lang="en", target_lang="de",
+        segments=[{"id": "1", "text": "hello"}],
+    ))
+    return response, loads, dub_translate
+
+
+@pytest.mark.asyncio
+async def test_nllb_loads_fp16_on_cuda(monkeypatch):
+    import torch
+
+    response, loads, mod = await _run_nllb(monkeypatch, cuda=True)
+    assert loads == [{"torch_dtype": torch.float16}]
+    assert response["translated"][0]["text"] == "t:hello" and mod._nllb_fp16 is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cuda,mps", [(False, True), (False, False)])
+async def test_nllb_stays_float32_off_cuda(monkeypatch, cuda, mps):
+    response, loads, mod = await _run_nllb(monkeypatch, cuda=cuda, mps=mps)
+    assert loads == [{}] and mod._nllb_fp16 is False
+    assert response["translated"][0]["text"] == "t:hello"
+
+
+@pytest.mark.asyncio
+async def test_nllb_fp16_load_failure_reloads_float32(monkeypatch):
+    import torch
+
+    response, loads, mod = await _run_nllb(monkeypatch, cuda=True, fail_cuda_move=True)
+    assert loads[0] == {"torch_dtype": torch.float16} and len(loads) == 2
+    assert mod._nllb_fp16 is False
+
+
+@pytest.mark.asyncio
+async def test_nllb_fp16_generate_failure_retries_float32(monkeypatch):
+    response, _loads, mod = await _run_nllb(monkeypatch, cuda=True, fail_fp16_generate=True)
+    assert response["translated"][0]["text"] == "t:hello"
+    assert mod._nllb_fp16 is False
