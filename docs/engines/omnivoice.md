@@ -85,7 +85,9 @@ The env var overrides the persisted UI choice.
   is too long and to trim it to 3–10 seconds, since a transcript cannot rescue it.
   A transcript typed on the request for
   such a clip is rejected with `[clone_ref_too_long]`.
-  Only that 15-second window is sent to the model. Clips longer than 75 seconds
+  Only that 15-second window is sent to the model. Its start and end move to
+  the nearest pause, so the window does not start or end in the middle of a
+  word. Clips longer than 75 seconds
   must be trimmed first. If no spoken words are detected, trim to
   a clear 3–10 second passage or provide its matching transcript.
 - For cross-language cloning, keep the reference transcript in the sample's
