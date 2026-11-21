@@ -627,6 +627,19 @@ def merge_and_save_job(
         return True
 
 
+async def aput_and_save_job(job_id: str, job: dict, **kwargs) -> bool:
+    """:func:`put_and_save_job` without blocking the event loop.
+
+    The whole atomic step (tombstone check, ``json.dumps`` of the job, SQLite
+    UPSERT) runs in a worker thread. It still takes ``_dub_jobs_lock`` there, so
+    the #1252 delete/resurrect ordering is unchanged; only the caller's event
+    loop stays free. A large job (thousands of segments) used to stall every SSE
+    stream and health check for the length of the dump. Completion saves keep
+    the synchronous :func:`merge_and_save_job`.
+    """
+    return await asyncio.to_thread(put_and_save_job, job_id, job, **kwargs)
+
+
 def purge_jobs(job_ids, *, delete_rows, include_inflight: bool = False) -> None:
     """Delete history rows and evict the in-memory records as ONE atomic step.
 
@@ -1893,7 +1906,7 @@ async def ingest_pipeline(
                 "input_type": input_type,
                 "source_lang_override": source.get("source_lang"),
             }
-            if not put_and_save_job(
+            if not await aput_and_save_job(
                 job_id, full_job, filename=filename, duration=dur, content_hash=content_hash,
             ):
                 logger.info("Dub job %s was deleted during ingest — discarding its result", log_safe(job_id))
@@ -1922,7 +1935,7 @@ async def ingest_pipeline(
                 "input_type": input_type,
                 "source_lang_override": source.get("source_lang"),
             }
-            if not put_and_save_job(
+            if not await aput_and_save_job(
                 job_id, partial, filename=filename, duration=dur, content_hash=content_hash,
             ):
                 logger.info("Dub job %s was deleted during ingest — discarding its result", log_safe(job_id))

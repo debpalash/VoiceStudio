@@ -158,3 +158,41 @@ def test_save_job_upsert_does_not_clobber_language_with_empty():
     row = _lang_row(jid)
     assert row["language"] == "Bengali"
     assert row["language_code"] == "bn"
+
+
+# ── Async save keeps the #1252 tombstone invariant and frees the loop ───────
+
+
+def test_aput_and_save_job_persists_off_the_event_loop():
+    import asyncio
+    import threading
+
+    jid = _jid()
+    seen = {}
+    real = dp.save_job
+
+    def _spy(*a, **k):
+        seen["thread"] = threading.current_thread()
+        return real(*a, **k)
+
+    async def _go():
+        dp.save_job = _spy
+        try:
+            return await dp.aput_and_save_job(jid, {"segments": [], "filename": "a.mp4"}, filename="a.mp4")
+        finally:
+            dp.save_job = real
+
+    assert asyncio.run(_go()) is True
+    assert seen["thread"] is not threading.main_thread()
+    with db_conn() as conn:
+        assert conn.execute("SELECT 1 FROM dub_history WHERE id=?", (jid,)).fetchone()
+
+
+def test_aput_and_save_job_honours_withdrawal_tombstone():
+    import asyncio
+
+    jid = _jid()
+    dp.purge_jobs([jid], delete_rows=lambda: None)
+    assert asyncio.run(dp.aput_and_save_job(jid, {"segments": []})) is False
+    with db_conn() as conn:
+        assert conn.execute("SELECT 1 FROM dub_history WHERE id=?", (jid,)).fetchone() is None
