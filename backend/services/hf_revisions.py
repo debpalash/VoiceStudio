@@ -124,15 +124,94 @@ def mark_install_pending(repo_id: str, revision: str, cache_dir: str) -> None:
 
 
 def clear_install_pending(repo_id: str, revision: str, cache_dir: str) -> None:
-    """Remove the pending marker if it still names ``revision``. Never raises."""
+    """Remove the pending marker if it still names ``revision``. Never raises.
+
+    Callers that have just finished a download must use
+    :func:`settle_install_pending` instead: a download call returning does not
+    prove the revision is whole.
+    """
     marker = _repo_dir(repo_id, cache_dir) / INSTALL_PENDING_MARKER
     try:
         with _pending_lock:
             if marker.read_text(encoding="ascii").strip() == revision:
                 marker.unlink()
-    except (OSError, UnicodeError):
-        # Missing or unreadable marker: nothing to clear, and clearing is best-effort.
-        logging.getLogger("omnivoice.hf_revisions").debug("pending marker not cleared", exc_info=True)
+    except (OSError, UnicodeError) as exc:
+        # Missing or unreadable marker: nothing to clear. Log the type only; the
+        # exception text carries the absolute (home) path.
+        _logger.debug("pending marker not cleared (%s)", type(exc).__name__)
+
+
+def expected_files_from_plan(plan) -> "list[tuple[str, int]] | None":
+    """``[(repo-relative name, size)]`` from a dry-run plan, None when unusable."""
+    files = []
+    for entry in plan or ():
+        name = getattr(entry, "filename", None)
+        if not isinstance(name, str) or not name:
+            return None
+        files.append((name, int(getattr(entry, "file_size", 0) or 0)))
+    return files or None
+
+
+def fetch_expected_files(**download_kwargs) -> "list[tuple[str, int]] | None":
+    """Ask the Hub which files this revision holds (a dry run). None on any failure."""
+    try:
+        from huggingface_hub import snapshot_download
+
+        kwargs = {k: v for k, v in download_kwargs.items()
+                  if k not in ("force_download", "local_dir_use_symlinks", "tqdm_class", "max_workers")}
+        kwargs["dry_run"] = True
+        return expected_files_from_plan(list(snapshot_download(**kwargs)))  # nosec B615 -- immutable revision pin
+    except Exception as exc:
+        _logger.debug("expected file list unavailable (%s)", type(exc).__name__)
+        return None
+
+
+def revision_verified_complete(repo_dir: str, revision: str, expected_files=None) -> bool:
+    """True only when every expected file of ``revision`` is present and whole.
+
+    ``snapshot_download`` can return an existing incomplete snapshot instead of
+    raising (a metadata timeout), so "the download returned" proves nothing. An
+    unknown expectation is not proof either: it returns False.
+    """
+    if not expected_files:
+        return False
+    repo = Path(repo_dir)
+    snapshot = repo / "snapshots" / revision
+    try:
+        for name, size in expected_files:
+            path = snapshot / name
+            actual = path.stat().st_size  # follows the link: a missing blob raises
+            if actual <= 0 and size > 0:
+                return False
+            if size > 0 and actual != size:
+                return False
+        blobs = repo / "blobs"
+        if blobs.is_dir() and any(n.endswith((".incomplete", ".part")) for n in os.listdir(blobs)):
+            return False
+    except OSError:
+        return False
+    return True
+
+
+def settle_install_pending(repo_id: str, revision: str, cache_dir: str, *,
+                           expected_files=None, fetch_kwargs=None) -> str:
+    """Clear the pending marker only on proof the revision is complete.
+
+    Returns ``"cleared"`` (verified, or nothing was pending), ``"incomplete"``
+    (the expected files are known and some are missing or partial) or
+    ``"unknown"`` (no file list to verify against; the marker stays).
+    """
+    repo_dir = _repo_dir(repo_id, cache_dir)
+    if install_pending_revision(str(repo_dir)) != revision:
+        return "cleared"
+    if not expected_files and fetch_kwargs is not None:
+        expected_files = fetch_expected_files(**fetch_kwargs)
+    if not expected_files:
+        return "unknown"
+    if revision_verified_complete(str(repo_dir), revision, expected_files):
+        clear_install_pending(repo_id, revision, cache_dir)
+        return "cleared"
+    return "incomplete"
 
 
 def install_pending_revision(repo_dir: str) -> "str | None":

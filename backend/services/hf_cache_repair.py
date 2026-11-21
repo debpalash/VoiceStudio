@@ -274,7 +274,7 @@ def repair_repo_cache(repo_id: str, cache_dir: str | None = None) -> dict:
         # Resolve the exact revision before deleting even a broken pointer. An
         # unreviewed repository can never turn cache repair into a mutable-
         # branch network fetch.
-        from services.hf_revisions import clear_install_pending, installed_revision
+        from services.hf_revisions import installed_revision, settle_install_pending
         revision = installed_revision(repo_id, cache_root)
 
         def _remove(paths: list[str]) -> int:
@@ -329,7 +329,7 @@ def repair_repo_cache(repo_id: str, cache_dir: str | None = None) -> dict:
         # mode and repair once more so real files land in the snapshot.
         still_broken = find_dangling_entries(repo_dir)
         if not still_broken:
-            clear_install_pending(repo_id, revision, cache_root)
+            settle_install_pending(repo_id, revision, cache_root, fetch_kwargs=dl_kwargs)
             summary["ok"] = True
             summary["outcome"] = "healed_with_links"
             logger.info(
@@ -360,7 +360,7 @@ def repair_repo_cache(repo_id: str, cache_dir: str | None = None) -> dict:
                 "after the copy-mode repair"
             )
             return summary
-        clear_install_pending(repo_id, revision, cache_root)
+        settle_install_pending(repo_id, revision, cache_root, fetch_kwargs=dl_kwargs)
         summary["ok"] = True
         summary["outcome"] = "healed_with_copies"
         logger.info(

@@ -595,23 +595,17 @@ def _segmented_retry_log_phrase(disable: bool, retry: bool) -> str:
     return "accelerator disabled; falling back to the plain downloader now"
 
 
-def _is_finished_repair(summary: "dict | None", snapshot: str, model_spec: dict) -> bool:
+def _is_finished_repair(plan, repo_dir: str, revision: str) -> bool:
     """True when the install only re-verifies an install that is already whole.
 
     One finished weight is not proof: an older interrupted install can hold only
-    the small tokenizer. The pre-flight plan names every file the revision still
-    needs, so a repair is "nothing left to download". Without a plan, fall back
-    to the catalogue's own check plus the absence of partial-transfer blobs.
+    the small tokenizer. Only a known file list (the pre-flight plan) can prove
+    every file is present and whole; without one the answer is False so the
+    pending marker is written.
     """
-    if summary is not None and summary.get("n_files"):
-        return summary["to_download_bytes"] == 0 and summary["n_files"] == summary["n_cached"]
-    if not (os.path.isdir(snapshot) and snapshot_is_complete(model_spec, snapshot)):
-        return False
-    blobs = os.path.join(os.path.dirname(os.path.dirname(snapshot)), "blobs")
-    try:
-        return not any(n.endswith((".incomplete", ".part")) for n in os.listdir(blobs))
-    except OSError:
-        return True
+    from services.hf_revisions import expected_files_from_plan, revision_verified_complete
+
+    return revision_verified_complete(repo_dir, revision, expected_files_from_plan(plan))
 
 
 @router.post("/models/install", dependencies=[Depends(require_consumer)])
@@ -773,8 +767,11 @@ async def install_model(req: InstallModelRequest):
             if _hub_token is not None:
                 _preflight_kwargs["token"] = _hub_token
             _summary = None
+            _main_plan = None  # file list of this repo's revision; None = preflight failed
+            _dependency_plans: dict = {}
             try:
-                _plan = list(snapshot_download(**_preflight_kwargs))  # nosec B615 -- immutable revision_for pin
+                _main_plan = list(snapshot_download(**_preflight_kwargs))  # nosec B615 -- immutable revision_for pin
+                _plan = list(_main_plan)
                 for dependency in model_spec.get("dependencies") or ():
                     if req.repo_id in _cancelled:
                         raise _InstallCancelled()
@@ -786,7 +783,9 @@ async def install_model(req: InstallModelRequest):
                     dependency_plan_kwargs.pop("allow_patterns", None)
                     if dependency.get("allow_patterns"):
                         dependency_plan_kwargs["allow_patterns"] = dependency["allow_patterns"]
-                    _plan.extend(snapshot_download(**dependency_plan_kwargs))  # nosec B615 -- immutable revision_for pin
+                    _dependency_plans[dependency["repo_id"]] = list(
+                        snapshot_download(**dependency_plan_kwargs))  # nosec B615 -- immutable revision_for pin
+                    _plan.extend(_dependency_plans[dependency["repo_id"]])
                 if req.repo_id in _cancelled:
                     raise _InstallCancelled()
                 _summary = compute_plan(_plan)
@@ -848,16 +847,16 @@ async def install_model(req: InstallModelRequest):
                 })
 
             from huggingface_hub.constants import HF_HUB_CACHE as _pending_cache
-            from services.hf_revisions import clear_install_pending, mark_install_pending
+            from services.hf_revisions import (
+                expected_files_from_plan, mark_install_pending, settle_install_pending,
+            )
             # Until the download returns with every file, a snapshot that holds
             # only some weights (a finished tokenizer, the main weight still in
             # flight or cut off) must not read as installed. A cancel removes
             # the marker with the rest of the rollback; a failure keeps it.
-            _pending_snapshot = os.path.join(
-                _pending_cache, "models--" + hub_repo.replace("/", "--"),
-                "snapshots", dl_kwargs["revision"],
-            )
-            if not _is_finished_repair(_summary, _pending_snapshot, model_spec):
+            _pending_repo_dir = os.path.join(
+                _pending_cache, "models--" + hub_repo.replace("/", "--"))
+            if not _is_finished_repair(_main_plan, _pending_repo_dir, dl_kwargs["revision"]):
                 # A repair of a finished install keeps it usable if it fails.
                 mark_install_pending(hub_repo, dl_kwargs["revision"], _pending_cache)
             _max_attempts = 5
@@ -911,7 +910,14 @@ async def install_model(req: InstallModelRequest):
                             _snapshot_path = None
                     if _snapshot_path is None:
                         _snapshot_path = snapshot_download(**dl_kwargs)  # nosec B615 -- immutable revision_for pin
-                    clear_install_pending(hub_repo, dl_kwargs["revision"], _pending_cache)
+                    # snapshot_download can return an existing incomplete snapshot
+                    # (e.g. after a metadata timeout), so verify before clearing.
+                    if settle_install_pending(
+                        hub_repo, dl_kwargs["revision"], _pending_cache,
+                        expected_files=expected_files_from_plan(_main_plan),
+                        fetch_kwargs=dl_kwargs,
+                    ) == "incomplete":
+                        raise OSError(f"{req.repo_id}: download returned an incomplete snapshot")
                     _validate_snapshot_has_weights(req.repo_id, _snapshot_path)
                     from huggingface_hub.constants import HF_HUB_CACHE
                     from services.hf_revisions import remember_revision
@@ -933,7 +939,12 @@ async def install_model(req: InstallModelRequest):
                             dependency_kwargs["allow_patterns"] = dependency["allow_patterns"]
                         mark_install_pending(dependency_id, dependency_kwargs["revision"], _pending_cache)
                         dependency_path = snapshot_download(**dependency_kwargs)  # nosec B615 -- immutable revision_for pin
-                        clear_install_pending(dependency_id, dependency_kwargs["revision"], _pending_cache)
+                        if settle_install_pending(
+                            dependency_id, dependency_kwargs["revision"], _pending_cache,
+                            expected_files=expected_files_from_plan(_dependency_plans.get(dependency_id)),
+                            fetch_kwargs=dependency_kwargs,
+                        ) == "incomplete":
+                            raise OSError(f"{dependency_id}: download returned an incomplete snapshot")
                         if not snapshot_is_complete(dependency, dependency_path):
                             raise OSError(f"{dependency_id}: required model files are missing or incomplete")
                         remember_revision(dependency_id, dependency_kwargs["revision"], HF_HUB_CACHE)

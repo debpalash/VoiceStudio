@@ -323,6 +323,8 @@ def test_cosyvoice_catalogue_install_filters_preflight_and_transfer(download, mo
     monkeypatch.setattr(download, "_install_tasks", set())
     monkeypatch.setattr(download, "_install_tasks_by_repo", {})
     monkeypatch.setattr(hf_revisions, "remember_revision", lambda *args: remembered.append(args))
+    # These fakes use no real cache; completeness verification has its own tests.
+    monkeypatch.setattr(hf_revisions, "settle_install_pending", lambda *a, **k: "cleared")
     monkeypatch.setattr(performance_profiles, "reconcile_active_profile", lambda: {})
     monkeypatch.setattr(token_resolver, "resolve", lambda: None)
 

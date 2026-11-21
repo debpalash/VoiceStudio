@@ -2444,8 +2444,11 @@ def _repair_model_cache(checkpoint: str, *, force: bool = False) -> bool:
     for attempt in range(1, retries + 1):
         try:
             _attempt()
-            from services.hf_revisions import clear_install_pending
-            clear_install_pending(checkpoint, revision, cache_root)
+            from services.hf_revisions import settle_install_pending
+            # A returned snapshot_download is not proof of a whole snapshot
+            # (it can hand back an existing incomplete one); the marker only
+            # clears once every file is verified.
+            settle_install_pending(checkpoint, revision, cache_root, fetch_kwargs=dl_kwargs)
             logger.info("Auto-repair of %s completed; retrying model load.", checkpoint)
             return True
         except Exception as e:
