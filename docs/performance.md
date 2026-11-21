@@ -385,10 +385,11 @@ On CUDA, NLLB loads in half precision (less VRAM, faster); it reloads or retries
 in float32 automatically if that fails, and `OMNIVOICE_NLLB_FP16=0` keeps
 float32. MPS and CPU always use float32.
 
-On CUDA, Faster-Whisper transcribes with its batched pipeline
-(`OMNIVOICE_ASR_BATCH_SIZE`, default 12, max 32) and drops back to sequential
-decoding on any error; `OMNIVOICE_ASR_BATCHED=0` disables it. On CPU it uses up
-to 8 decode threads.
+Faster-Whisper uses up to 8 decode threads on CPU. On CUDA you can opt in to its
+batched pipeline with `OMNIVOICE_ASR_BATCHED=1` (`OMNIVOICE_ASR_BATCH_SIZE`,
+default 12, max 32). It is off by default because the batched decoder has no
+temperature-fallback retries, so sequential decoding transcribes more
+accurately; any batched error falls back to sequential decoding.
 
 Streaming clients also receive measured latency in the `/ws/tts` terminal
  `done` frame: `ttfa_ms` is request-to-first-audio, `gen_time_s` is the
