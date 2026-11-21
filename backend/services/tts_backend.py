@@ -1928,8 +1928,6 @@ class OmniVoiceBackend(TTSBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
-        # A real import, not a spec lookup: a package that is present but whose
-        # dependency or native library fails to load must not report ready.
         try:
             import omnivoice.models.omnivoice  # noqa: F401
             return True, "ready"
@@ -4461,32 +4459,17 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
     caps = detect_host_caps()
     installable = _sidecar_installable_ids()
 
-    entries = [
-        (bid, _effective_backend_class(bid, cls, caps.family))
-        for bid, cls in _REGISTRY.items()
-        if not (not include_hidden and caps.family == "mps" and bid == "omnivoice-subprocess")
-    ]
-
-    def _probe_tts(item: tuple[str, type[TTSBackend]]) -> tuple[bool, str]:
-        bid_i, cls_i = item
-        try:
-            return cls_i.is_available()
-        except Exception:
-            logger.warning("list_backends: availability probe failed for registered backend %s", bid_i)
-            return False, "Availability probe failed; check the backend log."
-
-    if len(entries) > 1:
-        import contextvars
-        from concurrent.futures import ThreadPoolExecutor
-
-        with ThreadPoolExecutor(max_workers=min(8, len(entries))) as pool:
-            futures = [pool.submit(contextvars.copy_context().run, _probe_tts, item) for item in entries]
-            availability = [f.result() for f in futures]
-    else:
-        availability = [_probe_tts(item) for item in entries]
-
     out: list[dict] = []
-    for (bid, cls), (ok, msg) in zip(entries, availability):
+    for bid, cls in _REGISTRY.items():
+        if not include_hidden and caps.family == "mps" and bid == "omnivoice-subprocess":
+            continue
+        cls = _effective_backend_class(bid, cls, caps.family)
+        try:
+            ok, msg = cls.is_available()
+        except Exception:
+            ok = False
+            msg = "Availability probe failed; check the backend log."
+            logger.warning("list_backends: availability probe failed for registered backend %s", bid)
         if ok:
             _LAST_ERRORS.pop(bid, None)
         else:
