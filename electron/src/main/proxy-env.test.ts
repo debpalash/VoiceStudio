@@ -121,6 +121,14 @@ it('glob-matches unrepresentable bypass rules against the hosts setup contacts',
   expect(setupProxyForUrl('https://pypi.org/x', env)).toBe('socks5h://proxy:1080');
 });
 
+it('keeps scheme- and port-qualified rules proxied instead of bypassing every request', () => {
+  for (const bypass of ['http://pypi.org', '*pypi.org:8080', 'https://*.pythonhosted.org']) {
+    const env = downloadProxyEnv({}, 'win32', () => ({ server: 'proxy:1080', bypass }));
+    expect(env.NO_PROXY).toBe('localhost,127.0.0.1,::1');
+    expect(setupProxyForUrl('https://pypi.org/x', env)).toBe('http://proxy:1080');
+  }
+});
+
 it('does not throw for a rule that matches no setup host', () => {
   expect(() =>
     downloadProxyEnv({}, 'win32', () => ({ server: 'proxy:1080', bypass: '172.1?.*' })),

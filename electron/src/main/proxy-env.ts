@@ -67,9 +67,13 @@ export const DEFAULT_SETUP_HOSTS: readonly string[] = [
 
 /** Hosts matched by a WinINET wildcard rule (`*` = any characters, case-insensitive). */
 function globMatchedHosts(rule: string, hosts: readonly string[]): string[] {
-  const body = rule
-    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
-    .replace(/[/:].*$/, '');
+  // A scheme or port limits the rule to some requests; NO_PROXY hosts bypass all
+  // of them, so a qualified rule is not translated (the host stays proxied).
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rule) || /:\d*$/.test(rule) || /[/\\]/.test(rule)) {
+    console.info('[proxy-env] not bypassing a scheme- or port-qualified system proxy rule');
+    return [];
+  }
+  const body = rule;
   if (!body) return [];
   const pattern = new RegExp(
     `^${body
