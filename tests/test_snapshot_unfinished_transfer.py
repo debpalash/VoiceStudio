@@ -284,6 +284,9 @@ def test_cache_self_heal_clears_the_marker(revisions, cache, monkeypatch, symlin
     from services import hf_cache_repair
     import huggingface_hub
 
+    # CI exports these; offline mode makes the repair skip before it restores.
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
     snapshot = _snapshot(cache)
     broken = snapshot / "model.safetensors"
     symlink_or_skip(broken, cache / "nowhere")
@@ -317,6 +320,9 @@ def test_failed_copy_mode_recovery_keeps_the_marker(revisions, catalogue, cache,
     from services import hf_cache_repair
     import huggingface_hub
 
+    # CI exports these; offline mode makes the repair skip before it restores.
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
     snapshot = _snapshot(cache)
     broken = snapshot / "model.safetensors"
     symlink_or_skip(broken, cache / "nowhere")
@@ -327,6 +333,6 @@ def test_failed_copy_mode_recovery_keeps_the_marker(revisions, catalogue, cache,
     monkeypatch.setattr(hf_cache_repair, "_force_copy_mode", lambda root: False)
 
     summary = hf_cache_repair.repair_repo_cache(REPO, str(cache))
-    assert summary["ok"] is False
+    assert summary["restored"] is True and summary["ok"] is False
     assert _marker(cache).exists()
     assert not catalogue.snapshot_is_complete(MODEL, str(snapshot))
