@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  DownloadIcon,
   FilmIcon,
   LoaderCircleIcon,
   PencilIcon,
@@ -11,6 +12,7 @@ import {
 import type { MediaPlayerInstance } from '@/components/media-player';
 import { VideoPlayer } from '@/components/video-player';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { apiJson, apiPath } from '@/lib/api/client';
@@ -33,6 +35,17 @@ interface DemoManifest {
 }
 
 const DEMO_BASE = '/demo_audio/demo/dubbing';
+const POLL_MS = 700;
+
+/** Mirrors GET /demo/dubbing/status (backend/services/demo_assets.py). */
+export interface DemoDownloadStatus {
+  state: 'idle' | 'downloading' | 'ready' | 'error';
+  total_bytes: number;
+  downloaded_bytes: number;
+  error?: string | null;
+}
+
+const poster = (video: string) => `${DEMO_BASE}/${video.replace(/\.mp4$/, '.jpg')}`;
 const PLAYBACK_GROUP = 'dubbing-demo-comparison';
 
 interface EditableDemoVideo {
@@ -52,6 +65,7 @@ export function DubbingDemo({
   const { t } = useTranslation();
   const [manifest, setManifest] = useState<DemoManifest | null>(null);
   const [failed, setFailed] = useState(false);
+  const [download, setDownload] = useState<DemoDownloadStatus | null>(null);
   const [language, setLanguage] = useState('es');
   const [synchronized, setSynchronized] = useState(true);
   const [scripts, setScripts] = useState<Record<string, string>>({});
@@ -70,6 +84,43 @@ export function DubbingDemo({
     return () => controller.abort();
   }, []);
 
+  // Local state only (never touches the network), so it also works offline.
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiJson<DemoDownloadStatus>('/demo/dubbing/status', { signal: controller.signal })
+      .then(setDownload)
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  const downloading = download?.state === 'downloading';
+  useEffect(() => {
+    if (!downloading) return;
+    const timer = setInterval(() => {
+      void apiJson<DemoDownloadStatus>('/demo/dubbing/status')
+        .then(setDownload)
+        .catch(() => setDownload((cur) => (cur ? { ...cur, state: 'error' } : cur)));
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [downloading]);
+
+  const startDownload = () => {
+    setDownload((cur) => ({
+      total_bytes: cur?.total_bytes ?? 0,
+      downloaded_bytes: 0,
+      state: 'downloading',
+    }));
+    void apiJson<DemoDownloadStatus>('/demo/dubbing/download', { method: 'POST' })
+      .then(setDownload)
+      .catch(() =>
+        setDownload((cur) => ({
+          total_bytes: cur?.total_bytes ?? 0,
+          downloaded_bytes: 0,
+          state: 'error',
+        })),
+      );
+  };
+
   useEffect(() => {
     void sourcePlayer.current?.pause().catch(() => {});
     void dubbedPlayer.current?.pause().catch(() => {});
@@ -84,6 +135,10 @@ export function DubbingDemo({
       </div>
     );
 
+  const ready = download?.state === 'ready';
+  const percent = download?.total_bytes
+    ? Math.min(100, Math.round((download.downloaded_bytes / download.total_bytes) * 100))
+    : 0;
   const dubbed = manifest.dubbed.find((item) => item.code === language) || manifest.dubbed[0];
   if (!dubbed) return null;
 
@@ -145,7 +200,7 @@ export function DubbingDemo({
                 <RotateCcwIcon />
               </Button>
             )}
-            {editableVideo && (
+            {ready && editableVideo && (
               <Button
                 size="xs"
                 variant="ghost"
@@ -170,6 +225,14 @@ export function DubbingDemo({
           </div>
         </div>
         <div className="px-2.5">
+          {!ready ? (
+            <img
+              src={apiPath(poster(video))}
+              alt=""
+              draggable={false}
+              className="aspect-video w-full rounded-lg bg-muted/30 object-cover"
+            />
+          ) : (
           <VideoPlayer
             playerRef={player}
             controls="compact"
@@ -197,6 +260,7 @@ export function DubbingDemo({
             }}
             onSeeked={() => synchronizePosition(player.current, peer.current)}
           />
+          )}
         </div>
         <label className="sr-only" htmlFor={`dubbing-demo-script-${code}`}>
           {label} — {t('dub.transcript')}
@@ -274,6 +338,29 @@ export function DubbingDemo({
           <Switch checked={synchronized} onCheckedChange={setSynchronized} />
         </label>
       </div>
+      {!ready && (
+        <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-border/45 bg-background/30 p-2.5 text-xs">
+          {downloading ? (
+            <Progress value={percent} aria-label={t('demo.dubbing_downloading')} className="flex-1">
+              <span className="text-muted-foreground">
+                {t('demo.dubbing_downloading')} {percent}%
+              </span>
+            </Progress>
+          ) : (
+            <>
+              <Button size="sm" onClick={startDownload}>
+                {download?.state === 'error' ? <RotateCcwIcon /> : <DownloadIcon />}
+                {download?.state === 'error' ? t('demo.dubbing_retry') : t('demo.dubbing_download')}
+              </Button>
+              {download?.state === 'error' && (
+                <span role="status" className="text-muted-foreground">
+                  {t('demo.dubbing_download_failed')}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <div className="grid gap-3 min-[1100px]:grid-cols-2">
         {card(
           'A',

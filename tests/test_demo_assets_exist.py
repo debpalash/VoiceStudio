@@ -109,7 +109,12 @@ def test_the_cloning_demo_pair_exists():
 
 
 def test_the_dubbing_demo_manifest_and_every_file_it_names_exist():
-    """The Dub workspace reads this manifest and plays what it lists."""
+    """The Dub workspace reads this manifest; the videos arrive on demand.
+
+    The bundle carries the manifest, subtitles and one poster still per clip.
+    The mp4 files are release assets (``services/demo_assets.py``), so each
+    manifest video must have a pinned sha256/size instead of a file on disk.
+    """
     manifest_path = _resolve("/demo_audio/demo/dubbing/manifest.json")
     assert os.path.isfile(manifest_path), (
         "The dubbing demo manifest is missing. Build it with "
@@ -119,11 +124,21 @@ def test_the_dubbing_demo_manifest_and_every_file_it_names_exist():
     entries = [manifest["source"], *manifest["dubbed"]]
     assert len(entries) == 5, "one source plus four dubs"
     directory = os.path.dirname(manifest_path)
+    pins = json.loads(open(os.path.join(directory, "demo_assets.json"), encoding="utf-8").read())
+    pinned = {f["name"]: f for f in pins["files"]}
     for entry in entries:
-        for key in ("video", "srt"):
-            path = os.path.join(directory, entry[key])
-            assert os.path.isfile(path), f"{entry['code']}: {entry[key]} missing"
+        path = os.path.join(directory, entry["srt"])
+        assert os.path.isfile(path), f"{entry['code']}: {entry['srt']} missing"
+        stem = entry["video"].rsplit(".", 1)[0]
+        poster = os.path.join(directory, f"{stem}.jpg")
+        assert os.path.isfile(poster), f"{entry['code']}: poster {stem}.jpg missing"
+        assert os.path.getsize(poster) < 40_000, f"{stem}.jpg is not a small still"
+        pin = pinned.get(entry["video"])
+        assert pin and pin["kind"] == "video", f"{entry['video']} has no pinned entry"
+        assert len(pin["sha256"]) == 64 and pin["bytes"] > 0
         # A manifest that names a video whose subtitle says something else is
         # the one failure a viewer cannot tell from a bad dub.
-        srt = open(os.path.join(directory, entry["srt"]), encoding="utf-8").read()
+        srt = open(path, encoding="utf-8").read()
         assert entry["script"] in srt, f"{entry['code']}: subtitle does not match the script"
+    heavy = [n for n in os.listdir(directory) if n.endswith((".mp4", ".wav"))]
+    assert not heavy, f"{heavy} must ship as release assets, not in the bundle"
