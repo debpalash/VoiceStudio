@@ -44,6 +44,43 @@ function prefixWildcardCidr(value: string): string | null {
   return `${[...octets, 0, 0, 0, 0].slice(0, 4).join('.')}/${bits}`;
 }
 
+/** Public endpoints setup contacts by default (pypi-mirror.ts, runtime-project.ts, uv, HF). */
+export const DEFAULT_SETUP_HOSTS: readonly string[] = [
+  'pypi.org',
+  'files.pythonhosted.org',
+  'mirrors.aliyun.com',
+  'download.pytorch.org',
+  'download-r2.pytorch.org',
+  'astral.sh',
+  'github.com',
+  'api.github.com',
+  'objects.githubusercontent.com',
+  'release-assets.githubusercontent.com',
+  'raw.githubusercontent.com',
+  'gh-proxy.com',
+  'huggingface.co',
+  'cdn-lfs.huggingface.co',
+  'hf-mirror.com',
+  'repo.radeon.com',
+  'stable.repo.amd.com',
+];
+
+/** Hosts matched by a WinINET wildcard rule (`*` = any characters, case-insensitive). */
+function globMatchedHosts(rule: string, hosts: readonly string[]): string[] {
+  const body = rule
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
+    .replace(/[/:].*$/, '');
+  if (!body) return [];
+  const pattern = new RegExp(
+    `^${body
+      .split('*')
+      .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+      .join('.*')}$`,
+    'i',
+  );
+  return hosts.filter((host) => pattern.test(host));
+}
+
 /**
  * Only translate bypass rules whose meaning NO_PROXY can preserve. Proxy tools
  * (Clash, v2rayN) write `localhost;127.*;10.*;172.16.*;192.168.*;<local>`, so
@@ -52,7 +89,11 @@ function prefixWildcardCidr(value: string): string | null {
  * downloads from the pinned public hosts never use, so it only keeps the
  * dotless hosts of user-configured download endpoints (`downloadHosts`) direct.
  */
-export function proxyBypassHosts(raw: string, downloadHosts: string[] = []): string[] | null {
+export function proxyBypassHosts(
+  raw: string,
+  downloadHosts: string[] = [],
+  contactedHosts?: readonly string[],
+): string[] | null {
   const hosts: string[] = [];
   for (const value of raw
     .split(';')
@@ -72,7 +113,18 @@ export function proxyBypassHosts(raw: string, downloadHosts: string[] = []): str
       continue;
     }
     const host = value.replace(/^\*\./, '.');
-    if (!/^[a-z0-9_.:[\]-]+$/i.test(host) || value.includes('<')) return null;
+    if (!/^[a-z0-9_.:[\]-]+$/i.test(host) || value.includes('<')) {
+      if (!contactedHosts) return null;
+      // NO_PROXY cannot express this rule, but WinINET treats it as a
+      // case-insensitive `*` glob. Bypass exactly the hosts setup contacts that
+      // it matches; a rule matching none cannot affect any setup request.
+      const matched = globMatchedHosts(value, contactedHosts);
+      if (matched.length === 0) {
+        console.info('[proxy-env] ignoring a system proxy bypass rule that matches no setup host');
+      }
+      hosts.push(...matched);
+      continue;
+    }
     hosts.push(host);
   }
   return hosts;
@@ -141,11 +193,13 @@ export function downloadProxyEnv(
   if (platform === 'win32' && !explicit) {
     const raw = readSystemProxy();
     const settings = typeof raw === 'string' ? { server: raw } : raw;
-    const hosts = proxyBypassHosts(settings?.bypass ?? '', configuredDownloadHosts(input));
-    // Stop before uv can reinterpret the raw registry value as a hostname.
-    // Omitting a bypass rule could route private requests through the proxy.
-    if (settings && hosts === null) throw new Error('VOICESTUDIO_PROXY_BYPASS_UNSUPPORTED');
-    if (settings && hosts !== null) {
+    const configured = configuredDownloadHosts(input);
+    const hosts = proxyBypassHosts(settings?.bypass ?? '', configured, [
+      ...new Set([...DEFAULT_SETUP_HOSTS, ...configured]),
+    ]);
+    // The raw registry value never reaches uv: every rule is either translated
+    // to NO_PROXY or glob-matched against the hosts setup contacts.
+    if (settings && hosts) {
       Object.assign(env, parseWinInetProxy(settings.server));
       systemBypass = hosts;
     }
