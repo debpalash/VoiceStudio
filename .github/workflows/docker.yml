@@ -385,9 +385,9 @@ jobs:
             type=raw,value=rocm,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=sha-${{ steps.source.outputs.short_sha }}-rocm
 
-      # cache-from only: reading the CUDA job's exported cache reuses the
-      # identical frontend-builder stage. Deliberately NO cache-to — the ROCm
-      # runtime layers would overwrite the CUDA job's cache image.
+      # Reads the ROCm cache first, then the CUDA job's cache (identical
+      # frontend-builder stage). cache-to writes a SEPARATE ref so the ROCm
+      # runtime layers never overwrite the CUDA job's cache image.
       # The ROCm base ships its own HIP torch, which must equal the checked-out
       # pin: a backfill of an older release builds that release's constraints,
       # so the base follows deploy/torch-constraints.txt, not this workflow.
@@ -421,7 +421,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit
+          cache-from: |
+            type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit-rocm
+            type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit
+          # A failed cache export must never fail (or skip) the image publish.
+          cache-to: type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit-rocm,mode=max,ignore-error=true
 
       - name: Backfill canonical GHCR release tags (ROCm)
         if: inputs.backfill_release

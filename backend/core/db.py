@@ -1,3 +1,5 @@
+import ast
+import os
 import re
 import sqlite3
 import logging
@@ -10,12 +12,19 @@ logger = logging.getLogger("omnivoice.db")
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _TYPE_RE = re.compile(r"^[A-Za-z0-9_ '\"\(\)\-\.]+$")
+_WAL_INITIALIZED_PATHS: set[str] = set()
 
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    if DB_PATH not in _WAL_INITIALIZED_PATHS:
+        conn.execute("PRAGMA journal_mode=WAL")
+        _WAL_INITIALIZED_PATHS.add(DB_PATH)
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA cache_size=-16000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
@@ -507,6 +516,38 @@ def _ensure_voice_sync_id_index(conn) -> None:
         logger.warning("voice_profiles sync-id index not created: %s", exc)
 
 
+_PERF_INDEXES = (
+    ("idx_voice_profiles_created", "voice_profiles", ('created_at',), "created_at DESC"),
+    ("idx_generation_history_created", "generation_history", ('created_at',), "created_at DESC"),
+    ("idx_generation_history_profile", "generation_history", ('profile_id',), "profile_id"),
+    ("idx_generation_history_starred", "generation_history", ('starred', 'created_at'), "starred, created_at DESC"),
+    ("idx_dub_history_created", "dub_history", ('created_at',), "created_at DESC"),
+    ("idx_studio_projects_updated", "studio_projects", ('updated_at',), "updated_at DESC"),
+    ("idx_export_history_created", "export_history", ('created_at',), "created_at DESC"),
+)
+
+
+def _ensure_perf_indexes(conn) -> None:
+    """Create the list/history sort indexes after the additive reconcile.
+
+    They cannot live in ``_BASE_SCHEMA``: ``CREATE TABLE IF NOT EXISTS`` never
+    adds columns to a pre-existing table, so an index over a column a legacy DB
+    predates (``generation_history.starred``) would abort the whole
+    ``executescript`` before ``_migrate`` could add it. Each index is created
+    only when its table and columns exist; otherwise it is skipped with a log.
+    """
+    for name, table, cols, spec in _PERF_INDEXES:
+        try:
+            have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            if not set(cols) <= have:
+                logger.warning("perf index %s skipped: %s lacks %s", name, table, sorted(set(cols) - have))
+                continue
+            conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {table}({spec})")
+        except sqlite3.Error as exc:
+            logger.warning("perf index %s not created: %s", name, exc)
+    conn.commit()
+
+
 def ensure_schema() -> None:
     """Idempotently ensure the base tables + additive columns exist.
 
@@ -524,12 +565,14 @@ def ensure_schema() -> None:
         _reconcile_additive_columns(conn)
         _ensure_job_events_unique_seq(conn)
         _ensure_voice_sync_id_index(conn)
+        _ensure_perf_indexes(conn)
         conn.commit()
     finally:
         conn.close()
 
 
 def init_db():
+    _WAL_INITIALIZED_PATHS.discard(DB_PATH)
     conn = get_db()
     try:
         conn.executescript(_BASE_SCHEMA)
@@ -544,6 +587,7 @@ def init_db():
         _reconcile_additive_columns(conn)
         _ensure_job_events_unique_seq(conn)
         _ensure_voice_sync_id_index(conn)
+        _ensure_perf_indexes(conn)
         conn.commit()
     finally:
         conn.close()
@@ -623,6 +667,74 @@ def _plan_alembic(cfg) -> str:
         return "indeterminate"
 
 
+def _fast_alembic_heads(versions_dir: str) -> set[str] | None:
+    """Compute Alembic head revision IDs directly from migration files via AST.
+
+    Avoids importing ``alembic`` / ``sqlalchemy`` / ``mako`` (~900 ms) on warm
+    startups when the database is already stamped at head. Returns ``None`` if
+    any migration file cannot be parsed unambiguously, signalling the caller to
+    fall back to Alembic's own ``ScriptDirectory``.
+    """
+    try:
+        entries = [
+            f for f in os.listdir(versions_dir)
+            if f.endswith(".py") and not f.startswith("_")
+        ]
+    except OSError:
+        return None
+    if not entries:
+        return None
+
+    revisions: set[str] = set()
+    down_revisions: set[str] = set()
+    for fname in entries:
+        fpath = os.path.join(versions_dir, fname)
+        try:
+            with open(fpath, "r", encoding="utf-8") as fh:
+                tree = ast.parse(fh.read(), filename=fpath)
+        except Exception:  # noqa: BLE001
+            return None
+
+        rev: str | None = None
+        down_seen = False
+        for node in tree.body:
+            target_name: str | None = None
+            value_node = None
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                target_name = node.targets[0].id
+                value_node = node.value
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+                target_name = node.target.id
+                value_node = node.value
+            if target_name not in ("revision", "down_revision"):
+                continue
+            try:
+                val = ast.literal_eval(value_node)
+            except Exception:  # noqa: BLE001
+                return None
+            if target_name == "revision":
+                if not isinstance(val, str) or not val:
+                    return None
+                rev = val
+            else:
+                down_seen = True
+                if val is None:
+                    pass
+                elif isinstance(val, str):
+                    down_revisions.add(val)
+                elif isinstance(val, (tuple, list)) and all(isinstance(x, str) for x in val):
+                    down_revisions.update(val)
+                else:
+                    return None
+
+        if rev is None or not down_seen:
+            return None
+        revisions.add(rev)
+
+    heads = revisions - down_revisions
+    return heads if heads else None
+
+
 def _run_alembic_upgrade() -> None:
     """`alembic upgrade head` on startup, wrapped in the data-safety net.
 
@@ -637,19 +749,28 @@ def _run_alembic_upgrade() -> None:
       startup stops with a message naming the backup, instead of silently
       running the app on a half-migrated DB.
     """
+    # Walk up from backend/core/db.py to find the alembic.ini at the
+    # project root.
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(here))
+    ini = os.path.join(root, "alembic.ini")
+    if not os.path.isfile(ini):
+        logger.debug("alembic.ini not found at %s; skipping migrations", ini)
+        return
+
+    # Fast-path: when already stamped at head, skip importing alembic +
+    # sqlalchemy + mako (~900 ms saved on every normal app launch).
+    versions_dir = os.path.join(root, "backend", "migrations", "versions")
+    fast_heads = _fast_alembic_heads(versions_dir)
+    if fast_heads:
+        stamped = _stamped_revisions(DB_PATH)
+        if stamped and stamped == fast_heads:
+            return
+
     try:
-        import os
         from alembic import command
         from alembic.config import Config
 
-        # Walk up from backend/core/db.py to find the alembic.ini at the
-        # project root.
-        here = os.path.dirname(os.path.abspath(__file__))
-        root = os.path.dirname(os.path.dirname(here))
-        ini = os.path.join(root, "alembic.ini")
-        if not os.path.isfile(ini):
-            logger.debug("alembic.ini not found at %s; skipping migrations", ini)
-            return
         cfg = Config(ini)
         cfg.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATH}")
         # In-app run: alembic.ini's logging section must not touch the live

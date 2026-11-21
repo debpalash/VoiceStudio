@@ -38,6 +38,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     define: { ...define, __SUPERMETRY_APP_CONFIG__: JSON.stringify(writeSupermetryConfig()) },
     build: {
+      minify: true,
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
@@ -50,6 +51,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     define,
     build: {
+      minify: true,
       rollupOptions: { input: resolve(__dirname, 'src/preload/index.ts') },
     },
   },
@@ -140,7 +142,27 @@ export default defineConfig({
       },
     },
     build: {
-      rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') },
+      minify: true,
+      cssMinify: true,
+      rolldownOptions: {
+        input: resolve(__dirname, 'src/renderer/index.html'),
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'vendor-react',
+                test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: 'vendor-core',
+                test: /node_modules[\\/](@tanstack[\\/]react-(query|router)|i18next|react-i18next|@floating-ui)[\\/]/,
+                priority: 20,
+              },
+            ],
+          },
+        },
+      },
     },
   },
 });
