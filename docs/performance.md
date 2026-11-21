@@ -381,6 +381,14 @@ compatibility fallback that preserves the one-segment behavior.
 NLLB similarly groups subtitles by target language and translates four rows
 per forward pass on CPU/MPS or eight on CUDA by default. Set
 `OMNIVOICE_NLLB_BATCH_SIZE=1` to disable it or choose up to 32 explicitly.
+On CUDA, NLLB loads in half precision (less VRAM, faster); it reloads or retries
+in float32 automatically if that fails, and `OMNIVOICE_NLLB_FP16=0` keeps
+float32. MPS and CPU always use float32.
+
+On CUDA, Faster-Whisper transcribes with its batched pipeline
+(`OMNIVOICE_ASR_BATCH_SIZE`, default 12, max 32) and drops back to sequential
+decoding on any error; `OMNIVOICE_ASR_BATCHED=0` disables it. On CPU it uses up
+to 8 decode threads.
 
 Streaming clients also receive measured latency in the `/ws/tts` terminal
  `done` frame: `ttfa_ms` is request-to-first-audio, `gen_time_s` is the
