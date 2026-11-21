@@ -170,6 +170,34 @@ def _snapshot_dirs(repo_id: str) -> list[str]:
     return dirs
 
 
+def _has_unfinished_transfer(snapshot_path: str) -> bool:
+    """True when the repository's ``blobs/`` holds a partial transfer written
+    after the snapshot's newest finished file.
+
+    The weight-presence check accepts any one plausible weight file, so a repo
+    with several (OmniVoice's model plus ``audio_tokenizer/``) looked installed
+    as soon as the smaller file landed, mid-download or after a crash. Partial
+    files that predate the snapshot are leftovers of an earlier attempt and are
+    ignored, so a finished install never turns incomplete. Never raises.
+    """
+    from services.hf_cache_rollback import PARTIAL_SUFFIXES
+
+    blobs = os.path.join(os.path.dirname(os.path.dirname(snapshot_path)), "blobs")
+    try:
+        with os.scandir(blobs) as it:
+            partials = [e.stat(follow_symlinks=False).st_mtime
+                        for e in it if e.name.endswith(PARTIAL_SUFFIXES)]
+        if not partials:
+            return False
+        finished = 0.0
+        for root, dirs, files in os.walk(snapshot_path):
+            for name in (*dirs, *files):
+                finished = max(finished, os.lstat(os.path.join(root, name)).st_mtime)
+    except OSError:
+        return False
+    return max(partials) >= finished
+
+
 def snapshot_is_complete(model: dict, snapshot_path: str) -> bool:
     """Apply the same catalogue requirements during installation and listing."""
     config_only = bool(model.get("config_only"))
@@ -186,7 +214,15 @@ def snapshot_is_complete(model: dict, snapshot_path: str) -> bool:
             )
             for name in required
         )
-        return present and (config_only or snapshot_has_weights(snapshot_path))
+        if not present:
+            return False
+        if config_only:
+            return True
+        # Declared required files are already an exact check; only the
+        # any-weight heuristic needs the in-flight transfer guard.
+        return snapshot_has_weights(snapshot_path) and (
+            bool(required) or not _has_unfinished_transfer(snapshot_path)
+        )
     except OSError:
         return False
 

@@ -25,8 +25,10 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger("omnivoice.hf_cache_rollback")
 
-# Never usable as complete data: a transfer that was interrupted.
-_PARTIAL_SUFFIXES = (".incomplete", ".part", ".part.done", ".part.done.tmp")
+# Never usable as complete data: a transfer that was interrupted or is still
+# running. Shared with the catalogue's install-state check (model_catalogue).
+PARTIAL_SUFFIXES = (".incomplete", ".part", ".part.done", ".part.done.tmp")
+_PARTIAL_SUFFIXES = PARTIAL_SUFFIXES
 # Small text markers a download rewrites in place; restored byte for byte.
 _MARKER_LIMIT = 4096
 _DELETE_ROUNDS = 6
