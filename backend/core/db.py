@@ -127,13 +127,6 @@ _BASE_SCHEMA = """
         created_at REAL
     );
     CREATE INDEX IF NOT EXISTS idx_glossary_project ON glossary_terms(project_id);
-    CREATE INDEX IF NOT EXISTS idx_voice_profiles_created ON voice_profiles(created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_generation_history_created ON generation_history(created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_generation_history_profile ON generation_history(profile_id);
-    CREATE INDEX IF NOT EXISTS idx_generation_history_starred ON generation_history(starred, created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_dub_history_created ON dub_history(created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_studio_projects_updated ON studio_projects(updated_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_export_history_created ON export_history(created_at DESC);
 
     CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,
@@ -523,6 +516,38 @@ def _ensure_voice_sync_id_index(conn) -> None:
         logger.warning("voice_profiles sync-id index not created: %s", exc)
 
 
+_PERF_INDEXES = (
+    ("idx_voice_profiles_created", "voice_profiles", ('created_at',), "created_at DESC"),
+    ("idx_generation_history_created", "generation_history", ('created_at',), "created_at DESC"),
+    ("idx_generation_history_profile", "generation_history", ('profile_id',), "profile_id"),
+    ("idx_generation_history_starred", "generation_history", ('starred', 'created_at'), "starred, created_at DESC"),
+    ("idx_dub_history_created", "dub_history", ('created_at',), "created_at DESC"),
+    ("idx_studio_projects_updated", "studio_projects", ('updated_at',), "updated_at DESC"),
+    ("idx_export_history_created", "export_history", ('created_at',), "created_at DESC"),
+)
+
+
+def _ensure_perf_indexes(conn) -> None:
+    """Create the list/history sort indexes after the additive reconcile.
+
+    They cannot live in ``_BASE_SCHEMA``: ``CREATE TABLE IF NOT EXISTS`` never
+    adds columns to a pre-existing table, so an index over a column a legacy DB
+    predates (``generation_history.starred``) would abort the whole
+    ``executescript`` before ``_migrate`` could add it. Each index is created
+    only when its table and columns exist; otherwise it is skipped with a log.
+    """
+    for name, table, cols, spec in _PERF_INDEXES:
+        try:
+            have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            if not set(cols) <= have:
+                logger.warning("perf index %s skipped: %s lacks %s", name, table, sorted(set(cols) - have))
+                continue
+            conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {table}({spec})")
+        except sqlite3.Error as exc:
+            logger.warning("perf index %s not created: %s", name, exc)
+    conn.commit()
+
+
 def ensure_schema() -> None:
     """Idempotently ensure the base tables + additive columns exist.
 
@@ -540,6 +565,7 @@ def ensure_schema() -> None:
         _reconcile_additive_columns(conn)
         _ensure_job_events_unique_seq(conn)
         _ensure_voice_sync_id_index(conn)
+        _ensure_perf_indexes(conn)
         conn.commit()
     finally:
         conn.close()
@@ -561,6 +587,7 @@ def init_db():
         _reconcile_additive_columns(conn)
         _ensure_job_events_unique_seq(conn)
         _ensure_voice_sync_id_index(conn)
+        _ensure_perf_indexes(conn)
         conn.commit()
     finally:
         conn.close()

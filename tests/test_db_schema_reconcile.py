@@ -129,3 +129,26 @@ def test_schema_only_path_creates_the_voice_sync_id_index(tmp_path, monkeypatch)
         conn.execute("INSERT INTO voice_profiles(id, name, sync_id) VALUES ('c', 'C', 'sync-1')")
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("INSERT INTO voice_profiles(id, name, sync_id) VALUES ('d', 'D', 'sync-1')")
+
+
+def test_init_db_upgrades_legacy_history_table_and_adds_perf_indexes(tmp_path, monkeypatch):
+    """A generation_history predating ``starred`` must not abort init_db:
+    sort indexes are created after the additive reconcile, not in _BASE_SCHEMA."""
+    db = tmp_path / "legacy_history.db"
+    with sqlite3.connect(str(db)) as conn:
+        conn.executescript(
+            "CREATE TABLE generation_history (id TEXT PRIMARY KEY, text TEXT, created_at REAL);"
+        )
+        conn.execute("INSERT INTO generation_history(id, text) VALUES ('g1', 'hi')")
+        conn.commit()
+
+    monkeypatch.setattr("core.db.DB_PATH", str(db))
+    from core.db import init_db
+
+    init_db()  # must NOT raise "no such column: starred"
+
+    assert "starred" in _cols(db, "generation_history")
+    with sqlite3.connect(str(db)) as conn:
+        names = {r[1] for r in conn.execute("PRAGMA index_list(generation_history)")}
+        assert conn.execute("SELECT id FROM generation_history").fetchall() == [("g1",)]
+    assert {"idx_generation_history_starred", "idx_generation_history_created"} <= names
