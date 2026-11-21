@@ -108,6 +108,9 @@ def pytest_collection_modifyitems(config, items):
     spec = os.environ.get("VOICESTUDIO_TEST_SHARD", "").strip()
     if not spec:
         return
+    # Consumed here: tests that spawn a nested pytest must see the whole suite,
+    # not inherit this session's shard (it would collect nothing and fail).
+    os.environ.pop("VOICESTUDIO_TEST_SHARD", None)
     index, _, total = spec.partition("/")
     index, total = int(index), int(total)
     if not 1 <= index <= total:

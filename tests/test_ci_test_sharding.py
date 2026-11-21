@@ -42,3 +42,28 @@ def test_workflow_shard_count_matches_the_matrix():
     # the serial backend session must run in exactly one shard
     backend = next(s for s in job["steps"] if "pytest backend/tests/" in s.get("run", ""))
     assert re.search(r"matrix\.shard == \d", backend["if"])
+
+
+def test_a_nested_pytest_run_does_not_inherit_the_shard(tmp_path, monkeypatch):
+    probe = tmp_path / "test_probe.py"
+    probe.write_text("def test_ok():\n    pass\n")
+    monkeypatch.setenv("VOICESTUDIO_TEST_SHARD", "2/2")
+    # Sharding consumes the variable at collection, so a child started later
+    # by a test in this session collects everything. Emulate that session.
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("root_conftest_for_shard", ROOT / "conftest.py")
+    root_conftest = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(root_conftest)
+
+    class _Cfg:
+        class hook:
+            @staticmethod
+            def pytest_deselected(items):
+                pass
+
+    root_conftest.pytest_collection_modifyitems(_Cfg, [])
+    assert "VOICESTUDIO_TEST_SHARD" not in os.environ
+    out = subprocess.run([sys.executable, "-m", "pytest", str(probe), "-q", "-p", "no:cacheprovider"],
+                         cwd=tmp_path, capture_output=True, text=True)
+    assert out.returncode == 0, out.stdout
