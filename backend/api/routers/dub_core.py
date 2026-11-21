@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 import soundfile as sf
 import torch
 from typing import Optional
-from fastapi import Request, Depends
+from fastapi import Request, Depends, Query
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 
@@ -650,10 +650,21 @@ def dub_abort(job_id: str):
     }
 
 
+_DUB_HISTORY_LIST_COLUMNS = (
+    "id, filename, duration, segments_count, language, language_code, tracks, content_hash, created_at"
+)
+
+
 @router.get("/dub/history")
-def list_dub_history():
+def list_dub_history(full: bool = Query(False, description="Include each row's full `job_data` blob (large).")):
+    """Recent dub rows. The list omits ``job_data`` (every segment and path of
+    each job, often megabytes) unless ``?full=1``; nothing in the apps reads it
+    from here — a single job loads through its own routes."""
+    columns = "*" if full else _DUB_HISTORY_LIST_COLUMNS
     with db_conn() as conn:
-        rows = conn.execute("SELECT * FROM dub_history ORDER BY created_at DESC LIMIT 30").fetchall()
+        rows = conn.execute(
+            f"SELECT {columns} FROM dub_history ORDER BY created_at DESC LIMIT 30"  # noqa: S608 — constant column list
+        ).fetchall()
     return [dict(r) for r in rows]
 
 @router.delete("/dub/history", dependencies=[Depends(require_admin)])

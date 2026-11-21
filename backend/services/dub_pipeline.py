@@ -322,19 +322,19 @@ def job_dir_referenced_by_others(job_id: str) -> "list[str]":
     needle = target.rstrip(os.sep) + os.sep
     # JSON-encoded job_data escapes backslashes, so match the Windows form too.
     needle_json = needle.replace("\\", "\\\\")
-    holders: list[str] = []
     try:
         with db_conn() as conn:
+            # The substring scan runs inside SQLite (``instr`` is case-sensitive
+            # and needs no LIKE escaping for ``%``/``_`` in paths), so no
+            # multi-megabyte job blob is loaded into Python per history row.
             rows = conn.execute(
-                "SELECT id, job_data FROM dub_history WHERE id != ?", (job_id,)
+                "SELECT id FROM dub_history WHERE id != ? "
+                "AND (instr(job_data, ?) > 0 OR instr(job_data, ?) > 0)",
+                (job_id, needle, needle_json),
             ).fetchall()
     except Exception:
         return []  # no DB, nothing persisted can reference us
-    for row in rows:
-        data = row["job_data"] or ""
-        if needle in data or needle_json in data:
-            holders.append(row["id"])
-    return holders
+    return [row["id"] for row in rows]
 
 
 def sse_event(event: str, payload) -> bytes:
