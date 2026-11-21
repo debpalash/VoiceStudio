@@ -13,6 +13,9 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: retryQuery,
+      // Avoid redundant backend refetches and re-renders on rapid route switches;
+      // mutations and realtime SSE events invalidate affected keys immediately.
+      staleTime: 10_000,
       // The backend is local; window focus is not a signal that data changed.
       refetchOnWindowFocus: false,
       // Idle CPU: interval polls pause while the window is hidden or minimised
