@@ -32,13 +32,13 @@ VoiceStudio/
 │
 ├── backend/                     ⟵ FastAPI server
 │   ├── main.py                  sole process entry; its annotated startup sequence must retain its order
-│   ├── api/routers/             45 routers, auto-included; HTTP/WS adaptation stays thin here
+│   ├── api/routers/             46 routers, auto-included; HTTP/WS adaptation stays thin here
 │   │   └── setup/               setup-wizard endpoints and model acquisition
 │   ├── core/                    shared infrastructure: configuration, persistence, job/event plumbing,
 │   │                            auth and CSRF, safe paths, model artifact fingerprints, analytics consent,
 │   │                            version and diagnostics
 │   │   └── asr_budget.py        duration-based transcription budget shared with MCP
-│   ├── services/                137 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
+│   ├── services/                138 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
 │   │                            engine selection and loaded-model ownership
 │   │   └── asr_timing.py        inherited ASR execution clocks without media dependencies
 │   ├── engines/                 per-engine adapters: audiocpp, confucius4, cosyvoice_gguf,
