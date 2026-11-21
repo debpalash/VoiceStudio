@@ -977,6 +977,42 @@ def _numbers_to_words_native(text: str, lang: str) -> str:
     return text
 
 
+# ── Vietnamese number reading (#4319) ────────────────────────────────────────
+# OmniVoice drops magnitude words ("nghìn", "trăm", "mươi") for bare digit runs
+# like "3500" and for the spelling "nghìn". Reporter-verified reliable forms:
+# digits with the Vietnamese dot thousands separator ("3.500") and the
+# synonym "ngàn". We deliberately do NOT expand to words (#1139: num2words'
+# vi cardinals are wrong). Language-scoped, not engine-scoped: the normalizer
+# is engine-blind, and both rewrites are standard Vietnamese written forms,
+# so every engine reads them the same way.
+_VI_PLAIN_INT_RE = re.compile(r"(?<![\w.,:/#@+\-])([1-9]\d{3,11})(?![\w:/@]|[.,]\d)")
+_VI_NGHIN_RE = re.compile(r"(?<!\w)(nghìn)(?!\w)", re.IGNORECASE)
+_VI_YEAR_PREFIX_RE = re.compile(r"(?<!\w)năm\s+$", re.IGNORECASE)
+
+
+def _vi_group_thousands(text: str) -> str:
+    def one(m: re.Match) -> str:
+        raw = m.group(1)
+        # "năm 2026": a year, not a quantity — leave it alone.
+        if len(raw) == 4 and 1000 <= int(raw) <= 2100 and _VI_YEAR_PREFIX_RE.search(text[: m.start()]):
+            return raw
+        return f"{int(raw):,}".replace(",", ".")
+
+    return _VI_PLAIN_INT_RE.sub(one, text)
+
+
+def _vi_ngan(text: str) -> str:
+    def one(m: re.Match) -> str:
+        w = m.group(1)
+        return "NGÀN" if w.isupper() else "Ngàn" if w[0].isupper() else "ngàn"
+
+    return _VI_NGHIN_RE.sub(one, text)
+
+
+def _vietnamese_numbers(text: str) -> str:
+    return _vi_group_thousands(_vi_ngan(text))
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def normalize_text(text: str, language: Optional[str] = None) -> str:
@@ -991,6 +1027,8 @@ def normalize_text(text: str, language: Optional[str] = None) -> str:
     spoken_as = _plain_lang_code(language)
     if spoken_as in _RANGE_JOINERS:
         out = _outside_brackets(out, partial(_speak_number_ranges, lang=spoken_as))
+    if spoken_as == "vi":
+        out = _outside_brackets(out, _vietnamese_numbers)
     lang = _num2words_lang(language)
     if lang:
         if lang in _ABBREV_COMPILED:
