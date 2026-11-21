@@ -63,6 +63,9 @@ REQUIRED_INPUTS = {
     "electron/src/main/python-runtime-discovery.ts",
     "electron/src/main/wheel-prefetch.ts",
     "electron/src/main/pypi-mirror.ts",
+    "electron/src/main/install-doctor.ts",
+    "electron/src/main/uninstall-*.ts",
+    "backend/services/rocm_sidecar_index.py",
     "deploy/install-worker/**",
 }
 

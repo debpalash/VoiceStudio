@@ -128,3 +128,14 @@ it('still accepts a photo dropped anywhere on the card', () => {
   fireEvent.drop(card as HTMLElement, { dataTransfer: { types: ['Files'], files: [png] } });
   expect(mock.update).toHaveBeenCalledWith('b', png);
 });
+
+it('saves a photo dropped on the camera badge exactly once', () => {
+  mock.update.mockResolvedValue(voice('b', 'Adam', 300));
+  render(<VoiceSetup onChosen={() => {}} onBack={() => {}} />);
+  const card = screen.getByRole('button', { name: 'Adam' }).closest('[data-slot="voice-card"]');
+  const badge = (card as HTMLElement).querySelector('label span.pointer-events-auto') as HTMLElement;
+  const png = new File(['x'], 'a.png', { type: 'image/png' });
+  fireEvent.drop(badge, { dataTransfer: { types: ['Files'], files: [png] } });
+  expect(mock.update).toHaveBeenCalledTimes(1);
+  expect(mock.update).toHaveBeenCalledWith('b', png);
+});

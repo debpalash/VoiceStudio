@@ -63,7 +63,8 @@ function VoiceCard({
       // The photo ignores pointer events so clicks reach the card; drops land on the whole card.
       onDragOver={(event) => hasFile(event) && event.preventDefault()}
       onDrop={(event) => {
-        if (!hasFile(event)) return;
+        // The photo's own drop handler already took (and prevented) a drop on its badge.
+        if (event.defaultPrevented || !hasFile(event)) return;
         event.preventDefault();
         const file = event.dataTransfer.files[0];
         if (file) void photo.save(file);
