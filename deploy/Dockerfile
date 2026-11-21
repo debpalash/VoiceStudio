@@ -100,6 +100,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # we want. No-ops on the conda-based CUDA image.
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 ENV UV_BREAK_SYSTEM_PACKAGES=1
+# uv's download/wheel cache lives in a BuildKit cache mount (never in a layer),
+# so rebuilds that change only one dependency reuse the rest. The mount is a
+# different filesystem from site-packages, so copy instead of hardlinking.
+ENV UV_CACHE_DIR=/root/.cache/uv
+ENV UV_LINK_MODE=copy
 
 # Install `uv` for blazing-fast reliable pip resolution
 # (`python3 -m pip` — not every base symlinks a bare `pip` onto PATH)
@@ -141,7 +146,8 @@ COPY deploy/security-constraints.txt deploy/security_floors.py ./deploy/
 # --override: `[tool.uv] override-dependencies` lifts caps that block security
 # releases (gradio's `pillow<13`), but `uv pip install` applies it only when run
 # from the project directory with a recent uv; pass it explicitly (#3275).
-RUN uv pip install --python "$(command -v python3)" --no-cache \
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv pip install --python "$(command -v python3)" \
     --constraint deploy/torch-constraints.txt \
     --constraint deploy/security-constraints.txt \
     --override deploy/uv-overrides.txt .
@@ -157,10 +163,11 @@ RUN python3 -c "from importlib.metadata import version; from packaging.requireme
 # requires: the install above leaves them alone (msgpack 1.1.1 in
 # pytorch/pytorch), so upgrade what is below its floor, then fail the build if
 # anything still is. Packages the image does not install are skipped.
-RUN floors="$(python3 deploy/security_floors.py requirements)" \
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    floors="$(python3 deploy/security_floors.py requirements)" \
     && if [ -n "$floors" ]; then \
         echo "Raising to security floors: $floors" \
-        && uv pip install --python "$(command -v python3)" --no-cache \
+        && uv pip install --python "$(command -v python3)" \
             --constraint deploy/torch-constraints.txt \
             --constraint deploy/security-constraints.txt \
             --override deploy/uv-overrides.txt $floors; \
@@ -188,9 +195,10 @@ RUN python3 -c "import os, torch, torchaudio, torchvision; \
 # Skipped for ROCm (no cuDNN there) and for aarch64: nvidia-cudnn-cu12==8.9.7.29
 # has no aarch64 wheel (DGX Spark / GH200 builds, #2831), so CTranslate2 ASR
 # stays unavailable on those images.
-RUN if [ "$GPU_FLAVOR" = "cuda" ] && [ "$(uname -m)" != "aarch64" ]; then \
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    if [ "$GPU_FLAVOR" = "cuda" ] && [ "$(uname -m)" != "aarch64" ]; then \
         target="$(python3 -c "import sys; print(f'{sys.prefix}/lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages/cudnn8_compat')")" \
-        && uv pip install --python "$(command -v python3)" --no-cache --no-deps \
+        && uv pip install --python "$(command -v python3)" --no-deps \
             --target "$target" nvidia-cudnn-cu12==8.9.7.29 \
         && CUDNN8_TARGET="$target" python3 -c "import glob, os; t = os.environ['CUDNN8_TARGET']; found = [f for f in glob.glob(t + '/nvidia/cudnn/lib/*') if '.so.8' in f]; assert found, 'cuDNN 8 libraries missing from ' + t; print(f'cuDNN 8 compat: {len(found)} libraries in ' + t)"; \
     else \

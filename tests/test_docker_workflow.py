@@ -97,7 +97,7 @@ def test_image_builds_keep_their_layer_cache_in_ghcr_not_the_actions_cache():
     """The Actions cache is capped at 10 GB per repository. Docker layers (5+ GB, one of
     4 GB) filled it and evicted the iOS native-runtime, Gradle and bun caches, so mobile CI
     rebuilt for 17 minutes. The cache lives in a registry package instead; a failed export
-    must never fail the image publish, and only the CUDA job writes it."""
+    must never fail the image publish, and each job writes only its own cache ref."""
     workflow = _load(_DOCKER)
     assert workflow["env"]["REGISTRY"] == "ghcr.io"
     builds = [
@@ -112,7 +112,12 @@ def test_image_builds_keep_their_layer_cache_in_ghcr_not_the_actions_cache():
         assert options["cache-from"].startswith("type=registry,ref=${{ env.BUILDCACHE_IMAGE }}")
     cuda, rocm, arm64 = builds
     assert "ignore-error=true" in cuda["cache-to"] and "mode=max" in cuda["cache-to"]
-    assert "cache-to" not in rocm
+    # ROCm reads its own cache first, then the CUDA one (shared frontend stage), and
+    # writes a separate ref so its runtime layers never overwrite the CUDA cache.
+    assert rocm["cache-from"].splitlines()[0].endswith(":buildkit-rocm")
+    assert rocm["cache-from"].splitlines()[1].endswith(":buildkit")
+    assert ":buildkit-rocm," in rocm["cache-to"] and "ignore-error=true" in rocm["cache-to"]
+    assert ":buildkit," in cuda["cache-to"]
     # arm64 layers are useless to the amd64 jobs, so the arm64 job keeps its own
     # cache tag and never writes the CUDA job's.
     assert arm64["cache-from"].endswith(":buildkit-cuda-arm64")

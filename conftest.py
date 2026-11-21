@@ -3,6 +3,7 @@
 Only fixtures that both suites need live here; each suite's own conftest.py
 still owns its import path and hermetic data dir.
 """
+import os
 import sys
 import types
 
@@ -95,3 +96,29 @@ def pytest_make_parametrize_id(config, val, argname):
     if isinstance(val, (str, bytes)) and len(val) > _MAX_PARAM_ID:
         return f"{argname}-len{len(val)}"
     return None
+
+
+def pytest_collection_modifyitems(config, items):
+    """CI sharding: VOICESTUDIO_TEST_SHARD="i/N" keeps every N-th test module.
+
+    Whole modules (never single tests) are dealt round-robin over the sorted
+    module paths, so module-level state stays together and the N shards are a
+    disjoint partition of the full collection. Unset = run everything.
+    """
+    spec = os.environ.get("VOICESTUDIO_TEST_SHARD", "").strip()
+    if not spec:
+        return
+    # Consumed here: tests that spawn a nested pytest must see the whole suite,
+    # not inherit this session's shard (it would collect nothing and fail).
+    os.environ.pop("VOICESTUDIO_TEST_SHARD", None)
+    index, _, total = spec.partition("/")
+    index, total = int(index), int(total)
+    if not 1 <= index <= total:
+        raise pytest.UsageError(f"VOICESTUDIO_TEST_SHARD={spec!r} must be i/N with 1 <= i <= N")
+    modules = sorted({item.nodeid.split("::", 1)[0] for item in items})
+    mine = {m for pos, m in enumerate(modules) if pos % total == index - 1}
+    kept = [i for i in items if i.nodeid.split("::", 1)[0] in mine]
+    dropped = [i for i in items if i.nodeid.split("::", 1)[0] not in mine]
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+        items[:] = kept
