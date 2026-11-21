@@ -91,7 +91,14 @@ def client():
             headers={k: v for k, v in request.headers.items() if k.lower() != "host"},
             content=request.read(),
         )
-        return sdk_httpx.Response(res.status_code, headers=res.headers.multi_items(), content=res.content)
+        # ``res.content`` is already decoded by TestClient, so the transport must not
+        # re-advertise the wire encoding (a gzip'd /v1/models would fail to decode).
+        headers = [
+            (k, v)
+            for k, v in res.headers.multi_items()
+            if k.lower() not in ("content-encoding", "content-length")
+        ]
+        return sdk_httpx.Response(res.status_code, headers=headers, content=res.content)
 
     return openai.OpenAI(
         base_url="http://testserver/v1",
@@ -835,3 +842,21 @@ def test_timed_out_mlx_step_releases_shared_gpu_worker_before_native_cleanup(mon
         worker.shutdown()
 
     assert closed.is_set() and not slot.locked()
+
+
+def test_large_models_response_is_valid_compressed_body_over_the_wire(engine):
+    """The selective compression middleware must emit a body httpx can decode."""
+    import zlib
+
+    from main import app
+
+    tc = TestClient(app, client=("127.0.0.1", 50000))
+    with tc.stream("GET", "/v1/models", headers={"Accept-Encoding": "gzip"}) as res:
+        raw = b"".join(res.iter_raw())
+        encoding = res.headers.get("content-encoding")
+        length = res.headers.get("content-length")
+    # The model list is well over the 1 KiB threshold, so compression is required.
+    assert encoding == "gzip"
+    assert zlib.decompress(raw, 31)[:1] == b"{"
+    assert length is None or int(length) == len(raw)
+    assert tc.get("/v1/models", headers={"Accept-Encoding": "gzip"}).json()["object"] == "list"
