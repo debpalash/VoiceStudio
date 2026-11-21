@@ -719,7 +719,7 @@ def _plan_generate(text, joins, effect_preset):
     from services.generate_markup import needs_span_render, plan_spans
 
     segments = plan_spans(text, joins)
-    use_spans = needs_span_render(segments, joins)
+    use_spans = needs_span_render(segments, joins, text)
     trim_spans = bool(joins and joins.trim_engine_silence) or _wants_edge_trim(effect_preset)
     return segments, use_spans, trim_spans
 
@@ -1394,11 +1394,13 @@ def _run_inference(
 
         if has_pause:
             def _gen_span(span_text, chunk_index=None, speed_factor=None):
-                # Per-span duration is left to the model; an explicit overall
-                # `duration` can't be meaningfully split across spans. Every
+                # An explicit overall `duration` can't be split across spans, so
+                # it only applies to a take that is one unsplit span. Every
                 # span and chunk restarts from the take's seed (#3730).
                 seed_engine_call(used_seed)
-                return _gen(span_text, None, _span_speed(speed, speed_factor))[0]
+                span_duration = duration if (len(segments) == 1 and chunk_index is None
+                                             and speed_factor is None) else None
+                return _gen(span_text, span_duration, _span_speed(speed, speed_factor))[0]
             audio_out = _render_with_pauses(
                 _gen_span, segments, sr, trim_spans=trim_spans,
                 max_chunk_chars=_max_chars, crossfade_ms=_xfade_ms, dropped_sink=dropped_sink,
@@ -1508,13 +1510,16 @@ def _run_backend_inference(
 
         if has_pause:
             def _gen_span(span_text, chunk_index=None, speed_factor=None):
-                # Per-span duration is left to the engine; an explicit overall
-                # `duration` can't be meaningfully split across spans. Every
+                # An explicit overall `duration` can't be split across spans, so
+                # it only applies to a take that is one unsplit span. Every
                 # span and chunk gets the take's seed, forwarded to engines
                 # that accept one on every call, not only the first (#3730).
                 span_kwargs = {**gen_kwargs, **seed_engine_call(used_seed, backend)}
                 span_kwargs["speed"] = _span_speed(speed, speed_factor)
-                return trace_call("synthesis", backend.generate, span_text, duration=None, **span_kwargs)
+                span_duration = duration if (len(segments) == 1 and chunk_index is None
+                                             and speed_factor is None) else None
+                return trace_call("synthesis", backend.generate, span_text,
+                                  duration=span_duration, **span_kwargs)
             audio_out = _render_with_pauses(
                 _gen_span, segments, sr, trim_spans=trim_spans,
                 max_chunk_chars=_max_chars, crossfade_ms=_xfade_ms, dropped_sink=dropped_sink,
@@ -2414,6 +2419,12 @@ async def generate_speech(
             prepare_speech_text, text, language, profile_id=resolved_profile_id,
             dictionary=pronounce and pronunciation_enabled(),
         )
+        # Respellings can add blank lines: re-check the silence budget on the
+        # text the engine will get, so an over-long plan is a 400, not a 500.
+        try:
+            plan_spans(text, joins)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     except BaseException:
         # Preparation precedes the classic/streaming cleanup scopes. It never
         # reads the uploaded reference, so cancellation can release it now.

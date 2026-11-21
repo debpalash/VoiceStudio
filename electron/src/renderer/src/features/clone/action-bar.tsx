@@ -17,16 +17,13 @@ import {
   ListPlusIcon,
   PlayIcon,
   LoaderCircleIcon,
-  PilcrowIcon,
   RotateCcwIcon,
-  ScissorsIcon,
   Settings2Icon,
   ShuffleIcon,
   SparklesIcon,
   ThermometerIcon,
   TimerIcon,
   XIcon,
-  type LucideIcon,
 } from 'lucide-react';
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -37,8 +34,6 @@ import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import { isMac } from '@/components/bridge';
 import { Label } from '@/components/ui/label';
 import { ProgressIndicator, ProgressTrack } from '@/components/ui/progress';
-import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
 import { useGenerateClone } from '@/hooks/use-generate';
 import { GenerationElapsed } from '@/components/generation-elapsed';
 import {
@@ -50,6 +45,7 @@ import {
 } from '@/lib/store/clone-settings';
 import { cn } from '@/lib/utils';
 import { EngineLanguagePicker } from './engine-language-picker';
+import { JoinControls, SliderRow, SwitchRow, type SliderSpec } from './voice-control-rows';
 import { PresetVoicePicker } from './preset-voice-picker';
 import { CloneReadinessNotice } from './clone-readiness-notice';
 import { QualityControls } from './quality-controls';
@@ -59,25 +55,6 @@ import { ExpressionTip } from './expression-tip';
 import { GenerationQueue } from './generation-queue';
 import { CloneDemoAction } from './clone-demo';
 import { useCloneDemo } from '@/hooks/use-clone-demo';
-
-type NumericKey =
-  | 'cfg'
-  | 'speed'
-  | 'tShift'
-  | 'posTemp'
-  | 'classTemp'
-  | 'layerPenalty'
-  | 'paragraphGapMs';
-
-interface SliderSpec {
-  key: NumericKey;
-  labelKey: string;
-  icon: LucideIcon;
-  min: number;
-  max: number;
-  step: number;
-  suffix?: string;
-}
 
 const SLIDERS: SliderSpec[] = [
   {
@@ -131,86 +108,6 @@ const SLIDERS: SliderSpec[] = [
   },
 ];
 
-/** Silence between paragraphs, as Audiobook's join control. */
-const GAP_SLIDERS: SliderSpec[] = [
-  {
-    key: 'paragraphGapMs',
-    labelKey: 'audiobook.paragraph_gap',
-    icon: PilcrowIcon,
-    min: 0,
-    max: 3000,
-    step: 50,
-    suffix: ' ms',
-  },
-];
-
-function decimals(step: number): number {
-  const text = String(step);
-  const dot = text.indexOf('.');
-  return dot === -1 ? 0 : text.length - dot - 1;
-}
-
-interface SliderRowProps {
-  spec: SliderSpec;
-  value: number;
-}
-
-function SliderRow({ spec, value }: SliderRowProps) {
-  const { t } = useTranslation();
-  const labelId = useId();
-  const Icon = spec.icon;
-  return (
-    <div className="flex min-w-0 flex-col gap-2 px-1 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span id={labelId} className="inline-flex items-center gap-1.5 text-xs font-medium">
-          <Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-          {t(spec.labelKey)}
-        </span>
-        <output className="text-xs text-primary tabular-nums">
-          {value.toFixed(decimals(spec.step))}
-          {spec.suffix ?? ''}
-        </output>
-      </div>
-      <Slider
-        thumbProps={{ 'aria-labelledby': labelId }}
-        min={spec.min}
-        max={spec.max}
-        step={spec.step}
-        value={[value]}
-        onValueChange={(next) => {
-          const n = Array.isArray(next) ? next[0] : next;
-          if (typeof n === 'number') setCloneSetting(spec.key, n);
-        }}
-      />
-    </div>
-  );
-}
-
-interface SwitchRowProps {
-  settingKey: 'denoise' | 'postprocess' | 'trimEngineSilence';
-  labelKey: string;
-  icon: LucideIcon;
-  checked: boolean;
-}
-
-function SwitchRow({ settingKey, labelKey, icon: Icon, checked }: SwitchRowProps) {
-  const { t } = useTranslation();
-  const id = useId();
-  return (
-    <div className="flex items-center justify-between gap-3 px-1 py-1.5">
-      <Label htmlFor={id} className="gap-1.5 text-xs font-medium">
-        <Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-        {t(labelKey)}
-      </Label>
-      <Switch
-        id={id}
-        checked={checked}
-        onCheckedChange={(next) => setCloneSetting(settingKey, next)}
-      />
-    </div>
-  );
-}
-
 interface OverridesProps {
   settings: CloneSettings;
 }
@@ -256,20 +153,7 @@ function Overrides({ settings }: OverridesProps) {
           checked={settings.postprocess}
         />
       </div>
-      <div className="border-t border-border/50 py-1.5">
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,150px),1fr))] gap-x-4">
-          {GAP_SLIDERS.map((spec) => (
-            <SliderRow key={spec.key} spec={spec} value={settings[spec.key]} />
-          ))}
-        </div>
-        <SwitchRow
-          settingKey="trimEngineSilence"
-          labelKey="audiobook.trim_edges"
-          icon={ScissorsIcon}
-          checked={settings.trimEngineSilence}
-        />
-        <p className="px-1 text-[11px] text-muted-foreground">{t('voiceControls.pauses_hint')}</p>
-      </div>
+      <JoinControls settings={settings} />
       <details className="group border-t border-border/50 pt-2.5">
         <summary className="flex cursor-pointer list-none items-center justify-between rounded px-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
           {t('voiceControls.advanced')}

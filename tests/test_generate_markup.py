@@ -14,14 +14,45 @@ import torch
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 
-from omnivoice.utils.text import parse_pause_markers  # noqa: E402
-from services.generate_markup import (  # noqa: E402
-    MAX_JOIN_SILENCE_MS,
-    JoinOptions,
-    Span,
-    needs_span_render,
-    plan_spans,
-)
+
+
+# Application modules are resolved when a test runs, not at import: another
+# test may replace them in sys.modules and leave module-level names stale.
+def parse_pause_markers(text):
+    from omnivoice.utils.text import parse_pause_markers as fn
+
+    return fn(text)
+
+
+def plan_spans(*args, **kwargs):
+    from services.generate_markup import plan_spans as fn
+
+    return fn(*args, **kwargs)
+
+
+def needs_span_render(*args, **kwargs):
+    from services.generate_markup import needs_span_render as fn
+
+    return fn(*args, **kwargs)
+
+
+def JoinOptions(*args, **kwargs):  # noqa: N802
+    from services.generate_markup import JoinOptions as cls
+
+    return cls(*args, **kwargs)
+
+
+def Span(*args, **kwargs):  # noqa: N802
+    from services.generate_markup import Span as cls
+
+    return cls(*args, **kwargs)
+
+
+def _max_join_silence_ms():
+    from services.generate_markup import MAX_JOIN_SILENCE_MS
+
+    return MAX_JOIN_SILENCE_MS
+
 
 SR = 24000
 CHUNK = 2400  # every probe call renders 0.1 s
@@ -69,9 +100,50 @@ def test_spell_tag_is_spelled_out():
 
 
 def test_silence_budget_is_enforced():
-    text = "好。\n\n" * (MAX_JOIN_SILENCE_MS // 5000 + 2)
+    text = "好。\n\n" * (_max_join_silence_ms() // 5000 + 2)
     with pytest.raises(ValueError, match="minutes"):
         plan_spans(text, JoinOptions(paragraph_gap_ms=5000))
+
+
+def test_spell_only_input_is_not_sent_to_the_engine_as_tags():
+    text = "[spell]USA[/spell]"
+    spans = plan_spans(text)
+    assert [s.text for s in spans] == ["U S A"]
+    assert needs_span_render(spans, JoinOptions(), text)
+    # Plain text keeps the one-shot path.
+    assert not needs_span_render(plan_spans("Plain."), JoinOptions(), "Plain.")
+
+
+def test_paragraph_gap_survives_ssml_lite_boundaries():
+    spans = plan_spans("[slow]One.[/slow]\n\nTwo.", JoinOptions(paragraph_gap_ms=700))
+    assert [(s.text.strip(), s.pause_ms) for s in spans] == [("One.", 700), ("Two.", 0)]
+    assert spans[0].speed_factor == pytest.approx(0.85)
+    assert spans[1].speed_factor is None
+
+
+def test_ssml_scope_stays_open_across_pauses_and_blank_lines():
+    spans = plan_spans("[slow]One[pause 500ms]Two[/slow] Three")
+    assert [(s.text.strip(), s.pause_ms) for s in spans] == [
+        ("One", 500), ("Two", 0), ("Three", 0)]
+    assert [s.speed_factor for s in spans][:2] == [pytest.approx(0.85)] * 2
+    assert spans[2].speed_factor is None
+    spans = plan_spans("[slow]A\n\nB[/slow]", JoinOptions(paragraph_gap_ms=300))
+    assert [s.speed_factor for s in spans] == [pytest.approx(0.85)] * 2
+    assert spans[0].pause_ms == 300
+
+
+def test_separately_authored_pauses_are_not_clamped_when_merged():
+    spans = plan_spans("[pause 10s] [pause 10s]Hello")
+    assert sum(s.pause_ms for s in spans) == 20000
+    assert spans[-1].text == "Hello"
+
+
+def test_many_paragraphs_plan_in_linear_time():
+    import time
+
+    start = time.perf_counter()
+    plan_spans("A.\n\n" * 20000, JoinOptions(paragraph_gap_ms=1))
+    assert time.perf_counter() - start < 2
 
 
 def test_trim_engine_silence_alone_takes_the_span_renderer():
@@ -107,6 +179,26 @@ def test_backend_render_inserts_the_gaps(monkeypatch):
                     JoinOptions(paragraph_gap_ms=900), calls)
     assert [t.strip() for t, _ in calls] == ["第一句。第二句！", "第三句。"]
     assert audio.shape[-1] == 2 * CHUNK + int(SR * 0.9)
+
+
+def test_trim_keeps_the_requested_duration_for_one_unsplit_span():
+    from api.routers.generation import _run_backend_inference
+
+    seen = []
+
+    class Probe:
+        sample_rate = SR
+        supports_generation_seed = True
+
+        def generate(self, text, **kw):
+            seen.append((text, kw.get("duration")))
+            return torch.ones(1, CHUNK) * 0.1
+
+    _run_backend_inference(
+        Probe(), "Short line.", "English", None, None, None, 5.0,
+        32, 2, 1.0, True, True, 1, "raw", 800, 0,
+        joins=JoinOptions(trim_engine_silence=True))
+    assert seen == [("Short line.", 5.0)]
 
 
 def test_backend_render_scales_speed_for_tagged_runs():
@@ -159,3 +251,28 @@ def test_mcp_forwards_the_join_options(monkeypatch):
 def test_mcp_default_request_is_unchanged(monkeypatch):
     form = _mcp_generate(monkeypatch)
     assert not {"paragraph_gap_ms", "trim_engine_silence"} & form.keys()
+
+
+@pytest.mark.parametrize("stream", ["0", "1"])
+def test_budget_is_rechecked_after_respellings_as_a_400(monkeypatch, stream):
+    import asyncio
+    import importlib
+
+    import httpx
+
+    from main import app
+
+    pronunciation = importlib.import_module("services.pronunciation")
+    monkeypatch.setattr(pronunciation, "prepare_speech_text",
+                        lambda text, *a, **k: "a\n\n" * 200)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="http://localhost") as api:
+            return await api.post("/generate", data={
+                "text": "short", "language": "English",
+                "paragraph_gap_ms": "5000", "stream": stream})
+
+    response = asyncio.run(run())
+    assert response.status_code == 400
+    assert "minutes" in response.text

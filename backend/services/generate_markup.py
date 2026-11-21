@@ -23,7 +23,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import NamedTuple, Optional
 
-from omnivoice.utils.text import PAUSE_MAX_MS, parse_pause_markers
+from omnivoice.utils.text import parse_pause_markers
 
 #: Upper bound of a single paragraph gap, matching Audiobook's API.
 GAP_MAX_MS = 5000
@@ -77,14 +77,35 @@ def _split_at_gaps(text: str, opts: JoinOptions) -> list[tuple[str, int]]:
     return pieces
 
 
-def _ssml_pieces(text: str) -> list[tuple[str, Optional[float]]]:
-    """SSML-lite segments of ``text`` as ``(spoken_text, speed_factor)``."""
+def _scan_tags(text: str, stack: list[str]) -> None:
+    """Update the open-tag ``stack`` with the SSML-lite tags in ``text``."""
+    from services.ssml_lite import _TAG_RE
+
+    for m in _TAG_RE.finditer(text):
+        name = m.group(2).lower()
+        if m.group(1) == "/":
+            for i in range(len(stack) - 1, -1, -1):
+                if stack[i] == name:
+                    del stack[i]
+                    break
+        else:
+            stack.append(name)
+
+
+def _ssml_pieces(text: str, stack: list[str]) -> list[tuple[str, Optional[float]]]:
+    """SSML-lite segments of ``text`` as ``(spoken_text, speed_factor)``.
+
+    ``stack`` holds the tags still open from earlier text (a ``[slow]`` that
+    spans a ``[pause]`` or a blank line); it is updated for the text after this one.
+    """
     from services.ssml_lite import _TAG_RE, parse_ssml_lite, spell_out
 
-    if not _TAG_RE.search(text):
+    if not stack and not _TAG_RE.search(text):
         return [(text, None)]
+    reopened = "".join(f"[{name}]" for name in stack)
+    _scan_tags(text, stack)
     out: list[tuple[str, Optional[float]]] = []
-    for seg in parse_ssml_lite(text):
+    for seg in parse_ssml_lite(reopened + text):
         spoken = spell_out(seg["text"]) if seg["spell"] else seg["text"]
         out.append((spoken, seg["speed"]))
     return out
@@ -97,7 +118,8 @@ def _merge_unspoken(spans: list[Span]) -> list[Span]:
     punctuation-only piece (``[slow]world[/slow].``) joins the text before it
     instead of reaching the engine alone, where some engines read it aloud or
     render a click. A leading empty span (text that starts with ``[pause]``)
-    stays, as leading silence.
+    stays, as leading silence. Silences are summed, not clamped: each
+    ``[pause]`` already honours its own limit.
     """
     out: list[Span] = []
     for span in spans:
@@ -105,7 +127,7 @@ def _merge_unspoken(spans: list[Span]) -> list[Span]:
             prev = out[-1]
             extra = span.text.strip()
             out[-1] = Span(prev.text.rstrip() + extra if extra else prev.text,
-                           min(prev.pause_ms + span.pause_ms, PAUSE_MAX_MS),
+                           prev.pause_ms + span.pause_ms,
                            prev.speed_factor)
             continue
         out.append(span)
@@ -115,19 +137,28 @@ def _merge_unspoken(spans: list[Span]) -> list[Span]:
 def plan_spans(text: str, opts: Optional[JoinOptions] = None) -> list[Span]:
     """Plan the engine calls for one Generate request.
 
-    An explicit ``[pause]`` keeps its exact length and replaces any gap at the
-    same place; the end of the text never gets a gap. Raises ``ValueError``
-    when the gaps would add more than :data:`MAX_JOIN_SILENCE_MS` of silence.
+    Order: ``[pause]`` → paragraph gaps → SSML-lite. A tag stays open across a
+    pause or a blank line. An explicit ``[pause]`` keeps its exact length and
+    replaces any gap at the same place; the end of the text never gets a gap.
+    Raises ``ValueError`` when the gaps would add more than
+    :data:`MAX_JOIN_SILENCE_MS` of silence.
     """
     opts = opts or JoinOptions()
     planned: list[Span] = []
     explicit_ms = 0
+    stack: list[str] = []
     for pause_text, pause_ms in parse_pause_markers(text):
         explicit_ms += pause_ms
         inner: list[Span] = []
-        for ssml_text, factor in _ssml_pieces(pause_text):
-            pieces = _split_at_gaps(ssml_text, opts) if opts.gaps_on else [(ssml_text, 0)]
-            inner.extend(Span(piece, gap_ms, factor) for piece, gap_ms in pieces)
+        pieces = _split_at_gaps(pause_text, opts) if opts.gaps_on else [(pause_text, 0)]
+        for piece, gap_ms in pieces:
+            sub = [Span(t, 0, f) for t, f in _ssml_pieces(piece, stack)]
+            if sub:
+                sub[-1] = Span(sub[-1].text, gap_ms, sub[-1].speed_factor)
+                inner.extend(sub)
+            elif gap_ms and inner:
+                inner[-1] = Span(inner[-1].text, inner[-1].pause_ms + gap_ms,
+                                 inner[-1].speed_factor)
         inner = _merge_unspoken(inner) or [Span("", 0)]
         last = inner[-1]
         inner[-1] = Span(last.text, pause_ms, last.speed_factor)
@@ -144,10 +175,19 @@ def plan_spans(text: str, opts: Optional[JoinOptions] = None) -> list[Span]:
     return planned
 
 
-def needs_span_render(spans: list[Span], opts: Optional[JoinOptions] = None) -> bool:
-    """True when the request must take the span renderer, not one-shot chunking."""
+def needs_span_render(spans: list[Span], opts: Optional[JoinOptions] = None,
+                      text: Optional[str] = None) -> bool:
+    """True when the request must take the span renderer, not one-shot chunking.
+
+    ``text`` is the request text: a single plain span whose planned text differs
+    from it had tags stripped or spelled out, so the engine must get the plan.
+    """
     if opts is not None and opts.trim_engine_silence:
         return True
     if len(spans) > 1:
         return True
-    return bool(spans) and (spans[0].pause_ms > 0 or spans[0].speed_factor is not None)
+    if not spans:
+        return False
+    if spans[0].pause_ms > 0 or spans[0].speed_factor is not None:
+        return True
+    return text is not None and spans[0].text != text
