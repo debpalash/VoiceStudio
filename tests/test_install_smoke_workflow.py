@@ -53,6 +53,17 @@ REQUIRED_INPUTS = {
     "scripts/smoke_windows_rocm.py",
     "electron/*vite*.config.ts",
     "electron/T3CODE-LICENSE.txt",
+    # Runtime setup code: the first-run install a user starts after the installer.
+    "backend/services/sidecar_*.py",
+    "backend/services/media_tools.py",
+    "backend/services/endpoint_race.py",
+    "electron/src/main/setup-*.ts",
+    "electron/src/main/runtime-*.ts",
+    "electron/src/main/bundled-runtime.ts",
+    "electron/src/main/python-runtime-discovery.ts",
+    "electron/src/main/wheel-prefetch.ts",
+    "electron/src/main/pypi-mirror.ts",
+    "deploy/install-worker/**",
 }
 
 # `extraResources` entries that ship the whole application payload. A change in
@@ -160,3 +171,25 @@ def test_the_referenced_inputs_exist():
             assert list(parent.glob(Path(entry).name)), f"{entry} matches no file"
             continue
         assert (ROOT / entry).is_file(), f"{entry} does not exist"
+
+
+def test_pull_requests_cancel_superseded_runs_and_main_pushes_do_not():
+    data = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    concurrency = data["concurrency"]
+    assert "pull_request.number" in concurrency["group"]
+    assert "pull_request" in str(concurrency["cancel-in-progress"])
+    assert "push" not in str(concurrency["cancel-in-progress"])
+
+
+def test_unconditional_triggers_stay_unfiltered():
+    """Schedule-less manual runs always run; the changes job gates only PR file scope."""
+    triggers = _workflow()
+    assert "workflow_dispatch" in triggers
+    assert "paths" not in (triggers["workflow_dispatch"] or {})
+
+
+def test_setup_code_globs_match_real_files():
+    """Each setup glob must match files that exist, so a rename cannot drop coverage."""
+    for entry in REQUIRED_INPUTS:
+        if entry.startswith(("backend/services/sidecar_", "electron/src/main/")):
+            assert list(ROOT.glob(entry)), f"{entry} matches nothing"
