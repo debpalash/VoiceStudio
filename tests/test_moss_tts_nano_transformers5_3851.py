@@ -101,6 +101,10 @@ def runtime_transformers(request, monkeypatch):
     if request.param:
         rebound = types.ModuleType("transformers")
         rebound.__dict__.update(vars(current))
+        # transformers is a _LazyModule: ``__version__`` is only in its __dict__
+        # once something has read it. A module re-imported after a sys.modules
+        # restore, with nothing having read it yet, would otherwise copy without it.
+        rebound.__version__ = current.__version__
         monkeypatch.setitem(sys.modules, "transformers", rebound)
         current = rebound
     return current
