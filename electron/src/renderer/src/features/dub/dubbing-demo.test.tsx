@@ -309,3 +309,24 @@ it('does not let a status poll that raced ahead of the POST undo the downloading
   releasePost({ state: 'downloading', total_bytes: 100, downloaded_bytes: 50 });
   await screen.findByRole('progressbar');
 });
+
+it('reaches ready when each status reply takes longer than the poll interval', async () => {
+  let statusCalls = 0;
+  mocks.api.mockImplementation(async (path: string) => {
+    if (path.endsWith('/manifest.json')) return manifest;
+    if (path === '/demo/dubbing/status') {
+      statusCalls += 1;
+      if (statusCalls === 1) return IDLE;
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      return READY;
+    }
+    return { state: 'downloading', total_bytes: 100, downloaded_bytes: 10 } satisfies Status;
+  });
+  render(<DubbingDemo onDismiss={vi.fn()} onTry={vi.fn()} onEdit={vi.fn()} />);
+
+  fireEvent.click(await screen.findByRole('button', { name: 'demo.dubbing_download' }));
+  await screen.findByRole('progressbar');
+  await screen.findByRole('button', { name: 'dubbing-demo-comparison-demo.original_tag' }, { timeout: 4000 });
+  // Never more than one status request outstanding: initial + one poll.
+  expect(statusCalls).toBe(2);
+}, 10000);

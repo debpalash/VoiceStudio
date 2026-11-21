@@ -100,16 +100,27 @@ export function DubbingDemo({
   const downloading = download?.state === 'downloading';
   useEffect(() => {
     if (!downloading) return;
-    const timer = setInterval(() => {
-      // Only the newest poll counts, and none while the POST is still in flight:
-      // a status read that raced ahead of it would say idle and undo `downloading`.
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // One status request at a time: the next poll is scheduled when the current one
+    // settles, so a slow reply is never superseded (and dropped) by its own successor.
+    const poll = () => {
+      // A reply counts only if the POST has not started/settled since it was sent
+      // and the effect is still live: a read that raced ahead of the POST says idle.
       const id = ++statusSeq.current;
-      const current = () => id === statusSeq.current && !postInFlight.current;
+      const current = () => !cancelled && id === statusSeq.current && !postInFlight.current;
       void apiJson<DemoDownloadStatus>('/demo/dubbing/status')
         .then((next) => current() && setDownload(next))
-        .catch(() => current() && setDownload((cur) => (cur ? { ...cur, state: 'error' } : cur)));
-    }, POLL_MS);
-    return () => clearInterval(timer);
+        .catch(() => current() && setDownload((cur) => (cur ? { ...cur, state: 'error' } : cur)))
+        .finally(() => {
+          if (!cancelled) timer = setTimeout(poll, POLL_MS);
+        });
+    };
+    timer = setTimeout(poll, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [downloading]);
 
   const startDownload = () => {
