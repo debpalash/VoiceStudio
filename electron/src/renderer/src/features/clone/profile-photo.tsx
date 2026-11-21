@@ -53,6 +53,7 @@ export function ProfilePhoto({
   busy = false,
   className,
   label,
+  badge = false,
 }: {
   name: string;
   imageUrl?: string | null;
@@ -60,6 +61,8 @@ export function ProfilePhoto({
   busy?: boolean;
   className?: string;
   label?: string;
+  /** Only a small camera badge picks a photo; the avatar itself lets clicks reach what is under it. */
+  badge?: boolean;
 }) {
   const { t } = useTranslation();
   const [dragging, setDragging] = useState(false);
@@ -74,7 +77,7 @@ export function ProfilePhoto({
       title={accessibleLabel}
       className={cn(
         'group/photo relative isolate block shrink-0 cursor-pointer rounded-full outline-none has-focus-visible:ring-2 has-focus-visible:ring-ring',
-        busy && 'pointer-events-none',
+        (busy || badge) && 'pointer-events-none',
         className,
       )}
       onDragOver={(event) => {
@@ -91,20 +94,33 @@ export function ProfilePhoto({
       }}
     >
       <ProfileAvatar name={name} imageUrl={imageUrl} className="size-full text-[inherit]" />
-      <span
-        aria-hidden="true"
-        className={cn(
-          'absolute inset-0 grid place-items-center rounded-full bg-black/55 text-white opacity-0 transition-opacity duration-150 group-hover/photo:opacity-100 group-has-focus-visible/photo:opacity-100 motion-reduce:transition-none',
-          (busy || dragging) && 'opacity-100',
-          dragging && 'bg-primary/70 ring-2 ring-primary',
-        )}
-      >
-        {busy ? (
-          <LoaderCircleIcon className="size-1/3 animate-spin motion-reduce:animate-none" />
-        ) : (
-          <CameraIcon className="size-1/3 max-h-5 max-w-5" />
-        )}
-      </span>
+      {badge ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-auto absolute -end-0.5 -bottom-0.5 grid size-4 cursor-pointer place-items-center rounded-full border border-background bg-foreground/80 text-background"
+        >
+          {busy ? (
+            <LoaderCircleIcon className="size-2.5 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <CameraIcon className="size-2.5" />
+          )}
+        </span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className={cn(
+            'absolute inset-0 grid place-items-center rounded-full bg-black/55 text-white opacity-0 transition-opacity duration-150 group-hover/photo:opacity-100 group-has-focus-visible/photo:opacity-100 motion-reduce:transition-none',
+            (busy || dragging) && 'opacity-100',
+            dragging && 'bg-primary/70 ring-2 ring-primary',
+          )}
+        >
+          {busy ? (
+            <LoaderCircleIcon className="size-1/3 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <CameraIcon className="size-1/3 max-h-5 max-w-5" />
+          )}
+        </span>
+      )}
       <input
         type="file"
         className="sr-only"
