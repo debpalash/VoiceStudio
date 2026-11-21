@@ -76,6 +76,8 @@ export function DubbingDemo({
   const activePlayer = useRef<MediaPlayerInstance | null>(null);
   const pendingDubbedPosition = useRef<number | null>(null);
   const initialStatus = useRef<AbortController | null>(null);
+  const statusSeq = useRef(0);
+  const postInFlight = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -99,9 +101,13 @@ export function DubbingDemo({
   useEffect(() => {
     if (!downloading) return;
     const timer = setInterval(() => {
+      // Only the newest poll counts, and none while the POST is still in flight:
+      // a status read that raced ahead of it would say idle and undo `downloading`.
+      const id = ++statusSeq.current;
+      const current = () => id === statusSeq.current && !postInFlight.current;
       void apiJson<DemoDownloadStatus>('/demo/dubbing/status')
-        .then(setDownload)
-        .catch(() => setDownload((cur) => (cur ? { ...cur, state: 'error' } : cur)));
+        .then((next) => current() && setDownload(next))
+        .catch(() => current() && setDownload((cur) => (cur ? { ...cur, state: 'error' } : cur)));
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [downloading]);
@@ -114,6 +120,8 @@ export function DubbingDemo({
       downloaded_bytes: 0,
       state: 'downloading',
     }));
+    postInFlight.current = true;
+    statusSeq.current++;
     void apiJson<DemoDownloadStatus>('/demo/dubbing/download', { method: 'POST' })
       .then(setDownload)
       .catch(() =>
@@ -122,7 +130,11 @@ export function DubbingDemo({
           downloaded_bytes: 0,
           state: 'error',
         })),
-      );
+      )
+      .finally(() => {
+        postInFlight.current = false;
+        statusSeq.current++; // polls issued before the POST settled are stale
+      });
   };
 
   useEffect(() => {

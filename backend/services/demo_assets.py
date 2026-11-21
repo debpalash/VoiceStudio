@@ -111,7 +111,8 @@ def _cached_names() -> list[str]:
 # ── Status ───────────────────────────────────────────────────────────────────
 
 _state: dict[str, Any] = {"state": "idle", "downloaded_bytes": 0, "error": None}
-_task: Optional["asyncio.Task[None]"] = None
+#: Strong references to background downloads (the loop only keeps weak ones).
+_tasks: set["asyncio.Task[Any]"] = set()
 
 
 def status() -> dict[str, Any]:
@@ -154,6 +155,7 @@ async def _download_one(client, name: str, pin: dict[str, Any], on_chunk) -> Non
     fd, tmp = tempfile.mkstemp(dir=str(dest_dir), prefix=".demo-", suffix=".part")
     digest = hashlib.sha256()
     total = 0
+    published = False
     try:
         with os.fdopen(fd, "wb") as fh:
             try:
@@ -179,16 +181,23 @@ async def _download_one(client, name: str, pin: dict[str, Any], on_chunk) -> Non
         if digest.hexdigest() != str(pin["sha256"]).lower():
             raise DemoAssetError("sha256 mismatch")
         os.replace(tmp, dest_dir / name)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
+        published = True
+    finally:
+        # Runs for failures and cancellation alike; a half file is never kept.
+        if not published:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
 
 
 async def download_all(client=None) -> dict[str, Any]:
     """Fetch every missing pinned file. All-or-nothing per file; resumable by rerun."""
-    client = _client(client)
     _state.update(state="downloading", error=None)
+    try:
+        client = _client(client)
+    except Exception as exc:  # noqa: BLE001 - e.g. ValueError for an unsupported proxy scheme
+        logger.info("Demo video download client unavailable: %s", type(exc).__name__)
+        _state.update(state="error", error="download client unavailable (check proxy settings)")
+        return status()
     base = sum(int(PINNED[n]["bytes"]) for n in _cached_names())
     _state["downloaded_bytes"] = base
 
@@ -202,15 +211,17 @@ async def download_all(client=None) -> dict[str, Any]:
             before = _state["downloaded_bytes"]
             try:
                 await _download_one(client, name, pin, on_chunk)
-            except BaseException:
+            except (Exception, asyncio.CancelledError):
                 _state["downloaded_bytes"] = before
                 raise
     except asyncio.CancelledError:
         _state.update(state="idle")
         raise
     except Exception as exc:  # noqa: BLE001 - reported through status()
-        logger.info("Demo video download failed: %s", exc)
-        _state.update(state="error", error=str(exc) or type(exc).__name__)
+        # Only fixed messages or the exception type: OS errors carry absolute paths.
+        detail = str(exc) if isinstance(exc, DemoAssetError) else type(exc).__name__
+        logger.info("Demo video download failed: %s", detail)
+        _state.update(state="error", error=detail)
     else:
         _state.update(state="ready", error=None)
     return status()
@@ -218,12 +229,13 @@ async def download_all(client=None) -> dict[str, Any]:
 
 async def start_download() -> dict[str, Any]:
     """Begin the user-requested download in the background (idempotent)."""
-    global _task
     if status()["state"] == "ready":
         return status()
-    if _task is None or _task.done():
+    if not any(not t.done() for t in _tasks):
         _state.update(state="downloading", error=None)
-        _task = asyncio.create_task(download_all())
+        task = asyncio.create_task(download_all())
+        _tasks.add(task)
+        task.add_done_callback(_tasks.discard)
     return status()
 
 
@@ -235,9 +247,12 @@ def make_demo_mount(directory: str):
 
     class DemoMediaFiles(SafeMediaFiles):
         async def get_response(self, path: str, scope):
+            # Windows hands the static mount backslash-separated paths.
+            norm = path.replace("\\", "/")
             prefix = "demo/dubbing/"
-            if path.startswith(prefix):
-                name = path[len(prefix):]
+            if norm.startswith(prefix):
+                # Only exact pinned names resolve, so no separator or ".." survives.
+                name = norm[len(prefix):]
                 cached = cached_path(name)
                 if cached is not None:
                     inner = SafeMediaFiles(directory=str(cached.parent), check_dir=False)

@@ -289,3 +289,23 @@ it('ignores a slow initial status answer that arrives after Download was clicked
   // Polling then reaches ready.
   await screen.findByRole('button', { name: 'dubbing-demo-comparison-demo.original_tag' }, { timeout: 3000 });
 });
+
+it('does not let a status poll that raced ahead of the POST undo the downloading state', async () => {
+  let releasePost: (s: Status) => void = () => {};
+  mocks.api.mockImplementation(async (path: string) => {
+    if (path.endsWith('/manifest.json')) return manifest;
+    if (path === '/demo/dubbing/status') return IDLE;
+    return new Promise<Status>((resolve) => { releasePost = resolve; });
+  });
+  render(<DubbingDemo onDismiss={vi.fn()} onTry={vi.fn()} onEdit={vi.fn()} />);
+
+  fireEvent.click(await screen.findByRole('button', { name: 'demo.dubbing_download' }));
+  await screen.findByRole('progressbar');
+  // Let at least one poll tick answer idle while the POST is still pending.
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  expect(screen.getByRole('progressbar')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'demo.dubbing_download' })).toBeNull();
+
+  releasePost({ state: 'downloading', total_bytes: 100, downloaded_bytes: 50 });
+  await screen.findByRole('progressbar');
+});
