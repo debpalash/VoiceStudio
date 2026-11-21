@@ -915,7 +915,7 @@ async def install_model(req: InstallModelRequest):
                     if settle_install_pending(
                         hub_repo, dl_kwargs["revision"], _pending_cache,
                         expected_files=expected_files_from_plan(_main_plan),
-                        fetch_kwargs=dl_kwargs,
+                        fetch_kwargs=dl_kwargs, model=model_spec,
                     ) == "incomplete":
                         raise OSError(f"{req.repo_id}: download returned an incomplete snapshot")
                     _validate_snapshot_has_weights(req.repo_id, _snapshot_path)
@@ -942,7 +942,7 @@ async def install_model(req: InstallModelRequest):
                         if settle_install_pending(
                             dependency_id, dependency_kwargs["revision"], _pending_cache,
                             expected_files=expected_files_from_plan(_dependency_plans.get(dependency_id)),
-                            fetch_kwargs=dependency_kwargs,
+                            fetch_kwargs=dependency_kwargs, model=dependency,
                         ) == "incomplete":
                             raise OSError(f"{dependency_id}: download returned an incomplete snapshot")
                         if not snapshot_is_complete(dependency, dependency_path):

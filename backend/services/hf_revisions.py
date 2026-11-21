@@ -193,25 +193,80 @@ def revision_verified_complete(repo_dir: str, revision: str, expected_files=None
     return True
 
 
+def _catalogue_entry(repo_id: str) -> dict:
+    try:
+        from services.model_catalogue import KNOWN_MODELS
+
+        return next((m for m in KNOWN_MODELS if m.get("repo_id") == repo_id and not m.get("id")), {})
+    except Exception:
+        return {}
+
+
+def fallback_verified_complete(repo_dir: str, revision: str, model: "dict | None" = None) -> bool:
+    """Completeness proof for when the Hub's file list is unavailable.
+
+    Weaker than :func:`revision_verified_complete`, but it still catches the
+    unfinished-transfer states: no partial blob in the repo, every entry of the
+    revision's snapshot resolves to a non-empty blob, a plausible weight is
+    present and any weights the catalogue entry declares are all there.
+    """
+    from services.model_catalogue import snapshot_has_weights
+
+    repo = Path(repo_dir)
+    snapshot = repo / "snapshots" / revision
+    try:
+        blobs = repo / "blobs"
+        if blobs.is_dir() and any(n.endswith((".incomplete", ".part")) for n in os.listdir(blobs)):
+            return False
+        found = False
+        for root, _dirs, files in os.walk(snapshot):
+            for name in files:
+                found = True
+                if os.stat(os.path.join(root, name)).st_size <= 0:  # a dangling link raises
+                    return False
+        if not found:
+            return False
+        if not (model or {}).get("config_only") and not snapshot_has_weights(str(snapshot)):
+            return False
+        for weight in (model or {}).get("known_weights") or ():
+            if (snapshot / weight).stat().st_size <= 0:
+                return False
+    except OSError:
+        return False
+    return True
+
+
 def settle_install_pending(repo_id: str, revision: str, cache_dir: str, *,
-                           expected_files=None, fetch_kwargs=None) -> str:
+                           expected_files=None, fetch_kwargs=None, model=None) -> str:
     """Clear the pending marker only on proof the revision is complete.
 
     Returns ``"cleared"`` (verified, or nothing was pending), ``"incomplete"``
-    (the expected files are known and some are missing or partial) or
-    ``"unknown"`` (no file list to verify against; the marker stays).
+    (the Hub's file list is known and files are missing or partial) or
+    ``"unverified"`` (no file list and the weaker fallback proof failed). The
+    marker stays in the last two. Without a file list (mirror lacking dry-run,
+    metadata timeout) :func:`fallback_verified_complete` applies, so a good
+    install is not left reading as incomplete.
     """
     repo_dir = _repo_dir(repo_id, cache_dir)
     if install_pending_revision(str(repo_dir)) != revision:
         return "cleared"
     if not expected_files and fetch_kwargs is not None:
         expected_files = fetch_expected_files(**fetch_kwargs)
-    if not expected_files:
-        return "unknown"
-    if revision_verified_complete(str(repo_dir), revision, expected_files):
+    failed = "incomplete"
+    if expected_files:
+        verified = revision_verified_complete(str(repo_dir), revision, expected_files)
+    else:
+        failed = "unverified"
+        verified = fallback_verified_complete(
+            str(repo_dir), revision, model if model is not None else _catalogue_entry(repo_id))
+        _logger.info(
+            "install completeness: file list unavailable, used the fallback proof (%s)",
+            "complete" if verified else "incomplete",
+        )
+    if verified:
         clear_install_pending(repo_id, revision, cache_dir)
         return "cleared"
-    return "incomplete"
+    return failed
 
 
 def install_pending_revision(repo_dir: str) -> "str | None":

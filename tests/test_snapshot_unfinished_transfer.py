@@ -308,11 +308,58 @@ def test_install_keeps_the_marker_when_download_returns_an_incomplete_snapshot(d
     assert not catalogue.snapshot_is_complete(MODEL, str(cache / FOLDER / "snapshots" / COMMIT))
 
 
-def test_install_keeps_the_marker_when_the_file_list_is_unknown(download, cache, monkeypatch):
+def test_unknown_file_list_and_a_clean_complete_snapshot_clears_the_marker(download, catalogue, cache, monkeypatch):
     _patch_install(download, monkeypatch, _hub(cache, complete=True, dry_run_fails=True))
     _run_install(download)
 
-    assert _marker(cache).exists()  # no proof of completeness, so it stays
+    assert not _marker(cache).exists()
+    assert catalogue.snapshot_is_complete(MODEL, str(cache / FOLDER / "snapshots" / COMMIT))
+
+
+def test_unknown_file_list_with_a_partial_blob_keeps_the_marker(download, cache, monkeypatch):
+    def hub(**kwargs):
+        if kwargs.get("dry_run"):
+            raise OSError("metadata timeout")
+        snapshot = _snapshot(cache, main_weight=True)
+        blobs = cache / FOLDER / "blobs"
+        blobs.mkdir(exist_ok=True)
+        (blobs / "abc.incomplete").write_bytes(b"\0")
+        return str(snapshot)
+
+    _patch_install(download, monkeypatch, hub)
+    _run_install(download)
+
+    assert _marker(cache).exists()
+
+
+def test_unknown_file_list_with_a_dangling_link_keeps_the_marker(download, cache, monkeypatch, symlink_or_skip):
+    def hub(**kwargs):
+        if kwargs.get("dry_run"):
+            raise OSError("metadata timeout")
+        snapshot = _snapshot(cache, main_weight=True)
+        link = snapshot / "tokenizer.json"
+        if not link.is_symlink():  # the installer retries, so this runs again
+            symlink_or_skip(link, cache / "missing-blob")
+        return str(snapshot)
+
+    _patch_install(download, monkeypatch, hub)
+    _run_install(download)
+
+    assert _marker(cache).exists()
+
+
+def test_fallback_requires_the_weights_the_catalogue_declares(revisions, cache):
+    _snapshot(cache)  # the tokenizer weight only
+    model = {"repo_id": REPO, "known_weights": ["model.safetensors", "audio_tokenizer/model.safetensors"]}
+    assert not revisions.fallback_verified_complete(str(cache / FOLDER), COMMIT, model)
+    _snapshot(cache, main_weight=True)
+    assert revisions.fallback_verified_complete(str(cache / FOLDER), COMMIT, model)
+
+
+def test_omnivoice_declares_both_weights_without_strict_mode(catalogue):
+    entry = next(m for m in catalogue.KNOWN_MODELS if m["repo_id"] == REPO)
+    assert entry["known_weights"] == ["model.safetensors", "audio_tokenizer/model.safetensors"]
+    assert "required_files" not in entry
 
 
 def test_load_time_repair_clears_the_marker(revisions, cache, monkeypatch):
