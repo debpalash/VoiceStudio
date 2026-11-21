@@ -1,6 +1,6 @@
 import { ArrowLeftIcon, CheckIcon, PencilIcon, PlusIcon, SearchIcon } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useProfiles } from '@/hooks/use-profiles';
 import { Button } from '@/components/ui/button';
@@ -56,15 +56,25 @@ function VoiceCard({
       ? new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(created)
       : null,
   ].filter(Boolean);
+  const hasFile = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('Files');
   return (
     <div
       data-slot="voice-card"
+      // The photo ignores pointer events so clicks reach the card; drops land on the whole card.
+      onDragOver={(event) => hasFile(event) && event.preventDefault()}
+      onDrop={(event) => {
+        // The photo's own drop handler already took (and prevented) a drop on its badge.
+        if (event.defaultPrevented || !hasFile(event)) return;
+        event.preventDefault();
+        const file = event.dataTransfer.files[0];
+        if (file) void photo.save(file);
+      }}
       className={cn(
         'group/card relative flex h-[68px] min-w-0 items-center gap-3 rounded-xl border bg-card/40 px-3 transition-[background-color,border-color,box-shadow] duration-150 hover:border-border hover:bg-muted/40 has-[[data-choose]:focus-visible]:ring-2 has-[[data-choose]:focus-visible]:ring-ring',
         current ? 'border-primary/60 bg-primary/5' : 'border-border/60',
       )}
     >
-      {/* Covers the card so the whole surface chooses the voice; photo and edit sit above it. */}
+      {/* Covers the card so the whole surface chooses the voice; only the photo's camera badge and edit sit above it. */}
       <button
         type="button"
         data-choose
@@ -80,6 +90,7 @@ function VoiceCard({
         onFile={(file) => void photo.save(file)}
         label={`${t('cloneFlow.change_photo')}: ${profile.name}`}
         className="z-10 size-11 text-sm"
+        badge
       />
       <span className="pointer-events-none min-w-0 flex-1">
         <span className="flex items-center gap-1.5">

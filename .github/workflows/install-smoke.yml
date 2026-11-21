@@ -2,7 +2,9 @@
 #
 # The job installs a release and then the pull request's own source as `main`, so
 # it builds the product: the trigger list is the files that build feeds on, not
-# only the installer scripts. A change to the package manifests, the lockfiles,
+# only the installer scripts. The runtime setup code (Python download, wheel prefetch,
+# mirror choice, sidecar installs, ffmpeg fetch) is listed too. On a pull request the job
+# also skips documentation/test-only changes through the shared `changes` job. A change to the package manifests, the lockfiles,
 # the Electron builder config, the runtime setup helpers or the bundled CLI can
 # break the install while every other job stays green.
 name: Install smoke
@@ -42,6 +44,19 @@ on:
       - 'scripts/smoke_windows_rocm.py'
       - 'electron/*vite*.config.ts'
       - 'electron/T3CODE-LICENSE.txt'
+      - 'deploy/install-worker/**'
+      - 'backend/services/sidecar_*.py'
+      - 'backend/services/rocm_sidecar_index.py'
+      - 'backend/services/media_tools.py'
+      - 'backend/services/endpoint_race.py'
+      - 'electron/src/main/setup-*.ts'
+      - 'electron/src/main/runtime-*.ts'
+      - 'electron/src/main/bundled-runtime.ts'
+      - 'electron/src/main/python-runtime-discovery.ts'
+      - 'electron/src/main/wheel-prefetch.ts'
+      - 'electron/src/main/pypi-mirror.ts'
+      - 'electron/src/main/install-doctor.ts'
+      - 'electron/src/main/uninstall-*.ts'
       - '.github/scripts/apt-retry.sh'
       - '.github/workflows/install-smoke.yml'
   push:
@@ -80,11 +95,27 @@ on:
       - 'scripts/smoke_windows_rocm.py'
       - 'electron/*vite*.config.ts'
       - 'electron/T3CODE-LICENSE.txt'
+      - 'deploy/install-worker/**'
+      - 'backend/services/sidecar_*.py'
+      - 'backend/services/rocm_sidecar_index.py'
+      - 'backend/services/media_tools.py'
+      - 'backend/services/endpoint_race.py'
+      - 'electron/src/main/setup-*.ts'
+      - 'electron/src/main/runtime-*.ts'
+      - 'electron/src/main/bundled-runtime.ts'
+      - 'electron/src/main/python-runtime-discovery.ts'
+      - 'electron/src/main/wheel-prefetch.ts'
+      - 'electron/src/main/pypi-mirror.ts'
+      - 'electron/src/main/install-doctor.ts'
+      - 'electron/src/main/uninstall-*.ts'
       - '.github/scripts/apt-retry.sh'
       - '.github/workflows/install-smoke.yml'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: install-smoke-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
