@@ -70,3 +70,60 @@ def test_isolated_sidecar_decodes_windows_independently(monkeypatch):
     assert out["text"] == "hello"
     assert fake.kwargs["condition_on_previous_text"] is False
     assert fake.kwargs["beam_size"] == 2 and fake.kwargs["language"] == "fr"
+
+
+# ── Perf: CPU threads + CUDA batched decode with sequential fallback ─────────
+
+def _cuda_backend(monkeypatch, pipe):
+    from services import asr_backend as ab
+
+    backend = ab.FasterWhisperBackend(model_name="small")
+    seq = _FakeModel()
+    backend._model = seq
+    backend._device = "cuda"
+    backend._batched_pipe = pipe
+    backend._batched_for = seq
+    monkeypatch.setattr(backend, "_ensure_model", lambda: None)
+    return backend, seq
+
+
+def test_cuda_uses_batched_pipeline(monkeypatch):
+    pipe = _FakeModel()
+    backend, seq = _cuda_backend(monkeypatch, pipe)
+    backend.transcribe("clip.wav", word_timestamps=True)
+    assert pipe.kwargs["batch_size"] >= 8
+    assert pipe.kwargs["vad_filter"] is True and pipe.kwargs["word_timestamps"] is True
+    assert seq.kwargs is None
+
+
+def test_batched_failure_falls_back_to_sequential(monkeypatch):
+    class _Boom(_FakeModel):
+        def transcribe(self, *_a, **_k):
+            raise RuntimeError("batched exploded")
+
+    backend, seq = _cuda_backend(monkeypatch, _Boom())
+    out = backend.transcribe("clip.wav", word_timestamps=False)
+    assert out["segments"][0]["text"] == "hello"
+    assert seq.kwargs is not None and "batch_size" not in seq.kwargs
+    assert backend._batched is False  # not retried on every chunk
+
+
+def test_batched_kill_switch_and_non_cuda(monkeypatch):
+    pipe = _FakeModel()
+    backend, seq = _cuda_backend(monkeypatch, pipe)
+    monkeypatch.setenv("OMNIVOICE_ASR_BATCHED", "0")
+    backend.transcribe("clip.wav", word_timestamps=False)
+    assert pipe.kwargs is None and seq.kwargs is not None
+    monkeypatch.delenv("OMNIVOICE_ASR_BATCHED")
+    backend2, seq2 = _cuda_backend(monkeypatch, pipe)
+    backend2._device = "cpu"
+    backend2.transcribe("clip.wav", word_timestamps=False)
+    assert pipe.kwargs is None and seq2.kwargs is not None
+
+
+def test_cpu_threads_capped():
+    from services import asr_backend as ab
+
+    kw = ab._whisper_thread_kwargs("cpu")
+    assert 1 <= kw["cpu_threads"] <= 8
+    assert ab._whisper_thread_kwargs("cuda") == {}

@@ -493,6 +493,26 @@ def transcribe_request_kwargs(backend, options: dict) -> dict:
 WHISPER_LONG_FORM_OPTIONS = {"condition_on_previous_text": False}
 
 
+def _whisper_thread_kwargs(device: str) -> dict:
+    """CPU decode threads: all cores up to 8 (CTranslate2 defaults to 4)."""
+    if device != "cpu":
+        return {}
+    return {"cpu_threads": min(os.cpu_count() or 4, 8)}
+
+
+def whisper_batching_enabled() -> bool:
+    """Kill switch for CUDA batched decode: OMNIVOICE_ASR_BATCHED=0 disables it."""
+    return os.environ.get("OMNIVOICE_ASR_BATCHED", "1").strip().lower() not in (
+        "0", "false", "no", "off")
+
+
+def whisper_batch_size() -> int:
+    try:
+        return max(1, min(32, int(os.environ.get("OMNIVOICE_ASR_BATCH_SIZE", "12"))))
+    except ValueError:
+        return 12
+
+
 def whisper_request_options(language, initial_prompt, temperature, task) -> dict:
     """Whisper-family decode kwargs for the options that were actually set."""
     opts: dict = {}
@@ -1375,7 +1395,8 @@ class FasterWhisperBackend(ASRBackend):
             for ct in candidates:
                 try:
                     self._model = WhisperModel(
-                        _local_model_source(self._model_name), device=device, compute_type=ct
+                        _local_model_source(self._model_name), device=device, compute_type=ct,
+                        **_whisper_thread_kwargs(device),
                     )
                     self._device, self._compute_type = device, ct
                     return
@@ -1416,6 +1437,26 @@ class FasterWhisperBackend(ASRBackend):
             # the last error.
             raise last_err
 
+    def _batched_pipeline(self):
+        """Lazily wrap the model in BatchedInferencePipeline (CUDA only), else None."""
+        if getattr(self, "_batched", None) is False or getattr(self, "_device", None) != "cuda":
+            return None
+        if not whisper_batching_enabled():
+            return None
+        cached = getattr(self, "_batched_pipe", None)
+        if cached is not None and getattr(self, "_batched_for", None) is self._model:
+            return cached
+        try:
+            from faster_whisper import BatchedInferencePipeline
+
+            self._batched_pipe = BatchedInferencePipeline(self._model)
+            self._batched_for = self._model
+            return self._batched_pipe
+        except Exception as e:  # noqa: BLE001 — older faster-whisper: stay sequential
+            logger.info("faster-whisper batched pipeline unavailable (%s) — sequential decode", e)
+            self._batched = False
+            return None
+
     def supports_translation(self) -> bool:
         return whisper_checkpoint_translates(self._model_name)
 
@@ -1440,15 +1481,29 @@ class FasterWhisperBackend(ASRBackend):
         # index / re-iterate.
         from services.performance_profiles import asr_decode_defaults
 
-        segments_iter, info = self._model.transcribe(
-            audio_path,
+        decode_kwargs = dict(
             word_timestamps=word_timestamps,
             vad_filter=True,  # built-in Silero VAD — cleaner segment starts
             **asr_decode_defaults(),
             **WHISPER_LONG_FORM_OPTIONS,
             **whisper_request_options(language, initial_prompt, temperature, task),
         )
-        segments = list(segments_iter)
+        segments = info = None
+        pipeline = self._batched_pipeline()
+        if pipeline is not None:
+            try:
+                segments_iter, info = pipeline.transcribe(
+                    audio_path, batch_size=whisper_batch_size(), **decode_kwargs)
+                segments = list(segments_iter)
+            except Exception as e:  # noqa: BLE001 — any batched failure → sequential path
+                logger.warning(
+                    "faster-whisper batched decode failed (%s: %s) — falling back "
+                    "to sequential decode", type(e).__name__, e)
+                self._batched = False
+                segments = info = None
+        if segments is None:
+            segments_iter, info = self._model.transcribe(audio_path, **decode_kwargs)
+            segments = list(segments_iter)
         # Normalise to the shape segment_transcript(...) expects: a dict with
         # `chunks` (for backwards compat with mlx output) AND `segments` +
         # `language` (so callers that peek at language metadata keep working).
