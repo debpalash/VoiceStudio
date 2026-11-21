@@ -21,6 +21,7 @@ native word timestamps (±100-300 ms).
 from __future__ import annotations
 
 import os
+import threading
 
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
@@ -214,6 +215,9 @@ def _fresh_capture_singleton(monkeypatch):
     environment: no sherpa pref, MLX whisper + faster-whisper available."""
     monkeypatch.setattr(ab, "_capture_backend", None)
     monkeypatch.setattr(ab, "_capture_backend_key", None)
+    # A developer's own pin would make the ROCm assertions below resolve to that
+    # model instead of the catalogue checkpoint (#3549's host-independence rule).
+    monkeypatch.delenv("OMNIVOICE_PYTORCH_ASR_MODEL", raising=False)
     monkeypatch.setattr(ab, "dictation_model_id", lambda: None)
     monkeypatch.setattr(ab.MLXWhisperBackend, "is_available",
                         classmethod(lambda cls: (True, "ready")))
@@ -520,3 +524,393 @@ def test_ctranslate2_gate_fails_safe_when_the_probe_breaks(monkeypatch):
     monkeypatch.setattr(ab, "_cuda_reported_available", lambda: True)
     monkeypatch.setattr(ab, "_rocm_torch", lambda: False)
     assert ab._ctranslate2_cuda_ok() is False
+
+
+# ── capture / dictation picker on the same hosts (#4317) ──────────────────────
+#
+# _auto_detect() has preferred the torch-native pipeline on ROCm since #1529, but
+# the capture/dictation picker below it did not consult the device at all: it
+# fell through to "faster-whisper (CPU int8 on non-Apple)" unconditionally. On a
+# Linux ROCm host that is the CUDA-only CTranslate2 wheel, so dictation ran on
+# the CPU while the HIP GPU sat idle — the picker disagreed with _auto_detect()
+# about the same machine. These tests hold the two in step.
+
+
+def _no_apple_engines(monkeypatch):
+    """A non-Apple host: no Apple-only tier may claim to be installable.
+
+    Both of them, not just MLX. These tests stub ``_repo_installed`` to True, so
+    on an Apple Silicon dev machine ``_capture_prefers_parakeet()`` would be
+    satisfied and the picker would return ParakeetMLXBackend before it ever
+    reaches the ROCm branch -- passing on Linux CI and failing locally (#3549).
+    """
+    monkeypatch.setattr(ab.MLXWhisperBackend, "is_available",
+                        classmethod(lambda cls: (False, "needs Apple Silicon")))
+    monkeypatch.setattr(ab.ParakeetMLXBackend, "is_available",
+                        classmethod(lambda cls: (False, "needs Apple Silicon")))
+
+
+def test_rocm_capture_picks_pytorch_whisper_not_cpu_ctranslate2(
+        _fresh_capture_singleton, monkeypatch):
+    """The #4317 regression: before the fix the picker returned
+    FasterWhisperBackend, i.e. CTranslate2 on the CPU, on a host where torch
+    rides the HIP GPU. The weights are already installed, so taking the
+    torch-native pick cannot trigger a download."""
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: True)
+    # Only the catalogue checkpoint counts as installed: a gate that checked the
+    # PyTorch default instead would get False here and pick CTranslate2.
+    monkeypatch.setattr(ab, "_repo_installed",
+                        lambda repo, **kw: repo == ab._ROCM_CAPTURE_PYTORCH_REPO)
+    monkeypatch.setattr(
+        ab, "_probe_available", _probe({"pytorch-whisper", "faster-whisper"})
+    )
+    backend = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(backend, ab.PyTorchWhisperBackend)
+    # The picker, the loader and the dictation preflight have to agree on one
+    # repo, and it has to be the one the catalogue advertises for ROCm --
+    # otherwise installing that model changes nothing and the 409 names the
+    # wrong checkpoint.
+    assert backend._resolved_model_name() == ab._ROCM_CAPTURE_PYTORCH_REPO
+    assert ab._capture_whisper_repo() == ab._ROCM_CAPTURE_PYTORCH_REPO
+
+
+def test_cuda_capture_still_prefers_ctranslate2(_fresh_capture_singleton, monkeypatch):
+    """No regression on NVIDIA, where CTranslate2 owns the GPU and is the
+    fastest tier: the ROCm rule must not steal the pick there."""
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: True)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: False)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: True)
+    monkeypatch.setattr(
+        ab, "_probe_available", _probe({"pytorch-whisper", "faster-whisper"})
+    )
+    backend = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(backend, ab.FasterWhisperBackend)
+
+
+def test_cpu_only_capture_still_falls_back_to_faster_whisper(
+        _fresh_capture_singleton, monkeypatch):
+    """A plain CPU box has no HIP GPU to prefer, so the cross-platform
+    CTranslate2 fallback stays the pick — the fix is not a blanket swap."""
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: False)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: False)
+    monkeypatch.setattr(
+        ab, "_probe_available", _probe({"pytorch-whisper", "faster-whisper"})
+    )
+    backend = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(backend, ab.FasterWhisperBackend)
+
+
+def test_rocm_capture_without_transformers_degrades_to_faster_whisper(
+        _fresh_capture_singleton, monkeypatch):
+    """pytorch-whisper not installed → the previous pick stands. Never strand a
+    ROCm user whose environment lacks transformers."""
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: True)
+    monkeypatch.setattr(ab, "_repo_installed", lambda repo, **kw: True)
+    monkeypatch.setattr(ab, "_probe_available", _probe({"faster-whisper"}))
+    backend = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(backend, ab.FasterWhisperBackend)
+
+
+def test_rocm_capture_without_installed_weights_keeps_the_preflighted_pick(
+        _fresh_capture_singleton, monkeypatch):
+    """An auto pick must not turn dictation into a surprise multi-GB download.
+
+    pytorch-whisper's default repo is deliberately outside the download CTA
+    (asr_model_missing_error fails open for it), so an uninstalled ROCm host
+    keeps the catalogue-known CTranslate2 pick it had before. The user reaches
+    the GPU path by installing the ROCm PyTorch model from the catalogue.
+    """
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: True)
+    monkeypatch.setattr(ab, "_repo_installed", lambda repo, **kw: False)
+    monkeypatch.setattr(
+        ab, "_probe_available", _probe({"pytorch-whisper", "faster-whisper"})
+    )
+    backend = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(backend, ab.FasterWhisperBackend)
+    # The preflight mirror stays coverable by the download CTA.
+    assert ab._capture_whisper_repo() == ab._fw_repo(ab.faster_whisper_model_id())
+
+
+def test_broken_cached_capture_backend_is_not_reused(
+        _fresh_capture_singleton, monkeypatch):
+    """A backend recorded in _DEEP_IMPORT_BROKEN must not be served from the
+    warm singleton. Recording a broken deep import never clears the cache, so
+    without this guard an auto pick that fell back once keeps handing out the
+    engine that just failed."""
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: True)
+    monkeypatch.setattr(ab, "_repo_installed", lambda repo, **kw: True)
+    monkeypatch.setattr(
+        ab, "_probe_available", _probe({"pytorch-whisper", "faster-whisper"})
+    )
+    first = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(first, ab.PyTorchWhisperBackend)
+
+    # The first real load fails in its import chain and is recorded; the real
+    # probe then reports that backend unavailable.
+    monkeypatch.setitem(ab._DEEP_IMPORT_BROKEN, ab.PyTorchWhisperBackend.id, "boom")
+    monkeypatch.setattr(ab, "_probe_available", _probe({"faster-whisper"}))
+
+    second = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert second is not first
+    assert isinstance(second, ab.FasterWhisperBackend)
+
+
+def test_installing_the_rocm_pytorch_model_upgrades_the_cached_capture_pick(
+        _fresh_capture_singleton, monkeypatch):
+    """Installing the advertised ROCm model must move dictation to the GPU.
+
+    The warm-singleton key has to carry the ROCm decision, exactly like the
+    parakeet gate above. Without it, a pick cached while the weights were absent
+    keeps being served after the install, and the uncached preflight then names
+    the GPU repo while capture still returns CTranslate2.
+    """
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: True)
+    installed = {"v": False}
+    monkeypatch.setattr(ab, "_repo_installed", lambda repo, **kw: installed["v"])
+    monkeypatch.setattr(
+        ab, "_probe_available", _probe({"pytorch-whisper", "faster-whisper"})
+    )
+
+    before = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(before, ab.FasterWhisperBackend)
+
+    # The user installs the model the Model Catalogue advertises for AMD.
+    installed["v"] = True
+
+    after = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(after, ab.PyTorchWhisperBackend)
+    assert after._resolved_model_name() == ab._ROCM_CAPTURE_PYTORCH_REPO
+    # …and the preflight now agrees with the picker instead of contradicting it.
+    assert ab._capture_whisper_repo() == ab._ROCM_CAPTURE_PYTORCH_REPO
+
+
+def test_repinning_the_rocm_checkpoint_rebuilds_the_capture_pick(
+        _fresh_capture_singleton, monkeypatch):
+    """The resolved checkpoint is part of the singleton key too, so repinning
+    OMNIVOICE_PYTORCH_ASR_MODEL swaps what gets loaded instead of serving the
+    previously built backend."""
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: True)
+    monkeypatch.setattr(ab, "_repo_installed", lambda repo, **kw: True)
+    monkeypatch.setattr(
+        ab, "_probe_available", _probe({"pytorch-whisper", "faster-whisper"})
+    )
+    first = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert first._resolved_model_name() == ab._ROCM_CAPTURE_PYTORCH_REPO
+
+    monkeypatch.setenv("OMNIVOICE_PYTORCH_ASR_MODEL", "openai/whisper-large-v2")
+
+    second = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert second is not first
+    assert second._resolved_model_name() == "openai/whisper-large-v2"
+    assert ab._capture_whisper_repo() == "openai/whisper-large-v2"
+
+
+def test_rocm_gate_does_not_touch_the_driver_on_a_cpu_restart(
+        _fresh_capture_singleton, monkeypatch):
+    """A "restart on CPU" recovery must not initialise the driver it avoids
+    (#4006). The gate asks gpu_probe_skipped() before torch.cuda.is_available(),
+    in the picker and in the preflight alike."""
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
+    monkeypatch.setattr(ab, "_gpu_probe_skipped", lambda: True)
+    monkeypatch.setattr(ab, "_repo_installed", lambda repo, **kw: True)
+    monkeypatch.setattr(
+        ab, "_probe_available", _probe({"pytorch-whisper", "faster-whisper"})
+    )
+
+    def _driver_touch():
+        raise AssertionError("torch.cuda.is_available() must not run after a CPU restart")
+
+    monkeypatch.setattr(ab, "_cuda_reported_available", _driver_touch)
+
+    backend = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(backend, ab.FasterWhisperBackend)
+    # The preflight answers the same question without probing either.
+    assert ab._capture_whisper_repo() == ab._fw_repo(ab.faster_whisper_model_id())
+
+
+def test_rocm_last_resort_loads_the_catalogue_checkpoint(
+        _fresh_capture_singleton, monkeypatch):
+    """With CTranslate2 unusable and no PyTorch weights on disk, the last resort
+    still has to name a catalogue-backed checkpoint. Serving the uncatalogued
+    default there is what lets the preflight fail open and download silently."""
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_ctranslate2_cuda_ok", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: True)
+    monkeypatch.setattr(ab, "_repo_installed", lambda repo, **kw: False)
+    monkeypatch.setattr(ab, "_probe_available", _probe(set()))
+    monkeypatch.setattr(ab.FasterWhisperBackend, "is_available",
+                        classmethod(lambda cls: (False, "no ctranslate2")))
+
+    backend = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(backend, ab.PyTorchWhisperBackend)
+    assert backend._resolved_model_name() == ab._ROCM_CAPTURE_PYTORCH_REPO
+    assert ab._capture_whisper_repo() == ab._ROCM_CAPTURE_PYTORCH_REPO
+
+
+class _ProbeLock:
+    """A lock that reports when a second acquirer has to wait for a holder."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.contended = threading.Event()
+
+    def __enter__(self):
+        if not self._lock.acquire(blocking=False):
+            # Somebody holds it: this is the contention the test must observe
+            # before it is allowed to release the first builder.
+            self.contended.set()
+            self._lock.acquire()
+        return self
+
+    def __exit__(self, *exc):
+        self._lock.release()
+        return False
+
+
+def test_concurrent_cold_pipeline_load_builds_once(monkeypatch):
+    """Dictation can run two requests against one shared backend before the
+    pipeline exists. The cold load must run once, not twice: a second GPU build
+    can OOM, which is the transient failure this guards.
+
+    The second worker has to reach the lock while the first still holds it, so
+    the assertion cannot pass merely because the two threads never overlapped.
+    """
+    backend = ab.PyTorchWhisperBackend()
+    probe = _ProbeLock()
+    monkeypatch.setattr(backend, "_pipe_lock", probe)
+
+    calls = []
+    building = threading.Event()
+    release = threading.Event()
+
+    def _slow_build():
+        calls.append(1)
+        building.set()
+        release.wait(5)
+        backend._pipe = object()
+
+    monkeypatch.setattr(backend, "_build_pipe", _slow_build)
+
+    first = threading.Thread(target=backend._ensure_pipe, daemon=True)
+    first.start()
+    assert building.wait(5), "the cold build never started"
+
+    second = threading.Thread(target=backend._ensure_pipe, daemon=True)
+    second.start()
+    assert probe.contended.wait(5), "the second worker never contended for the cold load"
+
+    release.set()
+    first.join(10)
+    second.join(10)
+
+    assert not first.is_alive() and not second.is_alive()
+    assert calls == [1]
+    assert backend._pipe is not None
+
+
+def test_no_apple_engines_neutralises_parakeet_too(
+        _fresh_capture_singleton, monkeypatch):
+    """A Mac with parakeet-mlx installed satisfies _capture_prefers_parakeet(),
+    and these tests stub _repo_installed to True, so the picker would return
+    ParakeetMLXBackend before it reaches the ROCm branch -- green on Linux CI,
+    six failures on an Apple Silicon machine (#3549). The helper has to
+    neutralise that tier, not just MLX."""
+    monkeypatch.setattr(ab.ParakeetMLXBackend, "is_available",
+                        classmethod(lambda cls: (True, "installed")))
+    monkeypatch.setattr(ab, "_parakeet_mlx_installed", lambda: True)
+    monkeypatch.setattr(ab, "_locale_language", lambda: "en")
+    assert ab._capture_prefers_parakeet() is True
+
+    _no_apple_engines(monkeypatch)
+
+    assert ab._capture_prefers_parakeet() is False
+
+
+def test_deleting_a_model_clears_the_installed_memo(monkeypatch):
+    """_repo_installed memoises positives for the session, so a delete has to
+    drop them or an engine pick keeps trusting a checkpoint that is gone.
+
+    Exercised through the real wiring: the memo registers its invalidation with
+    the catalogue cache it mirrors, and that cache is what install and delete
+    already bust."""
+    from api.routers.setup import models as setup_models
+
+    monkeypatch.setattr(ab, "_INSTALLED_REPO_MEMO", set())
+    monkeypatch.setattr(setup_models, "is_cached", lambda repo: True)
+    monkeypatch.setattr(setup_models, "cache_is_complete", lambda meta: True)
+
+    assert ab._repo_installed(ab._ROCM_CAPTURE_PYTORCH_REPO) is True
+    assert ab._ROCM_CAPTURE_PYTORCH_REPO in ab._INSTALLED_REPO_MEMO
+
+    setup_models.invalidate_cache()
+
+    assert ab._ROCM_CAPTURE_PYTORCH_REPO not in ab._INSTALLED_REPO_MEMO
+
+
+def test_an_invalidation_during_the_disk_probe_is_not_undone(monkeypatch):
+    """A delete can land while the probe is running. The add that follows it must
+    not put the checkpoint back: the memo is exactly what an engine pick trusts,
+    and the comparison plus the insertion share the clear's lock."""
+    from api.routers.setup import models as setup_models
+
+    monkeypatch.setattr(ab, "_INSTALLED_REPO_MEMO", set())
+    monkeypatch.setattr(setup_models, "is_cached", lambda repo: True)
+
+    def _probe_then_delete(meta):
+        # The delete lands mid-probe, after the generation was read.
+        ab.invalidate_installed_memo()
+        return True
+
+    monkeypatch.setattr(setup_models, "cache_is_complete", _probe_then_delete)
+
+    assert ab._repo_installed(ab._ROCM_CAPTURE_PYTORCH_REPO) is True
+    assert ab._ROCM_CAPTURE_PYTORCH_REPO not in ab._INSTALLED_REPO_MEMO
+
+
+def test_rocm_last_resort_cache_identity_follows_the_checkpoint(
+        _fresh_capture_singleton, monkeypatch):
+    """The last-resort PyTorch fallback constructs with the resolved checkpoint
+    on any ROCm host, including when the gate could not fire (CPU restart, or no
+    weights to verify). The singleton key has to follow it, or a repin leaves the
+    preflight naming the new checkpoint while the cached backend uses the old."""
+    _no_apple_engines(monkeypatch)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
+    monkeypatch.setattr(ab, "_gpu_probe_skipped", lambda: True)
+    monkeypatch.setattr(ab, "_repo_installed", lambda repo, **kw: False)
+    monkeypatch.setattr(ab, "_probe_available", _probe(set()))
+    monkeypatch.setattr(ab.FasterWhisperBackend, "is_available",
+                        classmethod(lambda cls: (False, "no ctranslate2")))
+
+    first = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert first._resolved_model_name() == ab._ROCM_CAPTURE_PYTORCH_REPO
+
+    monkeypatch.setenv("OMNIVOICE_PYTORCH_ASR_MODEL", "openai/whisper-large-v2")
+
+    second = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert second is not first
+    assert second._resolved_model_name() == "openai/whisper-large-v2"
+    assert ab._capture_whisper_repo() == "openai/whisper-large-v2"
