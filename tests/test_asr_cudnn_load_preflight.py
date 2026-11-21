@@ -21,7 +21,7 @@ class CudnnLoadPreflightTests(unittest.TestCase):
             with self.subTest(cudnn_ok=cudnn_ok):
                 calls = []
 
-                def load(source, *, device, compute_type):
+                def load(source, *, device, compute_type, **_kw):
                     calls.append((source, device, compute_type))
                     return object()
 

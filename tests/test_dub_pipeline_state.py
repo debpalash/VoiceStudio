@@ -158,3 +158,94 @@ def test_save_job_upsert_does_not_clobber_language_with_empty():
     row = _lang_row(jid)
     assert row["language"] == "Bengali"
     assert row["language_code"] == "bn"
+
+
+# ── Async save keeps the #1252 tombstone invariant and frees the loop ───────
+
+
+def test_aput_and_save_job_persists_off_the_event_loop():
+    import asyncio
+    import threading
+
+    from core.db import db_conn
+    from services import dub_pipeline as dp
+
+    jid = _jid()
+    seen = {}
+    real = dp.save_job
+
+    def _spy(*a, **k):
+        seen["thread"] = threading.current_thread()
+        return real(*a, **k)
+
+    async def _go():
+        dp.save_job = _spy
+        try:
+            return await dp.aput_and_save_job(jid, {"segments": [], "filename": "a.mp4"}, filename="a.mp4")
+        finally:
+            dp.save_job = real
+
+    assert asyncio.run(_go()) is True
+    assert seen["thread"] is not threading.main_thread()
+    with db_conn() as conn:
+        assert conn.execute("SELECT 1 FROM dub_history WHERE id=?", (jid,)).fetchone()
+
+
+def test_aput_and_save_job_honours_withdrawal_tombstone():
+    import asyncio
+
+    from core.db import db_conn
+    from services import dub_pipeline as dp
+
+    jid = _jid()
+    dp.purge_jobs([jid], delete_rows=lambda: None)
+    assert asyncio.run(dp.aput_and_save_job(jid, {"segments": []})) is False
+    with db_conn() as conn:
+        assert conn.execute("SELECT 1 FROM dub_history WHERE id=?", (jid,)).fetchone() is None
+
+
+def test_cancelling_aput_and_save_job_waits_for_the_worker():
+    """Cancel cleanup must not run while the save thread is still pending."""
+    import asyncio
+    import threading
+
+    from services import dub_pipeline as dp
+
+    jid = _jid()
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    real = dp.put_and_save_job
+
+    def _slow(*a, **k):
+        started.set()
+        release.wait(5)
+        try:
+            return real(*a, **k)
+        finally:
+            finished.set()
+
+    async def _go():
+        loop = asyncio.get_running_loop()
+        dp.put_and_save_job = _slow
+        try:
+            task = asyncio.ensure_future(dp.aput_and_save_job(jid, {"segments": []}))
+            # Checkpoint 1: the worker is really running (blocked) before cancel.
+            assert await loop.run_in_executor(None, started.wait, 5)
+            task.cancel()
+            # Checkpoint 2: the cancellation handler has run and is waiting on
+            # the worker; the task is not done and the worker has not finished.
+            for _ in range(20):
+                await asyncio.sleep(0)
+            assert not task.done() and not finished.is_set()
+            # Only now release the worker.
+            release.set()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return finished.is_set()
+        finally:
+            dp.put_and_save_job = real
+
+    assert asyncio.run(_go()) is True  # the worker finished before cancel returned
