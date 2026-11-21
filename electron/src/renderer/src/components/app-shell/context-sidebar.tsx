@@ -1,16 +1,10 @@
-import { Suspense } from 'react';
 import { useRouterState } from '@tanstack/react-router';
 import { LibraryIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SecondarySidebar } from '@/components/workspace-sidebar';
-import { retryableLazy } from '@/lib/lazy-boundary';
+import { VoicesSidebar } from '@/features/clone/voices-sidebar';
 import { setWorkspace, useWorkspace } from '@/lib/store/workspace';
 import { LIBRARY_ROUTES } from './use-workspace-sidebar';
-
-const VoicesSidebar = retryableLazy(
-  () => import('@/features/clone/voices-sidebar').then((m) => ({ default: m.VoicesSidebar })),
-  null,
-);
 
 /** The user's saved voices and recent takes, beside the slim navigation column. */
 export function ContextSidebar() {
@@ -27,11 +21,7 @@ export function ContextSidebar() {
       collapsed={!libraryOpen}
       onCollapsedChange={(collapsed) => setWorkspace({ libraryOpen: !collapsed })}
     >
-      {libraryOpen && (
-        <Suspense fallback={null}>
-          <VoicesSidebar initialTab={libraryTab} />
-        </Suspense>
-      )}
+      <VoicesSidebar initialTab={libraryTab} />
     </SecondarySidebar>
   );
 }
