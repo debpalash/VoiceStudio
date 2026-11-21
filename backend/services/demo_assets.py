@@ -9,15 +9,13 @@ videos are fetched from a pinned pre-release of the ``omnivoice-gallery`` repo
 (``backend/assets/samples/demo/dubbing/demo_assets.json``) this module verifies
 against.
 
-Consent
-=======
+Consent:
 Nothing here runs at import or startup. The only network entry point is
 :func:`start_download`, which the user triggers with the Download button
 (``POST /demo/dubbing/download``). With it never pressed, or the network down,
 the card shows the posters and every other feature is untouched.
 
-Integrity
-=========
+Integrity:
 Every file is pinned by sha256 and byte size in the committed table. A download
 is streamed to a temp file under a hard size cap (the pinned size), then size
 and hash are checked; only a file that passes is renamed into the cache. A
