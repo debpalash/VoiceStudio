@@ -1080,7 +1080,7 @@ class _Nllb:
         return [f"t:{x}" for x in input_ids.values]
 
 
-async def _run_nllb(monkeypatch, *, cuda, mps=False, hold_lock=False, **model_kw):
+async def _run_nllb(monkeypatch, *, cuda, mps=False, **model_kw):
     import torch
     from api.routers import dub_translate
     from schemas.requests import TranslateRequest
@@ -1107,32 +1107,11 @@ async def _run_nllb(monkeypatch, *, cuda, mps=False, hold_lock=False, **model_kw
     monkeypatch.setattr(model_acceptance, "ensure_accepted", lambda _: None)
     monkeypatch.setattr(translation_engines, "is_installed", lambda _: True)
     monkeypatch.setattr(translation_engines, "is_ready", lambda _: True)
-    monkeypatch.setenv("OMNIVOICE_UNLOAD_NLLB", "1" if hold_lock else "0")
+    monkeypatch.setenv("OMNIVOICE_UNLOAD_NLLB", "0")
     request = TranslateRequest(
         provider="nllb", source_lang="en", target_lang="de",
         segments=[{"id": "1", "text": "hello"}],
     )
-    if hold_lock:
-        import threading
-
-        dub_translate._nllb_lock.acquire()
-        ticks = []
-
-        async def _ticker():
-            while True:
-                ticks.append(1)
-                await asyncio.sleep(0)
-
-        tick_task = asyncio.ensure_future(_ticker())
-        job = asyncio.ensure_future(dub_translate.dub_translate(request))
-        for _ in range(200):  # loop turns while the lock is held elsewhere
-            await asyncio.sleep(0)
-        progressed = len(ticks)
-        done_while_held = job.done()
-        dub_translate._nllb_lock.release()
-        response = await job
-        tick_task.cancel()
-        return response, loads, dub_translate, (progressed, done_while_held)
     response = await dub_translate.dub_translate(request)
     return response, loads, dub_translate
 
@@ -1209,12 +1188,65 @@ async def test_nllb_generation_and_unload_share_one_lock(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_event_loop_stays_responsive_while_nllb_lock_is_held(monkeypatch):
-    response, _loads, mod, (progressed, done_while_held) = await _run_nllb(
-        monkeypatch, cuda=False, hold_lock=True)
-    assert progressed >= 150 and not done_while_held  # loop kept spinning, request waited
+async def test_unload_waits_for_nllb_lock_off_the_event_loop(monkeypatch):
+    """The post-translation unload must not block the loop on a held lock.
+
+    A worker thread takes ``_nllb_lock`` right when the unload decision is made
+    (so the translation itself has already finished); the unload then has to
+    wait for it. With a synchronous ``_unload_nllb()`` the loop would freeze
+    until the worker lets go, and the heartbeat could not tick meanwhile.
+    """
+    import threading
+
+    from api.routers import dub_translate as mod
+
+    holding = threading.Event()
+    release = threading.Event()
+    ticks = []
+    at_release = {}
+
+    def _worker():
+        with mod._nllb_lock:
+            holding.set()
+            # Backstop only: a blocked loop (the bug) cannot set `release`.
+            release.wait(3)
+            at_release["ticks"] = len(ticks)
+
+    def _decide_unload():
+        threading.Thread(target=_worker, daemon=True).start()
+        assert holding.wait(5)  # lock is now held by the worker
+        return True
+
+    async def _heartbeat(enough):
+        while True:
+            ticks.append(1)
+            if len(ticks) >= 50:
+                enough.set()
+            await asyncio.sleep(0)
+
+    async def _driver():
+        enough = asyncio.Event()
+        beat = asyncio.ensure_future(_heartbeat(enough))
+        try:
+            await asyncio.wait_for(enough.wait(), 5)  # loop turns while worker holds the lock
+            release.set()
+        finally:
+            beat.cancel()
+
+    driver = {}
+
+    def _decide_then_drive():
+        result = _decide_unload()
+        # Heartbeat starts while the worker holds the lock and the unload is pending.
+        driver["task"] = asyncio.get_event_loop().create_task(_driver())
+        return result
+
+    monkeypatch.setattr(mod, "_should_unload_nllb", _decide_then_drive)
+    response, _loads, _mod = await _run_nllb(monkeypatch, cuda=False)
+    await driver["task"]
     assert response["translated"][0]["text"] == "t:hello"
-    assert mod._nllb_model is None  # unloaded afterwards, off the loop
+    assert at_release["ticks"] >= 50  # loop kept ticking while the lock was held
+    assert mod._nllb_model is None   # and the unload completed after release
 
 
 @pytest.mark.asyncio
