@@ -62,6 +62,39 @@ export function waveformUrl(src: string, base = document.baseURI): string {
   }
 }
 
+/**
+ * Longest clip that still gets a decoded waveform. WaveSurfer fetches the file a
+ * second time and decodes it to PCM, so a long recording would cost hundreds of MB;
+ * past this length the plain seek bar is used instead.
+ */
+export const WAVEFORM_MAX_SECONDS = 600;
+
+/** Whether a waveform may be decoded for a clip of this length (unknown length is allowed). */
+export function waveformAllowed(duration: number): boolean {
+  return !(Number.isFinite(duration) && duration > WAVEFORM_MAX_SECONDS);
+}
+
+/**
+ * True once the element has been on screen. Sticky, so a waveform that was built is
+ * not torn down and refetched on scroll. Without IntersectionObserver it is always true.
+ */
+export function useSeenOnScreen(ref: React.RefObject<Element | null>): boolean {
+  const [seen, setSeen] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    const el = ref.current;
+    if (seen || !el) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setSeen(true);
+        observer.disconnect();
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref, seen]);
+  return seen;
+}
+
 /** The media's duration once known; until then the caller's hint (e.g. the take's stored length). */
 export function displayDuration(duration: number, hint?: number): number {
   if (Number.isFinite(duration) && duration > 0) return duration;
@@ -165,6 +198,8 @@ function WaveformControls({
   const time = useMediaState('currentTime');
   const error = useMediaState('error');
   const seek = usePlaybackSeek(source);
+  const seen = useSeenOnScreen(container);
+  const wantWaveform = showWaveform && seen && waveformAllowed(duration);
   useEffect(() => {
     if (!media) return;
     return subscribeMediaPaused(media, setMediaPaused);
@@ -187,7 +222,7 @@ function WaveformControls({
   }, [player, time]);
   useEffect(() => {
     setWaveReady(false);
-    if (!showWaveform || !container.current || !media) return;
+    if (!wantWaveform || !container.current || !media) return;
     const ws = WaveSurfer.create({
       container: container.current,
       media,
@@ -209,7 +244,7 @@ function WaveformControls({
       ws.destroy();
       waveform.current = null;
     };
-  }, [media, src, height, showWaveform]);
+  }, [media, src, height, wantWaveform]);
   useEffect(() => {
     if (container.current) waveform.current?.setOptions(waveColors(container.current));
   }, [theme, paletteId]);
