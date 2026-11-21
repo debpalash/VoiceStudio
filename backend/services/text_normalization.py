@@ -1014,7 +1014,8 @@ def _vi_ngan(text: str) -> str:
 
 
 def _vietnamese_numbers(text: str) -> str:
-    return _vi_group_thousands(_vi_ngan(text))
+    # NFC first so decomposed (NFD) "nghìn" still matches; vi path only.
+    return _vi_group_thousands(_vi_ngan(unicodedata.normalize("NFC", text)))
 
 
 # ── Public API ───────────────────────────────────────────────────────────────

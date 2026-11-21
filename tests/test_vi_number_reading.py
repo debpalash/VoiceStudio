@@ -35,3 +35,9 @@ def test_unchanged(src):
 def test_other_languages_untouched():
     assert "nghìn" in normalize_text("3500 nghìn", "Indonesian")
     assert normalize_text("3500", "Korean") == "3500"
+
+
+def test_nfd_input():
+    import unicodedata
+    src = unicodedata.normalize("NFD", "ba nghìn năm trăm 3500")
+    assert normalize_text(src, "Vietnamese") == "ba ngàn năm trăm 3.500"
