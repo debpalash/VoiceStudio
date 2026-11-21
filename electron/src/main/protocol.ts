@@ -1,5 +1,4 @@
-import { createReadStream } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { open, type FileHandle } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { net, protocol } from 'electron';
@@ -245,12 +244,24 @@ async function fileResponse(path: string, pathname = ''): Promise<Response | nul
       });
     }
   }
+  // One open handle serves the stat and the read, so the file cannot change
+  // between the size check and the bytes served (no stat-then-read race).
+  let handle: FileHandle;
+  try {
+    handle = await open(path, 'r');
+  } catch {
+    return null;
+  }
   let size: number;
   try {
-    const info = await stat(path);
-    if (!info.isFile()) return null;
+    const info = await handle.stat();
+    if (!info.isFile()) {
+      await handle.close().catch(() => undefined);
+      return null;
+    }
     size = info.size;
   } catch {
+    await handle.close().catch(() => undefined);
     return null;
   }
   const mime = MIME[extname(path).toLowerCase()] ?? 'application/octet-stream';
@@ -262,7 +273,8 @@ async function fileResponse(path: string, pathname = ''): Promise<Response | nul
   };
   if (size <= SMALL_STATIC_FILE_BYTES || (isImmutable && size <= IMMUTABLE_CACHE_MAX_FILE_BYTES)) {
     try {
-      const data = await readFile(path);
+      const data = await handle.readFile();
+      headers['content-length'] = String(data.byteLength);
       if (isImmutable) rememberImmutableAsset(path, { bytes: data, mime, cacheControl });
       return new Response(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), {
         status: 200,
@@ -270,8 +282,11 @@ async function fileResponse(path: string, pathname = ''): Promise<Response | nul
       });
     } catch {
       return null;
+    } finally {
+      await handle.close().catch(() => undefined);
     }
   }
-  const body = Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>;
+  // The stream owns the handle and closes it when the body ends or is cancelled.
+  const body = Readable.toWeb(handle.createReadStream()) as ReadableStream<Uint8Array>;
   return new Response(body, { status: 200, headers });
 }
