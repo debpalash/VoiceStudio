@@ -212,11 +212,13 @@ def test_cancelling_aput_and_save_job_waits_for_the_worker():
     from services import dub_pipeline as dp
 
     jid = _jid()
+    started = threading.Event()
     release = threading.Event()
     finished = threading.Event()
     real = dp.put_and_save_job
 
     def _slow(*a, **k):
+        started.set()
         release.wait(5)
         try:
             return real(*a, **k)
@@ -224,12 +226,20 @@ def test_cancelling_aput_and_save_job_waits_for_the_worker():
             finished.set()
 
     async def _go():
+        loop = asyncio.get_running_loop()
         dp.put_and_save_job = _slow
         try:
             task = asyncio.ensure_future(dp.aput_and_save_job(jid, {"segments": []}))
-            await asyncio.sleep(0)
+            # Checkpoint 1: the worker is really running (blocked) before cancel.
+            assert await loop.run_in_executor(None, started.wait, 5)
             task.cancel()
-            asyncio.get_running_loop().call_later(0.05, release.set)
+            # Checkpoint 2: the cancellation handler has run and is waiting on
+            # the worker; the task is not done and the worker has not finished.
+            for _ in range(20):
+                await asyncio.sleep(0)
+            assert not task.done() and not finished.is_set()
+            # Only now release the worker.
+            release.set()
             try:
                 await task
             except asyncio.CancelledError:
