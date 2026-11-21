@@ -27,7 +27,7 @@ MODEL = {"repo_id": "org/two-weights"}
 WEIGHT = 6 * 1024 * 1024
 
 
-def _repo(tmp_path: Path) -> tuple[Path, Path]:
+def _repo(tmp_path: Path, symlink) -> tuple[Path, Path]:
     repo = tmp_path / "models--org--two-weights"
     blobs = repo / "blobs"
     snapshot = repo / "snapshots" / "rev"
@@ -35,7 +35,7 @@ def _repo(tmp_path: Path) -> tuple[Path, Path]:
     blobs.mkdir()
     blob = blobs / "tokenizer-blob"
     blob.write_bytes(b"\0" * WEIGHT)
-    (snapshot / "audio_tokenizer" / "model.safetensors").symlink_to(blob)
+    symlink(snapshot / "audio_tokenizer" / "model.safetensors", blob)
     (snapshot / "config.json").write_text("{}")
     return snapshot, blobs
 
@@ -46,8 +46,8 @@ def _age(path: Path, seconds: float) -> None:
 
 
 @pytest.mark.parametrize("suffix", [".part", ".part.done", ".incomplete"])
-def test_newer_partial_transfer_marks_snapshot_incomplete(tmp_path, suffix):
-    snapshot, blobs = _repo(tmp_path)
+def test_newer_partial_transfer_marks_snapshot_incomplete(tmp_path, symlink_or_skip, suffix):
+    snapshot, blobs = _repo(tmp_path, symlink_or_skip)
     for entry in snapshot.rglob("*"):
         _age(entry, 60)
     (blobs / f"main-weight{suffix}").write_bytes(b"\0" * 1024)
@@ -55,14 +55,14 @@ def test_newer_partial_transfer_marks_snapshot_incomplete(tmp_path, suffix):
     assert not catalogue.snapshot_is_complete(MODEL, str(snapshot))
 
 
-def test_finished_snapshot_without_partials_is_complete(tmp_path):
-    snapshot, _blobs = _repo(tmp_path)
+def test_finished_snapshot_without_partials_is_complete(tmp_path, symlink_or_skip):
+    snapshot, _blobs = _repo(tmp_path, symlink_or_skip)
 
     assert catalogue.snapshot_is_complete(MODEL, str(snapshot))
 
 
-def test_stale_partial_from_an_earlier_attempt_is_ignored(tmp_path):
-    snapshot, blobs = _repo(tmp_path)
+def test_stale_partial_from_an_earlier_attempt_is_ignored(tmp_path, symlink_or_skip):
+    snapshot, blobs = _repo(tmp_path, symlink_or_skip)
     stale = blobs / "old-revision.part"
     stale.write_bytes(b"\0" * 1024)
     _age(stale, 3600)
@@ -70,8 +70,8 @@ def test_stale_partial_from_an_earlier_attempt_is_ignored(tmp_path):
     assert catalogue.snapshot_is_complete(MODEL, str(snapshot))
 
 
-def test_entries_with_required_files_keep_their_exact_check(tmp_path):
-    snapshot, blobs = _repo(tmp_path)
+def test_entries_with_required_files_keep_their_exact_check(tmp_path, symlink_or_skip):
+    snapshot, blobs = _repo(tmp_path, symlink_or_skip)
     for entry in snapshot.rglob("*"):
         _age(entry, 60)
     (blobs / "sibling-package.part").write_bytes(b"\0" * 1024)
