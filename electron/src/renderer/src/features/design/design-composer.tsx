@@ -14,6 +14,7 @@ import { EngineLanguagePicker } from '@/features/clone/engine-language-picker';
 import { QualityControls } from '@/features/clone/quality-controls';
 import { VoiceControls } from '@/features/clone/action-bar';
 import { QualityOffer } from '@/features/clone/quality-offer';
+import { GenerationElapsed } from '@/components/generation-elapsed';
 import type { DesignBlocker, UseGenerateClone } from '@/hooks/use-generate';
 import { cn } from '@/lib/utils';
 
@@ -151,7 +152,7 @@ export function DesignComposer({
                   </span>
                   {isGenerating && (
                     <span className="shrink-0 text-xs font-normal tabular-nums opacity-80">
-                      {`${progress == null ? '' : `${Math.round(progress)}% · `}${generation.elapsedSeconds.toFixed(1)}s`}
+                      <GenerationElapsed prefix={progress == null ? '' : `${Math.round(progress)}% · `} />
                     </span>
                   )}
                 </Button>

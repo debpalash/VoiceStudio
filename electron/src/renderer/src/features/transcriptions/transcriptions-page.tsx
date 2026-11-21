@@ -1,9 +1,9 @@
 import { SecondarySidebar } from '@/components/workspace-sidebar';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
+import { TranscriptSegments } from './transcript-segments';
 import { LiveDictation } from './live-dictation';
 import { DictationSetup } from './dictation-setup';
 import {
-  segTimeRange,
   formatTranscriptExport,
   preferredTranscript,
   canExportTranscriptSubtitles,
@@ -176,6 +176,7 @@ export function TranscriptionsPage() {
     return () => URL.revokeObjectURL(next);
   }, [file]);
   const historyRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
   const visible = useMemo(
     () =>
       entries.filter((entry) =>
@@ -614,7 +615,7 @@ export function TranscriptionsPage() {
               onDismiss={clearTranscriptionFailure}
             />
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div ref={detailRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             {selected ? (
               <article className="mx-auto max-w-4xl space-y-5">
                 <div className="flex items-center justify-between gap-3">
@@ -711,26 +712,7 @@ export function TranscriptionsPage() {
                   </details>
                 ) : null}
                 {selected.segments?.length > 0 && (
-                  <details className="text-sm">
-                    <summary className="cursor-pointer text-muted-foreground">
-                      {t('transcriptions.segments_title')}
-                    </summary>
-                    <div className="mt-3 space-y-3">
-                      {selected.segments.map((segment, index) => (
-                        <p key={index}>
-                          <span className="mr-3 font-mono text-xs text-muted-foreground">
-                            {segTimeRange(segment)}
-                          </span>
-                          {segment.speaker ? (
-                            <span className="mr-2 font-medium text-foreground">
-                              {segment.speaker}
-                            </span>
-                          ) : null}
-                          {segment.text}
-                        </p>
-                      ))}
-                    </div>
-                  </details>
+                  <TranscriptSegments key={selected.id} segments={selected.segments} scrollRef={detailRef} />
                 )}
                 <Button
                   variant="outline"
