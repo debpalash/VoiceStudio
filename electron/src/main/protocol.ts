@@ -1,5 +1,4 @@
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { open, type FileHandle } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { net, protocol } from 'electron';
@@ -177,33 +176,117 @@ async function serveStatic(root: string, pathname: string): Promise<Response> {
   if (candidate !== root && !candidate.startsWith(root + sep)) {
     return new Response('Forbidden', { status: 403 });
   }
-  const file = await fileResponse(candidate);
+  const file = await fileResponse(candidate, pathname);
   if (file) return file;
   // SPA routes have no extension; asset misses must 404 so a broken build is visible.
   if (extname(candidate) === '') {
-    const index = await fileResponse(join(root, 'index.html'));
+    const index = await fileResponse(join(root, 'index.html'), '/index.html');
     if (index) return index;
   }
   return new Response('Not found', { status: 404 });
 }
 
-async function fileResponse(path: string): Promise<Response | null> {
-  let size: number;
+const SMALL_STATIC_FILE_BYTES = 256 * 1024;
+const IMMUTABLE_CACHE_MAX_FILE_BYTES = 512 * 1024;
+const IMMUTABLE_CACHE_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+const IMMUTABLE_CACHE_MAX_ENTRIES = 64;
+
+interface CachedAsset {
+  bytes: Buffer;
+  mime: string;
+  cacheControl: string;
+}
+
+const immutableAssetCache = new Map<string, CachedAsset>();
+let immutableCacheBytes = 0;
+
+function rememberImmutableAsset(key: string, entry: CachedAsset): void {
+  if (entry.bytes.byteLength > IMMUTABLE_CACHE_MAX_FILE_BYTES) return;
+  const existing = immutableAssetCache.get(key);
+  if (existing) {
+    immutableCacheBytes -= existing.bytes.byteLength;
+    immutableAssetCache.delete(key);
+  }
+  while (
+    immutableAssetCache.size >= IMMUTABLE_CACHE_MAX_ENTRIES ||
+    immutableCacheBytes + entry.bytes.byteLength > IMMUTABLE_CACHE_MAX_TOTAL_BYTES
+  ) {
+    const oldest = immutableAssetCache.keys().next().value;
+    if (!oldest) break;
+    const evicted = immutableAssetCache.get(oldest)!;
+    immutableCacheBytes -= evicted.bytes.byteLength;
+    immutableAssetCache.delete(oldest);
+  }
+  immutableAssetCache.set(key, entry);
+  immutableCacheBytes += entry.bytes.byteLength;
+}
+
+function staticCacheControl(pathname: string, mime: string): string {
+  if (mime.startsWith('text/html')) return 'no-cache';
+  // Vite emits content-hashed bundles under /assets/; immutable caching lets
+  // Chromium skip app:// protocol round-trips on subsequent launches.
+  if (pathname.startsWith('/assets/')) return 'public, max-age=31536000, immutable';
+  return 'public, max-age=3600';
+}
+
+async function fileResponse(path: string, pathname = ''): Promise<Response | null> {
+  const isImmutable = pathname.startsWith('/assets/');
+  if (isImmutable) {
+    const cached = immutableAssetCache.get(path);
+    if (cached) {
+      return new Response(new Uint8Array(cached.bytes.buffer, cached.bytes.byteOffset, cached.bytes.byteLength), {
+        status: 200,
+        headers: {
+          'content-type': cached.mime,
+          'content-length': String(cached.bytes.byteLength),
+          'cache-control': cached.cacheControl,
+        },
+      });
+    }
+  }
+  // One open handle serves the stat and the read, so the file cannot change
+  // between the size check and the bytes served (no stat-then-read race).
+  let handle: FileHandle;
   try {
-    const info = await stat(path);
-    if (!info.isFile()) return null;
-    size = info.size;
+    handle = await open(path, 'r');
   } catch {
     return null;
   }
+  let size: number;
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) {
+      await handle.close().catch(() => undefined);
+      return null;
+    }
+    size = info.size;
+  } catch {
+    await handle.close().catch(() => undefined);
+    return null;
+  }
   const mime = MIME[extname(path).toLowerCase()] ?? 'application/octet-stream';
-  const body = Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>;
-  return new Response(body, {
-    status: 200,
-    headers: {
-      'content-type': mime,
-      'content-length': String(size),
-      'cache-control': mime.startsWith('text/html') ? 'no-cache' : 'public, max-age=3600',
-    },
-  });
+  const cacheControl = staticCacheControl(pathname, mime);
+  const headers = {
+    'content-type': mime,
+    'content-length': String(size),
+    'cache-control': cacheControl,
+  };
+  if (size <= SMALL_STATIC_FILE_BYTES || (isImmutable && size <= IMMUTABLE_CACHE_MAX_FILE_BYTES)) {
+    try {
+      const data = await handle.readFile();
+      headers['content-length'] = String(data.byteLength);
+      if (isImmutable) rememberImmutableAsset(path, { bytes: data, mime, cacheControl });
+      return new Response(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), {
+        status: 200,
+        headers,
+      });
+    } catch {
+      return null;
+    } finally {
+      await handle.close().catch(() => undefined);
+    }
+  }
+  // The stream owns the handle and closes it when the body ends or is cancelled.
+  const body = Readable.toWeb(handle.createReadStream()) as ReadableStream<Uint8Array>;
+  return new Response(body, { status: 200, headers });
 }

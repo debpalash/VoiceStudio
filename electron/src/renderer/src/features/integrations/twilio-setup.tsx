@@ -42,6 +42,7 @@ import {
   type StepStatus,
 } from './twilio-parts';
 import './twilio-setup.css';
+import { relaxWhenBackendBusy } from '@/lib/status-polling';
 
 export const TWILIO_DOCS =
   'https://github.com/debpalash/VoiceStudio/blob/main/docs/integrations/twilio.md';
@@ -229,7 +230,7 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
   const state = useQuery({
     queryKey: QUERY_KEY,
     queryFn: ({ signal }) => apiJson<TwilioState>(STATE_PATH, { signal }),
-    refetchInterval: (query) => (query.state.data?.enabled ? 5000 : false),
+    refetchInterval: (query) => (query.state.data?.enabled ? relaxWhenBackendBusy(5000) : false),
   });
   const enabled = Boolean(state.data?.enabled);
   const callsSettings = useQuery({
@@ -245,7 +246,7 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
     queryFn: ({ signal }) =>
       optionalJson<ReadinessItem[] | { checklist?: ReadinessItem[] }>(CALLS_READINESS_PATH, signal),
     retry: false,
-    refetchInterval: enabled ? 5000 : false,
+    refetchInterval: () => (enabled ? relaxWhenBackendBusy(5000) : false),
   });
   const profiles = useProfiles();
   const engines = useEngines();

@@ -42,6 +42,7 @@ import { enqueueVideos } from './enqueue';
 import { usePendingKeys } from './use-pending-keys';
 import { cachedTtsLanguagesSupported } from '@/lib/language-options';
 import { useTranslationEngines } from '@/features/settings/translation-settings';
+import { relaxWhenBackendBusy } from '@/lib/status-polling';
 const languageOptions = TRANSLATION_TARGET_LABELS;
 const exportKey = (job: BatchJob, lang: string) => `${job.id}:${lang}`;
 
@@ -84,7 +85,7 @@ export function BatchPage() {
           }),
         { signal },
       ),
-    refetchInterval: tab === 'done' ? false : 3000,
+    refetchInterval: () => (tab === 'done' ? false : relaxWhenBackendBusy(3000)),
   });
   // A job parked on an unaccepted licence opens the dialog once; the user
   // then retries it like any failed job.

@@ -85,7 +85,6 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { access, lstat, open, rm, stat } from 'node:fs/promises';
-import setupLock from '../../../uv.lock?raw';
 import { cpus, homedir, release, totalmem } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { app } from 'electron';
@@ -117,7 +116,13 @@ import { SUPERVISE_ACTIVE_MS as SUPERVISE_POLL_MS, superviseDelayMs } from './su
 import { DEFAULT_BACKEND_PORT } from '../../../config/app-config.mjs';
 
 const DEFAULT_BUDGET_S = 300;
-const READY_POLL_MS = 500;
+const READY_POLL_SCHEDULE_MS = [40, 80, 120, 200, 300, 500] as const;
+
+/** Fast stepped backoff for startup/attach readiness probes so ready backends are detected within ~40-80ms. */
+export function readyPollDelayMs(attempt: number): number {
+  const index = Math.min(Math.max(0, attempt), READY_POLL_SCHEDULE_MS.length - 1);
+  return READY_POLL_SCHEDULE_MS[index];
+}
 /** Allow another VoiceStudio shell to take ownership without showing a false crash. */
 const REPLACEMENT_ATTACH_GRACE_MS = 10_000;
 const PROBE_TIMEOUT_MS = 1500;
@@ -1385,6 +1390,8 @@ export class BackendSupervisor extends EventEmitter<{
         return { status: 'unavailable', checkedAt: Date.now() };
       // Compile the approved artifact catalog into the app; mutable local files
       // must not supply destinations or data for this diagnostic request.
+      // Dynamic import keeps the ~1.7 MB lockfile out of the main startup bundle.
+      const { default: setupLock } = await import('../../../uv.lock?raw');
       const url = setupProbeUrl(setupLock, this.setupProgress.snapshot(), {
         platform: process.platform,
         arch: process.arch,
@@ -2739,6 +2746,7 @@ export class BackendSupervisor extends EventEmitter<{
     // attachment, not a crash, and keep renderer requests paused meanwhile.
     this.setStage('attaching', { managed: false, message: undefined });
     const deadline = Date.now() + REPLACEMENT_ATTACH_GRACE_MS;
+    let attachAttempt = 0;
     while (gen === this.generation && !this.shuttingDown) {
       if (await this.probe()) {
         if (gen !== this.generation || this.shuttingDown) return;
@@ -2749,7 +2757,7 @@ export class BackendSupervisor extends EventEmitter<{
         return;
       }
       if (Date.now() >= deadline) break;
-      await delay(READY_POLL_MS);
+      await delay(readyPollDelayMs(attachAttempt++));
     }
     if (gen !== this.generation || this.shuttingDown) return;
 
@@ -3027,6 +3035,7 @@ export class BackendSupervisor extends EventEmitter<{
     // for a second and reporting "did not answer within 300 s".
     this.readinessClockAt = Date.now();
     const waitingStage = this.stage;
+    let readyAttempt = 0;
     while (gen === this.generation && this.stage === waitingStage) {
       const ready = await this.probe();
       // Child-exit recovery owns its own grace period. Its transition from
@@ -3072,7 +3081,7 @@ export class BackendSupervisor extends EventEmitter<{
         });
         return;
       }
-      await delay(READY_POLL_MS);
+      await delay(readyPollDelayMs(readyAttempt++));
     }
   }
 

@@ -4,6 +4,7 @@ import { queryKeys } from '@/lib/query';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useBackendStatus } from './use-backend-status';
+import { noteEventsSocket } from '@/lib/status-polling';
 import { isBackendReachable } from '@shared/utils/backendStage';
 
 const EVENT_QUERY_KEYS: Readonly<Record<string, readonly QueryKey[]>> = {
@@ -75,6 +76,7 @@ export function RealtimeEventSync() {
         socket = new WebSocket(url);
         socket.onopen = () => {
           retry = 0;
+          noteEventsSocket(true);
         };
         socket.onmessage = (message) => {
           let kind: string | undefined;
@@ -95,6 +97,7 @@ export function RealtimeEventSync() {
         socket.onerror = () => socket?.close();
         socket.onclose = () => {
           socket = null;
+          noteEventsSocket(false);
           scheduleReconnect();
         };
       } catch {
@@ -109,6 +112,7 @@ export function RealtimeEventSync() {
       active = false;
       request.abort();
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      noteEventsSocket(false);
       if (socket) {
         socket.onclose = null;
         socket.close();

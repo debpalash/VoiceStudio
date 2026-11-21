@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTIVE_STATUS_POLL_MS,
   BUSY_BACKEND_POLL_MS,
+  EVENT_BACKED_IDLE_POLL_MS,
   IDLE_STATUS_POLL_MS,
   batchStatusPollMs,
   loadedModelsPollMs,
   modelStatusPollMs,
   noteBackendStage,
+  noteEventsSocket,
   relaxWhenBackendBusy,
 } from './status-polling';
 
@@ -42,5 +44,22 @@ describe('runtime status polling', () => {
       noteBackendStage('ready');
     }
     expect(modelStatusPollMs(1, 'ready')).toBe(ACTIVE_STATUS_POLL_MS);
+  });
+});
+
+describe('event-backed idle polling', () => {
+  it('slows idle model and loaded-model polls to a safety net while /ws/events is connected', () => {
+    noteEventsSocket(true);
+    try {
+      expect(modelStatusPollMs(0, 'ready')).toBe(EVENT_BACKED_IDLE_POLL_MS);
+      expect(loadedModelsPollMs(false)).toBe(EVENT_BACKED_IDLE_POLL_MS);
+      // Active work and polls the socket does not cover keep their cadence.
+      expect(modelStatusPollMs(1, 'ready')).toBe(ACTIVE_STATUS_POLL_MS);
+      expect(loadedModelsPollMs(true)).toBe(ACTIVE_STATUS_POLL_MS);
+      expect(batchStatusPollMs(0)).toBe(IDLE_STATUS_POLL_MS);
+    } finally {
+      noteEventsSocket(false);
+    }
+    expect(modelStatusPollMs(0, 'ready')).toBe(IDLE_STATUS_POLL_MS);
   });
 });
