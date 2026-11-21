@@ -21,6 +21,10 @@ def get_db():
     if DB_PATH not in _WAL_INITIALIZED_PATHS:
         conn.execute("PRAGMA journal_mode=WAL")
         _WAL_INITIALIZED_PATHS.add(DB_PATH)
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA cache_size=-16000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
@@ -123,6 +127,13 @@ _BASE_SCHEMA = """
         created_at REAL
     );
     CREATE INDEX IF NOT EXISTS idx_glossary_project ON glossary_terms(project_id);
+    CREATE INDEX IF NOT EXISTS idx_voice_profiles_created ON voice_profiles(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_generation_history_created ON generation_history(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_generation_history_profile ON generation_history(profile_id);
+    CREATE INDEX IF NOT EXISTS idx_generation_history_starred ON generation_history(starred, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_dub_history_created ON dub_history(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_studio_projects_updated ON studio_projects(updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_export_history_created ON export_history(created_at DESC);
 
     CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,

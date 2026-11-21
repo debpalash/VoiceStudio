@@ -144,7 +144,25 @@ export default defineConfig({
     build: {
       minify: true,
       cssMinify: true,
-      rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') },
+      rolldownOptions: {
+        input: resolve(__dirname, 'src/renderer/index.html'),
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'vendor-react',
+                test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: 'vendor-core',
+                test: /node_modules[\\/](@tanstack[\\/]react-(query|router)|i18next|react-i18next|@floating-ui)[\\/]/,
+                priority: 20,
+              },
+            ],
+          },
+        },
+      },
     },
   },
 });

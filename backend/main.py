@@ -2186,9 +2186,42 @@ from core.csrf import CORS_EXPOSED_HEADERS, allowed_origin_values, ui_port as _u
 
 _allowed = allowed_origin_values()
 
+from starlette.middleware.gzip import GZipMiddleware
+
+
+class _SelectiveGZipMiddleware:
+    """Compress large GET JSON/text responses (e.g. /models, /engines, /history)
+    without touching Range requests, SSE streams, media files, or POST/MCP."""
+
+    _SKIP_PREFIXES = ("/mcp", "/audio", "/outputs", "/media", "/files", "/ws")
+    _SKIP_SUBSTRINGS = ("/stream", "/events", "/download", "/audio")
+
+    def __init__(self, app, *, minimum_size: int = 1024, compresslevel: int = 5):
+        self.app = app
+        self._gzip = GZipMiddleware(app, minimum_size=minimum_size, compresslevel=compresslevel)
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or scope.get("method") != "GET":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        if path.startswith(self._SKIP_PREFIXES) or any(s in path for s in self._SKIP_SUBSTRINGS):
+            await self.app(scope, receive, send)
+            return
+        for name, value in scope.get("headers") or ():
+            if name == b"range":
+                await self.app(scope, receive, send)
+                return
+            if name == b"accept" and b"text/event-stream" in value.lower():
+                await self.app(scope, receive, send)
+                return
+        await self._gzip(scope, receive, send)
+
+
 # Registered FIRST → innermost: the startup gate holds every request except
 # the two probe paths until the deferred startup completes (and is a no-op
 # forever after).
+app.add_middleware(_SelectiveGZipMiddleware, minimum_size=1024, compresslevel=5)
 from core.activity import ActivityMiddleware
 # Innermost: only requests that passed every gate count as use of the backend.
 app.add_middleware(ActivityMiddleware)
