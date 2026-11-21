@@ -1626,7 +1626,8 @@
     "open": "Ouvrir « {{name}} » et remplacer le brouillon actuel ? Enregistrez votre travail au préalable.",
     "save_copy": "Enregistrer une copie",
     "new": "Nouveau projet",
-    "new_confirm": "Commencer un nouveau projet vide ? Les projets enregistrés restent intacts ; les modifications non enregistrées du brouillon actuel seront perdues."
+    "new_confirm": "Commencer un nouveau projet vide ? Les projets enregistrés restent intacts ; les modifications non enregistrées du brouillon actuel seront perdues.",
+    "delete_hint": "Seul le projet enregistré est retiré de la liste. Les fichiers multimédias et les voix sont conservés."
   },
   "sidebar": {
     "save_project": "Enregistrer le projet de doublage",

@@ -11,7 +11,11 @@ const state = vi.hoisted(() => ({
   },
   dub: { project: null as { id: string } | null, phase: 'idle', recovery: null, instruct: '' },
   openDub: vi.fn(() => true),
-  readProject: vi.fn<(path: string, options?: { signal?: AbortSignal }) => Promise<unknown>>(),
+  detach: vi.fn(),
+  readProject:
+    vi.fn<
+      (path: string, options?: { signal?: AbortSignal; method?: string }) => Promise<unknown>
+    >(),
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
@@ -23,7 +27,7 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 vi.mock('@/lib/api/client', () => ({
-  apiJson: async (path: string, options?: { signal?: AbortSignal }) =>
+  apiJson: async (path: string, options?: { signal?: AbortSignal; method?: string }) =>
     path === '/projects' ? state.dubs : state.readProject(path, options),
   describeError: (error: unknown) => String(error),
 }));
@@ -43,6 +47,7 @@ vi.mock('./dub-session', () => ({
     },
   },
   openDubProject: state.openDub,
+  detachDubProject: state.detach,
 }));
 import { DubProjects } from './dub-projects';
 
@@ -58,12 +63,13 @@ const renderList = () => {
 };
 
 async function confirmProject(name: RegExp) {
-  fireEvent.click(await screen.findByRole('button', { name }));
+  fireEvent.click(await screen.findByRole('button', { name: new RegExp('^' + name.source) }));
   fireEvent.click(screen.getByRole('button', { name: 'common.confirm' }));
 }
 
 beforeEach(() => {
   state.navigate.mockReset();
+  state.detach.mockReset();
   state.openDub.mockReset().mockReturnValue(true);
   state.readProject
     .mockReset()
@@ -81,7 +87,7 @@ afterEach(cleanup);
 
 it('lists dub projects newest first and marks the one that is open', async () => {
   renderList();
-  const open = await screen.findByRole('button', { name: /Podcast intro/ });
+  const open = await screen.findByRole('button', { name: /^Podcast intro/ });
   expect(open).toHaveAttribute('aria-current', 'true');
   const names = screen.getAllByRole('button').map((b) => b.textContent ?? '');
   expect(names[0]).toContain('Podcast intro');
@@ -98,7 +104,7 @@ it('opens a dub project into the Dub workspace', async () => {
 it('waits while dubbing work is running', async () => {
   state.dub = { project: null, phase: 'dubbing', recovery: null, instruct: '' };
   renderList();
-  expect(await screen.findByRole('button', { name: /Launch video/ })).toBeDisabled();
+  expect(await screen.findByRole('button', { name: /^Launch video/ })).toBeDisabled();
 });
 
 it('shows the empty state when there are no dub projects yet', async () => {
@@ -109,7 +115,7 @@ it('shows the empty state when there are no dub projects yet', async () => {
 
 it('asks before replacing a draft and leaves it unchanged when cancelled', async () => {
   renderList();
-  fireEvent.click(await screen.findByRole('button', { name: /Launch video/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /^Launch video/ }));
   expect(await screen.findByText('projectActions.open')).toBeVisible();
   expect(state.readProject).not.toHaveBeenCalled();
   expect(state.openDub).not.toHaveBeenCalled();
@@ -133,7 +139,7 @@ it('waits for one project to open before accepting another selection', async () 
   const resolve = pauseProjectRead();
   renderList();
   await confirmProject(/Launch video/);
-  const other = screen.getByRole('button', { name: /Podcast intro/ });
+  const other = screen.getByRole('button', { name: /^Podcast intro/ });
   expect(other).toBeDisabled();
   fireEvent.click(other);
   await act(async () => resolve(state.dubs[0]));
@@ -195,4 +201,22 @@ it('localizes the error when dubbing work starts during a project load', async (
   await confirmProject(/Launch video/);
   expect(await screen.findByRole('alert')).toHaveTextContent('sidebarTools.wait');
   expect(state.navigate).not.toHaveBeenCalled();
+});
+
+it('requires confirmation to delete and keeps the working draft detached from the deleted saved record', async () => {
+  renderList();
+  fireEvent.click(await screen.findByRole('button', { name: 'common.delete Podcast intro' }));
+  expect(state.readProject).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+  expect(state.detach).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'common.delete Podcast intro' }));
+  state.readProject.mockImplementation(async (path, options) => {
+    expect(path).toBe('/projects/d2');
+    expect(options).toMatchObject({ method: 'DELETE' });
+    state.dubs = state.dubs.filter((p) => (p as { id: string }).id !== 'd2');
+    return { deleted: 'd2' };
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'common.delete' }));
+  await waitFor(() => expect(state.detach).toHaveBeenCalledWith('d2'));
+  await waitFor(() => expect(screen.queryByRole('button', { name: /^Podcast intro/ })).toBeNull());
 });

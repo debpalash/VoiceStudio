@@ -1638,7 +1638,8 @@
     "open": "Otworzyć „{{name}}” i zastąpić bieżący szkic? Najpierw zapisz swoją pracę.",
     "save_copy": "Zapisz kopię",
     "new": "Nowy projekt",
-    "new_confirm": "Rozpocząć nowy, pusty projekt? Zapisane projekty pozostaną bez zmian; niezapisane zmiany w bieżącym szkicu zostaną utracone."
+    "new_confirm": "Rozpocząć nowy, pusty projekt? Zapisane projekty pozostaną bez zmian; niezapisane zmiany w bieżącym szkicu zostaną utracone.",
+    "delete_hint": "Z listy usuwany jest tylko zapisany projekt. Pliki multimedialne i głosy są zachowane."
   },
   "sidebar": {
     "save_project": "Zapisz projekt dubowy",

@@ -1624,7 +1624,8 @@
     "open": "“{{name}}” açılıp mevcut taslak değiştirilsin mi? Önce çalışmanızı kaydedin.",
     "save_copy": "Kopyasını kaydet",
     "new": "Yeni proje",
-    "new_confirm": "Yeni ve boş bir proje başlatılsın mı? Kayıtlı projeler olduğu gibi kalır; mevcut taslaktaki kaydedilmemiş değişiklikler kaybolur."
+    "new_confirm": "Yeni ve boş bir proje başlatılsın mı? Kayıtlı projeler olduğu gibi kalır; mevcut taslaktaki kaydedilmemiş değişiklikler kaybolur.",
+    "delete_hint": "Yalnızca kayıtlı proje listeden kaldırılır. Medya dosyaları ve sesler korunur."
   },
   "sidebar": {
     "save_project": "Dub Projesini Kaydet",
