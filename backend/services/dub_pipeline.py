@@ -1758,17 +1758,49 @@ async def ingest_pipeline(
             # Name that instead of letting ffmpeg fail with exit 234 and a
             # stream dump ending in "Invalid argument".
             await asyncio.to_thread(require_audio_stream, video_path)
-            p, _, stderr = await run_proc([
-                ffmpeg, "-i", video_path, "-vn", "-acodec", "pcm_s16le",
-                "-ar", "16000", "-ac", "1", extract_path, "-y",
-            ])
+            # One decode pass, two outputs (16 kHz mono ASR + 44.1 kHz stereo
+            # for Demucs). If the combined call fails for any reason we fall
+            # through to the original two separate invocations, so behaviour
+            # and error reporting on bad media are unchanged.
+            combined_ok = False
+            try:
+                p_c, _, stderr_c = await run_proc([
+                    ffmpeg, "-i", video_path,
+                    "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", extract_path,
+                    "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", extract_hq_path,
+                    "-y",
+                ])
+                combined_ok = (
+                    p_c.returncode == 0
+                    and os.path.exists(extract_path) and os.path.exists(extract_hq_path)
+                )
+                if not combined_ok:
+                    logger.info(
+                        "combined audio extraction failed (rc=%s) — retrying as "
+                        "separate ffmpeg calls", p_c.returncode)
+                    _discard_partial_audio(extract_path, extract_hq_path)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e_c:  # noqa: BLE001 — fast path only
+                logger.info("combined audio extraction errored (%s) — falling back", type(e_c).__name__)
+                _discard_partial_audio(extract_path, extract_hq_path)
+            if combined_ok:
+                os.replace(extract_path, audio_path)
+                os.replace(extract_hq_path, audio_hq_path)
+                p, stderr = p_c, stderr_c
+            else:
+                p, _, stderr = await run_proc([
+                    ffmpeg, "-i", video_path, "-vn", "-acodec", "pcm_s16le",
+                    "-ar", "16000", "-ac", "1", extract_path, "-y",
+                ])
             if p.returncode != 0:
                 # The probe can be undetermined (no ffprobe); recognize the
                 # same cause from ffmpeg's own wording.
                 await asyncio.to_thread(raise_for_audio_extract_failure, stderr, video_path)
                 msg = _media_process_error("FFmpeg", p.returncode, stderr, paths=(video_path, audio_path, job_dir))
                 raise Exception(msg)
-            os.replace(extract_path, audio_path)
+            if not combined_ok:
+                os.replace(extract_path, audio_path)
             # Second, FULL-QUALITY extraction for source separation. audio.wav
             # is deliberately 16 kHz mono — that's what ASR wants — but Demucs
             # used to separate that same file, so the music bed inherited mono
@@ -1779,24 +1811,25 @@ async def ingest_pipeline(
             # stereo original costs about the same and returns a true-stereo,
             # full-band bed. Best-effort: on failure Demucs falls back to the
             # ASR file, which is exactly the old behavior.
-            try:
-                p_hq, _, stderr_hq = await run_proc([
-                    ffmpeg, "-i", video_path, "-vn", "-acodec", "pcm_s16le",
-                    "-ar", "44100", "-ac", "2", extract_hq_path, "-y",
-                ])
-                if p_hq.returncode != 0 or not os.path.exists(extract_hq_path):
-                    logger.warning(
-                        "HQ audio extraction failed (rc=%s) — separation falls "
-                        "back to the 16k mono ASR file", p_hq.returncode,
-                    )
+            if not combined_ok:
+                try:
+                    p_hq, _, stderr_hq = await run_proc([
+                        ffmpeg, "-i", video_path, "-vn", "-acodec", "pcm_s16le",
+                        "-ar", "44100", "-ac", "2", extract_hq_path, "-y",
+                    ])
+                    if p_hq.returncode != 0 or not os.path.exists(extract_hq_path):
+                        logger.warning(
+                            "HQ audio extraction failed (rc=%s) — separation falls "
+                            "back to the 16k mono ASR file", p_hq.returncode,
+                        )
+                        _discard_partial_audio(extract_hq_path)
+                        audio_hq_path = None
+                    else:
+                        os.replace(extract_hq_path, audio_hq_path)
+                except Exception as e_hq:  # noqa: BLE001 — quality upgrade, never fatal
+                    logger.warning("HQ audio extraction errored (%s) — falling back", type(e_hq).__name__)
                     _discard_partial_audio(extract_hq_path)
                     audio_hq_path = None
-                else:
-                    os.replace(extract_hq_path, audio_hq_path)
-            except Exception as e_hq:  # noqa: BLE001 — quality upgrade, never fatal
-                logger.warning("HQ audio extraction errored (%s) — falling back", type(e_hq).__name__)
-                _discard_partial_audio(extract_hq_path)
-                audio_hq_path = None
         except asyncio.CancelledError:
             _discard_partial_audio(extract_path, extract_hq_path)
             raise
@@ -1901,109 +1934,127 @@ async def ingest_pipeline(
             no_vocals_path = os.path.join(job_dir, "no_vocals.wav")
             scene_cuts: list = []
 
-            yield prep_event("demucs_start")
+            async def _scan_scenes() -> list:
+                # -an -sn: only the video stream is needed for the scene filter.
+                _p, _, stderr_scene = await run_proc([
+                    ffmpeg, "-i", video_path, "-an", "-sn", "-filter:v",
+                    "select='gt(scene,0.3)',showinfo", "-f", "null", "-",
+                ], timeout=600.0)
+                return [float(m.group(1)) for m in re.finditer(
+                    r"pts_time:([\d\.]+)", stderr_scene.decode(errors="replace"))]
+
+            # Scene detection is CPU-only ffmpeg and independent of Demucs, so on
+            # hosts where Demucs runs on a GPU it starts now and overlaps it. On
+            # CPU-only hosts both would fight for the same cores: stay serial.
+            scene_task = None
+            if input_type != "audio" and get_best_device() != "cpu":
+                scene_task = asyncio.create_task(_scan_scenes())
             try:
-                async for evt in _separate_background(
-                    job_id, audio_hq_path or audio_path, job_dir, paths=(audio_hq_path, audio_path, job_dir),
+
+                yield prep_event("demucs_start")
+                try:
+                    async for evt in _separate_background(
+                        job_id, audio_hq_path or audio_path, job_dir, paths=(audio_hq_path, audio_path, job_dir),
+                    ):
+                        if evt[0] == "progress":
+                            yield prep_event("demucs_progress", percent=evt[1])
+                        elif evt[0] == "retry":
+                            yield prep_event("demucs_retry", **evt[1])
+                    # Stems land under the INPUT's basename ("audio_hq" when the
+                    # full-quality extraction succeeded, "audio" on its fallback).
+                    demucs_out = os.path.join(
+                        job_dir, "htdemucs",
+                        os.path.splitext(os.path.basename(audio_hq_path or audio_path))[0],
+                    )
+                    if os.path.exists(os.path.join(demucs_out, "vocals.wav")):
+                        shutil.move(os.path.join(demucs_out, "vocals.wav"), vocals_path)
+                        shutil.move(os.path.join(demucs_out, "no_vocals.wav"), no_vocals_path)
+                        shutil.rmtree(os.path.join(job_dir, "htdemucs"), ignore_errors=True)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    from core.scrub import scrub_text
+                    detail = f"{type(e).__name__}: {scrub_text(str(e))}"
+                    logger.warning("Demucs failed for %s, falling back to mixed audio: %s", log_safe(job_id), log_safe(detail, limit=12100))
+                    e = Exception(f"{_BACKGROUND_LOST_NOTICE} {e}")
+                    # plan-04: surface the degradation (job continues with mixed audio).
+                    warning = failure.build_failure(e, stage="demucs", include_diagnostic=False)
+                    yield prep_event("warning", **{
+                        key: scrub_text(value) if isinstance(value, str) else value
+                        for key, value in warning.items()
+                    })
+                    vocals_path = audio_path
+                    no_vocals_path = None
+                has_bg = bool(no_vocals_path and os.path.exists(no_vocals_path))
+                yield prep_event("demucs_done", has_bg=has_bg)
+
+                # Audio-only jobs (#119) have no video to scan or thumbnail. Skip
+                # both ffmpeg passes but still emit scene_done (count=0) so the
+                # prep SSE contract the frontend waits on is unchanged.
+                thumb_path = os.path.join(job_dir, "thumb.jpg")
+                if input_type == "audio":
+                    # No scenes/thumbnail in audio — emit the start/done pair anyway
+                    # so the prep SSE stage sequence stays symmetric with the video
+                    # path (the frontend's stage tracker expects both).
+                    yield prep_event("scene_start")
+                    yield prep_event("scene_done", count=0)
+                    thumb_path = None
+                else:
+                    yield prep_event("scene_start")
+                    try:
+                        scene_cuts = await (scene_task if scene_task is not None else _scan_scenes())
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        logger.warning("Scene detection failed for %s: %s", log_safe(job_id), log_safe(e))
+                        yield prep_event("warning", **failure.build_failure(e, stage="scene", include_diagnostic=False))
+                    yield prep_event("scene_done", count=len(scene_cuts))
+
+                    offset = max(0.5, min(1.5, dur * 0.1)) if dur else 1.0
+                    try:
+                        await run_proc([
+                            ffmpeg, "-y", "-ss", f"{offset:.2f}", "-i", video_path,
+                            "-vframes", "1", "-vf", "scale=320:-2",
+                            "-q:v", "4", thumb_path,
+                        ], timeout=30.0)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        logger.warning("Thumbnail extraction failed for %s: %s", log_safe(job_id), log_safe(e))
+                        yield prep_event("warning", **failure.build_failure(e, stage="thumbnail", include_diagnostic=False))
+
+                # The job can legitimately be gone by now — everything above takes
+                # minutes and `DELETE /dub/history/{id}` pops the record. Deleting
+                # an in-flight dub used to raise KeyError here and surface as the
+                # toast `ingest: 'mgw39lx3'` (#1252/#1253). A withdrawn job is not
+                # an error: stop quietly rather than re-persisting what the user
+                # just deleted.
+                # Merge and persist as one step: a delete landing BETWEEN them
+                # would remove the row and then have it written straight back, so
+                # the dub the user deleted reappears in history (#1252 review).
+                if not merge_and_save_job(
+                    job_id,
+                    {
+                        "vocals_path": vocals_path,
+                        "no_vocals_path": no_vocals_path,
+                        "background_separation": "ok" if has_bg else "failed",
+                        "thumb_path": thumb_path if (thumb_path and os.path.exists(thumb_path)) else None,
+                        "scene_cuts": scene_cuts,
+                    },
+                    filename=filename,
+                    duration=dur,
+                    content_hash=content_hash,
                 ):
-                    if evt[0] == "progress":
-                        yield prep_event("demucs_progress", percent=evt[1])
-                    elif evt[0] == "retry":
-                        yield prep_event("demucs_retry", **evt[1])
-                # Stems land under the INPUT's basename ("audio_hq" when the
-                # full-quality extraction succeeded, "audio" on its fallback).
-                demucs_out = os.path.join(
-                    job_dir, "htdemucs",
-                    os.path.splitext(os.path.basename(audio_hq_path or audio_path))[0],
-                )
-                if os.path.exists(os.path.join(demucs_out, "vocals.wav")):
-                    shutil.move(os.path.join(demucs_out, "vocals.wav"), vocals_path)
-                    shutil.move(os.path.join(demucs_out, "no_vocals.wav"), no_vocals_path)
-                    shutil.rmtree(os.path.join(job_dir, "htdemucs"), ignore_errors=True)
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                from core.scrub import scrub_text
-                detail = f"{type(e).__name__}: {scrub_text(str(e))}"
-                logger.warning("Demucs failed for %s, falling back to mixed audio: %s", log_safe(job_id), log_safe(detail, limit=12100))
-                e = Exception(f"{_BACKGROUND_LOST_NOTICE} {e}")
-                # plan-04: surface the degradation (job continues with mixed audio).
-                warning = failure.build_failure(e, stage="demucs", include_diagnostic=False)
-                yield prep_event("warning", **{
-                    key: scrub_text(value) if isinstance(value, str) else value
-                    for key, value in warning.items()
-                })
-                vocals_path = audio_path
-                no_vocals_path = None
-            has_bg = bool(no_vocals_path and os.path.exists(no_vocals_path))
-            yield prep_event("demucs_done", has_bg=has_bg)
-
-            # Audio-only jobs (#119) have no video to scan or thumbnail. Skip
-            # both ffmpeg passes but still emit scene_done (count=0) so the
-            # prep SSE contract the frontend waits on is unchanged.
-            thumb_path = os.path.join(job_dir, "thumb.jpg")
-            if input_type == "audio":
-                # No scenes/thumbnail in audio — emit the start/done pair anyway
-                # so the prep SSE stage sequence stays symmetric with the video
-                # path (the frontend's stage tracker expects both).
-                yield prep_event("scene_start")
-                yield prep_event("scene_done", count=0)
-                thumb_path = None
-            else:
-                yield prep_event("scene_start")
-                try:
-                    p, _, stderr_scene = await run_proc([
-                        ffmpeg, "-i", video_path, "-filter:v",
-                        "select='gt(scene,0.3)',showinfo", "-f", "null", "-",
-                    ], timeout=600.0)
-                    matches = re.finditer(r"pts_time:([\d\.]+)", stderr_scene.decode(errors="replace"))
-                    scene_cuts = [float(m.group(1)) for m in matches]
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.warning("Scene detection failed for %s: %s", log_safe(job_id), log_safe(e))
-                    yield prep_event("warning", **failure.build_failure(e, stage="scene", include_diagnostic=False))
-                yield prep_event("scene_done", count=len(scene_cuts))
-
-                offset = max(0.5, min(1.5, dur * 0.1)) if dur else 1.0
-                try:
-                    await run_proc([
-                        ffmpeg, "-y", "-ss", f"{offset:.2f}", "-i", video_path,
-                        "-vframes", "1", "-vf", "scale=320:-2",
-                        "-q:v", "4", thumb_path,
-                    ], timeout=30.0)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.warning("Thumbnail extraction failed for %s: %s", log_safe(job_id), log_safe(e))
-                    yield prep_event("warning", **failure.build_failure(e, stage="thumbnail", include_diagnostic=False))
-
-            # The job can legitimately be gone by now — everything above takes
-            # minutes and `DELETE /dub/history/{id}` pops the record. Deleting
-            # an in-flight dub used to raise KeyError here and surface as the
-            # toast `ingest: 'mgw39lx3'` (#1252/#1253). A withdrawn job is not
-            # an error: stop quietly rather than re-persisting what the user
-            # just deleted.
-            # Merge and persist as one step: a delete landing BETWEEN them
-            # would remove the row and then have it written straight back, so
-            # the dub the user deleted reappears in history (#1252 review).
-            if not merge_and_save_job(
-                job_id,
-                {
-                    "vocals_path": vocals_path,
-                    "no_vocals_path": no_vocals_path,
-                    "background_separation": "ok" if has_bg else "failed",
-                    "thumb_path": thumb_path if (thumb_path and os.path.exists(thumb_path)) else None,
-                    "scene_cuts": scene_cuts,
-                },
-                filename=filename,
-                duration=dur,
-                content_hash=content_hash,
-            ):
-                logger.info("Dub job %s was deleted during ingest — discarding its result", log_safe(job_id))
-                yield prep_event("cancelled")
-                return
-            yield prep_event("ready", job_id=job_id, duration=round(dur, 2), filename=filename)
+                    logger.info("Dub job %s was deleted during ingest — discarding its result", log_safe(job_id))
+                    yield prep_event("cancelled")
+                    return
+                yield prep_event("ready", job_id=job_id, duration=round(dur, 2), filename=filename)
+            finally:
+                if scene_task is not None:
+                    if not scene_task.done():
+                        scene_task.cancel()
+                    elif not scene_task.cancelled():
+                        scene_task.exception()  # mark retrieved; failure already surfaced
 
     except asyncio.CancelledError:
         logger.info("Dub prep cancelled for job %s; killing subprocesses and cleaning up", log_safe(job_id))
