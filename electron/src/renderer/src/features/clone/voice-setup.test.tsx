@@ -119,3 +119,12 @@ it('lets clicks on the photo reach the card; only the camera badge picks a photo
   expect(label).toHaveClass('pointer-events-none');
   expect(label.querySelectorAll('.pointer-events-auto')).toHaveLength(1);
 });
+
+it('still accepts a photo dropped anywhere on the card', () => {
+  mock.update.mockResolvedValue(voice('b', 'Adam', 300));
+  render(<VoiceSetup onChosen={() => {}} onBack={() => {}} />);
+  const card = screen.getByRole('button', { name: 'Adam' }).closest('[data-slot="voice-card"]');
+  const png = new File(['x'], 'a.png', { type: 'image/png' });
+  fireEvent.drop(card as HTMLElement, { dataTransfer: { types: ['Files'], files: [png] } });
+  expect(mock.update).toHaveBeenCalledWith('b', png);
+});

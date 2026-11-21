@@ -530,8 +530,8 @@ test-only PR. Docker Hub overview edits still publish through the small
   the installer scripts, Electron packaging, the runtime setup code (`electron/src/main/` setup,
   runtime, wheel-prefetch and pypi-mirror modules; `backend/services/sidecar_*.py`, `media_tools.py`,
   `endpoint_race.py`), `deploy/install-worker/` or the workflow itself, and not for documentation or
-  test-only changes. Pushes to `main` and manual runs always run it; a newer push cancels the
-  superseded pull-request run. `tests/test_install_smoke_workflow.py` keeps the path list complete.
+  test-only changes. Pushes to `main` use the same path list and the documentation/test-only skip;
+  manual runs always run it. A newer push cancels the superseded pull-request run. `tests/test_install_smoke_workflow.py` keeps the path list complete.
 - **CI scope:** the Electron-only jobs (UI crawler, Desktop UI, Linux native
   package, release smoke, `Tests (Electron)` and `Electron renderer smokes`) are skipped on a
   pull request whose every changed file is an *edit or addition* under `backend/`
