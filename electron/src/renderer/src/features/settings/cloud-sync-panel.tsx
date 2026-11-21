@@ -22,6 +22,7 @@ import { Switch } from '@/components/ui/switch';
 import { formatRelative } from '@/features/clone/format';
 import { apiJson } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
+import { relaxWhenBackendBusy } from '@/lib/status-polling';
 
 type ChoiceKey = 'settings' | 'shortcuts' | 'favorites';
 const CHOICES: ChoiceKey[] = ['settings', 'shortcuts', 'favorites'];
@@ -153,7 +154,7 @@ export function CloudSyncPanel({ planUrl }: { planUrl?: string | null } = {}) {
   const status = useQuery({
     queryKey: STATUS_KEY,
     queryFn: ({ signal }) => apiJson<SyncView>('/api/cloud-sync/status', { signal }),
-    refetchInterval: 5000,
+    refetchInterval: () => relaxWhenBackendBusy(5000),
   });
   const view = status.data;
   const devices = useQuery({

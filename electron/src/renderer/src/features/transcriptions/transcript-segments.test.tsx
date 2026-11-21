@@ -11,7 +11,6 @@ const segments = (count: number) =>
     start: index,
     end: index + 1,
     text: `line ${index}`,
-    speaker: null,
   }));
 
 function open() {
