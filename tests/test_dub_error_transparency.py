@@ -235,11 +235,14 @@ def test_demucs_separates_the_hq_stereo_extraction(tmp_path, monkeypatch):
         pass  # later stages may bail on fake media; the commands are recorded
 
     extracts = [c for c in calls if c and c[0] == "ffmpeg" and "-vn" in c]
-    assert len(extracts) >= 2, f"expected ASR + HQ extractions, got {len(extracts)}"
-    asr = next(c for c in extracts if "16000" in c)
-    hq = next(c for c in extracts if "44100" in c)
-    assert "1" == asr[asr.index("-ac") + 1]      # ASR stays mono 16k
-    assert "2" == hq[hq.index("-ac") + 1]        # separation input is stereo 44.1k
+    # ASR (mono 16k) and HQ (stereo 44.1k) now come from ONE ffmpeg pass with
+    # two outputs; the pair must both be present on the command line.
+    assert len(extracts) == 1, f"expected one combined extraction, got {len(extracts)}"
+    c = extracts[0]
+    assert c[c.index("16000") + 2] == "-ac" or "16000" in c
+    assert c[c.index("-ar", c.index("16000")) - 0] == "-ar"
+    assert c[c.index("16000") + 1] == "-ac" and c[c.index("16000") + 2] == "1"   # ASR stays mono 16k
+    assert c[c.index("44100") + 1] == "-ac" and c[c.index("44100") + 2] == "2"   # stereo 44.1k
     demucs = next((c for c in calls if "demucs.separate" in " ".join(c)), None)
     assert demucs is not None
     assert any(str(a).endswith("audio_hq.wav") for a in demucs), (

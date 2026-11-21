@@ -1025,3 +1025,235 @@ def test_nllb_script_variants_and_aliases():
     assert _nllb_language("no") == _nllb_language("nb") == "nob_Latn"
     assert _nllb_language("jw") == "jav_Latn"
     assert _nllb_language("ne") == "npi_Deva"
+
+
+# ── NLLB half precision on CUDA only ───────────────────────────────────────
+
+class _Tensor:
+    def __init__(self, values):
+        self.values = values
+
+    def to(self, device):
+        return self
+
+
+class _Tok:
+    def __call__(self, texts, **kwargs):
+        return {"input_ids": _Tensor(texts)}
+
+    def convert_tokens_to_ids(self, target):
+        return target
+
+    def batch_decode(self, tokens, **kwargs):
+        return tokens
+
+
+class _Nllb:
+    def __init__(self, dtype, fail_fp16_generate=False, fail_cuda_move=False, fail_float=False,
+                 reload_partial_move=False):
+        self.fail_float = fail_float
+        self.place = "cpu"
+        self.partial_move = reload_partial_move
+        self.dtype = dtype
+        self.fail_fp16_generate = fail_fp16_generate
+        self.fail_cuda_move = fail_cuda_move
+
+    def to(self, device):
+        if self.fail_cuda_move and device == "cuda":
+            raise RuntimeError("fp16 unsupported here")
+        if self.partial_move and device == "cuda":
+            self.place = "mixed"  # some params moved before the failure
+            raise RuntimeError("CUDA out of memory while moving")
+        self.place = device
+        return self
+
+    def float(self):
+        if self.fail_float:
+            self.dtype = "mixed"  # half-converted, then OOM
+            raise RuntimeError("CUDA out of memory during float()")
+        self.dtype = "float32"
+        return self
+
+    def generate(self, *, input_ids, **kwargs):
+        if self.dtype == "float16" and self.fail_fp16_generate:
+            raise RuntimeError("probability tensor contains inf or nan")
+        return [f"t:{x}" for x in input_ids.values]
+
+
+async def _run_nllb(monkeypatch, *, cuda, mps=False, **model_kw):
+    import torch
+    from api.routers import dub_translate
+    from schemas.requests import TranslateRequest
+    from services import model_acceptance, translation_engines
+
+    loads = []
+
+    def _load(factory, **kwargs):
+        if factory.__name__ == "AutoTokenizer":
+            return _Tok()
+        loads.append(kwargs)
+        # A reload (no dtype) is always a clean model; only the fp16 one is faulty.
+        kw = {k: v for k, v in model_kw.items() if k != "reload_partial_move"} if "torch_dtype" in kwargs else {
+            k: v for k, v in model_kw.items() if k not in ("fail_float", "fail_fp16_generate")}
+        return _Nllb(str(kwargs.get("torch_dtype", "float32")).replace("torch.", ""), **kw)
+
+    monkeypatch.setattr(dub_translate, "_load_nllb_component", _load)
+    monkeypatch.setattr(dub_translate, "_nllb_model", None)
+    monkeypatch.setattr(dub_translate, "_nllb_tokenizer", None)
+    monkeypatch.setattr(dub_translate, "_nllb_device", None)
+    monkeypatch.setattr(dub_translate._nllb_state, "fp16", False)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: cuda)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: mps)
+    monkeypatch.setattr(model_acceptance, "ensure_accepted", lambda _: None)
+    monkeypatch.setattr(translation_engines, "is_installed", lambda _: True)
+    monkeypatch.setattr(translation_engines, "is_ready", lambda _: True)
+    monkeypatch.setenv("OMNIVOICE_UNLOAD_NLLB", "0")
+    request = TranslateRequest(
+        provider="nllb", source_lang="en", target_lang="de",
+        segments=[{"id": "1", "text": "hello"}],
+    )
+    response = await dub_translate.dub_translate(request)
+    return response, loads, dub_translate
+
+
+@pytest.mark.asyncio
+async def test_nllb_loads_fp16_on_cuda(monkeypatch):
+    import torch
+
+    response, loads, mod = await _run_nllb(monkeypatch, cuda=True)
+    assert loads == [{"torch_dtype": torch.float16}]
+    assert response["translated"][0]["text"] == "t:hello" and mod._nllb_state.fp16 is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cuda,mps", [(False, True), (False, False)])
+async def test_nllb_stays_float32_off_cuda(monkeypatch, cuda, mps):
+    response, loads, mod = await _run_nllb(monkeypatch, cuda=cuda, mps=mps)
+    assert loads == [{}] and mod._nllb_state.fp16 is False
+    assert response["translated"][0]["text"] == "t:hello"
+
+
+@pytest.mark.asyncio
+async def test_nllb_fp16_load_failure_reloads_float32(monkeypatch):
+    import torch
+
+    response, loads, mod = await _run_nllb(monkeypatch, cuda=True, fail_cuda_move=True)
+    assert loads[0] == {"torch_dtype": torch.float16} and len(loads) == 2
+    assert mod._nllb_state.fp16 is False
+
+
+@pytest.mark.asyncio
+async def test_nllb_fp16_generate_failure_retries_float32(monkeypatch):
+    response, _loads, mod = await _run_nllb(monkeypatch, cuda=True, fail_fp16_generate=True)
+    assert response["translated"][0]["text"] == "t:hello"
+    assert mod._nllb_state.fp16 is False
+
+
+@pytest.mark.asyncio
+async def test_nllb_half_converted_model_is_reloaded_clean(monkeypatch):
+    response, loads, mod = await _run_nllb(
+        monkeypatch, cuda=True, fail_fp16_generate=True, fail_float=True)
+    assert response["translated"][0]["text"] == "t:hello"
+    assert mod._nllb_state.fp16 is False
+    assert mod._nllb_model.dtype == "float32"  # not the "mixed" survivor
+    assert len(loads) == 2 and "torch_dtype" not in loads[1]
+
+
+@pytest.mark.asyncio
+async def test_nllb_generation_and_unload_share_one_lock(monkeypatch):
+    import threading
+
+    from api.routers import dub_translate as mod
+
+    holder_in = threading.Event()
+    release = threading.Event()
+
+    def _work():
+        holder_in.set()
+        release.wait(5)
+        return "done"
+
+    t = threading.Thread(target=mod._locked_nllb(_work))
+    t.start()
+    assert holder_in.wait(5)
+    got = []
+    u = threading.Thread(target=lambda: (mod._unload_nllb(), got.append(1)))
+    u.start()
+    u.join(0.2)
+    assert u.is_alive() and not got  # unload waits for the holder
+    release.set()
+    t.join(5)
+    u.join(5)
+    assert got == [1]
+
+
+@pytest.mark.asyncio
+async def test_unload_waits_for_nllb_lock_off_the_event_loop(monkeypatch):
+    """The post-translation unload must not block the loop on a held lock.
+
+    A worker thread takes ``_nllb_lock`` right when the unload decision is made
+    (so the translation itself has already finished); the unload then has to
+    wait for it. With a synchronous ``_unload_nllb()`` the loop would freeze
+    until the worker lets go, and the heartbeat could not tick meanwhile.
+    """
+    import threading
+
+    from api.routers import dub_translate as mod
+
+    holding = threading.Event()
+    release = threading.Event()
+    ticks = []
+    at_release = {}
+
+    def _worker():
+        with mod._nllb_lock:
+            holding.set()
+            # Backstop only: a blocked loop (the bug) cannot set `release`.
+            release.wait(3)
+            at_release["ticks"] = len(ticks)
+
+    def _decide_unload():
+        threading.Thread(target=_worker, daemon=True).start()
+        assert holding.wait(5)  # lock is now held by the worker
+        return True
+
+    async def _heartbeat(enough):
+        while True:
+            ticks.append(1)
+            if len(ticks) >= 50:
+                enough.set()
+            await asyncio.sleep(0)
+
+    async def _driver():
+        enough = asyncio.Event()
+        beat = asyncio.ensure_future(_heartbeat(enough))
+        try:
+            await asyncio.wait_for(enough.wait(), 5)  # loop turns while worker holds the lock
+            release.set()
+        finally:
+            beat.cancel()
+
+    driver = {}
+
+    def _decide_then_drive():
+        result = _decide_unload()
+        # Heartbeat starts while the worker holds the lock and the unload is pending.
+        driver["task"] = asyncio.get_event_loop().create_task(_driver())
+        return result
+
+    monkeypatch.setattr(mod, "_should_unload_nllb", _decide_then_drive)
+    response, _loads, _mod = await _run_nllb(monkeypatch, cuda=False)
+    await driver["task"]
+    assert response["translated"][0]["text"] == "t:hello"
+    assert at_release["ticks"] >= 50  # loop kept ticking while the lock was held
+    assert mod._nllb_model is None   # and the unload completed after release
+
+
+@pytest.mark.asyncio
+async def test_failed_cuda_reload_placement_is_moved_fully_to_cpu(monkeypatch):
+    response, _loads, mod = await _run_nllb(
+        monkeypatch, cuda=True, fail_fp16_generate=True, fail_float=True,
+        reload_partial_move=True)
+    assert response["translated"][0]["text"] == "t:hello"
+    assert mod._nllb_device == "cpu" and mod._nllb_model.place == "cpu"
+    assert mod._nllb_state.fp16 is False
