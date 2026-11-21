@@ -13,6 +13,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { throttle } from '@tanstack/react-pacer';
@@ -55,6 +56,29 @@ import {
 } from '@/lib/store/transcript-saves';
 
 const TIMER_TICK_MS = 100;
+
+// Elapsed render time ticks at 10 Hz. It lives outside the generation context so a
+// tick re-renders only the timer labels, not every useGenerateClone consumer.
+const elapsedListeners = new Set<() => void>();
+let elapsedValue = 0;
+export const elapsedStore = {
+  set(value: number) {
+    if (value === elapsedValue) return;
+    elapsedValue = value;
+    elapsedListeners.forEach((listener) => listener());
+  },
+  subscribe(listener: () => void) {
+    elapsedListeners.add(listener);
+    return () => {
+      elapsedListeners.delete(listener);
+    };
+  },
+  get: () => elapsedValue,
+};
+/** Seconds the current (or last) take has been rendering, to 0.1 s. */
+export function useGenerationElapsed(): number {
+  return useSyncExternalStore(elapsedStore.subscribe, elapsedStore.get, elapsedStore.get);
+}
 const PROGRESS_THROTTLE_MS = 100;
 const MODEL_NOT_DOWNLOADED = 'model_not_downloaded';
 /** A deliberate queue validation outcome, rather than an engine failure. */
@@ -186,7 +210,6 @@ export interface UseGenerateClone {
   removeQueued(id: string): void;
   clearFinished(): void;
   isGenerating: boolean;
-  elapsedSeconds: number;
   /** 0..100 while the WAV body streams in; null when unknown. */
   progress: number | null;
   stage: 'preparing' | 'loading' | 'generating' | 'receiving';
@@ -297,7 +320,6 @@ function useGenerateController(): UseGenerateClone {
   }, []);
   useResolvedLicenceError(errorCause, clearError);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [progress, setProgress] = useState<number | null>(null);
   const [stage, setStage] = useState<UseGenerateClone['stage']>('preparing');
   const [modelStage, setModelStage] = useState<UseGenerateClone['modelStage']>(null);
@@ -585,14 +607,14 @@ function useGenerateController(): UseGenerateClone {
       setErrorTopic(null);
       setErrorCause(null);
       setIsGenerating(true);
-      setElapsedSeconds(0);
+      elapsedStore.set(0);
       setProgress(null);
       setStage('preparing');
       setModelStage(null);
       setModelProgress(null);
       const startedAt = Date.now();
       timerRef.current = setInterval(() => {
-        setElapsedSeconds(Math.round((Date.now() - startedAt) / TIMER_TICK_MS) / 10);
+        elapsedStore.set(Math.round((Date.now() - startedAt) / TIMER_TICK_MS) / 10);
       }, TIMER_TICK_MS);
       const controller = new AbortController();
       abortRef.current = controller;
@@ -805,12 +827,12 @@ function useGenerateController(): UseGenerateClone {
     cancel();
   }, [cancel]);
 
-  return {
+  return useMemo(
+    () => ({
     generate: () => generate(),
     generateDesign: generate,
     cancel,
     isGenerating,
-    elapsedSeconds,
     progress,
     stage,
     modelStage,
@@ -830,7 +852,29 @@ function useGenerateController(): UseGenerateClone {
     designBlockerFor,
     cloneBlocker: blocker,
     instructVocabulary,
-  };
+  }),
+    [
+      generate,
+      cancel,
+      isGenerating,
+      progress,
+      stage,
+      modelStage,
+      modelProgress,
+      error,
+      errorTopic,
+      clearError,
+      blocker,
+      designBlocker,
+      queue,
+      removeQueued,
+      clearFinished,
+      cancelAll,
+      designBlockerFor,
+      instructVocabulary,
+    ],
+  );
+
 }
 
 const GenerationContext = createContext<UseGenerateClone | null>(null);

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { apiJson } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { SettingsSection, SettingsRow } from './settings-layout';
+import { relaxWhenBackendBusy } from '@/lib/status-polling';
 interface Tool {
   ok: boolean;
   version?: string;
@@ -33,7 +34,7 @@ export function SetupMediaEngine() {
   const query = useQuery({
     queryKey: ['media-tools'],
     queryFn: ({ signal }) => apiJson<Status>('/media-tools/status', { signal }),
-    refetchInterval: (state) => (state.state.data?.ops.acquire?.state === 'running' ? 1500 : false),
+    refetchInterval: (state) => (state.state.data?.ops.acquire?.state === 'running' ? relaxWhenBackendBusy(1500) : false),
     retry: false,
   });
   const act = async (path: string, choose = false) => {
@@ -100,7 +101,7 @@ export function MediaTools() {
   const query = useQuery({
     queryKey: ['media-tools'],
     queryFn: ({ signal }) => apiJson<Status>('/media-tools/status', { signal }),
-    refetchInterval: 2000,
+    refetchInterval: () => relaxWhenBackendBusy(2000),
   });
   const act = async (path: string, tool?: 'ffmpeg' | 'ffprobe') => {
     if (pending.current) return;
