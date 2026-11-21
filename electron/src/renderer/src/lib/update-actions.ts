@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import type { TFunction } from "i18next";
 import { Store } from "@tanstack/store";
 import { getBridge } from "@/components/bridge";
-import { dubSession, flushDubDraft } from "@/features/dub/dub-session";
+import type { DubSession } from "@/features/dub/dub-session";
 import { ApiError, apiJson } from "@/lib/api/client";
 import { activeAppWorkCount } from "@/lib/app-activity";
 import { updateReleaseUrl } from "@/lib/update-format";
@@ -30,7 +30,7 @@ export const serverWorkActive = (models?: ModelInstallJobs, batches?: unknown[])
   serverWorkCount(models, batches) > 0;
 
 /** A dub that is still processing or recovering; editing and done are safe to restart. */
-export const dubBusy = (value: typeof dubSession.state) =>
+export const dubBusy = (value: DubSession) =>
   Boolean(value.recovery || value.batchProgress) ||
   !["idle", "editing", "done"].includes(value.phase);
 
@@ -72,15 +72,16 @@ export interface RestartWork {
 export async function updateRestartWork(
   timeoutMs = WORK_STATUS_TIMEOUT_MS,
 ): Promise<RestartWork> {
-  const [models, batches] = await Promise.all([
+  const [models, batches, dubMod] = await Promise.all([
     workStatus<ModelInstallJobs>(MODEL_INSTALL_STATUS_PATH, timeoutMs),
     workStatus<unknown[]>(ACTIVE_BATCH_JOBS_PATH, timeoutMs),
+    import("@/features/dub/dub-session"),
   ]);
   const unknown = models === UNKNOWN || batches === UNKNOWN;
   return {
     count:
       activeAppWorkCount() +
-      (dubBusy(dubSession.state) ? 1 : 0) +
+      (dubBusy(dubMod.dubSession.state) ? 1 : 0) +
       serverWorkCount(
         models === UNKNOWN ? undefined : models,
         batches === UNKNOWN ? undefined : batches,
@@ -102,6 +103,7 @@ export const restartConfirmation = new Store<RestartWork | null>(null);
 
 /** Restarts into the downloaded update now, saving the dub draft first. */
 export async function restartIntoUpdate(): Promise<void> {
+  const { flushDubDraft } = await import("@/features/dub/dub-session");
   flushDubDraft();
   await getBridge()?.updates.install();
 }

@@ -1866,6 +1866,33 @@ def clear_clone_prompt_cache(*, keep_passage_choices: bool = False) -> None:
 # no import cycle and no import-time side effect here.
 
 
+def _package_spec_available(top_level: str, *, submodule_relpath: str | None = None) -> bool:
+    """Check whether a Python package (and optional submodule file) is installed
+    without executing its ``__init__`` or pulling in heavy ML dependencies.
+    Respects ``sys.modules`` overrides (including ``None`` in tests)."""
+    import importlib.util
+    import sys
+
+    if top_level in sys.modules:
+        if sys.modules[top_level] is None:
+            return False
+    try:
+        spec = importlib.util.find_spec(top_level)
+    except (ImportError, ValueError):
+        return False
+    if spec is None:
+        return False
+    if submodule_relpath is None:
+        return True
+    dotted = f"{top_level}.{submodule_relpath.removesuffix('.py').replace('/', '.')}"
+    if dotted in sys.modules:
+        return sys.modules[dotted] is not None
+    locations = spec.submodule_search_locations
+    if not locations:
+        return False
+    return any(os.path.isfile(os.path.join(loc, submodule_relpath)) for loc in locations)
+
+
 class OmniVoiceBackend(TTSBackend):
     """Wraps `omnivoice.models.omnivoice.OmniVoice`. Zero behaviour change.
 
@@ -1928,11 +1955,9 @@ class OmniVoiceBackend(TTSBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
-        try:
-            import omnivoice.models.omnivoice  # noqa: F401
+        if _package_spec_available("omnivoice", submodule_relpath="models/omnivoice.py"):
             return True, "ready"
-        except Exception as e:
-            return False, f"omnivoice package missing: {e}"
+        return False, "omnivoice package missing: No module named 'omnivoice.models.omnivoice'"
 
     _DEFAULT_SAMPLE_RATE = 24000
 
@@ -2593,11 +2618,9 @@ class KittenTTSBackend(TTSBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
-        try:
-            import kittentts  # noqa: F401
+        if _package_spec_available("kittentts"):
             return True, "ready"
-        except ImportError as e:
-            return False, f"kittentts not installed: {e}"
+        return False, "kittentts not installed: No module named 'kittentts'"
 
     _DEFAULT_SAMPLE_RATE = 24000
 
@@ -4459,17 +4482,32 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
     caps = detect_host_caps()
     installable = _sidecar_installable_ids()
 
-    out: list[dict] = []
-    for bid, cls in _REGISTRY.items():
-        if not include_hidden and caps.family == "mps" and bid == "omnivoice-subprocess":
-            continue
-        cls = _effective_backend_class(bid, cls, caps.family)
+    entries = [
+        (bid, _effective_backend_class(bid, cls, caps.family))
+        for bid, cls in _REGISTRY.items()
+        if not (not include_hidden and caps.family == "mps" and bid == "omnivoice-subprocess")
+    ]
+
+    def _probe_tts(item: tuple[str, type[TTSBackend]]) -> tuple[bool, str]:
+        bid_i, cls_i = item
         try:
-            ok, msg = cls.is_available()
+            return cls_i.is_available()
         except Exception:
-            ok = False
-            msg = "Availability probe failed; check the backend log."
-            logger.warning("list_backends: availability probe failed for registered backend %s", bid)
+            logger.warning("list_backends: availability probe failed for registered backend %s", bid_i)
+            return False, "Availability probe failed; check the backend log."
+
+    if len(entries) > 1:
+        import contextvars
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=min(8, len(entries))) as pool:
+            futures = [pool.submit(contextvars.copy_context().run, _probe_tts, item) for item in entries]
+            availability = [f.result() for f in futures]
+    else:
+        availability = [_probe_tts(item) for item in entries]
+
+    out: list[dict] = []
+    for (bid, cls), (ok, msg) in zip(entries, availability):
         if ok:
             _LAST_ERRORS.pop(bid, None)
         else:

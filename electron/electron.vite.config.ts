@@ -38,6 +38,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     define: { ...define, __SUPERMETRY_APP_CONFIG__: JSON.stringify(writeSupermetryConfig()) },
     build: {
+      minify: true,
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
@@ -50,6 +51,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     define,
     build: {
+      minify: true,
       rollupOptions: { input: resolve(__dirname, 'src/preload/index.ts') },
     },
   },
@@ -140,6 +142,8 @@ export default defineConfig({
       },
     },
     build: {
+      minify: true,
+      cssMinify: true,
       rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') },
     },
   },

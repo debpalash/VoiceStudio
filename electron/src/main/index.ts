@@ -611,12 +611,6 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
           });
         },
       });
-      closeRepairAgents = await registerRepairAgents(
-        backend,
-        backendRoot(),
-        () => mainWindow,
-        () => mainErrors.recent(),
-      );
       if (is.dev) {
         const proxy = await startDevBackendProxy(
           () => backend.baseUrl,
@@ -628,6 +622,23 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
         );
         closeDevProxy = proxy.close;
       }
+      // Start backend boot immediately so Python initialization overlaps with
+      // window creation, renderer parse/paint, tray setup, and repair agents.
+      observeMainProcessTask(
+        runDiagnosticOperation(reports, () => backend.start()),
+        mainErrors,
+        'Backend startup',
+      );
+      const repairAgentsReady = registerRepairAgents(
+        backend,
+        backendRoot(),
+        () => mainWindow,
+        () => mainErrors.recent(),
+      ).then((close) => {
+        if (quitting || quitPreparation) close();
+        else closeRepairAgents = close;
+      });
+      observeMainProcessTask(repairAgentsReady, mainErrors, 'Repair agents');
       const updater = new DesktopUpdater();
       const closeUpdateIpc = registerUpdateIpc(
         updater,
@@ -667,11 +678,6 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
       tray.setToolTip(PRODUCT_NAME);
       closeCapture = installNativeCapture(PRELOAD_PATH, tray, () => mainWindow);
       tray.on('click', () => showWindow());
-      observeMainProcessTask(
-        runDiagnosticOperation(reports, () => backend.start()),
-        mainErrors,
-        'Backend startup',
-      );
       if (headlessOwner) {
         idleShutdown = new IdleShutdown({
           idleMs: idleShutdownMs(),

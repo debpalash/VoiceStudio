@@ -140,10 +140,20 @@ def _request_install_capability(payload, request):
 
 @router.get("/engines")
 def list_all_engines(request: Request):
+    import contextvars
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_tts = pool.submit(contextvars.copy_context().run, _family_payload, "tts", tts_backend)
+        f_asr = pool.submit(contextvars.copy_context().run, _family_payload, "asr", asr_backend)
+        f_llm = pool.submit(contextvars.copy_context().run, _family_payload, "llm", llm_backend)
+        tts_payload = f_tts.result()
+        asr_payload = f_asr.result()
+        llm_payload = f_llm.result()
     return {
-        "tts": _request_install_capability(_family_payload("tts", tts_backend), request),
-        "asr": _family_payload("asr", asr_backend),
-        "llm": _family_payload("llm", llm_backend),
+        "tts": _request_install_capability(tts_payload, request),
+        "asr": asr_payload,
+        "llm": llm_payload,
     }
 
 

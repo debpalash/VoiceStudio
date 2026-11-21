@@ -3091,21 +3091,34 @@ def list_backends() -> list[dict]:
     from services.engine_routing import runtime_compute_profile
     caps = detect_host_caps()
 
-    out: list[dict] = []
-    for bid, cls in _REGISTRY.items():
-        broken = _DEEP_IMPORT_BROKEN.get(bid)
+    entries = list(_REGISTRY.items())
+
+    def _probe_asr(item: tuple[str, type[ASRBackend]]) -> tuple[bool, str]:
+        bid_i, cls_i = item
+        broken = _DEEP_IMPORT_BROKEN.get(bid_i)
         if broken is not None:
             # Loading this backend already proved a missing transitive module
             # (#1185) — the shallow probe below would wrongly report "ready",
             # so surface the recorded truth (which carries the repair hint).
-            ok, msg = False, broken
-        else:
-            try:
-                ok, msg = cls.is_available()
-            except Exception:
-                ok = False
-                msg = "Availability probe failed; check the backend log."
-                logger.warning("asr list_backends: availability probe failed for registered backend %s", bid)
+            return False, broken
+        try:
+            return cls_i.is_available()
+        except Exception:
+            logger.warning("asr list_backends: availability probe failed for registered backend %s", bid_i)
+            return False, "Availability probe failed; check the backend log."
+
+    if len(entries) > 1:
+        import contextvars
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=min(8, len(entries))) as pool:
+            futures = [pool.submit(contextvars.copy_context().run, _probe_asr, item) for item in entries]
+            availability = [f.result() for f in futures]
+    else:
+        availability = [_probe_asr(item) for item in entries]
+
+    out: list[dict] = []
+    for (bid, cls), (ok, msg) in zip(entries, availability):
         if ok:
             _LAST_ERRORS.pop(bid, None)
         else:

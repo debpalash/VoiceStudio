@@ -25,7 +25,7 @@ beforeEach(() => {
   setWorkspace.mockClear();
 });
 
-it('reopens a collapsed library pane when a library shortcut opens it', () => {
+it('reopens a collapsed library pane when a library shortcut opens it', async () => {
   const view = render(<ContextSidebar />);
   expect(document.querySelector('[data-slot="secondary-sidebar"]')).toHaveAttribute(
     'data-collapsed',
@@ -37,7 +37,7 @@ it('reopens a collapsed library pane when a library shortcut opens it', () => {
   expect(document.querySelector('[data-slot="secondary-sidebar"]')).not.toHaveAttribute(
     'data-collapsed',
   );
-  expect(screen.getByText('Voice library')).toBeVisible();
+  expect(await screen.findByText('Voice library')).toBeVisible();
 
   fireEvent.click(screen.getByRole('button', { name: 'paneActions.collapse' }));
   expect(setWorkspace).toHaveBeenCalledWith({ libraryOpen: false });
