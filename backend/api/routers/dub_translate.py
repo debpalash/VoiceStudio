@@ -5,6 +5,7 @@ import time
 import asyncio
 import logging
 import threading
+import types
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
@@ -254,7 +255,8 @@ def _translation_output_error(text: object) -> str | None:
 _nllb_model = None
 _nllb_tokenizer = None
 _nllb_device = None
-_nllb_fp16 = False
+# Mutable holder (not a module global) for "the resident model is half precision".
+_nllb_state = types.SimpleNamespace(fp16=False)
 # One lock for every touch of the shared NLLB model (load, generate, the fp16 ->
 # float32 conversion, unload): a conversion must never run under another
 # request's generate. Reentrant because translation unloads from inside it.
@@ -453,7 +455,7 @@ def _locked_nllb(fn):
 
 def _unload_nllb():
     """Release NLLB VRAM so TTS model can reload."""
-    global _nllb_device, _nllb_model, _nllb_tokenizer, _nllb_fp16
+    global _nllb_device, _nllb_model, _nllb_tokenizer
     import gc
     from services.model_manager import release_device_cache
     with _nllb_lock:
@@ -461,7 +463,7 @@ def _unload_nllb():
         _nllb_model = None
         _nllb_tokenizer = None
         _nllb_device = None
-        _nllb_fp16 = False
+        _nllb_state.fp16 = False
     gc.collect()
     release_device_cache(device=device)
 
@@ -533,7 +535,7 @@ async def dub_translate(req: TranslateRequest):
             ensure_accepted([_NLLB_REPO_ID])
 
             def _translate_nllb():
-                global _nllb_model, _nllb_tokenizer, _nllb_device, _nllb_fp16
+                global _nllb_model, _nllb_tokenizer, _nllb_device
                 import torch
                 from services.model_manager import release_device_cache
                 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
@@ -557,14 +559,14 @@ async def dub_translate(req: TranslateRequest):
                                 _nllb_model = _load_nllb_component(
                                     AutoModelForSeq2SeqLM, torch_dtype=torch.float16)
                                 _nllb_model = _nllb_model.to("cuda")
-                                _nllb_fp16 = True
+                                _nllb_state.fp16 = True
                             except Exception as e:
                                 logger.warning("NLLB fp16 load on CUDA failed, using float32: %s", e)
                                 _nllb_model = None
-                                _nllb_fp16 = False
+                                _nllb_state.fp16 = False
                         if _nllb_model is None:
                             _nllb_model = _load_nllb_component(AutoModelForSeq2SeqLM)
-                            _nllb_fp16 = False
+                            _nllb_state.fp16 = False
                         if target_device != "cpu":
                             try:
                                 _nllb_model = _nllb_model.to(target_device)
@@ -584,7 +586,7 @@ async def dub_translate(req: TranslateRequest):
                 # job uses the same decoding effort even if preferences change.
                 decode_options = translation_decode_defaults()
                 def _generate_rows(rows, target_language):
-                    global _nllb_device, _nllb_fp16, _nllb_model
+                    global _nllb_device, _nllb_model
 
                     _nllb_tokenizer.src_lang = flores_src
                     inputs = _nllb_tokenizer(
@@ -603,26 +605,31 @@ async def dub_translate(req: TranslateRequest):
                             **decode_options,
                         )
                     except (RuntimeError, NotImplementedError) as error:
-                        if _nllb_device == "cuda" and _nllb_fp16 and "out of memory" not in str(error).lower():
+                        if _nllb_device == "cuda" and _nllb_state.fp16 and "out of memory" not in str(error).lower():
                             logger.warning("NLLB fp16 generate failed, retrying in float32: %s", error)
                             try:
                                 _nllb_model.float()
-                                _nllb_fp16 = False
+                                _nllb_state.fp16 = False
                             except Exception as conv_error:  # noqa: BLE001 — e.g. OOM mid-conversion
                                 # Parameters may be half-converted: never trust
                                 # this model again, reload a clean float32 one.
                                 logger.warning(
                                     "NLLB float32 conversion failed (%s) — reloading float32", conv_error)
                                 _nllb_model = None
-                                _nllb_fp16 = False
+                                _nllb_state.fp16 = False
                                 release_device_cache(device="cuda")
                                 fresh = _load_nllb_component(AutoModelForSeq2SeqLM)
                                 try:
                                     fresh = fresh.to("cuda")
-                                    _nllb_device = "cuda"
+                                    new_device = "cuda"
                                 except Exception as move_error:  # noqa: BLE001
                                     logger.warning("NLLB cuda placement failed, using CPU: %s", move_error)
-                                    _nllb_device = "cpu"
+                                    # A partly failed .to("cuda") can leave mixed
+                                    # devices: move everything back before it is
+                                    # published as a CPU model.
+                                    fresh = fresh.to("cpu")
+                                    new_device = "cpu"
+                                _nllb_device = new_device
                                 _nllb_model = fresh
                             return _generate_rows(rows, target_language)
                         if _nllb_device != "mps":
@@ -709,7 +716,8 @@ async def dub_translate(req: TranslateRequest):
 
             translated = await _await_unit(lambda: loop.run_in_executor(_gpu_pool, _locked_nllb(_translate_nllb)))
             if _should_unload_nllb():
-                _unload_nllb()
+                # Takes _nllb_lock (may wait on another translation): never on the loop.
+                await asyncio.to_thread(_unload_nllb)
             # Cinematic/Autofit refine + rate-ratio badges must run for NLLB too
             # (previously this returned before _maybe_cinematic, so a Cinematic
             # pick on NLLB silently produced plain Fast output). Unloading NLLB

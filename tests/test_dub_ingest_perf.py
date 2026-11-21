@@ -37,8 +37,9 @@ def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order
                 try:
                     await asyncio.Event().wait()  # blocks until cancelled
                 except asyncio.CancelledError:
-                    for _ in range(3):  # slow ffmpeg teardown: needs several loop turns
-                        await asyncio.sleep(0)
+                    # Slow ffmpeg teardown: finishes only when the test says so.
+                    started['teardown_entered'].set()
+                    await started['teardown_release'].wait()
                     order.append("scene_cleaned")
                     raise
             if SCENE_FILTER in cmd:
@@ -88,8 +89,18 @@ def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"\x00" * 52)
 
+    async def _release_teardown():
+        # Release the scene teardown only once it has really begun.
+        await started['teardown_entered'].wait()
+        order.append("teardown_began")
+        started['teardown_release'].set()
+
     async def _drain():
         started['ev'] = asyncio.Event()
+        started['teardown_entered'] = asyncio.Event()
+        started['teardown_release'] = asyncio.Event()
+        if cancel_in_demucs:
+            asyncio.get_running_loop().create_task(_release_teardown())
         async for _ in dp.ingest_pipeline(
             job_id="t_perf", job_dir=str(tmp_path),
             source={"kind": "path", "path": str(video)},

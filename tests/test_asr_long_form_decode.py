@@ -170,24 +170,53 @@ def test_unload_releases_batched_references(monkeypatch):
 def test_batched_decodes_are_serialized(monkeypatch):
     import threading
 
+    from services import asr_backend as ab
+
+    first_inside = threading.Event()
+    release_first = threading.Event()
+    second_waiting = threading.Event()
     active = {"now": 0, "max": 0}
     guard = threading.Lock()
+
+    class _SpyLock:
+        """Real lock that signals when someone tries to take it while held."""
+
+        def __init__(self):
+            self._lock = threading.Lock()
+
+        def __enter__(self):
+            if not self._lock.acquire(blocking=False):
+                second_waiting.set()
+                self._lock.acquire()
+            return self
+
+        def __exit__(self, *exc):
+            self._lock.release()
+
+    monkeypatch.setattr(ab, "_BATCHED_DECODE_LOCK", _SpyLock())
 
     class _Pipe(_FakeModel):
         def transcribe(self, _audio, **kwargs):
             with guard:
                 active["now"] += 1
                 active["max"] = max(active["max"], active["now"])
-            threading.Event().wait(0.05)
+            if not first_inside.is_set():
+                first_inside.set()
+                assert release_first.wait(5)
             with guard:
                 active["now"] -= 1
             return super().transcribe(_audio, **kwargs)
 
     backend, _seq = _cuda_backend(monkeypatch, _Pipe())
     threads = [threading.Thread(target=backend.transcribe, args=("c.wav",),
-                                kwargs={"word_timestamps": False}) for _ in range(4)]
-    [t.start() for t in threads]
-    [t.join() for t in threads]
+                                kwargs={"word_timestamps": False}) for _ in range(2)]
+    threads[0].start()
+    assert first_inside.wait(5)
+    threads[1].start()
+    assert second_waiting.wait(5)  # second call is blocked on the lock...
+    assert active["now"] == 1      # ...while the first is still decoding
+    release_first.set()
+    [t.join(5) for t in threads]
     assert active["max"] == 1
 
 
