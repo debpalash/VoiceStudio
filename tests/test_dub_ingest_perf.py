@@ -11,7 +11,7 @@ os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 SCENE_FILTER = "select='gt(scene,0.3)',showinfo"
 
 
-def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order=None, hq_publish_fails=False):
+def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order=None, hq_publish_fails=False, cancel_in_demucs=False):
     from core.db import init_db
 
     init_db()
@@ -32,6 +32,15 @@ def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order
                 return P(), b"", b"boom"
             for w in wavs:
                 open(w, "wb").write(b"RIFF")
+            if SCENE_FILTER in cmd and cancel_in_demucs:
+                started['ev'].set()
+                try:
+                    await asyncio.Event().wait()  # blocks until cancelled
+                except asyncio.CancelledError:
+                    for _ in range(3):  # slow ffmpeg teardown: needs several loop turns
+                        await asyncio.sleep(0)
+                    order.append("scene_cleaned")
+                    raise
             if SCENE_FILTER in cmd:
                 if order is not None:
                     order.append("scene_start")
@@ -45,6 +54,9 @@ def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order
         calls.append([str(c) for c in cmd])
         if order is not None:
             order.append("demucs_start")
+        if cancel_in_demucs:
+            await asyncio.wait_for(started['ev'].wait(), timeout=5)
+            raise asyncio.CancelledError
         if order is not None and device not in ("cpu", "boom"):
             # Overlap proof: Demucs only finishes once the scene scan has begun.
             await asyncio.wait_for(started['ev'].wait(), timeout=5)
@@ -86,6 +98,9 @@ def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order
 
     try:
         asyncio.run(_drain())
+    except asyncio.CancelledError:
+        if order is not None:
+            order.append("generator_exited")
     except Exception:
         pass  # later stages may bail on fake media; the commands are recorded
     return calls
@@ -140,3 +155,11 @@ def test_device_probe_failure_stays_serial(tmp_path, monkeypatch):
     _run_ingest(dp, tmp_path, monkeypatch, device="boom", order=order)
     # Probe failure must not abort ingest: the scan still runs, after Demucs.
     assert order.index("scene_start") > order.index("demucs_end")
+
+
+def test_cancel_waits_for_scene_task_before_cleanup(tmp_path, monkeypatch):
+    from services import dub_pipeline as dp
+
+    order = []
+    _run_ingest(dp, tmp_path, monkeypatch, device="cuda", order=order, cancel_in_demucs=True)
+    assert order.index("scene_cleaned") < order.index("generator_exited")

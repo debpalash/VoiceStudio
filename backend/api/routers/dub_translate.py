@@ -4,6 +4,7 @@ import re
 import time
 import asyncio
 import logging
+import threading
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
@@ -254,6 +255,10 @@ _nllb_model = None
 _nllb_tokenizer = None
 _nllb_device = None
 _nllb_fp16 = False
+# One lock for every touch of the shared NLLB model (load, generate, the fp16 ->
+# float32 conversion, unload): a conversion must never run under another
+# request's generate. Reentrant because translation unloads from inside it.
+_nllb_lock = threading.RLock()
 _NLLB_BATCH_SIZE_ENV = "OMNIVOICE_NLLB_BATCH_SIZE"
 _NLLB_MAX_BATCH_SIZE = 32
 
@@ -438,16 +443,25 @@ def _resolve_translation_context(req, client, model_name: str, timeout: float,
     return ctx
 
 
+def _locked_nllb(fn):
+    """Run ``fn`` holding the NLLB model lock."""
+    def _run():
+        with _nllb_lock:
+            return fn()
+    return _run
+
+
 def _unload_nllb():
     """Release NLLB VRAM so TTS model can reload."""
     global _nllb_device, _nllb_model, _nllb_tokenizer, _nllb_fp16
     import gc
     from services.model_manager import release_device_cache
-    device = _nllb_device
-    _nllb_model = None
-    _nllb_tokenizer = None
-    _nllb_device = None
-    _nllb_fp16 = False
+    with _nllb_lock:
+        device = _nllb_device
+        _nllb_model = None
+        _nllb_tokenizer = None
+        _nllb_device = None
+        _nllb_fp16 = False
     gc.collect()
     release_device_cache(device=device)
 
@@ -570,7 +584,7 @@ async def dub_translate(req: TranslateRequest):
                 # job uses the same decoding effort even if preferences change.
                 decode_options = translation_decode_defaults()
                 def _generate_rows(rows, target_language):
-                    global _nllb_device, _nllb_fp16
+                    global _nllb_device, _nllb_fp16, _nllb_model
 
                     _nllb_tokenizer.src_lang = flores_src
                     inputs = _nllb_tokenizer(
@@ -591,8 +605,25 @@ async def dub_translate(req: TranslateRequest):
                     except (RuntimeError, NotImplementedError) as error:
                         if _nllb_device == "cuda" and _nllb_fp16 and "out of memory" not in str(error).lower():
                             logger.warning("NLLB fp16 generate failed, retrying in float32: %s", error)
-                            _nllb_model.float()
-                            _nllb_fp16 = False
+                            try:
+                                _nllb_model.float()
+                                _nllb_fp16 = False
+                            except Exception as conv_error:  # noqa: BLE001 — e.g. OOM mid-conversion
+                                # Parameters may be half-converted: never trust
+                                # this model again, reload a clean float32 one.
+                                logger.warning(
+                                    "NLLB float32 conversion failed (%s) — reloading float32", conv_error)
+                                _nllb_model = None
+                                _nllb_fp16 = False
+                                release_device_cache(device="cuda")
+                                fresh = _load_nllb_component(AutoModelForSeq2SeqLM)
+                                try:
+                                    fresh = fresh.to("cuda")
+                                    _nllb_device = "cuda"
+                                except Exception as move_error:  # noqa: BLE001
+                                    logger.warning("NLLB cuda placement failed, using CPU: %s", move_error)
+                                    _nllb_device = "cpu"
+                                _nllb_model = fresh
                             return _generate_rows(rows, target_language)
                         if _nllb_device != "mps":
                             raise
@@ -676,7 +707,7 @@ async def dub_translate(req: TranslateRequest):
 
                 return [results_by_index[index] for index in range(len(req.segments))]
 
-            translated = await _await_unit(lambda: loop.run_in_executor(_gpu_pool, _translate_nllb))
+            translated = await _await_unit(lambda: loop.run_in_executor(_gpu_pool, _locked_nllb(_translate_nllb)))
             if _should_unload_nllb():
                 _unload_nllb()
             # Cinematic/Autofit refine + rate-ratio badges must run for NLLB too

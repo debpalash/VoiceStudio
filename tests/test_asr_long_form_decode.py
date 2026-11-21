@@ -74,8 +74,11 @@ def test_isolated_sidecar_decodes_windows_independently(monkeypatch):
 
 # ── Perf: CPU threads + CUDA batched decode with sequential fallback ─────────
 
-def _cuda_backend(monkeypatch, pipe):
+def _cuda_backend(monkeypatch, pipe, *, batched=True):
     from services import asr_backend as ab
+
+    if batched:
+        monkeypatch.setenv("OMNIVOICE_ASR_BATCHED", "1")
 
     backend = ab.FasterWhisperBackend(model_name="small")
     seq = _FakeModel()
@@ -92,6 +95,7 @@ def test_cuda_uses_batched_pipeline(monkeypatch):
     backend, seq = _cuda_backend(monkeypatch, pipe)
     backend.transcribe("clip.wav", word_timestamps=True)
     assert pipe.kwargs["batch_size"] >= 8
+    assert pipe.kwargs["without_timestamps"] is False  # keep segment timestamps
     assert pipe.kwargs["vad_filter"] is True and pipe.kwargs["word_timestamps"] is True
     assert seq.kwargs is None
 
@@ -108,13 +112,12 @@ def test_batched_failure_falls_back_to_sequential(monkeypatch):
     assert backend._batched is False  # not retried on every chunk
 
 
-def test_batched_kill_switch_and_non_cuda(monkeypatch):
+def test_batched_is_opt_in_and_cuda_only(monkeypatch):
     pipe = _FakeModel()
-    backend, seq = _cuda_backend(monkeypatch, pipe)
-    monkeypatch.setenv("OMNIVOICE_ASR_BATCHED", "0")
+    monkeypatch.delenv("OMNIVOICE_ASR_BATCHED", raising=False)
+    backend, seq = _cuda_backend(monkeypatch, pipe, batched=False)
     backend.transcribe("clip.wav", word_timestamps=False)
     assert pipe.kwargs is None and seq.kwargs is not None
-    monkeypatch.delenv("OMNIVOICE_ASR_BATCHED")
     backend2, seq2 = _cuda_backend(monkeypatch, pipe)
     backend2._device = "cpu"
     backend2.transcribe("clip.wav", word_timestamps=False)
@@ -149,6 +152,11 @@ def test_unload_releases_batched_references(monkeypatch):
     import gc
     import weakref
 
+    # Keep the real ROCm isolation package out of sys.modules (it would leak
+    # into later tests that swap that package).
+    fake = types.ModuleType("core.windows_rocm.asr_isolation")
+    fake.unload_isolated = lambda _backend: False
+    monkeypatch.setitem(sys.modules, "core.windows_rocm.asr_isolation", fake)
     backend, seq = _cuda_backend(monkeypatch, _FakeModel())
     ref = weakref.ref(seq)
     del seq
@@ -157,3 +165,38 @@ def test_unload_releases_batched_references(monkeypatch):
     gc.collect()
     assert backend._batched_pipe is None and backend._batched_for is None
     assert ref() is None
+
+
+def test_batched_decodes_are_serialized(monkeypatch):
+    import threading
+
+    active = {"now": 0, "max": 0}
+    guard = threading.Lock()
+
+    class _Pipe(_FakeModel):
+        def transcribe(self, _audio, **kwargs):
+            with guard:
+                active["now"] += 1
+                active["max"] = max(active["max"], active["now"])
+            threading.Event().wait(0.05)
+            with guard:
+                active["now"] -= 1
+            return super().transcribe(_audio, **kwargs)
+
+    backend, _seq = _cuda_backend(monkeypatch, _Pipe())
+    threads = [threading.Thread(target=backend.transcribe, args=("c.wav",),
+                                kwargs={"word_timestamps": False}) for _ in range(4)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert active["max"] == 1
+
+
+def test_batched_fallback_log_is_scrubbed(monkeypatch, caplog):
+    class _Boom(_FakeModel):
+        def transcribe(self, *_a, **_k):
+            raise FileNotFoundError("/Users/alice/Secret Project/clip.wav not found")
+
+    backend, _seq = _cuda_backend(monkeypatch, _Boom())
+    with caplog.at_level("WARNING"):
+        backend.transcribe("clip.wav", word_timestamps=False)
+    assert "alice" not in caplog.text

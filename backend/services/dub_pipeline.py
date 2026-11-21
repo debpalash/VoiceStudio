@@ -2086,6 +2086,10 @@ async def ingest_pipeline(
                 if scene_task is not None:
                     if not scene_task.done():
                         scene_task.cancel()
+                        # Let its ffmpeg release the source before the caller's
+                        # cleanup removes the job dir (Windows keeps open files
+                        # undeletable). Bounded so a stuck child cannot hang us.
+                        await asyncio.wait({scene_task}, timeout=5.0)
                     elif not scene_task.cancelled():
                         scene_task.exception()  # mark retrieved; failure already surfaced
 

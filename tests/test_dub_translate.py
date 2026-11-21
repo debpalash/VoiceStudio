@@ -1049,7 +1049,8 @@ class _Tok:
 
 
 class _Nllb:
-    def __init__(self, dtype, fail_fp16_generate=False, fail_cuda_move=False):
+    def __init__(self, dtype, fail_fp16_generate=False, fail_cuda_move=False, fail_float=False):
+        self.fail_float = fail_float
         self.dtype = dtype
         self.fail_fp16_generate = fail_fp16_generate
         self.fail_cuda_move = fail_cuda_move
@@ -1060,6 +1061,9 @@ class _Nllb:
         return self
 
     def float(self):
+        if self.fail_float:
+            self.dtype = "mixed"  # half-converted, then OOM
+            raise RuntimeError("CUDA out of memory during float()")
         self.dtype = "float32"
         return self
 
@@ -1081,7 +1085,10 @@ async def _run_nllb(monkeypatch, *, cuda, mps=False, **model_kw):
         if factory.__name__ == "AutoTokenizer":
             return _Tok()
         loads.append(kwargs)
-        return _Nllb(str(kwargs.get("torch_dtype", "float32")).replace("torch.", ""), **model_kw)
+        # A reload (no dtype) is always a clean model; only the fp16 one is faulty.
+        kw = model_kw if "torch_dtype" in kwargs else {
+            k: v for k, v in model_kw.items() if k not in ("fail_float", "fail_fp16_generate")}
+        return _Nllb(str(kwargs.get("torch_dtype", "float32")).replace("torch.", ""), **kw)
 
     monkeypatch.setattr(dub_translate, "_load_nllb_component", _load)
     monkeypatch.setattr(dub_translate, "_nllb_model", None)
@@ -1132,3 +1139,41 @@ async def test_nllb_fp16_generate_failure_retries_float32(monkeypatch):
     response, _loads, mod = await _run_nllb(monkeypatch, cuda=True, fail_fp16_generate=True)
     assert response["translated"][0]["text"] == "t:hello"
     assert mod._nllb_fp16 is False
+
+
+@pytest.mark.asyncio
+async def test_nllb_half_converted_model_is_reloaded_clean(monkeypatch):
+    response, loads, mod = await _run_nllb(
+        monkeypatch, cuda=True, fail_fp16_generate=True, fail_float=True)
+    assert response["translated"][0]["text"] == "t:hello"
+    assert mod._nllb_fp16 is False
+    assert mod._nllb_model.dtype == "float32"  # not the "mixed" survivor
+    assert len(loads) == 2 and "torch_dtype" not in loads[1]
+
+
+@pytest.mark.asyncio
+async def test_nllb_generation_and_unload_share_one_lock(monkeypatch):
+    import threading
+
+    from api.routers import dub_translate as mod
+
+    holder_in = threading.Event()
+    release = threading.Event()
+
+    def _work():
+        holder_in.set()
+        release.wait(5)
+        return "done"
+
+    t = threading.Thread(target=mod._locked_nllb(_work))
+    t.start()
+    assert holder_in.wait(5)
+    got = []
+    u = threading.Thread(target=lambda: (mod._unload_nllb(), got.append(1)))
+    u.start()
+    u.join(0.2)
+    assert u.is_alive() and not got  # unload waits for the holder
+    release.set()
+    t.join(5)
+    u.join(5)
+    assert got == [1]

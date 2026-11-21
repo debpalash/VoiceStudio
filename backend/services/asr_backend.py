@@ -501,9 +501,19 @@ def _whisper_thread_kwargs(device: str) -> dict:
 
 
 def whisper_batching_enabled() -> bool:
-    """Kill switch for CUDA batched decode: OMNIVOICE_ASR_BATCHED=0 disables it."""
-    return os.environ.get("OMNIVOICE_ASR_BATCHED", "1").strip().lower() not in (
-        "0", "false", "no", "off")
+    """CUDA batched decode is OPT-IN (``OMNIVOICE_ASR_BATCHED=1``).
+
+    faster-whisper's batched decoder has no temperature-fallback retries and
+    other sequential-path quality checks, so it is faster but can transcribe
+    worse; dub quality wins by default.
+    """
+    return os.environ.get("OMNIVOICE_ASR_BATCHED", "0").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+# The batched pipeline keeps per-call pause-correction state on the shared
+# instance; serialize batched decodes so concurrent requests cannot mix it.
+_BATCHED_DECODE_LOCK = threading.Lock()
 
 
 def whisper_batch_size() -> int:
@@ -1492,8 +1502,11 @@ class FasterWhisperBackend(ASRBackend):
         pipeline = self._batched_pipeline()
         if pipeline is not None:
             try:
-                segments_iter, info = pipeline.transcribe(
-                    audio_path, batch_size=whisper_batch_size(), **decode_kwargs)
+                with _BATCHED_DECODE_LOCK:
+                    segments_iter, info = pipeline.transcribe(
+                        audio_path, batch_size=whisper_batch_size(),
+                        without_timestamps=False, **decode_kwargs)
+                    segments_iter = list(segments_iter)
                 # The batched decoder (faster-whisper 1.2.x) skips the sequential
                 # path's no-speech rejection; apply the same rule (defaults:
                 # no_speech_threshold 0.6, log_prob_threshold -1.0).
@@ -1505,9 +1518,10 @@ class FasterWhisperBackend(ASRBackend):
                     )
                 ]
             except Exception as e:  # noqa: BLE001 — any batched failure → sequential path
+                from core.scrub import scrub_text
                 logger.warning(
                     "faster-whisper batched decode failed (%s: %s) — falling back "
-                    "to sequential decode", type(e).__name__, e)
+                    "to sequential decode", type(e).__name__, scrub_text(str(e)))
                 self._batched = False
                 segments = info = None
         if segments is None:
