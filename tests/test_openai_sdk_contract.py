@@ -855,7 +855,8 @@ def test_large_models_response_is_valid_compressed_body_over_the_wire(engine):
         raw = b"".join(res.iter_raw())
         encoding = res.headers.get("content-encoding")
         length = res.headers.get("content-length")
-    if encoding == "gzip":
-        assert zlib.decompress(raw, 31)[:1] == b"{"
-        assert length is None or int(length) == len(raw)
+    # The model list is well over the 1 KiB threshold, so compression is required.
+    assert encoding == "gzip"
+    assert zlib.decompress(raw, 31)[:1] == b"{"
+    assert length is None or int(length) == len(raw)
     assert tc.get("/v1/models", headers={"Accept-Encoding": "gzip"}).json()["object"] == "list"

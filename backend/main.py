@@ -2193,12 +2193,42 @@ class _SelectiveGZipMiddleware:
     """Compress large GET JSON/text responses (e.g. /models, /engines, /history)
     without touching Range requests, SSE streams, media files, or POST/MCP."""
 
-    _SKIP_PREFIXES = ("/mcp", "/audio", "/outputs", "/media", "/files", "/ws")
+    _SKIP_PREFIXES = (
+        "/mcp", "/audio", "/voice_audio", "/demo_audio", "/outputs", "/media", "/files", "/ws",
+    )
     _SKIP_SUBSTRINGS = ("/stream", "/events", "/download", "/audio")
 
     def __init__(self, app, *, minimum_size: int = 1024, compresslevel: int = 5):
         self.app = app
         self._gzip = GZipMiddleware(app, minimum_size=minimum_size, compresslevel=compresslevel)
+
+    @staticmethod
+    def _accepts_gzip(header: bytes) -> bool:
+        """RFC 9110 Accept-Encoding: gzip (or ``*``) with a q-value above zero.
+
+        Starlette's own check is a substring test, so ``gzip;q=0`` would still be
+        answered with gzip."""
+        explicit: float | None = None
+        wildcard: float | None = None
+        for part in header.decode("latin-1").split(","):
+            token, _, params = part.strip().partition(";")
+            token = token.strip().lower()
+            if token not in ("gzip", "x-gzip", "*"):
+                continue
+            q = 1.0
+            for param in params.split(";"):
+                key, _, value = param.partition("=")
+                if key.strip().lower() == "q":
+                    try:
+                        q = float(value.strip())
+                    except ValueError:
+                        q = 0.0
+            if token == "*":
+                wildcard = q
+            else:
+                explicit = q
+        quality = explicit if explicit is not None else wildcard
+        return quality is not None and quality > 0
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http" or scope.get("method") != "GET":
@@ -2213,6 +2243,9 @@ class _SelectiveGZipMiddleware:
                 await self.app(scope, receive, send)
                 return
             if name == b"accept" and b"text/event-stream" in value.lower():
+                await self.app(scope, receive, send)
+                return
+            if name == b"accept-encoding" and not self._accepts_gzip(value):
                 await self.app(scope, receive, send)
                 return
         await self._gzip(scope, receive, send)
