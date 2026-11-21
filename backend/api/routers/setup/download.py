@@ -827,6 +827,20 @@ async def install_model(req: InstallModelRequest):
                     "n_cached": None,
                 })
 
+            from huggingface_hub.constants import HF_HUB_CACHE as _pending_cache
+            from services.hf_revisions import clear_install_pending, mark_install_pending
+            # Until the download returns with every file, a snapshot that holds
+            # only some weights (a finished tokenizer, the main weight still in
+            # flight or cut off) must not read as installed. A cancel removes
+            # the marker with the rest of the rollback; a failure keeps it.
+            _pending_snapshot = os.path.join(
+                _pending_cache, "models--" + hub_repo.replace("/", "--"),
+                "snapshots", dl_kwargs["revision"],
+            )
+            if not (os.path.isdir(_pending_snapshot)
+                    and snapshot_is_complete(model_spec, _pending_snapshot)):
+                # A repair of a finished install keeps it usable if it fails.
+                mark_install_pending(hub_repo, dl_kwargs["revision"], _pending_cache)
             _max_attempts = 5
             _attempt = 0
             _segmented_disabled = False
@@ -878,6 +892,7 @@ async def install_model(req: InstallModelRequest):
                             _snapshot_path = None
                     if _snapshot_path is None:
                         _snapshot_path = snapshot_download(**dl_kwargs)  # nosec B615 -- immutable revision_for pin
+                    clear_install_pending(hub_repo, dl_kwargs["revision"], _pending_cache)
                     _validate_snapshot_has_weights(req.repo_id, _snapshot_path)
                     from huggingface_hub.constants import HF_HUB_CACHE
                     from services.hf_revisions import remember_revision
@@ -897,7 +912,9 @@ async def install_model(req: InstallModelRequest):
                         dependency_kwargs.pop("allow_patterns", None)
                         if dependency.get("allow_patterns"):
                             dependency_kwargs["allow_patterns"] = dependency["allow_patterns"]
+                        mark_install_pending(dependency_id, dependency_kwargs["revision"], _pending_cache)
                         dependency_path = snapshot_download(**dependency_kwargs)  # nosec B615 -- immutable revision_for pin
+                        clear_install_pending(dependency_id, dependency_kwargs["revision"], _pending_cache)
                         if not snapshot_is_complete(dependency, dependency_path):
                             raise OSError(f"{dependency_id}: required model files are missing or incomplete")
                         remember_revision(dependency_id, dependency_kwargs["revision"], HF_HUB_CACHE)

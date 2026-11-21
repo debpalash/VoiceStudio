@@ -85,6 +85,45 @@ def remember_revision(repo_id: str, revision: str, cache_dir: str) -> None:
     os.replace(temporary, marker)
 
 
+# Names the revision an install is still downloading. Written before the first
+# byte and removed once the download returns with every file, so a snapshot of
+# that revision that already holds *some* weight (a finished tokenizer while the
+# main weight is still transferring, or after a crash) is not reported as
+# installed. Other revisions in the same repository are unaffected.
+INSTALL_PENDING_MARKER = "voicestudio-installing"
+
+
+def mark_install_pending(repo_id: str, revision: str, cache_dir: str) -> None:
+    """Record that ``revision`` of ``repo_id`` is being downloaded."""
+    if not _SHA.fullmatch(revision):
+        raise ValueError("Hugging Face revision must be a 40-character commit SHA")
+    repo_dir = _repo_dir(repo_id, cache_dir)
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    marker = repo_dir / INSTALL_PENDING_MARKER
+    temporary = marker.with_suffix(f".tmp-{os.getpid()}")
+    temporary.write_text(revision + "\n", encoding="ascii")
+    os.replace(temporary, marker)
+
+
+def clear_install_pending(repo_id: str, revision: str, cache_dir: str) -> None:
+    """Remove the pending marker if it still names ``revision``. Never raises."""
+    marker = _repo_dir(repo_id, cache_dir) / INSTALL_PENDING_MARKER
+    try:
+        if marker.read_text(encoding="ascii").strip() == revision:
+            marker.unlink()
+    except (OSError, UnicodeError):
+        pass
+
+
+def install_pending_revision(repo_dir: str) -> "str | None":
+    """Revision an install of the repository at ``repo_dir`` has not finished."""
+    try:
+        revision = (Path(repo_dir) / INSTALL_PENDING_MARKER).read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError):
+        return None
+    return revision if _SHA.fullmatch(revision) else None
+
+
 def installed_revision(repo_id: str, cache_dir: str) -> str:
     """Return VoiceStudio's recorded revision, falling back to the curated pin."""
     # Authenticate the repository before consulting attacker-writable cache

@@ -170,32 +170,17 @@ def _snapshot_dirs(repo_id: str) -> list[str]:
     return dirs
 
 
-def _has_unfinished_transfer(snapshot_path: str) -> bool:
-    """True when the repository's ``blobs/`` holds a partial transfer written
-    after the snapshot's newest finished file.
+def _install_pending(snapshot_path: str) -> bool:
+    """True while an install of this snapshot's own revision has not finished.
 
     The weight-presence check accepts any one plausible weight file, so a repo
     with several (OmniVoice's model plus ``audio_tokenizer/``) looked installed
-    as soon as the smaller file landed, mid-download or after a crash. Partial
-    files that predate the snapshot are leftovers of an earlier attempt and are
-    ignored, so a finished install never turns incomplete. Never raises.
+    as soon as the smaller file landed: mid-download, or after a failed install.
     """
-    from services.hf_cache_rollback import PARTIAL_SUFFIXES
+    from services.hf_revisions import install_pending_revision
 
-    blobs = os.path.join(os.path.dirname(os.path.dirname(snapshot_path)), "blobs")
-    try:
-        with os.scandir(blobs) as it:
-            partials = [e.stat(follow_symlinks=False).st_mtime
-                        for e in it if e.name.endswith(PARTIAL_SUFFIXES)]
-        if not partials:
-            return False
-        finished = 0.0
-        for root, dirs, files in os.walk(snapshot_path):
-            for name in (*dirs, *files):
-                finished = max(finished, os.lstat(os.path.join(root, name)).st_mtime)
-    except OSError:
-        return False
-    return max(partials) >= finished
+    repo_dir = os.path.dirname(os.path.dirname(snapshot_path))
+    return install_pending_revision(repo_dir) == os.path.basename(snapshot_path)
 
 
 def snapshot_is_complete(model: dict, snapshot_path: str) -> bool:
@@ -218,10 +203,10 @@ def snapshot_is_complete(model: dict, snapshot_path: str) -> bool:
             return False
         if config_only:
             return True
-        # Declared required files are already an exact check; only the
-        # any-weight heuristic needs the in-flight transfer guard.
+        # Declared required files are already an exact check; the any-weight
+        # heuristic also needs the install of this revision to have finished.
         return snapshot_has_weights(snapshot_path) and (
-            bool(required) or not _has_unfinished_transfer(snapshot_path)
+            bool(required) or not _install_pending(snapshot_path)
         )
     except OSError:
         return False

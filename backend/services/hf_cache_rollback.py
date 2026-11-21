@@ -25,10 +25,8 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger("omnivoice.hf_cache_rollback")
 
-# Never usable as complete data: a transfer that was interrupted or is still
-# running. Shared with the catalogue's install-state check (model_catalogue).
-PARTIAL_SUFFIXES = (".incomplete", ".part", ".part.done", ".part.done.tmp")
-_PARTIAL_SUFFIXES = PARTIAL_SUFFIXES
+# Never usable as complete data: a transfer that was interrupted.
+_PARTIAL_SUFFIXES = (".incomplete", ".part", ".part.done", ".part.done.tmp")
 # Small text markers a download rewrites in place; restored byte for byte.
 _MARKER_LIMIT = 4096
 _DELETE_ROUNDS = 6
@@ -81,7 +79,7 @@ def capture(cache_dir: str, repo_ids: Iterable[str]) -> CacheSnapshot:
             state.entries[root] = _walk(root) if existed else set()
         repo_dir = _roots(snapshot.cache_dir, repo_id)[0]
         for rel in state.entries[repo_dir]:
-            if rel == "voicestudio-revision" or rel.startswith("refs" + os.sep):
+            if rel in ("voicestudio-revision", "voicestudio-installing") or rel.startswith("refs" + os.sep):
                 path = os.path.join(repo_dir, rel)
                 try:
                     if os.path.isfile(path) and os.path.getsize(path) <= _MARKER_LIMIT:
