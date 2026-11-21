@@ -107,3 +107,15 @@ it('searches by name once the list is long enough', () => {
   });
   expect(names()).toEqual(['Two']);
 });
+
+it('lets clicks on the photo reach the card; only the camera badge picks a photo', () => {
+  render(<VoiceSetup onChosen={() => {}} onBack={() => {}} />);
+  const card = screen.getByRole('button', { name: 'Adam' }).closest('[data-slot="voice-card"]');
+  const label = within(card as HTMLElement)
+    .getByLabelText('cloneFlow.change_photo: Adam')
+    .closest('label') as HTMLElement;
+  // jsdom has no hit testing, so assert the stacking contract: the label is transparent to
+  // pointer events and only its badge receives them (Playwright "subtree intercepts").
+  expect(label).toHaveClass('pointer-events-none');
+  expect(label.querySelectorAll('.pointer-events-auto')).toHaveLength(1);
+});

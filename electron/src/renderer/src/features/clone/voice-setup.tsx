@@ -64,7 +64,7 @@ function VoiceCard({
         current ? 'border-primary/60 bg-primary/5' : 'border-border/60',
       )}
     >
-      {/* Covers the card so the whole surface chooses the voice; photo and edit sit above it. */}
+      {/* Covers the card so the whole surface chooses the voice; only the photo's camera badge and edit sit above it. */}
       <button
         type="button"
         data-choose
@@ -80,6 +80,7 @@ function VoiceCard({
         onFile={(file) => void photo.save(file)}
         label={`${t('cloneFlow.change_photo')}: ${profile.name}`}
         className="z-10 size-11 text-sm"
+        badge
       />
       <span className="pointer-events-none min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
