@@ -85,6 +85,7 @@ GET /community/items/{item_id}/preview
 GET /community/manifest
 GET /community/sources
 GET /community/submit-url
+GET /demo/dubbing/status
 GET /dictation/models
 GET /dictation/prefs
 GET /dictation/readiness
@@ -240,6 +241,7 @@ POST /calls/{call_id}/takeover
 POST /clean-audio
 POST /community/items/{item_id}/use
 POST /convert
+POST /demo/dubbing/download
 POST /design/describe
 POST /dictation/prefs
 POST /dub/abort/{job_id}

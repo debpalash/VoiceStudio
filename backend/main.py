@@ -802,6 +802,7 @@ def _phase_a_build_inner() -> None:
         stories,
         setup,
         gallery,
+        demo_assets as demo_assets_router,
         archetypes,
         describe_voice,
         community,
@@ -833,7 +834,7 @@ def _phase_a_build_inner() -> None:
     _router_modules.extend([
         system, profiles, profile_images, exports, generation, voice_convert, sfx, dub_core, dub_generate,
         dub_export, dub_translate, projects, glossary, engines, tools,
-        stories, setup, gallery, archetypes, describe_voice, community,
+        stories, setup, gallery, demo_assets_router, archetypes, describe_voice, community,
         batch, watermark, events, capture, capture_ws, speech_platform, dictation,
         openai_compat, tts_stream, marketplace, personas, sonitranslate,
         audiobook, longform_jobs, pronunciation, settings_router,
@@ -886,7 +887,10 @@ def _phase_a_finalize() -> None:
     # Bundled demo assets — read-only, ships with the app, no network.
     _demo_dir = os.path.join(os.path.dirname(__file__), "assets", "samples")
     if os.path.isdir(_demo_dir):
-        app.mount("/demo_audio", SafeMediaFiles(directory=_demo_dir), name="demo_audio")
+        from services.demo_assets import make_demo_mount
+
+        # Dub demo videos are not bundled: served from the on-demand cache.
+        app.mount("/demo_audio", make_demo_mount(_demo_dir), name="demo_audio")
 
     # SPA shell LAST so the "/" StaticFiles mount can't shadow any router.
     from core.spa_inject import (

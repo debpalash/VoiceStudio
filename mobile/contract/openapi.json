@@ -11341,6 +11341,38 @@
     "summary": "Convert Speech"
    }
   },
+  "/demo/dubbing/download": {
+   "post": {
+    "operationId": "demo_dubbing_download_demo_dubbing_download_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Demo Dubbing Download"
+   }
+  },
+  "/demo/dubbing/status": {
+   "get": {
+    "operationId": "demo_dubbing_status_demo_dubbing_status_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Demo Dubbing Status"
+   }
+  },
   "/design/describe": {
    "post": {
     "description": "Parse a free-text description into design attrs + a validator-safe instruct.\n\nResponse shape::\n\n    {\n      \"attrs\":     {\"Gender\": \"female\", \"Age\": \"elderly\", ... or \"Auto\"},\n      \"instruct\":  \"female, elderly, low pitch, british accent\",\n      \"matched\":   [{\"category\": \"Age\", \"token\": \"elderly\", \"phrase\": \"elderly\"}, ...],\n      \"unmatched\": [\"slightly raspy\"]\n    }",
