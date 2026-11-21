@@ -270,5 +270,17 @@ def test_alembic_fast_path_matches_script_directory_and_skips_alembic_at_head(tm
 
     # Now DB is at head: blocking `alembic` import must still return cleanly
     # via the fast path without invoking Alembic at all.
-    monkeypatch.setitem(sys.modules, "alembic", None)
+    for name in [n for n in sys.modules if n == "alembic" or n.startswith("alembic.")]:
+        monkeypatch.delitem(sys.modules, name)
+    attempts: list[str] = []
+
+    class _RecordingBlocker:
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname == "alembic" or fullname.startswith("alembic."):
+                attempts.append(fullname)
+                raise ImportError("alembic blocked for the fast-path test")
+            return None
+
+    monkeypatch.setattr(sys, "meta_path", [_RecordingBlocker(), *sys.meta_path])
     _run_alembic_upgrade()
+    assert attempts == [], f"fast path must not import alembic, tried {attempts}"
