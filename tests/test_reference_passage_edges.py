@@ -60,54 +60,70 @@ def test_mostly_silent_passage_is_untouched():
     assert trim_passage_to_pauses(wav, SR) is wav
 
 
-def _window_file(tmp_path, wav):
-    import soundfile as sf
-
-    path = tmp_path / "window.wav"
-    sf.write(str(path), wav.squeeze(0).numpy(), SR)
-    return str(path)
-
-
-def test_backend_selected_window_is_trimmed_and_reread(monkeypatch, tmp_path):
-    """A window the backend picks arrives WITH a transcript, so the model never
-    trims it: the backend must, and re-read exactly the audio it will encode."""
+def test_every_long_reference_path_gets_the_pause_aligned_window(monkeypatch, tmp_path):
+    """The OmniVoice sidecar and the inline retry take their window from
+    ``omnivoice_inline_reference``. It used to hand over the raw 15 s cut, which
+    ended in the first sound of the next word, and the clone started each
+    output with that sound. Ranking and recall must both give the trimmed cut."""
     import os
+
     import soundfile as sf
     from services import asr_backend, tts_backend
 
-    path = _window_file(tmp_path, _silence(_speech(15.0), 14.0, 14.3))
+    # Window 0 (0-15 s): a pause at 14.0-14.3 s, then a word cut at 15 s.
+    path = tmp_path / "long.wav"
+    sf.write(str(path), _silence(_speech(25.0), 14.0, 14.3).squeeze(0).numpy(), SR)
     reads = []
-    monkeypatch.setattr(asr_backend, "transcribe_reference", lambda p, **_k: reads.append(p) or "Trimmed words.")
 
-    out, text, owned = tts_backend._trim_selected_passage(path, "Words cut mid-wor")
+    def transcribe(p, **_k):
+        reads.append(p)
+        return "many spoken words here" if sf.info(p).duration > 12 else "few"
+
+    monkeypatch.setattr(asr_backend, "transcribe_reference", transcribe)
+    monkeypatch.setattr(tts_backend, "_reference_asr_identity", lambda: "fixed-recognizer")
+    tts_backend.clear_clone_prompt_cache()
     try:
-        assert owned == out != path
-        assert text == "Trimmed words." and reads == [out]
-        assert sf.info(out).duration < sf.info(path).duration
+        for _ in ("ranked", "recalled"):
+            audio, text, owned = tts_backend.omnivoice_inline_reference(str(path), None)
+            try:
+                assert owned == audio and text == "many spoken words here"
+                assert sf.info(audio).duration <= 14.3
+            finally:
+                os.remove(owned)
+        assert len(reads) == 2  # the recalled window is not read again
     finally:
-        os.remove(owned)
+        tts_backend.clear_clone_prompt_cache()
 
 
-def test_backend_window_without_pauses_is_left_alone(monkeypatch, tmp_path):
-    from services import asr_backend, tts_backend
-
-    def must_not_run(*_a, **_k):
-        raise AssertionError("a window with nothing to trim must not be re-read")
-
-    path = _window_file(tmp_path, _speech(15.0))
-    monkeypatch.setattr(asr_backend, "transcribe_reference", must_not_run)
-    assert tts_backend._trim_selected_passage(path, "Whole window.") == (path, "Whole window.", None)
-
-
-def test_backend_window_keeps_original_when_the_trimmed_copy_has_no_words(monkeypatch, tmp_path):
+def test_raw_window_is_kept_when_the_trimmed_window_has_no_words(monkeypatch, tmp_path):
+    """The trim can cut off sparse speech at an edge. The raw window is still a
+    valid passage, so ranking must fall back to it, and recall must encode
+    that same raw cut, not the trimmed one."""
     import os
+
+    import soundfile as sf
     from services import asr_backend, tts_backend
 
-    path = _window_file(tmp_path, _silence(_speech(15.0), 14.0, 14.3))
-    tried = []
-    monkeypatch.setattr(asr_backend, "transcribe_reference", lambda p, **_k: tried.append(p) or "")
-    assert tts_backend._trim_selected_passage(path, "Original.") == (path, "Original.", None)
-    assert tried and not os.path.exists(tried[0])  # the temp copy was cleaned up
+    path = tmp_path / "long.wav"
+    sf.write(str(path), _silence(_speech(25.0), 14.0, 14.3).squeeze(0).numpy(), SR)
+    # Only the full, untrimmed 15 s window gives words.
+    monkeypatch.setattr(
+        asr_backend, "transcribe_reference",
+        lambda p, **_k: "raw window words" if sf.info(p).duration >= 14.99 else "",
+    )
+    monkeypatch.setattr(tts_backend, "_reference_asr_identity", lambda: "fixed-recognizer")
+    tts_backend.clear_clone_prompt_cache()
+    try:
+        for _ in ("ranked", "recalled"):
+            audio, text, owned = tts_backend.omnivoice_inline_reference(str(path), None)
+            try:
+                assert owned == audio and text == "raw window words"
+                assert sf.info(audio).duration >= 14.99
+            finally:
+                os.remove(owned)
+        assert tts_backend._recall_passage(str(path)) == (0, "raw window words", False)
+    finally:
+        tts_backend.clear_clone_prompt_cache()
 
 
 def test_trim_never_lengthens_and_keeps_order():

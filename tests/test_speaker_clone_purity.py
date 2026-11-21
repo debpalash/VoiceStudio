@@ -286,24 +286,32 @@ def test_refine_ref_texts_has_no_internal_wall_clock_timeout():
         worker.shutdown(wait=False)
 
 
-def test_guarded_refine_times_out_without_changing_original_text():
+def test_guarded_refine_times_out_without_changing_original_text(monkeypatch):
     recognizer = _PausedRecognizer()
     originals = {"Speaker 1": {"ref_audio": "/tmp/guard.wav", "ref_text": "unchanged"}}
     worker = ThreadPoolExecutor(max_workers=1)
+
+    wait_for = asyncio.wait_for
+
+    async def timeout_after_start(future, timeout):
+        # Exercise a running ASR timeout, even when CI schedules the worker late.
+        assert await asyncio.to_thread(recognizer.wait_until_called) == "/tmp/guard.wav"
+        return await wait_for(future, timeout=0)
+
+    monkeypatch.setattr(asyncio, "wait_for", timeout_after_start)
 
     async def guarded_call():
         return await run_transcribe_guarded(
             worker,
             lambda: refine_ref_texts(originals, recognizer),
             what="blocked reference-text check",
-            timeout=0.02,
+            timeout=30,
         )
 
     try:
         with pytest.raises(ASRTimeoutError):
             asyncio.run(guarded_call())
-        assert recognizer.wait_until_called() == "/tmp/guard.wav"
         assert originals["Speaker 1"]["ref_text"] == "unchanged"
     finally:
         recognizer.resume()
-        worker.shutdown(wait=False)
+        worker.shutdown(wait=True)

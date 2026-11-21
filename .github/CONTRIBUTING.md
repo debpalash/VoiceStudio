@@ -220,9 +220,11 @@ Open an [issue](https://github.com/debpalash/VoiceStudio/issues/new) with:
 
 ### Pull Requests
 
-1. **Fork** the repo and create a branch from `main`
-2. **Keep PRs focused** — one feature or fix per PR
-3. **Run tests** before pushing:
+1. **Fork** the repo and create a branch from the latest `main`. In a clone of your fork, add this repository once with `git remote add upstream https://github.com/debpalash/VoiceStudio.git`, then `git fetch upstream` and `git switch -c <branch> upstream/main`
+2. **Keep it current with `main`**: merge the latest `main` into your branch right before every push. `main` requires branches to be up to date, so a PR that is behind can't merge and has to run CI again once it's updated
+3. **Keep PRs focused** — one feature or fix per PR. Keep **at most 5 PRs open at a time**; open the next one when one lands. Every PR uses CI resources and gets read before merge
+4. **Prefer user-facing fixes**: bugs with an open issue or a reproducible failure come first. For new meta-tests, CI policy or tooling-only changes, open an issue first so maintainers can say whether they want them
+5. **Run tests** before pushing:
    ```bash
    # Packaging tests use Electron dependencies, including electron-builder.
    bun install --frozen-lockfile
@@ -235,9 +237,9 @@ Open an [issue](https://github.com/debpalash/VoiceStudio/issues/new) with:
    # Frontend build check
    bun run check:electron
    ```
-4. **Write a clear PR title** — it becomes the squash-merge commit message
-5. **Add a changelog fragment** if users will notice the change: one line in `changelog.d/<PR#>.<type>.md` (see [`changelog.d/README.md`](../changelog.d/README.md)). Don't edit `CHANGELOG.md` directly, so your PR never conflicts with others
-5. **Don't include** local machine stats, file paths, or private system info in PR descriptions
+6. **Write a clear PR title** — it becomes the squash-merge commit message
+7. **Add a changelog fragment** if users will notice the change: one line in `changelog.d/<PR#>.<type>.md` (see [`changelog.d/README.md`](../changelog.d/README.md)). Don't edit `CHANGELOG.md` directly, so your PR never conflicts with others
+8. **Don't include** local machine stats, file paths, or private system info in PR descriptions
 
 ### Adding a New TTS Engine
 
@@ -523,6 +525,13 @@ test-only PR. Docker Hub overview edits still publish through the small
   and bundle signature checks, the packaged startup smoke test (on Linux through
   the `voicestudio` entry, as the AppImage starts it) and
   `electron/tests/cli-bundle-smoke.mjs`.
+- **Install smoke:** the three-OS install (`install-smoke.yml`, 6-10 minutes per system) runs on a
+  pull request only when it touches a file that affects installation: manifests and lockfiles,
+  the installer scripts, Electron packaging, the runtime setup code (`electron/src/main/` setup,
+  runtime, wheel-prefetch and pypi-mirror modules; `backend/services/sidecar_*.py`, `media_tools.py`,
+  `endpoint_race.py`), `deploy/install-worker/` or the workflow itself, and not for documentation or
+  test-only changes. Pushes to `main` use the same path list and the documentation/test-only skip;
+  manual runs always run it. A newer push cancels the superseded pull-request run. `tests/test_install_smoke_workflow.py` keeps the path list complete.
 - **CI scope:** the Electron-only jobs (UI crawler, Desktop UI, Linux native
   package, release smoke, `Tests (Electron)` and `Electron renderer smokes`) are skipped on a
   pull request whose every changed file is an *edit or addition* under `backend/`
@@ -693,6 +702,12 @@ test-only PR. Docker Hub overview edits still publish through the small
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
     downloads from `omnivoice-gallery` GitHub Releases, only after it is turned
     on in Settings (`backend/services/gallery.py`).
+  - **Dubbing demo videos, only when the user clicks Download** in the Dub
+    demo card (owner-approved 2026-11-21): five ~10 MB clips, sha256- and
+    size-pinned in `backend/assets/samples/demo/dubbing/demo_assets.json`, from
+    the `dub-demo-v1` pre-release of `debpalash/omnivoice-gallery`
+    (`backend/services/demo_assets.py`). Nothing is fetched at install or
+    startup; offline, the card shows bundled poster stills.
   - **Packaged-app update checks** against GitHub Releases, and the background
     download of a found update from the same release (on by default; Settings
     → Updates → Download updates automatically turns it off, so downloads wait
@@ -756,7 +771,11 @@ test-only PR. Docker Hub overview edits still publish through the small
   are authorized in Electron main (native save dialog), never via HTTP params.
 - **CI supply chain:** every remote action in `.github/workflows/` is pinned
   to a full 40-char commit SHA with a trailing `# vX.Y.Z` comment
-  (`tests/test_actions_pinned.py`); Dependabot bumps the pins weekly.
+  (`tests/test_actions_pinned.py`); Dependabot bumps the pins weekly. Shape
+  checks cannot prove a pin *is* the commit its comment names, so the weekly
+  `action-pin-verify.yml` run resolves every distinct action/label pair
+  (`scripts/verify_action_pins.py`); reproduce it locally with
+  `VOICESTUDIO_VERIFY_ACTION_PINS=1 uv run pytest tests/test_workflow_action_pins.py`.
 
 ## Contribution licensing
 

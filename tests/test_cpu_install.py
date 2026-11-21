@@ -29,10 +29,14 @@ def _frozen_requirements(group, tmp_path):
         args, cwd=ROOT, text=True, capture_output=True, check=True, timeout=30,
         env={**os.environ, "UV_CACHE_DIR": str(tmp_path / "uv"), "UV_OFFLINE": "1"},
     )
-    return [
-        Requirement(line) for line in result.stdout.splitlines()
+    lines = [
+        line.strip() for line in result.stdout.splitlines()
         if line.strip() and not line.lstrip().startswith(("#", "-"))
     ]
+    # Vendored wheels (#4253) export as paths, not name-based requirements.
+    vendored = [line for line in lines if line.startswith("./vendor/wheels/")]
+    assert all(line.endswith(".whl") for line in vendored), vendored
+    return [Requirement(line) for line in lines if line not in vendored]
 
 
 @pytest.mark.parametrize("python_version", ["3.11", "3.12"])

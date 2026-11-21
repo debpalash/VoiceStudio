@@ -945,7 +945,8 @@
     "retry": "Versuchen Sie es erneut",
     "confirm": "Bestätigen",
     "details": "Details",
-    "unknown": "unbekannt"
+    "unknown": "unbekannt",
+    "link_blocked": "Dieser Link kann nicht geöffnet werden. Erlaubt sind nur Web- und E-Mail-Links."
   },
   "dubWorkspace": {
     "transcriptIssues": "Probleme im Transkript",
@@ -2250,6 +2251,10 @@
     "dubbing_cta": "Führen Sie dies in Ihrem eigenen Video aus →",
     "dubbing_loading": "Synchronisationsdemo wird geladen…",
     "dubbing_dismiss": "Synchronisationsdemo schließen",
+    "dubbing_download": "Demovideos herunterladen (~10 MB)",
+    "dubbing_downloading": "Wird heruntergeladen…",
+    "dubbing_download_failed": "Download fehlgeschlagen. Prüfe deine Verbindung.",
+    "dubbing_retry": "Erneut versuchen",
     "original_tag": "Original",
     "dubbed_tag": "synchronisiert",
     "script_conversational": "Konversation",
@@ -2884,6 +2889,7 @@
     "source_language_required": "Die Spracherkennung hat nicht gemeldet, in welcher Sprache dieses Video gesprochen ist, daher kann es hier nicht übersetzt werden. Öffne das Video in der Synchronisation und wähle die Ausgangssprache, oder wähle ein Spracherkennungsmodell, das die Sprache erkennt.",
     "transcription_media_tool": "Für die Transkription wird ffmpeg benötigt, das VoiceStudio nicht finden oder ausführen konnte. Öffne Einstellungen → Audiotools und nutze Herunterladen/Reparieren, oder installiere ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: dein Paketmanager) und starte VoiceStudio neu. Alternativ kannst du FFMPEG_PATH auf eine ffmpeg-Datei setzen.",
     "transcription_pipe_lost": "Das Backend hat während der Transkription seine Ausgabe-Pipe zur App verloren (Broken Pipe). Starte VoiceStudio neu und versuche es erneut.",
+    "reference_transcript_required": "Der Referenzclip dieser Stimme hat kein Transkript, das diese Engine zum Klonen benötigt. Füge das Transkript dem Stimmprofil hinzu oder installiere ein Spracherkennungsmodell, damit es automatisch transkribiert wird.",
     "gpu_oom": "Der GPU ist der Speicher ausgegangen. Schließe andere GPU-intensive Apps oder entlade Modelle und versuche es erneut. Du kannst auch unter Einstellungen → Leistung & Gerät die CPU wählen oder eine kleinere TTS-Engine auswählen.",
     "host_memory_exhausted": "Dem Computer ist der Arbeitsspeicher ausgegangen. Schließe andere speicherintensive Apps und Browser-Tabs, entlade nicht benötigte Modelle, erzeuge einen kürzeren Abschnitt oder wähle eine leichtere TTS-Engine.",
     "disk_full": "Der Datenträger ist voll. Gib Speicherplatz auf dem Laufwerk frei, auf dem die Daten, der Modell-Cache oder der Temp-Ordner von VoiceStudio liegen, und versuche es erneut. Einstellungen → Speicher zeigt die Belegung und kann temporäre Dateien löschen.",
@@ -2955,6 +2961,8 @@
     "free": "Kostenlos",
     "pro": "Pro",
     "get_pro": "Pro holen",
+    "upgrade_pro": "Auf Pro upgraden",
+    "get_pro_app": "Pro-App holen",
     "sponsor_bar": "Sponsorenleiste",
     "visible": "Sichtbar",
     "hideable": "Ausblendbar",

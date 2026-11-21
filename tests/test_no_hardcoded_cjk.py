@@ -33,46 +33,46 @@ _SKIP_DIRECTORIES = {
     ".git", "node_modules", "dist", "build", "__pycache__", ".venv", "venv",
     "target", ".specify", ".claude", ".pytest_cache",
 }
-_ALLOWED_PREFIXES = (
-    "electron/src/renderer/src/i18n/",
-    "docs/specs/",
-    "docs/readme/",  # translated READMEs and their native language-switcher links
-)
+_ALLOWED_PREFIXES = {
+    "electron/src/renderer/src/i18n/": "The translation layer itself.",
+    "docs/specs/": "Design specs quote localized product copy as examples.",
+    "docs/readme/": "Translated READMEs and their native language-switcher links.",
+}
 _ALLOWED_FILES = {
-    "mobile/contract/tts/zipvoice-lexicon.txt",  # Pinned multilingual pronunciation data, not UI copy.
-    "electron/src/main/blank-window-guard.ts",  # Matches localized window text.
-    "README.md",  # Presents translated project copy.
-    "docs/data_preparation.md",  # Includes multilingual data examples.
-    "docs/voice-design.md",  # Documents multilingual voice prompts.
-    "docs/engines/omnivoice.md",  # Documents engine vocabulary.
-    "docs/superpowers/specs/2026-05-31-voice-gallery-design.md",  # Preserves design examples.
-    "examples/README.md",  # Contains multilingual examples.
-    "backend/services/segmentation.py",  # CJK-aware segmentation rules.
-    "backend/services/sentence_chunker.py",  # CJK sentence-boundary logic.
-    "backend/services/subtitle_segmenter.py",  # CJK subtitle segmentation.
-    "backend/services/text_normalization.py",  # CJK normalization patterns.
-    "backend/core/http_headers.py",  # Parses localized HTTP filenames.
-    "electron/src/shared/utils/voiceInstruct.js",  # CJK instruction vocabulary.
-    "omnivoice/utils/text.py",  # Core multilingual text processing.
-    "backend/services/tts_backend.py",  # Engine speaker vocabulary.
-    "backend/core/personalities.py",  # Model prompt vocabulary.
-    "backend/core/archetypes.py",  # Voice archetype vocabulary.
-    "backend/core/describe_voice.py",  # Voice-description vocabulary.
-    "electron/src/shared/utils/constants.js",  # Engine language constants.
-    "omnivoice/models/omnivoice.py",  # Model language tokens.
-    "omnivoice/utils/duration.py",  # CJK duration rules.
-    "omnivoice/utils/voice_design.py",  # Voice-design model vocabulary.
-    "backend/migrations/versions/0007_rebuild_poisoned_design_instruct.py",  # Migrates model prompts.
-    "electron/src/shared/utils/errorDocsMap.ts",  # Recognizes localized errors.
-    "omnivoice/eval/wer/fleurs.py",  # Multilingual evaluation data.
-    "omnivoice/eval/wer/punctuations.lst",  # Evaluation punctuation corpus.
-    "omnivoice/cli/demo.py",  # Multilingual demo content.
-    "scripts/build_demos.sh",  # Builds multilingual demos.
-    "scripts/build_dub_demo.sh",  # Builds localized dub samples.
-    "scripts/dub_demo_scripts.json",  # Stores multilingual demo scripts.
-    "backend/assets/samples/demo/dubbing/dubbed_zh.srt",  # Chinese demo subtitles.
-    "backend/assets/samples/demo/dubbing/dubbed_ja.srt",  # Japanese demo subtitles.
-    "backend/assets/samples/demo/dubbing/manifest.json",  # Multilingual demo metadata.
+    "mobile/contract/tts/zipvoice-lexicon.txt": "Pinned multilingual pronunciation data, not UI copy.",
+    "electron/src/main/blank-window-guard.ts": "Matches localized window text.",
+    "README.md": "Presents translated project copy.",
+    "docs/data_preparation.md": "Includes multilingual data examples.",
+    "docs/voice-design.md": "Documents multilingual voice prompts.",
+    "docs/engines/omnivoice.md": "Documents engine vocabulary.",
+    "docs/superpowers/specs/2026-05-31-voice-gallery-design.md": "Preserves design examples.",
+    "examples/README.md": "Contains multilingual examples.",
+    "backend/services/segmentation.py": "CJK-aware segmentation rules.",
+    "backend/services/sentence_chunker.py": "CJK sentence-boundary logic.",
+    "backend/services/subtitle_segmenter.py": "CJK subtitle segmentation.",
+    "backend/services/text_normalization.py": "CJK normalization patterns.",
+    "backend/core/http_headers.py": "Parses localized HTTP filenames.",
+    "electron/src/shared/utils/voiceInstruct.js": "CJK instruction vocabulary.",
+    "omnivoice/utils/text.py": "Core multilingual text processing.",
+    "backend/services/tts_backend.py": "Engine speaker vocabulary.",
+    "backend/core/personalities.py": "Model prompt vocabulary.",
+    "backend/core/archetypes.py": "Voice archetype vocabulary.",
+    "backend/core/describe_voice.py": "Voice-description vocabulary.",
+    "electron/src/shared/utils/constants.js": "Engine language constants.",
+    "omnivoice/models/omnivoice.py": "Model language tokens.",
+    "omnivoice/utils/duration.py": "CJK duration rules for character-based timing.",
+    "omnivoice/utils/voice_design.py": "Voice-design model vocabulary.",
+    "backend/migrations/versions/0007_rebuild_poisoned_design_instruct.py": "Migrates model prompts.",
+    "electron/src/shared/utils/errorDocsMap.ts": "Recognizes localized errors.",
+    "omnivoice/eval/wer/fleurs.py": "Multilingual evaluation data.",
+    "omnivoice/eval/wer/punctuations.lst": "Evaluation punctuation corpus.",
+    "omnivoice/cli/demo.py": "Multilingual demo content.",
+    "scripts/build_demos.sh": "Builds multilingual demos.",
+    "scripts/build_dub_demo.sh": "Builds localized dub samples.",
+    "scripts/dub_demo_scripts.json": "Stores multilingual demo scripts.",
+    "backend/assets/samples/demo/dubbing/dubbed_zh.srt": "Chinese demo subtitles.",
+    "backend/assets/samples/demo/dubbing/dubbed_ja.srt": "Japanese demo subtitles.",
+    "backend/assets/samples/demo/dubbing/manifest.json": "Multilingual demo metadata.",
 }
 
 
@@ -81,7 +81,7 @@ def _is_allowed(rel: str) -> bool:
     basename = path.name
     return (
         rel in _ALLOWED_FILES
-        or rel.startswith(_ALLOWED_PREFIXES)
+        or rel.startswith(tuple(_ALLOWED_PREFIXES))
         or ".test." in basename
         or basename.startswith("test_")
         or basename.endswith("_test.py")
@@ -130,7 +130,7 @@ def test_no_hardcoded_cjk_outside_locales():
     details = [
         "Hardcoded CJK was found outside the translation layer.",
         "Move user-facing strings into the locale JSON catalogs.",
-        "For functional CJK, extend _ALLOWED_FILES with a justification.",
+        "For functional CJK, add the path to _ALLOWED_FILES with a reason.",
     ]
     for rel in sorted(offenders):
         details.append(rel)
@@ -151,3 +151,42 @@ def test_no_hardcoded_cjk_outside_locales():
 )
 def test_is_allowed_patterns(path):
     assert _is_allowed(path)
+
+
+# ── The allowlist itself ───────────────────────────────────────────────────
+# Every entry is a path mapped to the reason it may hold functional CJK. The
+# reason is what a reviewer reads when the entry is added or removed, so it has
+# to exist, say something, and stay attached to a file that is still there.
+
+_PLACEHOLDER_REASONS = {"todo", "tbd", "temp", "fixme", "n/a", "na", "xxx", "..."}
+
+
+def _entries() -> dict[str, str]:
+    return {**_ALLOWED_FILES, **_ALLOWED_PREFIXES}
+
+
+def test_every_allowlist_entry_carries_a_reason() -> None:
+    problems = []
+    for path, reason in _entries().items():
+        if not isinstance(reason, str) or len(reason.strip()) < 20:
+            problems.append(f"{path}: reason too short ({reason!r})")
+        elif reason.strip().lower().rstrip(".") in _PLACEHOLDER_REASONS:
+            problems.append(f"{path}: placeholder reason ({reason!r})")
+        elif not reason.strip().endswith("."):
+            problems.append(f"{path}: reason should be a sentence ({reason!r})")
+    assert not problems, "every allowlist entry needs a real reason:\n  " + "\n  ".join(problems)
+
+
+def test_every_allowlist_entry_still_matches_the_tree() -> None:
+    """An entry whose file is gone silently widens the allowlist."""
+    missing = []
+    for path in _ALLOWED_FILES:
+        if not (_ROOT / path).is_file():
+            missing.append(path)
+    for prefix in _ALLOWED_PREFIXES:
+        if not (_ROOT / prefix).is_dir():
+            missing.append(prefix)
+    assert not missing, (
+        "these allowlist entries no longer match a tracked file or directory; delete "
+        "them from tests/test_no_hardcoded_cjk.py:\n  " + "\n  ".join(missing)
+    )

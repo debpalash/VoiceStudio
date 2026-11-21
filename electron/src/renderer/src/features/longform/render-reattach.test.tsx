@@ -219,3 +219,98 @@ it('shows one card per interrupted project, explains a disabled Resume and can b
     'new',
   ]);
 });
+
+/** A render whose connection drops right after the last chapter, before `done` arrives. */
+function startDroppedRender(chapters = 1) {
+  const encoder = new TextEncoder();
+  fetchMock.mockImplementation(
+    () =>
+      new Response(
+        new ReadableStream({
+          start(stream) {
+            for (const event of [
+              { type: 'started', job_id: 'job9', chapters },
+              { type: 'chapter', index: 0, title: 'One', duration_s: 1 },
+              { type: 'assembling' },
+            ])
+              stream.enqueue(encoder.encode('data: ' + JSON.stringify(event) + '\n\n'));
+          },
+          pull(stream) {
+            stream.error(new TypeError('network error'));
+          },
+        }),
+      ),
+  );
+  editLongform('stories', {
+    title: 'Long tale',
+    voice: 'v',
+    lines: [{ id: 'a', text: 'Hello', profileId: null }],
+  });
+  return renderLongform('stories');
+}
+
+it('attaches the finished result the backend recorded when the stream drops before done (#4090)', async () => {
+  const done = { type: 'done', output: 'story_job9.m4b', cached_chapters: 0, failed_chapters: 0 };
+  apiJsonMock.mockResolvedValue({
+    job: { status: 'done' },
+    events: [{ seq: 4, payload: JSON.stringify(done) }],
+    event_watermark: { seq: 4 },
+  });
+  await startDroppedRender();
+  expect(apiJsonMock.mock.calls[0][0]).toContain('/jobs/job9/events');
+  expect(longformSession.state.error).toBeNull();
+  expect(longformSession.state.drafts.stories.output).toBe('story_job9.m4b');
+});
+
+it('attaches a stored done even while the job row still reads running (#4090)', async () => {
+  const done = { type: 'done', output: 'story_job9.m4b', cached_chapters: 0, failed_chapters: 0 };
+  apiJsonMock.mockResolvedValue({
+    job: { status: 'running' },
+    events: [{ seq: 4, payload: JSON.stringify(done) }],
+    event_watermark: { seq: 4 },
+  });
+  await startDroppedRender();
+  expect(longformSession.state.error).toBeNull();
+  expect(longformSession.state.drafts.stories.output).toBe('story_job9.m4b');
+});
+
+it('keeps the stream error while a running job has not stored done yet', async () => {
+  apiJsonMock.mockResolvedValue({
+    job: { status: 'running' },
+    events: [{ seq: 2, payload: JSON.stringify({ type: 'chapter', index: 0, title: 'One', duration_s: 1 }) }],
+    event_watermark: { seq: 2 },
+  });
+  await startDroppedRender();
+  expect(longformSession.state.error).toBe('network error');
+});
+
+it('keeps the stream error when the backend has no finished result for the dropped render', async () => {
+  apiJsonMock.mockResolvedValue({
+    job: { status: 'cancelled' },
+    events: [],
+    event_watermark: { seq: 3 },
+  });
+  await startDroppedRender();
+  expect(longformSession.state.error).toBe('network error');
+  expect(apiJsonMock).toHaveBeenCalledTimes(1);
+});
+
+it('restores chapter results lost with done, so cue timings stay complete (#4090)', async () => {
+  const lost = { type: 'chapter', index: 1, title: 'Two', duration_s: 2 };
+  const done = { type: 'done', output: 'story_job9.m4b', cached_chapters: 0, failed_chapters: 0 };
+  apiJsonMock.mockResolvedValue({
+    job: { status: 'done' },
+    events: [
+      { seq: 2, payload: JSON.stringify({ type: 'chapter', index: 0, title: 'One', duration_s: 1 }) },
+      { seq: 3, payload: JSON.stringify(lost) },
+      { seq: 5, payload: JSON.stringify(done) },
+    ],
+    event_watermark: { seq: 5 },
+  });
+  await startDroppedRender(2);
+  expect(longformSession.state.error).toBeNull();
+  expect(longformSession.state.drafts.stories.outputChapters.map((c) => c.title)).toEqual([
+    'One',
+    'Two',
+  ]);
+});

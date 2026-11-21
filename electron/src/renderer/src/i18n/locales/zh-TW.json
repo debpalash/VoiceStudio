@@ -945,7 +945,8 @@
     "retry": "再試一次",
     "confirm": "確認",
     "details": "詳細資料",
-    "unknown": "未知"
+    "unknown": "未知",
+    "link_blocked": "無法開啟此連結。僅允許網頁和電子郵件連結。"
   },
   "dubWorkspace": {
     "transcriptIssues": "轉錄問題",
@@ -2250,6 +2251,10 @@
     "dubbing_cta": "在您自己的影片上運行此→",
     "dubbing_loading": "正在載入配音演示...",
     "dubbing_dismiss": "關閉配音演示",
+    "dubbing_download": "下載示範影片（約 10 MB）",
+    "dubbing_downloading": "下載中…",
+    "dubbing_download_failed": "下載失敗，請檢查網路連線。",
+    "dubbing_retry": "重試",
     "original_tag": "原創",
     "dubbed_tag": "配音",
     "script_conversational": "會話型",
@@ -2884,6 +2889,7 @@
     "source_language_required": "語音辨識未回報此影片使用的語言，因此無法在此翻譯。請在配音中開啟該影片並選擇其來源語言，或選擇能偵測語言的語音辨識模型。",
     "transcription_media_tool": "轉錄需要 ffmpeg，但 VoiceStudio 找不到或無法執行它。請開啟設定 → 音訊工具並使用下載/修復，或安裝 ffmpeg（macOS：brew install ffmpeg；Windows：winget install Gyan.FFmpeg；Linux：你的套件管理員），然後重新啟動 VoiceStudio。你也可以將 FFMPEG_PATH 指向 ffmpeg 執行檔。",
     "transcription_pipe_lost": "轉錄期間後端失去了通往應用程式的輸出管道（broken pipe）。請重新啟動 VoiceStudio 後再試一次。",
+    "reference_transcript_required": "此聲音的參考音訊沒有逐字稿，而此引擎複製聲音需要它。請將逐字稿加入聲音設定檔，或安裝語音轉文字模型以自動轉寫。",
     "gpu_oom": "GPU 記憶體不足。請關閉其他佔用 GPU 的應用程式或卸載模型後重試。你也可以在 設定 → 效能與裝置 中選擇 CPU，或選擇較小的 TTS 引擎。",
     "host_memory_exhausted": "電腦記憶體不足。請關閉其他佔用記憶體的應用程式和瀏覽器分頁，卸載不用的模型，產生較短的片段，或選擇更輕量的 TTS 引擎。",
     "disk_full": "磁碟已滿。請在存放 VoiceStudio 資料、模型快取或暫存資料夾的磁碟上釋放空間，然後重試。設定 → 儲存空間會顯示磁碟用量，並可清除暫存檔案。",
@@ -2955,6 +2961,8 @@
     "free": "免費版",
     "pro": "Pro",
     "get_pro": "取得 Pro",
+    "upgrade_pro": "升級到 Pro",
+    "get_pro_app": "取得 Pro 應用程式",
     "sponsor_bar": "贊助商列",
     "visible": "顯示",
     "hideable": "可隱藏",

@@ -10,7 +10,10 @@ import tempfile
 
 def main():
     if os.name == 'nt':
-        raise SystemExit('This check exercises migration of a POSIX desktop wrapper.')
+        # The migration under test replaces a POSIX `#!/bin/sh` desktop wrapper,
+        # so there is nothing to exercise here; skip rather than fail a Windows run.
+        print('SKIP: the CLI launcher migration is POSIX-only')
+        return
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix='voicestudio-cli-migrate-') as directory:
         work = Path(directory)

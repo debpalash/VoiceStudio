@@ -959,7 +959,8 @@
     "retry": "Spróbuj ponownie",
     "confirm": "Potwierdź",
     "details": "Szczegóły",
-    "unknown": "nieznany"
+    "unknown": "nieznany",
+    "link_blocked": "Nie można otworzyć tego linku. Dozwolone są tylko linki internetowe i e-mail."
   },
   "dubWorkspace": {
     "transcriptIssues": "Problemy transkrypcji",
@@ -2274,6 +2275,10 @@
     "dubbing_cta": "Uruchom to na swoim własnym filmie →",
     "dubbing_loading": "Ładowanie wersji demonstracyjnej kopiowania…",
     "dubbing_dismiss": "Zamknij demonstrację dubbingu",
+    "dubbing_download": "Pobierz filmy demonstracyjne (~10 MB)",
+    "dubbing_downloading": "Pobieranie…",
+    "dubbing_download_failed": "Pobieranie nie powiodło się. Sprawdź połączenie.",
+    "dubbing_retry": "Spróbuj ponownie",
     "original_tag": "oryginał",
     "dubbed_tag": "dubbingowany",
     "script_conversational": "Konwersacyjny",
@@ -2910,6 +2915,7 @@
     "source_language_required": "Rozpoznawanie mowy nie podało, w jakim języku mówi się w tym filmie, więc nie można go tu przetłumaczyć. Otwórz film w Dubbingu i wybierz język źródłowy albo wybierz model rozpoznawania mowy, który wykrywa język.",
     "transcription_media_tool": "Transkrypcja wymaga ffmpeg, którego VoiceStudio nie mogło znaleźć lub uruchomić. Otwórz Ustawienia → Narzędzia audio i użyj Pobierz/Napraw albo zainstaluj ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: menedżer pakietów) i uruchom VoiceStudio ponownie. Możesz też wskazać plik ffmpeg w FFMPEG_PATH.",
     "transcription_pipe_lost": "Backend utracił kanał wyjściowy do aplikacji podczas transkrypcji (broken pipe). Uruchom VoiceStudio ponownie i spróbuj jeszcze raz.",
+    "reference_transcript_required": "Klip referencyjny tego głosu nie ma transkrypcji, której ten silnik potrzebuje do sklonowania głosu. Dodaj transkrypcję do profilu głosu lub zainstaluj model rozpoznawania mowy, aby transkrybować ją automatycznie.",
     "gpu_oom": "Procesorowi graficznemu zabrakło pamięci. Zamknij inne aplikacje mocno obciążające GPU lub wyładuj modele, a potem spróbuj ponownie. Możesz też wybrać CPU w Ustawienia → Wydajność i urządzenie albo mniejszy silnik TTS.",
     "host_memory_exhausted": "Komputerowi zabrakło pamięci. Zamknij inne aplikacje i karty przeglądarki zajmujące dużo pamięci, wyładuj nieużywane modele, wygeneruj krótszy fragment lub wybierz lżejszy silnik TTS.",
     "disk_full": "Dysk jest pełny. Zwolnij miejsce na dysku, na którym znajdują się dane, pamięć podręczna modeli lub folder tymczasowy VoiceStudio, i spróbuj ponownie. Ustawienia → Pamięć pokazuje zajętość dysku i pozwala wyczyścić pliki tymczasowe.",
@@ -2981,6 +2987,8 @@
     "free": "Darmowa",
     "pro": "Pro",
     "get_pro": "Zdobądź Pro",
+    "upgrade_pro": "Przejdź na Pro",
+    "get_pro_app": "Pobierz aplikację Pro",
     "sponsor_bar": "Pasek sponsorów",
     "visible": "Widoczny",
     "hideable": "Można ukryć",

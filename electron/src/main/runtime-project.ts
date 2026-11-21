@@ -68,6 +68,7 @@ const SOURCES = [
   'omnivoice',
   'pyproject.toml',
   'uv.lock',
+  'vendor/wheels',
   'scripts/windows-rocm-recipe.json',
   'scripts/smoke_windows_rocm.py',
   'README.md',

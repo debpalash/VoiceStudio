@@ -684,6 +684,7 @@
     "source_language_required": "Speech recognition did not report which language this video is spoken in, so it can't be translated here. Open the video in Dubbing and choose its source language, or pick a speech recognition model that detects the language.",
     "transcription_media_tool": "Transcription needs ffmpeg, which VoiceStudio could not find or run. Open Settings → Audio tools and use Download/Repair, or install ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: your package manager) and restart VoiceStudio. You can also point FFMPEG_PATH at an ffmpeg binary.",
     "transcription_pipe_lost": "The backend lost its output pipe to the app while transcribing (broken pipe). Restart VoiceStudio and try again.",
+    "reference_transcript_required": "This voice's reference clip has no transcript, which this engine needs to clone it. Add the transcript to the voice profile, or install a speech-to-text model so it can be transcribed automatically.",
     "gpu_oom": "The GPU ran out of memory. Close other GPU-heavy apps or unload models, then retry. You can also choose CPU in Settings → Performance & Device or select a smaller TTS engine.",
     "host_memory_exhausted": "The computer ran out of memory. Close other memory-heavy apps and browser tabs, flush models you are not using, render a shorter passage, or select a lighter TTS engine.",
     "disk_full": "The disk is full. Free space on the drive that holds VoiceStudio's data, model cache or temp folder, then try again. Settings → Storage shows disk usage and can clear temporary files.",
@@ -752,7 +753,8 @@
     "unknown": "unknown",
     "remove": "Remove {{term}}",
     "not_set": "Not set",
-    "details": "Details"
+    "details": "Details",
+    "link_blocked": "This link can't be opened. Only web and email links are allowed."
   },
   "preferences": {
     "title": "Settings",
@@ -2336,6 +2338,10 @@
     "dubbing_cta": "Run this on your own video →",
     "dubbing_loading": "Loading dubbing demo…",
     "dubbing_dismiss": "Dismiss dubbing demo",
+    "dubbing_download": "Download demo videos (~10 MB)",
+    "dubbing_downloading": "Downloading…",
+    "dubbing_download_failed": "Download failed. Check your connection.",
+    "dubbing_retry": "Retry",
     "original_tag": "original",
     "dubbed_tag": "dubbed",
     "script_conversational": "Conversational",
@@ -2955,6 +2961,8 @@
     "free": "Free",
     "pro": "Pro",
     "get_pro": "Get Pro",
+    "upgrade_pro": "Upgrade to Pro",
+    "get_pro_app": "Get Pro app",
     "sponsor_bar": "Sponsor bar",
     "visible": "Visible",
     "hideable": "Can be hidden",

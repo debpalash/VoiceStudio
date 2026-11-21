@@ -15,6 +15,7 @@ import {
   getFrontendLogs,
   clearFrontendLogs,
 } from '@shared/utils/consoleBuffer';
+import { relaxWhenBackendBusy } from '@/lib/status-polling';
 interface LogResponse {
   lines: string[];
   path?: string;
@@ -33,7 +34,7 @@ export function LogSettings() {
   const follow = useRef(true);
   const query = useQuery({
     queryKey: ['settings-logs', source],
-    refetchInterval: 3000,
+    refetchInterval: () => relaxWhenBackendBusy(3000),
     queryFn: (): Promise<LogResponse> =>
       source === 'backend'
         ? apiJson('/system/logs?tail=1000')

@@ -945,7 +945,8 @@
     "retry": "Coba lagi",
     "confirm": "Konfirmasi",
     "details": "Detail",
-    "unknown": "tidak dikenal"
+    "unknown": "tidak dikenal",
+    "link_blocked": "Tautan ini tidak dapat dibuka. Hanya tautan web dan email yang diizinkan."
   },
   "dubWorkspace": {
     "transcriptIssues": "Masalah transkrip",
@@ -2250,6 +2251,10 @@
     "dubbing_cta": "Jalankan ini di video Anda sendiri →",
     "dubbing_loading": "Memuat demo sulih suara…",
     "dubbing_dismiss": "Tolak demo sulih suara",
+    "dubbing_download": "Unduh video demo (~10 MB)",
+    "dubbing_downloading": "Mengunduh…",
+    "dubbing_download_failed": "Unduhan gagal. Periksa koneksi Anda.",
+    "dubbing_retry": "Coba lagi",
     "original_tag": "asli",
     "dubbed_tag": "dijuluki",
     "script_conversational": "Percakapan",
@@ -2884,6 +2889,7 @@
     "source_language_required": "Pengenalan suara tidak melaporkan bahasa yang diucapkan dalam video ini, jadi video tidak dapat diterjemahkan di sini. Buka video di Sulih Suara dan pilih bahasa sumbernya, atau pilih model pengenalan suara yang mendeteksi bahasa.",
     "transcription_media_tool": "Transkripsi membutuhkan ffmpeg, yang tidak dapat ditemukan atau dijalankan VoiceStudio. Buka Pengaturan → Alat audio lalu gunakan Unduh/Perbaiki, atau instal ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: pengelola paket Anda) dan mulai ulang VoiceStudio. Anda juga dapat mengarahkan FFMPEG_PATH ke berkas ffmpeg.",
     "transcription_pipe_lost": "Backend kehilangan saluran keluarannya ke aplikasi saat transkripsi (broken pipe). Mulai ulang VoiceStudio dan coba lagi.",
+    "reference_transcript_required": "Klip referensi suara ini tidak memiliki transkrip, yang dibutuhkan mesin ini untuk mengkloningnya. Tambahkan transkrip ke profil suara, atau instal model ucapan-ke-teks agar dapat ditranskripsi otomatis.",
     "gpu_oom": "GPU kehabisan memori. Tutup aplikasi lain yang berat memakai GPU atau bongkar model, lalu coba lagi. Anda juga bisa memilih CPU di Pengaturan → Performa & Perangkat atau memilih mesin TTS yang lebih kecil.",
     "host_memory_exhausted": "Komputer kehabisan memori. Tutup aplikasi dan tab peramban lain yang boros memori, bongkar model yang tidak dipakai, buat bagian yang lebih pendek, atau pilih mesin TTS yang lebih ringan.",
     "disk_full": "Disk penuh. Kosongkan ruang di drive yang menyimpan data, cache model, atau folder sementara VoiceStudio, lalu coba lagi. Pengaturan → Penyimpanan menampilkan penggunaan disk dan dapat menghapus file sementara.",
@@ -2955,6 +2961,8 @@
     "free": "Gratis",
     "pro": "Pro",
     "get_pro": "Dapatkan Pro",
+    "upgrade_pro": "Upgrade ke Pro",
+    "get_pro_app": "Dapatkan aplikasi Pro",
     "sponsor_bar": "Bilah sponsor",
     "visible": "Terlihat",
     "hideable": "Dapat disembunyikan",

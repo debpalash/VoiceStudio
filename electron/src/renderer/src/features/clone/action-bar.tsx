@@ -41,6 +41,7 @@ import { ProgressIndicator, ProgressTrack } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { useGenerateClone } from '@/hooks/use-generate';
+import { GenerationElapsed } from '@/components/generation-elapsed';
 import {
   resetVoiceControls,
   setCloneSetting,
@@ -375,7 +376,6 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
     generate,
     cancel,
     isGenerating,
-    elapsedSeconds,
     progress,
     stage,
     modelStage,
@@ -466,7 +466,9 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
               </span>
               {isGenerating ? (
                 <span className="shrink-0 text-xs font-normal tabular-nums opacity-80">
-                  {`${modelProgress != null && stage === 'loading' ? `${Math.round(modelProgress)}% · ` : ''}${elapsedSeconds.toFixed(1)}s`}
+                  <GenerationElapsed
+                    prefix={modelProgress != null && stage === 'loading' ? `${Math.round(modelProgress)}% · ` : ''}
+                  />
                 </span>
               ) : (
                 <KbdGroup aria-hidden="true" className="shrink-0">

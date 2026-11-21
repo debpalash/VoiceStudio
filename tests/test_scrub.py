@@ -409,3 +409,67 @@ def test_provider_exact_key_redaction_failure_is_fail_closed():
             raise RuntimeError("key inspection failed")
 
     assert scrub_provider_error("provider echoed a credential", _BrokenKey()) == REDACTED
+
+# ── Inline URL credentials (`https://user:token@host`) ──────────────────────
+# An index, mirror or proxy URL can carry its credential in the userinfo, which
+# is a sanctioned configuration for restricted networks and was not covered by
+# the query-parameter pass. uv/pip/git echo those URLs verbatim into logs.
+
+def _scrub(text):
+    # Resolved per call so a test that swaps sys.modules can't leave a stale binding.
+    import importlib
+    return importlib.import_module("core.scrub").scrub_text(text)
+
+
+def test_inline_url_userinfo_is_redacted():
+    scrubbed = _scrub("Collecting from https://user:s3cr3t@mirror.example/simple/ ...")
+    assert "s3cr3t" not in scrubbed
+    assert "mirror.example/simple/" in scrubbed
+
+
+def test_inline_url_userinfo_is_redacted_inside_an_env_assignment():
+    scrubbed = _scrub("HTTP_PROXY=https://ops:hunter2@proxy.internal:8080")
+    assert "hunter2" not in scrubbed
+    assert "proxy.internal:8080" in scrubbed
+
+
+def test_token_as_username_is_redacted_too():
+    # GitHub's documented form puts the token in the username, with no colon.
+    scrubbed = _scrub("remote: https://ghp_abcdefghijklmnopqrstuvwxyz012345@github.com/x/y.git")
+    assert "ghp_abcdefghijklmnopqrstuvwxyz012345" not in scrubbed
+
+
+def test_an_ssh_identity_is_not_userinfo_and_stays_readable():
+    # No secret, and mangling it would make an error message useless.
+    assert _scrub("fatal: could not read from ssh://git@github.com/o/r.git") == (
+        "fatal: could not read from ssh://git@github.com/o/r.git"
+    )
+    assert _scrub("git@github.com:owner/repo.git") == "git@github.com:owner/repo.git"
+
+
+def test_a_path_handle_is_not_userinfo():
+    assert _scrub("https://example.com/@alice") == "https://example.com/@alice"
+
+
+def test_userinfo_with_an_apostrophe_is_redacted():
+    scrubbed = _scrub("https://user:orchid'river@proxy.internal:8080/simple/")
+    assert "orchid" not in scrubbed and "river" not in scrubbed
+    assert "proxy.internal:8080/simple/" in scrubbed
+
+
+def test_userinfo_containing_a_query_style_name_is_redacted_whole():
+    scrubbed = _scrub("https://user:orchid&token=river@mirror.example/simple/")
+    assert "orchid" not in scrubbed and "river" not in scrubbed
+    assert "mirror.example/simple/" in scrubbed
+
+
+def test_userinfo_with_an_unencoded_at_sign_is_redacted_whole():
+    scrubbed = _scrub("https://user:pa@ss@mirror.example/simple/")
+    assert "pa@ss" not in scrubbed and "ss@" not in scrubbed
+    assert "mirror.example/simple/" in scrubbed
+
+
+def test_a_query_credential_before_an_at_sign_is_not_taken_as_userinfo():
+    # A pathless URL whose query value holds an `@` must still lose the whole value.
+    scrubbed = _scrub("https://mirror.example?password=orchid@river")
+    assert "orchid" not in scrubbed and "river" not in scrubbed

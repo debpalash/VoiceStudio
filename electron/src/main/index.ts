@@ -293,7 +293,11 @@ ipcMain.handle('app:set-close-to-tray', (event, enabled: unknown) => {
 
 ipcMain.handle(
   'app:is-fullscreen',
-  (event) => BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
+  (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    assertTrustedMainFrame(event, owner);
+    return owner?.isFullScreen() ?? false;
+  },
 );
 
 function createWindow(): BrowserWindow {
@@ -607,12 +611,6 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
           });
         },
       });
-      closeRepairAgents = await registerRepairAgents(
-        backend,
-        backendRoot(),
-        () => mainWindow,
-        () => mainErrors.recent(),
-      );
       if (is.dev) {
         const proxy = await startDevBackendProxy(
           () => backend.baseUrl,
@@ -624,6 +622,26 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
         );
         closeDevProxy = proxy.close;
       }
+      const repairAgentsReady = registerRepairAgents(
+        backend,
+        backendRoot(),
+        () => mainWindow,
+        () => mainErrors.recent(),
+      ).then((close) => {
+        if (quitting || quitPreparation) close();
+        else closeRepairAgents = close;
+      });
+      observeMainProcessTask(repairAgentsReady, mainErrors, 'Repair agents');
+      // The backend inherits VOICESTUDIO_LLM_AGENT* from this process's env, which
+      // registerRepairAgents sets, so Python must not spawn before it settles. The
+      // window, tray, updater and watch folders below still overlap with it.
+      observeMainProcessTask(
+        repairAgentsReady
+          .catch(() => undefined)
+          .then(() => runDiagnosticOperation(reports, () => backend.start())),
+        mainErrors,
+        'Backend startup',
+      );
       const updater = new DesktopUpdater();
       const closeUpdateIpc = registerUpdateIpc(
         updater,
@@ -663,11 +681,6 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
       tray.setToolTip(PRODUCT_NAME);
       closeCapture = installNativeCapture(PRELOAD_PATH, tray, () => mainWindow);
       tray.on('click', () => showWindow());
-      observeMainProcessTask(
-        runDiagnosticOperation(reports, () => backend.start()),
-        mainErrors,
-        'Backend startup',
-      );
       if (headlessOwner) {
         idleShutdown = new IdleShutdown({
           idleMs: idleShutdownMs(),

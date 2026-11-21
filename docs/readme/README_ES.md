@@ -120,12 +120,12 @@ Todo lo anterior es gratis, se ejecuta en tu propio hardware y no necesita cuent
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       Para trabajo pagado para clientes en más de un equipo.
       <ul>
-        <li>Una licencia comercial para tu trabajo con clientes, enviada por correo</li>
+        <li>Una licencia comercial para el código de VoiceStudio en tu trabajo con clientes, enviada por correo</li>
         <li>Un usuario en hasta 3 dispositivos a la vez</li>
         <li>Envía trabajos a tus otras GPU mientras tus proyectos siguen en local</li>
         <li>Nuevas funciones y correcciones antes que nadie</li>
       </ul>
-      <sub>Versión de código cerrado, requiere cuenta, reembolso completo durante 7 días. La app AGPL-3.0 sigue siendo gratis, también para uso comercial según sus términos.</sub><br /><br />
+      <sub>Versión de código cerrado, requiere cuenta, reembolso completo durante 7 días. La app AGPL-3.0 sigue siendo gratis, también para uso comercial según sus términos. Ninguna de las dos licencias cubre los pesos de los modelos: los pesos predeterminados de OmniVoice son no comerciales (CC-BY-NC), así que revisa la licencia de cada modelo en Model Manager antes de trabajar para clientes.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Ver planes de Pro →</a></strong>
     </td>
     <td width="50%" valign="top">

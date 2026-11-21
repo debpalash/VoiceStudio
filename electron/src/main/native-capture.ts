@@ -14,7 +14,7 @@ import {
 import { join } from 'node:path';
 import { backendRoot } from './backend';
 import { APP_ORIGIN } from './protocol';
-import { isTrustedRenderer } from './trusted-renderer';
+import { assertTrustedMainFrame } from './trusted-ipc';
 import { DictationOutputClient } from './dictation-output';
 import { CaptureSession, type CapturePhase } from './capture-session';
 import { activateLiveWindow, sendToLiveWindow } from './window-safety';
@@ -164,13 +164,7 @@ export function installNativeCapture(
     return win;
   }
   function assertRecorder(event: IpcMainInvokeEvent): void {
-    if (
-      !recorder ||
-      event.sender !== recorder.webContents ||
-      event.senderFrame !== event.sender.mainFrame ||
-      !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-    )
-      throw new Error('Untrusted recorder');
+    assertTrustedMainFrame(event, recorder, 'Untrusted recorder');
   }
   const handle = (
     name: string,
@@ -210,14 +204,7 @@ export function installNativeCapture(
   });
   handle('stop', () => capture.stop());
   function assertMain(event: IpcMainInvokeEvent): void {
-    const owner = main();
-    if (
-      !owner ||
-      event.sender !== owner.webContents ||
-      event.senderFrame !== event.sender.mainFrame ||
-      !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-    )
-      throw new Error('Untrusted shortcut settings');
+    assertTrustedMainFrame(event, main(), 'Untrusted shortcut settings');
   }
   ipcMain.handle('capture:getShortcut', (event) => {
     assertMain(event);
@@ -241,14 +228,7 @@ export function installNativeCapture(
     return result;
   });
   ipcMain.handle('capture:labels', (event, labels: unknown) => {
-    const owner = main();
-    if (
-      !owner ||
-      event.sender !== owner.webContents ||
-      event.senderFrame !== event.sender.mainFrame ||
-      !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-    )
-      throw new Error('Untrusted tray labels');
+    assertTrustedMainFrame(event, main(), 'Untrusted tray labels');
     if (!labels || typeof labels !== 'object') throw new Error('Invalid labels');
     const { show, start, stop, settings, exit } = labels as Record<string, unknown>;
     if (

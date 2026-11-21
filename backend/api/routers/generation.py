@@ -41,6 +41,7 @@ from services.reference_transcript import (
 from services.binary_preflight import InvalidBinaryError
 from services.model_acceptance import ModelLicenceNotAccepted
 from core import event_bus
+from core.failure import ReferenceTranscriptRequiredError
 from core.render_trace import call as trace_call
 from core.logging_utils import log_safe
 from core.browser_guard import reject_cross_site_get
@@ -2728,6 +2729,15 @@ async def generate_speech(
                 )
                 failure["retry_after"] = 30
                 yield _line({"type": "error", **failure})
+            except ReferenceTranscriptRequiredError:
+                # A transcript-less clone reached an engine whose runtime
+                # hard-requires one (#4223). The owned remedy is fixed text
+                # from core.failure, so the frame never echoes the exception.
+                logger.error("Streaming generation request lacks a clone transcript")
+                from core.public_errors import stream_failure
+                yield _line({
+                    "type": "error", **stream_failure("reference_transcript_required"),
+                })
             except ValueError as e:
                 logger.error("Streaming generation request rejected")
                 from core.public_errors import stream_failure
@@ -2913,6 +2923,18 @@ async def generate_speech(
         # as 503 (engine unavailable), not a generic 500.
         logger.error("Engine binary preflight failed: %s", e)
         raise HTTPException(status_code=503, detail=str(e)) from e
+    except ReferenceTranscriptRequiredError as e:
+        # Structured so the app shows its localized remedy by `code` (#4223).
+        logger.error("Validation failed: clone reference has no transcript")
+        from core.failure import REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "reference_transcript_required",
+                "message": REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE,
+            },
+        ) from e
     except ValueError as e:
         logger.error("Validation failed: %s", e)
         if language_from_profile and _is_language_rejection(str(e)):

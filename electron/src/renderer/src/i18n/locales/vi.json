@@ -945,7 +945,8 @@
     "retry": "Thử lại",
     "confirm": "Xác nhận",
     "details": "Chi tiết",
-    "unknown": "không rõ"
+    "unknown": "không rõ",
+    "link_blocked": "Không thể mở liên kết này. Chỉ cho phép liên kết web và email."
   },
   "dubWorkspace": {
     "transcriptIssues": "Vấn đề trong bản chép lời",
@@ -2250,6 +2251,10 @@
     "dubbing_cta": "Chạy cái này trên video của riêng bạn →",
     "dubbing_loading": "Đang tải bản demo lồng tiếng…",
     "dubbing_dismiss": "Loại bỏ bản demo lồng tiếng",
+    "dubbing_download": "Tải video demo (~10 MB)",
+    "dubbing_downloading": "Đang tải xuống…",
+    "dubbing_download_failed": "Tải xuống thất bại. Hãy kiểm tra kết nối.",
+    "dubbing_retry": "Thử lại",
     "original_tag": "nguyên bản",
     "dubbed_tag": "được mệnh danh là",
     "script_conversational": "đàm thoại",
@@ -2884,6 +2889,7 @@
     "source_language_required": "Nhận dạng giọng nói không cho biết video này dùng ngôn ngữ nào, nên không thể dịch tại đây. Mở video trong Lồng tiếng và chọn ngôn ngữ nguồn, hoặc chọn mô hình nhận dạng giọng nói có thể phát hiện ngôn ngữ.",
     "transcription_media_tool": "Chép lời cần ffmpeg, nhưng VoiceStudio không thể tìm thấy hoặc chạy nó. Mở Cài đặt → Công cụ âm thanh và dùng Tải xuống/Sửa chữa, hoặc cài ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: trình quản lý gói của bạn) rồi khởi động lại VoiceStudio. Bạn cũng có thể trỏ FFMPEG_PATH tới tệp ffmpeg.",
     "transcription_pipe_lost": "Backend đã mất kênh đầu ra tới ứng dụng khi đang chép lời (broken pipe). Hãy khởi động lại VoiceStudio và thử lại.",
+    "reference_transcript_required": "Đoạn tham chiếu của giọng nói này không có bản ghi lời thoại mà công cụ này cần để nhân bản. Hãy thêm bản ghi lời thoại vào hồ sơ giọng nói, hoặc cài mô hình chuyển giọng nói thành văn bản để tự động phiên âm.",
     "gpu_oom": "GPU đã hết bộ nhớ. Hãy đóng các ứng dụng khác dùng nhiều GPU hoặc gỡ mô hình khỏi bộ nhớ rồi thử lại. Bạn cũng có thể chọn CPU trong Cài đặt → Hiệu năng & Thiết bị hoặc chọn công cụ TTS nhỏ hơn.",
     "host_memory_exhausted": "Máy tính đã hết bộ nhớ. Hãy đóng các ứng dụng và thẻ trình duyệt khác dùng nhiều bộ nhớ, gỡ các mô hình không dùng, tạo đoạn ngắn hơn hoặc chọn công cụ TTS nhẹ hơn.",
     "disk_full": "Ổ đĩa đã đầy. Hãy giải phóng dung lượng trên ổ chứa dữ liệu, bộ nhớ đệm mô hình hoặc thư mục tạm của VoiceStudio rồi thử lại. Cài đặt → Lưu trữ hiển thị mức dùng ổ đĩa và có thể xóa tệp tạm.",
@@ -2955,6 +2961,8 @@
     "free": "Miễn phí",
     "pro": "Pro",
     "get_pro": "Nhận Pro",
+    "upgrade_pro": "Nâng cấp lên Pro",
+    "get_pro_app": "Tải ứng dụng Pro",
     "sponsor_bar": "Thanh nhà tài trợ",
     "visible": "Hiển thị",
     "hideable": "Có thể ẩn",

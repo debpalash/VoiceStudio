@@ -13,8 +13,12 @@
 #   *.srt              transcripts for each
 #   manifest.json      single source of truth the frontend reads
 #
-# Bundle target: ~5 MB per mp4 × 5 files = ~25 MB. Well under the 45 MB
-# cap from the dubbing-demo design spec.
+# The mp4 files are NOT committed: the app downloads them on demand from the
+# omnivoice-gallery `dub-demo-v1` release (backend/services/demo_assets.py).
+# After rebuilding, run scripts/package_dub_demo.py --out <dir> --table
+# backend/assets/samples/demo/dubbing/demo_assets.json --posters
+# backend/assets/samples/demo/dubbing, upload <dir>, and commit the table and
+# posters (not the mp4/wav files). Bump the tag in package_dub_demo.py first.
 
 set -e
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -945,7 +945,8 @@
     "retry": "Tekrar dene",
     "confirm": "Onayla",
     "details": "Ayrıntılar",
-    "unknown": "bilinmiyor"
+    "unknown": "bilinmiyor",
+    "link_blocked": "Bu bağlantı açılamıyor. Yalnızca web ve e-posta bağlantılarına izin verilir."
   },
   "dubWorkspace": {
     "transcriptIssues": "Transkript sorunları",
@@ -2250,6 +2251,10 @@
     "dubbing_cta": "Bunu kendi videonuzda çalıştırın →",
     "dubbing_loading": "Dublaj demosu yükleniyor…",
     "dubbing_dismiss": "Dublaj demosunu kapat",
+    "dubbing_download": "Demo videolarını indir (~10 MB)",
+    "dubbing_downloading": "İndiriliyor…",
+    "dubbing_download_failed": "İndirme başarısız. Bağlantınızı kontrol edin.",
+    "dubbing_retry": "Yeniden dene",
     "original_tag": "orijinal",
     "dubbed_tag": "dublajlı",
     "script_conversational": "konuşkan",
@@ -2884,6 +2889,7 @@
     "source_language_required": "Konuşma tanıma bu videoda hangi dilin konuşulduğunu bildirmedi, bu yüzden burada çevrilemiyor. Videoyu Seslendirme'de açıp kaynak dilini seçin veya dili algılayan bir konuşma tanıma modeli seçin.",
     "transcription_media_tool": "Yazıya dökme için ffmpeg gerekir, ancak VoiceStudio onu bulamadı veya çalıştıramadı. Ayarlar → Ses araçları bölümünü açıp İndir/Onar'ı kullanın ya da ffmpeg'i kurun (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: paket yöneticiniz) ve VoiceStudio'yu yeniden başlatın. FFMPEG_PATH değişkenini bir ffmpeg dosyasına da yönlendirebilirsiniz.",
     "transcription_pipe_lost": "Arka uç, yazıya dökme sırasında uygulamaya giden çıkış kanalını kaybetti (broken pipe). VoiceStudio'yu yeniden başlatıp tekrar deneyin.",
+    "reference_transcript_required": "Bu sesin referans klibinin, bu motorun klonlamak için ihtiyaç duyduğu bir transkripsiyonu yok. Transkripsiyonu ses profiline ekleyin veya otomatik olarak yazıya dökülmesi için bir konuşma tanıma modeli yükleyin.",
     "gpu_oom": "GPU belleği tükendi. GPU'yu çok kullanan diğer uygulamaları kapatın veya modelleri boşaltın, sonra tekrar deneyin. Ayarlar → Performans ve Aygıt bölümünden CPU'yu seçebilir veya daha küçük bir TTS motoru seçebilirsiniz.",
     "host_memory_exhausted": "Bilgisayarın belleği tükendi. Belleği çok kullanan diğer uygulamaları ve tarayıcı sekmelerini kapatın, kullanmadığınız modelleri boşaltın, daha kısa bir bölüm üretin veya daha hafif bir TTS motoru seçin.",
     "disk_full": "Disk dolu. VoiceStudio verilerinin, model önbelleğinin veya geçici klasörünün bulunduğu sürücüde yer açın ve yeniden deneyin. Ayarlar → Depolama disk kullanımını gösterir ve geçici dosyaları temizleyebilir.",
@@ -2955,6 +2961,8 @@
     "free": "Ücretsiz",
     "pro": "Pro",
     "get_pro": "Pro'yu edin",
+    "upgrade_pro": "Pro'ya yükselt",
+    "get_pro_app": "Pro uygulamasını edin",
     "sponsor_bar": "Sponsor çubuğu",
     "visible": "Görünür",
     "hideable": "Gizlenebilir",

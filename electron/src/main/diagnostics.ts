@@ -22,6 +22,7 @@ import {
   sanitizeRecord,
   validConsent,
   TTL_MS,
+  MAX_PER_FINGERPRINT,
   type DiagnosticConsent,
   type DiagnosticEvent,
   type DiagnosticIdentity,
@@ -648,6 +649,25 @@ export class DiagnosticReports {
         Number(duplicate.props.occurrences) + Number(record.props.occurrences),
       );
     } else this.records.push(record);
+    // Recycle this failure's own oldest slots before the global bound below runs.
+    // That bound evicts by arrival, so without this budget a failure that repeats
+    // often enough empties the outbox of unrelated still-valid evidence while its
+    // own retention window is still running.
+    // Records in an in-flight batch count toward the budget but cannot be evicted:
+    // only inactive ones (the incoming record last) are recycled, so a failed
+    // batch never leaves more than MAX_PER_FINGERPRINT of one failure behind.
+    const family = this.records.filter(
+      (old) => !old.completed && old.props.fingerprint === record.props.fingerprint,
+    );
+    const evictable = family.filter(
+      (old) => old.id !== this.activeId && !this.activeIds.has(old.id),
+    );
+    for (let over = family.length - MAX_PER_FINGERPRINT; over > 0 && evictable.length; over--) {
+      const index = this.records.indexOf(evictable.shift()!);
+      if (index < 0) continue;
+      this.records.splice(index, 1);
+      this.dropped = Math.min(1_000_000, this.dropped + 1);
+    }
     while (
       this.records.length > MAX_RECORDS ||
       // Reserve the terminal flag and maximum counter width before admission,

@@ -82,6 +82,7 @@ vi.mock('@/lib/audio/playback', () => ({
 }));
 
 vi.mock('@/hooks/use-generate', () => ({
+  useGenerationElapsed: () => runtime.elapsedSeconds,
   useGenerateClone: () => ({
     generate,
     cancel,

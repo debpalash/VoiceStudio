@@ -163,13 +163,21 @@ jobs:
         shell: pwsh
         run: ./electron/tests/powershell-installer.ps1
 
+  # Two shards of tests/ (whole modules, see conftest.py
+  # pytest_collection_modifyitems) run in parallel; shard 1 also runs the serial
+  # backend/tests session, shard 2 the mobile token checks. `test` gates on the
+  # job's aggregate result, so the required check name is unchanged.
   test-python:
-    name: Tests (Python)
+    name: Tests (Python ${{ matrix.shard }}/2)
     needs: changes
     # Must report even if `changes` failed, so a detection error never skips the gate;
     # only a rejected external approval (changes skipped) stops it.
     if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     env:
       # Same restricted-network resilience the smoke matrix already sets. This
       # job resolves the same direct-URL dependency and had none of it, which
@@ -184,7 +192,7 @@ jobs:
       - id: pass
         uses: ./.github/actions/ci-pass
         with:
-          job: test-python
+          job: test-python-${{ matrix.shard }}
           content: |
             .
 
@@ -198,7 +206,7 @@ jobs:
       # turns `uv sync` from ~45 s cold to ~5 s warm.
       - name: Install uv
         if: steps.pass.outputs.hit != 'true'
-        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -276,24 +284,25 @@ jobs:
         run: uv run --no-sync pytest tests/ -q --tb=short -n 6
         env:
           HF_HUB_OFFLINE: "1"
+          VOICESTUDIO_TEST_SHARD: ${{ matrix.shard }}/2
 
       # `backend/tests/` mounts routers on bare FastAPI apps (no heavy main
       # import chain) with a hermetic data dir from its conftest.py. It no
       # longer stubs sys.modules, so mixed sessions with tests/ are safe;
       # the separate session is kept for cheaper, clearer CI output.
       - name: Run pytest (backend/tests, isolated)
-        if: steps.pass.outputs.hit != 'true'
+        if: steps.pass.outputs.hit != 'true' && matrix.shard == 1
         run: uv run --no-sync pytest backend/tests/ -q --tb=short
         env:
           HF_HUB_OFFLINE: "1"  # same no-silent-downloads guard as tests/
 
       # Check the generated mobile files explicitly as well as through pytest.
       - name: Mobile theme tokens match Electron
-        if: steps.pass.outputs.hit != 'true'
+        if: steps.pass.outputs.hit != 'true' && matrix.shard == 2
         run: bun --no-install scripts/export-mobile-tokens.ts --check
 
       - name: Mobile maintainer cards match Electron
-        if: steps.pass.outputs.hit != 'true'
+        if: steps.pass.outputs.hit != 'true' && matrix.shard == 2
         run: bun --no-install scripts/export-mobile-contributors.ts --check
 
       # Last: record that these inputs passed, for later runs to skip.
@@ -1053,7 +1062,7 @@ jobs:
 
       - name: Install uv
         if: steps.pass.outputs.hit != 'true'
-        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"

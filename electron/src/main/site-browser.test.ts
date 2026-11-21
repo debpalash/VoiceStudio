@@ -106,12 +106,26 @@ describe('website URL policy', () => {
   it('accepts web URLs and bare domains', () => {
     expect(browserUrl(' voicestudio.sh/docs ')).toBe('https://voicestudio.sh/docs');
     expect(browserUrl('http://localhost:8000/?x=1&y=2')).toBe('http://localhost:8000/?x=1&y=2');
+    expect(browserUrl('http:example.com')).toBe('http://example.com/');
+    expect(browserUrl('https:example.com')).toBe('https://example.com/');
+  });
+  it.each([
+    ['localhost:8443', 'https://localhost:8443/'],
+    ['studio-server:8443/path?x=1#preview', 'https://studio-server:8443/path?x=1#preview'],
+    ['example.com:8443/docs', 'https://example.com:8443/docs'],
+    ['127.0.0.1:8443', 'https://127.0.0.1:8443/'],
+    ['[::1]:8443', 'https://[::1]:8443/'],
+  ])('normalizes the scheme-less address %s', (input, expected) => {
+    expect(browserUrl(input)).toBe(expected);
   });
   it.each([
     'javascript:alert(1)',
     'data:text/html,test',
     'file:///etc/passwd',
     'app://voicestudio',
+    'example.com:65536',
+    'https://user:pass@example.com:8443',
+    'javascript://example.com:8443',
     'https://user:pass@site.test',
     '',
     'https://',
@@ -219,6 +233,13 @@ it('blocks non-web navigations and popups, closes remote contents and removes pa
   view.webContents.emit('will-redirect', event, 'file:///secret');
   expect(event.preventDefault).toHaveBeenCalled();
   const popup = view.webContents.setWindowOpenHandler.mock.calls[0][0];
+  for (const target of ['tel:5551234', 'data:1', 'localhost:8443']) {
+    const navigation = { preventDefault: vi.fn() };
+    view.webContents.emit('will-navigate', navigation, target);
+    expect(navigation.preventDefault).toHaveBeenCalled();
+    popup({ url: target });
+    expect(view.webContents.loadURL).not.toHaveBeenCalledWith(expect.stringContaining(target));
+  }
   expect(popup({ url: 'javascript:alert(1)' })).toEqual({ action: 'deny' });
   expect(popup({ url: 'https://example.com' })).toEqual({ action: 'deny' });
   expect(view.webContents.loadURL).toHaveBeenLastCalledWith('https://example.com/');
@@ -241,4 +262,12 @@ it('disposes an embedded page on renderer reload without replacing the workspace
   expect(mocks.views[0].webContents.close).toHaveBeenCalled();
   expect(parent.listenerCount('resize')).toBe(0);
   expect(parent.webContents.loadURL).not.toHaveBeenCalled();
+});
+
+it('navigates to a host and port entered in the address bar', () => {
+  invoke('open', parent, 'https://voicestudio.sh');
+  invoke('navigate', parent, 'localhost:8443/preview');
+  expect(mocks.views[0].webContents.loadURL).toHaveBeenLastCalledWith(
+    'https://localhost:8443/preview',
+  );
 });

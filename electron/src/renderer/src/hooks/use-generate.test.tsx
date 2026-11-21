@@ -2,7 +2,12 @@ import { toast } from 'sonner';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GenerationProvider, useGenerateClone } from './use-generate';
+import {
+  GenerationProvider,
+  useGenerateClone,
+  useGenerationElapsed,
+  elapsedStore,
+} from './use-generate';
 import {
   beginTranscriptSave,
   beginVoiceChange,
@@ -199,6 +204,50 @@ describe('shared generation lifecycle', () => {
     expect(toast.success).toHaveBeenCalledWith(expect.any(String), { position: 'top-right' });
   });
 
+  it('ticks the elapsed timer without re-rendering generation consumers', async () => {
+    patchCloneSettings({ text: 'Hello', selectedProfileId: 'voice-1', autoPlay: false });
+    vi.mocked(generateClone).mockImplementation(
+      (_input, options) =>
+        new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          );
+        }),
+    );
+    let consumerRenders = 0;
+    let timerRenders = 0;
+    function Probe() {
+      useGenerateClone();
+      consumerRenders += 1;
+      return null;
+    }
+    function Timer() {
+      timerRenders += 1;
+      return <span data-testid="elapsed">{useGenerationElapsed().toFixed(1)}</span>;
+    }
+    const client = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <Probe />
+          <Timer />
+          <Consumer name="starter" />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText('starter:idle'));
+    await screen.findByText('starter:running');
+    const probeBefore = consumerRenders;
+    const timerBefore = timerRenders;
+    act(() => {
+      for (let i = 1; i <= 20; i += 1) elapsedStore.set(i / 10);
+    });
+    expect(screen.getByTestId('elapsed')).toHaveTextContent('2.0');
+    expect(timerRenders).toBeGreaterThan(timerBefore);
+    expect(consumerRenders).toBe(probeBefore);
+    view.unmount();
+    await act(async () => {});
+  });
   it('surfaces the backend model-loading sub-stage and progress', async () => {
     patchCloneSettings({ text: 'Hello', selectedProfileId: 'voice-1', autoPlay: false });
     modelStatus.value = {

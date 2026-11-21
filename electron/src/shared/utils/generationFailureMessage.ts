@@ -15,6 +15,8 @@ export function generationFailureMessage(
       return translate('tts_errors.disk_full');
     case 'transcription_pipe_lost':
       return translate('tts_errors.transcription_pipe_lost');
+    case 'reference_transcript_required':
+      return translate('tts_errors.reference_transcript_required');
   }
   // Every diagnosed class has a catalog message (failureCatalog.ts).
   const topic = (value as { docs_topic?: unknown }).docs_topic;

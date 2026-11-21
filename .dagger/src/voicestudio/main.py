@@ -106,7 +106,7 @@ class Voicestudio:
             .with_env_variable("UV_HTTP_RETRIES", "5")
             .with_directory(
                 "/app",
-                source.filter(include=["pyproject.toml", "uv.lock", "scripts/uv-sync-retry.sh", ".python-version"]),
+                source.filter(include=["pyproject.toml", "uv.lock", "scripts/uv-sync-retry.sh", ".python-version", "vendor/wheels/**"]),
             )
             .with_exec(sync + ["--no-install-project"])
             .with_directory("/app", source)

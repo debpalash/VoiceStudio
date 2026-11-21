@@ -10,10 +10,12 @@ import copy
 import hashlib
 import io
 import json
+import plistlib
 import re
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
 import pytest
@@ -37,6 +39,36 @@ def test_openapi_operation_ids_are_unique():
     schema = json.loads((CONTRACT / "openapi.json").read_text(encoding="utf-8"))
     ids = [op["operationId"] for ops in schema["paths"].values() for op in ops.values() if "operationId" in op]
     assert len(ids) == len(set(ids))
+
+
+def test_plural_rules_cover_the_same_languages_on_both_platforms():
+    """Both native readers answer the same CLDR categories from the same catalogs.
+
+    `mobile/android/core/l10n` and the iOS `L10n` reader each implement the plural
+    categories by hand, and the iOS one answered only `one`/`other` until it was
+    brought in line. A language added to one side has to reach the other, so the
+    two switch statements are compared here.
+    """
+    kotlin = (
+        ROOT / "mobile/android/core/l10n/src/main/kotlin/com/voicestudio/mobile/l10n/L10n.kt"
+    ).read_text(encoding="utf-8")
+    swift = (
+        ROOT / "mobile/ios/VoiceStudioKit/Sources/VoiceStudioKit/Localization/L10n.swift"
+    ).read_text(encoding="utf-8")
+
+    def language_codes(text: str, marker: str, span: int) -> set[str]:
+        start = text.index(marker)
+        return set(re.findall(r'"([a-z]{2})"', text[start : start + span]))
+
+    android_codes = language_codes(kotlin, "pluralFor", 1200)
+    ios_codes = language_codes(swift, "private static func plural", 1400)
+
+    assert android_codes, "the Android plural switch was not found"
+    assert ios_codes, "the iOS plural switch was not found"
+    assert android_codes == ios_codes, (
+        f"the two plural implementations handle different languages: Android only "
+        f"{sorted(android_codes - ios_codes)}, iOS only {sorted(ios_codes - android_codes)}"
+    )
 
 
 def test_workflow_does_not_cancel_a_running_main_build():
@@ -221,6 +253,66 @@ def test_mobile_contract_artifacts_are_pinned_to_lf():
     # The bundled asset is present and is the LF blob the catalogue pins.
     lexicon = CONTRACT / "tts" / "zipvoice-lexicon.txt"
     assert lexicon.is_file(), "the pinned bundled lexicon is missing"
+
+
+def _android_domain_config_hosts(root: ElementTree.Element) -> set[str]:
+    """Every host named by a `domain-config`, including ones nested in another."""
+    return {
+        domain.text.strip()
+        for config in root.iter("domain-config")
+        for domain in config.findall("domain")
+        if domain.text
+    }
+
+
+def test_android_domain_config_hosts_include_nested_configs():
+    root = ElementTree.fromstring(
+        "<network-security-config><domain-config><domain>localhost</domain>"
+        "<domain-config><domain>example.com</domain></domain-config>"
+        "</domain-config></network-security-config>"
+    )
+    assert _android_domain_config_hosts(root) == {"localhost", "example.com"}
+
+
+def test_mobile_platform_network_security_configs_stay_private():
+    """Plain HTTP stays tied to the same private hosts the contract allows.
+
+    `mobile/contract/SPEC.md` permits plain HTTP only to local/private addresses.
+    Android's XML has no CIDR support, so the app pairs a HostPolicy and a guarded
+    DNS resolver with an explicit `domain-config` exception list; iOS expresses the
+    same intent as ATS exception domains plus `NSAllowsLocalNetworking`. This pins
+    both sides, so a new exception domain — or the arbitrary-loads switch that
+    unlocks every host — fails here instead of shipping quietly.
+
+    The Android `base-config` element is deliberately not asserted: it permits
+    cleartext app-wide today, which is a behaviour change of its own, and freezing
+    the current value here would make that fix read as a regression.
+    """
+    android = ElementTree.parse(
+        ROOT / "mobile/android/app/src/main/res/xml/network_security_config.xml"
+    ).getroot()
+    permitted = _android_domain_config_hosts(android)
+    assert permitted == {"localhost", "local", "ts.net", "127.0.0.1", "::1"}, (
+        "the Android cleartext exception list changed: " + ", ".join(sorted(permitted))
+    )
+
+    with (ROOT / "mobile/ios/VoiceStudio/Info.plist").open("rb") as handle:
+        plist = plistlib.load(handle)
+    ats = plist["NSAppTransportSecurity"]
+    assert ats.get("NSAllowsArbitraryLoads", False) is False, (
+        "NSAllowsArbitraryLoads disables ATS for every host, not just the paired one"
+    )
+    assert ats.get("NSAllowsLocalNetworking") is True, (
+        "the private-range allowance the Android resolver list mirrors is gone"
+    )
+    exceptions = ats["NSExceptionDomains"]
+    assert set(exceptions) == {"localhost", "ts.net"}, (
+        "the iOS ATS exception domains changed: " + ", ".join(sorted(exceptions))
+    )
+    for host, policy in exceptions.items():
+        assert policy.get("NSExceptionAllowsInsecureHTTPLoads") is True, (
+            f"{host} no longer allows the plain-HTTP pairing the contract describes"
+        )
 
 
 def test_mobile_models_generated_catalogue_is_current(monkeypatch):

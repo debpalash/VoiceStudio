@@ -11360,6 +11360,38 @@
     "summary": "Convert Speech"
    }
   },
+  "/demo/dubbing/download": {
+   "post": {
+    "operationId": "demo_dubbing_download_demo_dubbing_download_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Demo Dubbing Download"
+   }
+  },
+  "/demo/dubbing/status": {
+   "get": {
+    "operationId": "demo_dubbing_status_demo_dubbing_status_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Demo Dubbing Status"
+   }
+  },
   "/design/describe": {
    "post": {
     "description": "Parse a free-text description into design attrs + a validator-safe instruct.\n\nResponse shape::\n\n    {\n      \"attrs\":     {\"Gender\": \"female\", \"Age\": \"elderly\", ... or \"Auto\"},\n      \"instruct\":  \"female, elderly, low pitch, british accent\",\n      \"matched\":   [{\"category\": \"Age\", \"token\": \"elderly\", \"phrase\": \"elderly\"}, ...],\n      \"unmatched\": [\"slightly raspy\"]\n    }",
@@ -12584,7 +12616,22 @@
     "summary": "Clear Dub History"
    },
    "get": {
+    "description": "Recent dub rows. The list omits ``job_data`` (every segment and path of\neach job, often megabytes) unless ``?full=1``; nothing in the apps reads it\nfrom here \u2014 a single job loads through its own routes.",
     "operationId": "list_dub_history_dub_history_get",
+    "parameters": [
+     {
+      "description": "Include each row's full `job_data` blob (large).",
+      "in": "query",
+      "name": "full",
+      "required": false,
+      "schema": {
+       "default": false,
+       "description": "Include each row's full `job_data` blob (large).",
+       "title": "Full",
+       "type": "boolean"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "content": {
@@ -12593,6 +12640,16 @@
        }
       },
       "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
      }
     },
     "summary": "List Dub History"

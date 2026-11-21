@@ -8,7 +8,11 @@ import {
   authorizeModelsDirectory,
   authorizeModelsDirectoryReadOnly,
 } from './media-authorization';
-import { isTrustedRenderer } from './trusted-renderer';
+import {
+  assertTrustedMainFrame as trustedIpcMainFrame,
+  assertTrustedTopLevel as trustedTopLevel,
+  trustedOwner,
+} from './trusted-ipc';
 import { replaceFile } from './replace-file';
 import { encodeDownloadFailure, MAX_FAILURE_BODY_CHARS } from '../shared/download-failure';
 import { homedir, tmpdir } from 'node:os';
@@ -174,7 +178,13 @@ async function openPermissionSettings(kind: unknown): Promise<boolean> {
 
 const RELOCATION_SELECTION_TTL_MS = 10 * 60 * 1000;
 
-const OPEN_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'file:', 'mailto:']);
+// Web and mail only. A `file:` URL, and an absolute path handed to
+// `shell.openPath`, both launch a local file through its OS association — the
+// renderer has `files:revealPath` for showing a saved file, and nothing in the
+// app needs openExternal to run a local path. Keeping the two local forms out
+// means a hostile or compromised backend reply (a notification's `action`,
+// a gallery item's link) cannot become local code execution on a click.
+const OPEN_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
 function windowFor(event: IpcMainInvokeEvent | Electron.IpcMainEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -217,28 +227,16 @@ function assertSaveDataRequest(value: unknown): SaveDataRequest {
 export function assertTrustedMainFrame(
   event: IpcMainInvokeEvent,
   owner: BrowserWindow | null,
+  message?: string,
 ): asserts owner is BrowserWindow {
-  if (
-    !owner ||
-    event.sender !== owner.webContents ||
-    event.senderFrame !== owner.webContents.mainFrame ||
-    !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-  ) {
-    throw new Error('Untrusted main-frame request');
-  }
+  // One implementation lives in trusted-ipc.ts; the name stays exported for the
+  // callers that already import it from here.
+  trustedIpcMainFrame(event, owner, message);
 }
 
 /** Read-only connection metadata is also needed by trusted utility windows. */
 function assertTrustedTopLevelFrame(event: IpcMainInvokeEvent): void {
-  const owner = windowFor(event);
-  if (
-    !owner ||
-    event.sender !== owner.webContents ||
-    event.senderFrame !== owner.webContents.mainFrame ||
-    !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-  ) {
-    throw new Error('Untrusted top-level request');
-  }
+  trustedTopLevel(event);
 }
 
 function remoteInput(raw: unknown): { url: string; apiKey: string } {
@@ -696,14 +694,7 @@ export function registerIpc(
     }
   });
   handle(CHANNELS.backendSetupRuntime, (event) => {
-    const owner = getMainWindow();
-    if (
-      !owner ||
-      event.sender !== owner.webContents ||
-      event.senderFrame !== owner.webContents.mainFrame ||
-      !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-    )
-      throw new Error('Untrusted runtime setup request');
+    assertTrustedMainFrame(event, getMainWindow(), 'Untrusted runtime setup request');
     return supervisor.setupRuntime();
   });
   handle(CHANNELS.backendCleanSetupRuntime, (event) => {
@@ -764,7 +755,11 @@ export function registerIpc(
     await supervisor.restart();
     return { ok: true };
   });
-  handle(CHANNELS.backendRestart, () => supervisor.restart());
+  handle(CHANNELS.backendRestart, (event: IpcMainInvokeEvent) => {
+    // It stops and restarts the backend: only the app's own window may ask.
+    assertTrustedMainFrame(event, getMainWindow());
+    return supervisor.restart();
+  });
   handle(CHANNELS.backendRestartOnCpu, async (event: IpcMainInvokeEvent) => {
     // It changes a stored setting: only the app's own window may ask.
     assertTrustedMainFrame(event, getMainWindow());
@@ -874,12 +869,15 @@ export function registerIpc(
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
     const target = assertString(raw, 'url');
-    if (isAbsolute(target)) {
-      const failure = await shell.openPath(target);
-      if (failure) throw new Error(failure);
-      return;
+    // Web and mail only. A local path is not a URL at all (`new URL` refuses a
+    // POSIX path) and `file:` is in no allowlist here: both would launch a local
+    // file through its OS association, which is what `files:revealPath` is for.
+    let url: URL;
+    try {
+      url = new URL(target);
+    } catch {
+      throw new Error('Refusing to open a non-URL target');
     }
-    const url = new URL(target);
     if (!OPEN_EXTERNAL_PROTOCOLS.has(url.protocol)) {
       throw new Error(`Refusing to open ${url.protocol} URLs`);
     }
@@ -887,16 +885,16 @@ export function registerIpc(
   });
 
   ipcMain.on(CHANNELS.windowMinimize, (event) => {
-    (windowFor(event) ?? getMainWindow())?.minimize();
+    trustedOwner(event, windowFor(event) ?? getMainWindow())?.minimize();
   });
   ipcMain.on(CHANNELS.windowToggleMaximize, (event) => {
-    const win = windowFor(event) ?? getMainWindow();
+    const win = trustedOwner(event, windowFor(event) ?? getMainWindow());
     if (!win) return;
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
   });
   ipcMain.on(CHANNELS.windowClose, (event) => {
-    (windowFor(event) ?? getMainWindow())?.close();
+    trustedOwner(event, windowFor(event) ?? getMainWindow())?.close();
   });
   handle(CHANNELS.windowIsMaximized, (event) => {
     const owner = windowFor(event);

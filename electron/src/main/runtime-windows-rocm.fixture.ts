@@ -65,13 +65,14 @@ export async function fixture() {
   roots.push(root);
   const bundle = join(root, 'bundle'),
     project = join(root, 'runtime');
-  for (const name of ['backend', 'config', 'omnivoice', 'scripts'])
+  for (const name of ['backend', 'config', 'omnivoice', 'scripts', 'vendor/wheels'])
     await mkdir(join(bundle, name), { recursive: true });
   for (const name of ['pyproject.toml', 'README.md', 'LICENSE'])
     await writeFile(join(bundle, name), name);
   await writeFile(join(bundle, 'uv.lock'), 'name = "nvidia-cudnn-cu12"\nname = "nvidia-ml-py"\n');
   await writeFile(join(bundle, 'scripts/windows-rocm-recipe.json'), recipe);
   await writeFile(join(bundle, 'scripts/smoke_windows_rocm.py'), '# local smoke');
+  await writeFile(join(bundle, 'vendor/wheels/docopt-0.6.2-py2.py3-none-any.whl'), 'wheel');
   return { bundle, project };
 }
 export async function interpreter(project: string) {
