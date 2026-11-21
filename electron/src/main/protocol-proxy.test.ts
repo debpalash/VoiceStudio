@@ -131,3 +131,28 @@ it('keeps remote dub uploads on the authenticated Electron transport', async () 
   expect(url).toBe(`${backend}/dub/upload`);
   expect(options.headers.get('authorization')).toBe('Bearer remote-session');
 });
+
+it('serves hashed renderer /assets/* with immutable Cache-Control and index.html with no-cache', async () => {
+  const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const root = mkdtempSync(join(tmpdir(), 'vs-proto-cache-'));
+  try {
+    mkdirSync(join(root, 'assets'), { recursive: true });
+    writeFileSync(join(root, 'index.html'), '<!doctype html><div id="root"></div>');
+    writeFileSync(join(root, 'assets', 'index-abc123.js'), 'console.log(1);');
+    installAppProtocol(() => 'http://127.0.0.1:3900', root);
+    const handler = mocks.handle.mock.lastCall![1];
+
+    const assetRes = await handler(new Request(`${APP_ORIGIN}/assets/index-abc123.js`));
+    expect(assetRes.status).toBe(200);
+    expect(assetRes.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(await assetRes.text()).toBe('console.log(1);');
+
+    const htmlRes = await handler(new Request(`${APP_ORIGIN}/`));
+    expect(htmlRes.status).toBe(200);
+    expect(htmlRes.headers.get('cache-control')).toBe('no-cache');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
