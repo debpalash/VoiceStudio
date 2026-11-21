@@ -637,7 +637,18 @@ async def aput_and_save_job(job_id: str, job: dict, **kwargs) -> bool:
     stream and health check for the length of the dump. Completion saves keep
     the synchronous :func:`merge_and_save_job`.
     """
-    return await asyncio.to_thread(put_and_save_job, job_id, job, **kwargs)
+    worker = asyncio.ensure_future(asyncio.to_thread(put_and_save_job, job_id, job, **kwargs))
+    try:
+        return await asyncio.shield(worker)
+    except asyncio.CancelledError:
+        # Cancelling the await does not stop the running thread. Let it finish
+        # (it may be waiting on ``_dub_jobs_lock``) BEFORE the caller's cancel
+        # cleanup removes the job, or the save would re-create it afterwards.
+        try:
+            await worker
+        except Exception:  # noqa: BLE001 — the cancellation is what propagates
+            pass
+        raise
 
 
 def purge_jobs(job_ids, *, delete_rows, include_inflight: bool = False) -> None:
@@ -1799,7 +1810,12 @@ async def ingest_pipeline(
                 _discard_partial_audio(extract_path, extract_hq_path)
             if combined_ok:
                 os.replace(extract_path, audio_path)
-                os.replace(extract_hq_path, audio_hq_path)
+                try:
+                    os.replace(extract_hq_path, audio_hq_path)
+                except OSError as e_pub:  # HQ is a quality upgrade, never fatal
+                    logger.warning("HQ audio publish failed (%s) — separation falls back to the ASR file", type(e_pub).__name__)
+                    _discard_partial_audio(extract_hq_path)
+                    audio_hq_path = None
                 p, stderr = p_c, stderr_c
             else:
                 p, _, stderr = await run_proc([
@@ -1960,7 +1976,11 @@ async def ingest_pipeline(
             # hosts where Demucs runs on a GPU it starts now and overlaps it. On
             # CPU-only hosts both would fight for the same cores: stay serial.
             scene_task = None
-            if input_type != "audio" and get_best_device() != "cpu":
+            try:
+                gpu_host = input_type != "audio" and get_best_device() != "cpu"
+            except Exception:  # noqa: BLE001 — unknown device: stay serial
+                gpu_host = False
+            if gpu_host:
                 scene_task = asyncio.create_task(_scan_scenes())
             try:
 

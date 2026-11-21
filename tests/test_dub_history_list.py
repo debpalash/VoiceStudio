@@ -12,11 +12,10 @@ os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 
 import pytest
 
-from core.db import db_conn, init_db
 
-
-@pytest.fixture(scope="module")
+@pytest.fixture
 def client():
+    from core.db import init_db
     from fastapi.testclient import TestClient
     from main import app
 
@@ -25,6 +24,8 @@ def client():
 
 
 def _seed():
+    from core.db import db_conn, init_db
+
     init_db()
     jid = f"h_{uuid.uuid4().hex[:8]}"
     with db_conn() as conn:

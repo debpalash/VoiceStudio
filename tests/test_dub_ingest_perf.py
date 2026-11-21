@@ -11,11 +11,12 @@ os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 SCENE_FILTER = "select='gt(scene,0.3)',showinfo"
 
 
-def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order=None):
+def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order=None, hq_publish_fails=False):
     from core.db import init_db
 
     init_db()
     calls = []
+    started = {}
 
     def _factory(job_id):
         async def run_proc(cmd, **kw):
@@ -34,27 +35,49 @@ def _run_ingest(dp, tmp_path, monkeypatch, *, device, fail_combined=False, order
             if SCENE_FILTER in cmd:
                 if order is not None:
                     order.append("scene_start")
-                    await asyncio.sleep(0.05)
-                    order.append("scene_end")
+                if started.get('ev') is not None:
+                    started['ev'].set()
                 return P(), b"", b"pts_time:1.5 pts_time:3.0"
             return P(), b"", b""
         return run_proc
 
     async def _streaming(job_id, cmd, timeout=0):
+        calls.append([str(c) for c in cmd])
         if order is not None:
             order.append("demucs_start")
-            await asyncio.sleep(0.01)
+        if order is not None and device not in ("cpu", "boom"):
+            # Overlap proof: Demucs only finishes once the scene scan has begun.
+            await asyncio.wait_for(started['ev'].wait(), timeout=5)
+        if order is not None:
             order.append("demucs_end")
         yield ("done", 0, b"")
 
     monkeypatch.setattr(dp, "run_proc_factory", _factory)
     monkeypatch.setattr(dp, "run_proc_streaming_stderr", _streaming)
     monkeypatch.setattr(dp, "find_ffmpeg", lambda: "ffmpeg")
-    monkeypatch.setattr(dp, "get_best_device", lambda: device)
+    probes = []
+
+    def _probe():
+        probes.append(1)
+        if device == "boom" and len(probes) == 1:
+            raise ImportError("torch missing")  # only the scene-overlap probe fails
+        return "cpu" if device == "boom" else device
+
+    monkeypatch.setattr(dp, "get_best_device", _probe)
+    if hq_publish_fails:
+        real_replace = os.replace
+
+        def _replace(src, dst, *a, **k):
+            if str(dst).endswith("audio_hq.wav"):
+                raise OSError("hq publish denied")
+            return real_replace(src, dst, *a, **k)
+
+        monkeypatch.setattr(os, "replace", _replace)
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"\x00" * 52)
 
     async def _drain():
+        started['ev'] = asyncio.Event()
         async for _ in dp.ingest_pipeline(
             job_id="t_perf", job_dir=str(tmp_path),
             source={"kind": "path", "path": str(video)},
@@ -98,4 +121,22 @@ def test_scene_detection_overlaps_demucs_on_gpu_only(tmp_path, monkeypatch):
 
     order.clear()
     _run_ingest(dp, tmp_path, monkeypatch, device="cpu", order=order)
+    assert order.index("scene_start") > order.index("demucs_end")
+
+
+def test_hq_publish_failure_is_not_fatal(tmp_path, monkeypatch):
+    from services import dub_pipeline as dp
+
+    calls = _run_ingest(dp, tmp_path, monkeypatch, device="cpu", hq_publish_fails=True)
+    assert (tmp_path / "audio.wav").exists() and not (tmp_path / "audio_hq.wav").exists()
+    demucs = next(c for c in calls if "demucs.separate" in " ".join(c))
+    assert not any(a.endswith("audio_hq.wav") for a in demucs)  # fell back to the ASR file
+
+
+def test_device_probe_failure_stays_serial(tmp_path, monkeypatch):
+    from services import dub_pipeline as dp
+
+    order = []
+    _run_ingest(dp, tmp_path, monkeypatch, device="boom", order=order)
+    # Probe failure must not abort ingest: the scan still runs, after Demucs.
     assert order.index("scene_start") > order.index("demucs_end")

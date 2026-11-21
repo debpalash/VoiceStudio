@@ -127,3 +127,33 @@ def test_cpu_threads_capped():
     kw = ab._whisper_thread_kwargs("cpu")
     assert 1 <= kw["cpu_threads"] <= 8
     assert ab._whisper_thread_kwargs("cuda") == {}
+
+
+def test_batched_decode_drops_no_speech_windows(monkeypatch):
+    noise = SimpleNamespace(start=0.0, end=1.0, text="noise", words=None,
+                            no_speech_prob=0.9, avg_logprob=-2.0)
+    speech = SimpleNamespace(start=1.0, end=2.0, text="speech", words=None,
+                             no_speech_prob=0.1, avg_logprob=-0.2)
+
+    class _Pipe(_FakeModel):
+        def transcribe(self, _audio, **kwargs):
+            return iter([noise, speech]), SimpleNamespace(
+                language="en", language_probability=1.0, duration=2.0)
+
+    backend, _seq = _cuda_backend(monkeypatch, _Pipe())
+    out = backend.transcribe("clip.wav", word_timestamps=False)
+    assert [s["text"] for s in out["segments"]] == ["speech"]
+
+
+def test_unload_releases_batched_references(monkeypatch):
+    import gc
+    import weakref
+
+    backend, seq = _cuda_backend(monkeypatch, _FakeModel())
+    ref = weakref.ref(seq)
+    del seq
+    backend._model = backend._batched_for  # the only remaining owners are the model slot + batch refs
+    backend.unload()
+    gc.collect()
+    assert backend._batched_pipe is None and backend._batched_for is None
+    assert ref() is None

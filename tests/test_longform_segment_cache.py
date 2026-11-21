@@ -256,8 +256,7 @@ def test_segment_hit_refreshes_mtime_for_lru(tmp_path):
 
 
 def test_torn_segment_file_is_rerendered(tmp_path):
-    """Segment cache WAVs are written without fsync; a file truncated mid-data
-    (power loss) must be rejected by ``wav_is_complete`` and re-rendered."""
+    """A segment cache WAV truncated mid-data (power loss) must be rejected by ``wav_is_complete`` and re-rendered."""
     calls: list[str] = []
     ch = _chapter("First sentence.", "Second sentence.")
     wav_path, *_ = _render_chapter_cached(ch, _counting_synth(calls), _SR, "eng",

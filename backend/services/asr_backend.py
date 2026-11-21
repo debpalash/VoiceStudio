@@ -1494,7 +1494,16 @@ class FasterWhisperBackend(ASRBackend):
             try:
                 segments_iter, info = pipeline.transcribe(
                     audio_path, batch_size=whisper_batch_size(), **decode_kwargs)
-                segments = list(segments_iter)
+                # The batched decoder (faster-whisper 1.2.x) skips the sequential
+                # path's no-speech rejection; apply the same rule (defaults:
+                # no_speech_threshold 0.6, log_prob_threshold -1.0).
+                segments = [
+                    seg for seg in segments_iter
+                    if not (
+                        (getattr(seg, "no_speech_prob", None) or 0.0) > 0.6
+                        and (getattr(seg, "avg_logprob", None) if getattr(seg, "avg_logprob", None) is not None else 0.0) < -1.0
+                    )
+                ]
             except Exception as e:  # noqa: BLE001 — any batched failure → sequential path
                 logger.warning(
                     "faster-whisper batched decode failed (%s: %s) — falling back "
@@ -1551,6 +1560,10 @@ class FasterWhisperBackend(ASRBackend):
         if unload_isolated(self):
             return
         self._model = None
+        # The batched wrapper and its cache key both reference the model; drop
+        # them too or the CUDA weights outlive the unload.
+        self._batched_pipe = None
+        self._batched_for = None
         self._asr = None  # harmless if a subclass ever used it; keeps idempotence
         import gc
         gc.collect()

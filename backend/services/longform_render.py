@@ -605,11 +605,10 @@ class SegmentCache:
         try:
             from services.audio_io import atomic_save_wav
             os.makedirs(self.dir, exist_ok=True)
-            # Not durable: ``load`` rejects a power-off-torn file through
-            # ``wav_is_complete`` and re-renders it, so the per-span fsync pair
-            # (one per sentence) buys nothing. Chapter WAVs and the resume
-            # manifest stay durable.
-            atomic_save_wav(self._path(span, nonce), audio, self.sample_rate, durable=False)
+            # Durable: a power-off can leave a full-length file whose sample
+            # blocks were never written, which ``wav_is_complete`` (header and
+            # length only) cannot detect, and the span would then be reused.
+            atomic_save_wav(self._path(span, nonce), audio, self.sample_rate, durable=True)
         except Exception:
             pass
 

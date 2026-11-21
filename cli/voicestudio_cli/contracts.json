@@ -610,7 +610,9 @@
     "body_required": false,
     "encoding": "",
     "fields": [],
-    "query": [],
+    "query": [
+      "full"
+    ],
     "required": [],
     "required_query": []
   },

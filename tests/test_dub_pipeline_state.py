@@ -167,6 +167,9 @@ def test_aput_and_save_job_persists_off_the_event_loop():
     import asyncio
     import threading
 
+    from core.db import db_conn
+    from services import dub_pipeline as dp
+
     jid = _jid()
     seen = {}
     real = dp.save_job
@@ -191,8 +194,48 @@ def test_aput_and_save_job_persists_off_the_event_loop():
 def test_aput_and_save_job_honours_withdrawal_tombstone():
     import asyncio
 
+    from core.db import db_conn
+    from services import dub_pipeline as dp
+
     jid = _jid()
     dp.purge_jobs([jid], delete_rows=lambda: None)
     assert asyncio.run(dp.aput_and_save_job(jid, {"segments": []})) is False
     with db_conn() as conn:
         assert conn.execute("SELECT 1 FROM dub_history WHERE id=?", (jid,)).fetchone() is None
+
+
+def test_cancelling_aput_and_save_job_waits_for_the_worker():
+    """Cancel cleanup must not run while the save thread is still pending."""
+    import asyncio
+    import threading
+
+    from services import dub_pipeline as dp
+
+    jid = _jid()
+    release = threading.Event()
+    finished = threading.Event()
+    real = dp.put_and_save_job
+
+    def _slow(*a, **k):
+        release.wait(5)
+        try:
+            return real(*a, **k)
+        finally:
+            finished.set()
+
+    async def _go():
+        dp.put_and_save_job = _slow
+        try:
+            task = asyncio.ensure_future(dp.aput_and_save_job(jid, {"segments": []}))
+            await asyncio.sleep(0)
+            task.cancel()
+            asyncio.get_running_loop().call_later(0.05, release.set)
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return finished.is_set()
+        finally:
+            dp.put_and_save_job = real
+
+    assert asyncio.run(_go()) is True  # the worker finished before cancel returned
