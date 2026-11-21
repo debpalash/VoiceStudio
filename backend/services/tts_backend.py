@@ -1866,33 +1866,6 @@ def clear_clone_prompt_cache(*, keep_passage_choices: bool = False) -> None:
 # no import cycle and no import-time side effect here.
 
 
-def _package_spec_available(top_level: str, *, submodule_relpath: str | None = None) -> bool:
-    """Check whether a Python package (and optional submodule file) is installed
-    without executing its ``__init__`` or pulling in heavy ML dependencies.
-    Respects ``sys.modules`` overrides (including ``None`` in tests)."""
-    import importlib.util
-    import sys
-
-    if top_level in sys.modules:
-        if sys.modules[top_level] is None:
-            return False
-    try:
-        spec = importlib.util.find_spec(top_level)
-    except (ImportError, ValueError):
-        return False
-    if spec is None:
-        return False
-    if submodule_relpath is None:
-        return True
-    dotted = f"{top_level}.{submodule_relpath.removesuffix('.py').replace('/', '.')}"
-    if dotted in sys.modules:
-        return sys.modules[dotted] is not None
-    locations = spec.submodule_search_locations
-    if not locations:
-        return False
-    return any(os.path.isfile(os.path.join(loc, submodule_relpath)) for loc in locations)
-
-
 class OmniVoiceBackend(TTSBackend):
     """Wraps `omnivoice.models.omnivoice.OmniVoice`. Zero behaviour change.
 
@@ -1955,9 +1928,13 @@ class OmniVoiceBackend(TTSBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
-        if _package_spec_available("omnivoice", submodule_relpath="models/omnivoice.py"):
+        # A real import, not a spec lookup: a package that is present but whose
+        # dependency or native library fails to load must not report ready.
+        try:
+            import omnivoice.models.omnivoice  # noqa: F401
             return True, "ready"
-        return False, "omnivoice package missing: No module named 'omnivoice.models.omnivoice'"
+        except Exception as e:
+            return False, f"omnivoice package missing: {e}"
 
     _DEFAULT_SAMPLE_RATE = 24000
 
@@ -2618,9 +2595,11 @@ class KittenTTSBackend(TTSBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
-        if _package_spec_available("kittentts"):
+        try:
+            import kittentts  # noqa: F401
             return True, "ready"
-        return False, "kittentts not installed: No module named 'kittentts'"
+        except ImportError as e:
+            return False, f"kittentts not installed: {e}"
 
     _DEFAULT_SAMPLE_RATE = 24000
 
