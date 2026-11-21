@@ -385,7 +385,7 @@ def find_cached_job(content_hash: str, exclude_job_id: str) -> Optional[dict]:
         # audio as its "vocals"; reusing it would make a retry skip separation.
         if job.get("background_separation") == "failed":
             continue
-        if not os.path.isfile(os.path.join(cached_dir, "audio_hq.wav")):
+        if job.get("background_separation") != "skipped" and not os.path.isfile(os.path.join(cached_dir, "audio_hq.wav")):
             logger.info(
                 "cache candidate %s has pre-HQ (mono/16k-derived) stems — "
                 "skipping reuse so separation reruns at full quality", row["id"],
@@ -1648,6 +1648,7 @@ async def ingest_pipeline(
     # Audio-only jobs (#119) skip scene detection + thumbnailing below; the
     # transcribe → translate → TTS core is identical.
     input_type = (source.get("input_type") or "video").lower()
+    separate_background = source.get("separate_background", True) is not False
     # Declare the run so a "clear history" arriving before this job's first
     # persistence can still withdraw it (#1252 review).
     begin_ingest(job_id)
@@ -1779,23 +1780,26 @@ async def ingest_pipeline(
             # stereo original costs about the same and returns a true-stereo,
             # full-band bed. Best-effort: on failure Demucs falls back to the
             # ASR file, which is exactly the old behavior.
-            try:
-                p_hq, _, stderr_hq = await run_proc([
-                    ffmpeg, "-i", video_path, "-vn", "-acodec", "pcm_s16le",
-                    "-ar", "44100", "-ac", "2", extract_hq_path, "-y",
-                ])
-                if p_hq.returncode != 0 or not os.path.exists(extract_hq_path):
-                    logger.warning(
-                        "HQ audio extraction failed (rc=%s) — separation falls "
-                        "back to the 16k mono ASR file", p_hq.returncode,
-                    )
+            if separate_background:
+                try:
+                    p_hq, _, stderr_hq = await run_proc([
+                        ffmpeg, "-i", video_path, "-vn", "-acodec", "pcm_s16le",
+                        "-ar", "44100", "-ac", "2", extract_hq_path, "-y",
+                    ])
+                    if p_hq.returncode != 0 or not os.path.exists(extract_hq_path):
+                        logger.warning(
+                            "HQ audio extraction failed (rc=%s) — separation falls "
+                            "back to the 16k mono ASR file", p_hq.returncode,
+                        )
+                        _discard_partial_audio(extract_hq_path)
+                        audio_hq_path = None
+                    else:
+                        os.replace(extract_hq_path, audio_hq_path)
+                except Exception as e_hq:  # noqa: BLE001 — quality upgrade, never fatal
+                    logger.warning("HQ audio extraction errored (%s) — falling back", type(e_hq).__name__)
                     _discard_partial_audio(extract_hq_path)
                     audio_hq_path = None
-                else:
-                    os.replace(extract_hq_path, audio_hq_path)
-            except Exception as e_hq:  # noqa: BLE001 — quality upgrade, never fatal
-                logger.warning("HQ audio extraction errored (%s) — falling back", type(e_hq).__name__)
-                _discard_partial_audio(extract_hq_path)
+            else:
                 audio_hq_path = None
         except asyncio.CancelledError:
             _discard_partial_audio(extract_path, extract_hq_path)
@@ -1822,6 +1826,10 @@ async def ingest_pipeline(
 
         # Content-hash cache: reuse artifacts from previous matching jobs.
         content_hash = await asyncio.to_thread(compute_file_hash, audio_path)
+        # Separation mode is part of artifact identity: neither mode may reuse
+        # stems (or their absence) from the other mode. Legacy hashes keep music.
+        if not separate_background:
+            content_hash += ":voice-only"
         cached = find_cached_job(content_hash, job_id)
         if cached:
             logger.info("Cache hit for job %s (hash %s) → reusing artifacts from %s",
@@ -1859,6 +1867,8 @@ async def ingest_pipeline(
                 "youtube_subs": youtube_subs_by_lang or None,
                 "input_type": input_type,
                 "source_lang_override": source.get("source_lang"),
+                "separate_background": separate_background,
+                "background_separation": "skipped" if not separate_background else "ok",
             }
             if not put_and_save_job(
                 job_id, full_job, filename=filename, duration=dur, content_hash=content_hash,
@@ -1888,6 +1898,7 @@ async def ingest_pipeline(
                 "youtube_subs": youtube_subs_by_lang or None,
                 "input_type": input_type,
                 "source_lang_override": source.get("source_lang"),
+                "separate_background": separate_background,
             }
             if not put_and_save_job(
                 job_id, partial, filename=filename, duration=dur, content_hash=content_hash,
@@ -1901,42 +1912,46 @@ async def ingest_pipeline(
             no_vocals_path = os.path.join(job_dir, "no_vocals.wav")
             scene_cuts: list = []
 
-            yield prep_event("demucs_start")
-            try:
-                async for evt in _separate_background(
-                    job_id, audio_hq_path or audio_path, job_dir, paths=(audio_hq_path, audio_path, job_dir),
-                ):
-                    if evt[0] == "progress":
-                        yield prep_event("demucs_progress", percent=evt[1])
-                    elif evt[0] == "retry":
-                        yield prep_event("demucs_retry", **evt[1])
-                # Stems land under the INPUT's basename ("audio_hq" when the
-                # full-quality extraction succeeded, "audio" on its fallback).
-                demucs_out = os.path.join(
-                    job_dir, "htdemucs",
-                    os.path.splitext(os.path.basename(audio_hq_path or audio_path))[0],
-                )
-                if os.path.exists(os.path.join(demucs_out, "vocals.wav")):
-                    shutil.move(os.path.join(demucs_out, "vocals.wav"), vocals_path)
-                    shutil.move(os.path.join(demucs_out, "no_vocals.wav"), no_vocals_path)
-                    shutil.rmtree(os.path.join(job_dir, "htdemucs"), ignore_errors=True)
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                from core.scrub import scrub_text
-                detail = f"{type(e).__name__}: {scrub_text(str(e))}"
-                logger.warning("Demucs failed for %s, falling back to mixed audio: %s", log_safe(job_id), log_safe(detail, limit=12100))
-                e = Exception(f"{_BACKGROUND_LOST_NOTICE} {e}")
-                # plan-04: surface the degradation (job continues with mixed audio).
-                warning = failure.build_failure(e, stage="demucs", include_diagnostic=False)
-                yield prep_event("warning", **{
-                    key: scrub_text(value) if isinstance(value, str) else value
-                    for key, value in warning.items()
-                })
+            if separate_background:
+                yield prep_event("demucs_start")
+                try:
+                    async for evt in _separate_background(
+                        job_id, audio_hq_path or audio_path, job_dir, paths=(audio_hq_path, audio_path, job_dir),
+                    ):
+                        if evt[0] == "progress":
+                            yield prep_event("demucs_progress", percent=evt[1])
+                        elif evt[0] == "retry":
+                            yield prep_event("demucs_retry", **evt[1])
+                    # Stems land under the INPUT's basename ("audio_hq" when the
+                    # full-quality extraction succeeded, "audio" on its fallback).
+                    demucs_out = os.path.join(
+                        job_dir, "htdemucs",
+                        os.path.splitext(os.path.basename(audio_hq_path or audio_path))[0],
+                    )
+                    if os.path.exists(os.path.join(demucs_out, "vocals.wav")):
+                        shutil.move(os.path.join(demucs_out, "vocals.wav"), vocals_path)
+                        shutil.move(os.path.join(demucs_out, "no_vocals.wav"), no_vocals_path)
+                        shutil.rmtree(os.path.join(job_dir, "htdemucs"), ignore_errors=True)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    from core.scrub import scrub_text
+                    detail = f"{type(e).__name__}: {scrub_text(str(e))}"
+                    logger.warning("Demucs failed for %s, falling back to mixed audio: %s", log_safe(job_id), log_safe(detail, limit=12100))
+                    e = Exception(f"{_BACKGROUND_LOST_NOTICE} {e}")
+                    # plan-04: surface the degradation (job continues with mixed audio).
+                    warning = failure.build_failure(e, stage="demucs", include_diagnostic=False)
+                    yield prep_event("warning", **{
+                        key: scrub_text(value) if isinstance(value, str) else value
+                        for key, value in warning.items()
+                    })
+                    vocals_path = audio_path
+                    no_vocals_path = None
+            else:
                 vocals_path = audio_path
                 no_vocals_path = None
             has_bg = bool(no_vocals_path and os.path.exists(no_vocals_path))
-            yield prep_event("demucs_done", has_bg=has_bg)
+            yield prep_event("demucs_done", has_bg=has_bg, skipped=not separate_background)
 
             # Audio-only jobs (#119) have no video to scan or thumbnail. Skip
             # both ffmpeg passes but still emit scene_done (count=0) so the
@@ -1992,7 +2007,7 @@ async def ingest_pipeline(
                 {
                     "vocals_path": vocals_path,
                     "no_vocals_path": no_vocals_path,
-                    "background_separation": "ok" if has_bg else "failed",
+                    "background_separation": ("ok" if has_bg else "failed") if separate_background else "skipped",
                     "thumb_path": thumb_path if (thumb_path and os.path.exists(thumb_path)) else None,
                     "scene_cuts": scene_cuts,
                 },
