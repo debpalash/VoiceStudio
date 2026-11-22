@@ -34,6 +34,43 @@ def validate_amazon_configuration():
     return session
 
 
+def _provider_error_detail(response) -> str:
+    """The provider's own explanation from a 4xx/5xx JSON body, if any.
+
+    DeepL, Microsoft and Google put the reason (invalid key, wrong endpoint,
+    quota) in the body; the bare status tells users nothing. Never raises.
+    """
+    try:
+        body = response.json()
+    except Exception:
+        return ""
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict) and isinstance(error.get("message"), str):
+            return error["message"].strip()
+        for field in ("message", "detail"):
+            if isinstance(body.get(field), str) and body[field].strip():
+                return body[field].strip()
+    return ""
+
+
+def _provider_rejection(provider, response) -> ValueError:
+    """Actionable error for a provider 4xx/5xx, with the provider's detail."""
+    detail = _provider_error_detail(response)
+    hint = ""
+    if response.status_code in (401, 403):
+        hint = (
+            " Check the API key in Settings → Translation: it must be a key "
+            "for this provider, and it must still be valid."
+        )
+    elif response.status_code == 456:
+        hint = " The provider reports the translation quota is exhausted."
+    return ValueError(
+        f"{provider} rejected the request (HTTP {response.status_code}): "
+        f"{detail.rstrip('.') or 'no detail provided'}.{hint}"
+    )
+
+
 class Translator:
     def __init__(self, provider, source, target, api_key=""):
         self.provider, self.source, self.target = provider, source, target
@@ -90,7 +127,10 @@ class Translator:
         # No redirects: provider keys must remain at the configured endpoint.
         with httpx.Client(timeout=httpx.Timeout(30, connect=5), follow_redirects=False) as client:
             response = client.post(url, headers=headers, params=params, json=payload)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError:
+                raise _provider_rejection(provider, response) from None
             body = response.json()
         if provider == "deepl": return body["translations"][0]["text"]
         if provider == "microsoft": return body[0]["translations"][0]["text"]

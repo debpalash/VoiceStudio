@@ -45,6 +45,45 @@ def test_paid_http_contract(monkeypatch, provider, key, target, expected_host):
         assert body["format"] == "text"
 
 
+@pytest.mark.parametrize("provider,status,body,expected", [
+    (
+        "deepl", 403,
+        {"message": "Authorization failed. Please supply a valid auth_key parameter."},
+        "deepl rejected the request (HTTP 403): Authorization failed. Please supply a valid auth_key parameter. Check the API key in Settings → Translation",
+    ),
+    (
+        "microsoft", 401,
+        {"error": {"code": 401001, "message": "The request is not authorized because credentials are missing or invalid."}},
+        "microsoft rejected the request (HTTP 401): The request is not authorized because credentials are missing or invalid. Check the API key",
+    ),
+    (
+        "google-cloud", 400,
+        {"error": {"message": "API key not valid. Please pass a valid API key."}},
+        "google-cloud rejected the request (HTTP 400): API key not valid. Please pass a valid API key.",
+    ),
+    ("deepl", 456, {"message": "Quota exceeded."}, "translation quota is exhausted"),
+    ("deepl", 500, None, "deepl rejected the request (HTTP 500): no detail provided."),
+])
+def test_provider_rejections_include_the_providers_explanation(monkeypatch, provider, status, body, expected):
+    from services.translation_apis import Translator
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(status, json=body)
+
+    client_type = httpx.Client
+    monkeypatch.setattr(
+        httpx, "Client", lambda **kw: client_type(transport=httpx.MockTransport(handler), **kw)
+    )
+    with pytest.raises(ValueError) as excinfo:
+        Translator(provider, "auto", "en", api_key="fixture-key").translate("hello")
+    assert expected in str(excinfo.value)
+    # Provider failures must never echo the caller's key material.
+    assert "fixture-key" not in str(excinfo.value)
+    assert seen
+
+
 def test_amazon_uses_sdk_and_closes_client(monkeypatch):
     from services.translation_apis import Translator
     import boto3
