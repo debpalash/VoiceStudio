@@ -13,7 +13,7 @@ import { dubInputIssue, type DubInputIssue } from './dub-input-issue';
 import { toast } from 'sonner';
 import { Store } from '@tanstack/store';
 import { useStore } from '@tanstack/react-store';
-import { apiJson, ApiError } from '@/lib/api/client';
+import { apiJson, ApiError, describeError } from '@/lib/api/client';
 import { queryClient } from '@/lib/query';
 import { cachedTtsLanguagesSupported } from '@/lib/language-options';
 import { tr } from '@/lib/i18n-text';
@@ -1584,7 +1584,15 @@ export async function translateDubWithAgent(
           })),
         },
         signal,
-        () => translateDubWithAgent(target, agent, targetLabel),
+        async () => {
+          try {
+            await translateDubWithAgent(target, agent, targetLabel);
+          } catch (error) {
+            // The dock retry is a bare click handler: catch here so a rejected
+            // invoke becomes a toast, not an unhandled-rejection dialog.
+            toast.error(describeError(error));
+          }
+        },
       );
       const rows = new Map(translated.translations.map((row) => [row.id, row.text]));
       clearDubEditHistory();

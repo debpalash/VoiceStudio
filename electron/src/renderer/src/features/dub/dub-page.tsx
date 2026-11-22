@@ -822,19 +822,26 @@ export function DubPage() {
   const translateTargets = async (forceAgent = false) => {
     const agentMode = forceAgent || session.quality === 'agent';
     if (agentMode && selectedTranslationAgent && code) {
-      const skipped =
-        batchTargets.length <= 1
-          ? (await translateDubWithAgent(code, selectedTranslationAgent.id, target))
-            ? []
-            : [target]
-          : await translateDubBatchWithAgent(batchTargets, selectedTranslationAgent.id);
-      if (skipped.length) toast.error(t('dub.multi_lang_skipped', { langs: skipped.join(', ') }));
-      else
-        toast.success(
-          t('dub.agent_translation_complete', {
-            agent: selectedTranslationAgent.label,
-          }),
-        );
+      try {
+        const skipped =
+          batchTargets.length <= 1
+            ? (await translateDubWithAgent(code, selectedTranslationAgent.id, target))
+              ? []
+              : [target]
+            : await translateDubBatchWithAgent(batchTargets, selectedTranslationAgent.id);
+        if (skipped.length)
+          toast.error(t('dub.multi_lang_skipped', { langs: skipped.join(', ') }));
+        else
+          toast.success(
+            t('dub.agent_translation_complete', {
+              agent: selectedTranslationAgent.label,
+            }),
+          );
+      } catch (error) {
+        // A rejected IPC invoke would otherwise surface as Electron's opaque
+        // "Error invoking remote method" dialog; describe the real cause.
+        toast.error(describeError(error));
+      }
       return;
     }
     if (!provider || !translationReady || !code) return;

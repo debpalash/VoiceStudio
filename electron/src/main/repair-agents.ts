@@ -109,17 +109,38 @@ export function guardAgentProcessStreams(
 }
 
 function terminateAgentProcess(childProcess: ChildProcessWithoutNullStreams): void {
-  if (process.platform === 'win32' && childProcess.pid) {
+  const pid = childProcess.pid;
+  if (!pid) return;
+  if (process.platform === 'win32') {
     // Synchronous taskkill cannot emit an unhandled ChildProcess `error` event,
     // and the short timeout prevents a wedged helper from blocking app shutdown.
-    spawnSync('taskkill.exe', ['/pid', String(childProcess.pid), '/t', '/f'], {
+    spawnSync('taskkill.exe', ['/pid', String(pid), '/t', '/f'], {
       windowsHide: true,
       stdio: 'ignore',
       timeout: 5_000,
     });
-  } else {
+    return;
+  }
+  // Agent children are spawned detached, so their whole process group dies
+  // with one kill. A CLI that traps SIGTERM must not outlive its timeout or a
+  // user's Stop: escalate to SIGKILL shortly after.
+  try {
+    process.kill(-pid, 'SIGTERM');
+  } catch {
     childProcess.kill('SIGTERM');
   }
+  setTimeout(() => {
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      /* Group already gone. */
+    }
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      /* Process already gone. */
+    }
+  }, 5_000).unref();
 }
 
 function closeRepairBridge(bridge: RepairApiBridge | null): void {
@@ -806,12 +827,18 @@ export async function registerRepairAgents(
     return state;
   });
   const busy = () => Boolean(child || translationChild || preparing || translationLaunch);
+  const busyError = () =>
+    Object.assign(
+      new Error(
+        translationChild || translationLaunch
+          ? 'A translation agent is already running. Cancel it from the Translation dock or wait for it to finish.'
+          : 'A repair agent session is already running. Stop it from the VoiceStudio Agent dock or wait for it to finish.',
+      ),
+      { name: 'AgentBusyError' },
+    );
   ipcMain.handle(REPAIR_CHANNELS.start, async (event, request: RepairAgentRunRequest) => {
     trusted(event, getMainWindow());
-    if (busy())
-      throw Object.assign(new Error('An agent is already running'), {
-        name: 'AgentRateLimitError',
-      });
+    if (busy()) throw busyError();
     if (workspaceRoot && !isVoiceStudioCheckout(workspaceRoot)) {
       workspaceRoot = null;
       state = { ...state, workspaceAvailable: false, workspacePath: undefined };
@@ -895,6 +922,8 @@ export async function registerRepairAgents(
         }),
         windowsHide: true,
         stdio: ['pipe', 'pipe', 'pipe'],
+        // Own process group so terminateAgentProcess kills the whole tree.
+        detached: process.platform !== 'win32',
       });
       guardAgentProcessStreams(child, (error) => append(`\n${error.message}\n`));
       const stdout = request.agent === 'codex' ? null : jsonStream(append);
@@ -956,10 +985,7 @@ export async function registerRepairAgents(
     timeoutMs = 10 * 60 * 1_000,
   ): Promise<DubAgentTranslationResult> => {
     validateDubTranslationRequest(request);
-    if (busy())
-      throw Object.assign(new Error('An agent is already running'), {
-        name: 'AgentRateLimitError',
-      });
+    if (busy()) throw busyError();
     const definition = DEFINITIONS.find((item) => item.id === request.agent)!;
     // Pending before the await, so a concurrent run is refused and a stop or
     // disposal while the CLI is located prevents the spawn.
@@ -1049,6 +1075,8 @@ export async function registerRepairAgents(
           }),
           windowsHide: true,
           stdio: ['pipe', 'pipe', 'pipe'],
+          // Own process group so terminateAgentProcess kills the whole tree.
+          detached: process.platform !== 'win32',
         });
         guardAgentProcessStreams(translationChild, (error) => finish(() => rejectPromise(error)));
         translationChild.stdout.on('data', (value: Buffer) => append(stdoutDecoder.write(value)));
