@@ -231,9 +231,11 @@ def test_fallback_check_fails_closed(ma, monkeypatch):
     assert ma.omnivoice_tokenizer_fallback_needed() is True
 
 
-def test_local_checkpoint_folder_is_checked_in_place(ma, monkeypatch, tmp_path):
+def test_local_checkpoint_folder_never_needs_the_hub_fallback(ma, monkeypatch, tmp_path):
     mm = importlib.import_module("services.omnivoice_checkpoint")
     monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: str(tmp_path))
-    assert ma.omnivoice_tokenizer_fallback_needed() is True
+    # The loader rejects a local folder lacking audio_tokenizer/ and never uses
+    # the Hub fallback for it, so there is nothing to accept either way.
+    assert ma.omnivoice_tokenizer_fallback_needed() is False
     (tmp_path / "audio_tokenizer").mkdir()
     assert ma.omnivoice_tokenizer_fallback_needed() is False

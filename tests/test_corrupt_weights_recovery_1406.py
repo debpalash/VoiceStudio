@@ -233,7 +233,7 @@ def test_fallback_tokenizer_failure_identifies_its_repository(monkeypatch, tmp_p
     monkeypatch.setattr(model_module, "_audio_tokenizer_cls", lambda: BrokenTokenizer)
 
     with pytest.raises(model_module.OmniVoiceModelAssetError) as exc_info:
-        model_module.OmniVoice.from_pretrained("org/model")
+        model_module.OmniVoice.from_pretrained("org/model", allow_tokenizer_fallback=True)
 
     assert exc_info.value.repository_id == "eustlb/higgs-audio-v2-tokenizer"
     assert exc_info.value.__cause__ is corrupt
@@ -272,6 +272,29 @@ def test_uncached_custom_checkpoint_fallback_is_licence_guarded(monkeypatch, tmp
     with pytest.raises(PermissionError):
         model_module.OmniVoice.from_pretrained("org/custom", tokenizer_fallback_guard=deny)
     assert loaded == []
+
+
+def test_fallback_is_refused_without_a_guard_unless_opted_out(monkeypatch, tmp_path):
+    """Fail closed: a caller that passes no guard (e.g. the subprocess sidecar)
+    cannot reach the unreviewed fallback repo; tools opt out explicitly."""
+    from omnivoice.models import omnivoice as model_module
+
+    loaded: list[str] = []
+    _patched_loader(monkeypatch, model_module, tmp_path, loaded)
+    with pytest.raises(model_module.OmniVoiceModelAssetError):
+        model_module.OmniVoice.from_pretrained("org/custom")
+    assert loaded == []
+    with pytest.raises(model_module.OmniVoiceModelAssetError):
+        model_module.OmniVoice.from_pretrained("org/custom", allow_tokenizer_fallback=True)
+    assert loaded == ["eustlb/higgs-audio-v2-tokenizer"]
+
+
+def test_subprocess_sidecar_passes_no_fallback_opt_out():
+    import pathlib
+
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "backend/engines/omnivoice_subprocess/main.py").read_text(encoding="utf-8")
+    assert "allow_tokenizer_fallback" not in src  # stays fail-closed
 
 
 def test_bundled_tokenizer_never_calls_the_fallback_guard(monkeypatch, tmp_path):

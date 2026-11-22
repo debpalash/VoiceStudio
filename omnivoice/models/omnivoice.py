@@ -91,8 +91,11 @@ _AUDIO_TOKENIZER_FALLBACK_REPO = "eustlb/higgs-audio-v2-tokenizer"
 class OmniVoiceModelAssetError(RuntimeError):
     """A fixed nested model repository failed while OmniVoice was loading."""
 
-    def __init__(self, repository_id: str):
-        super().__init__(f"Failed to load OmniVoice model asset: {repository_id}")
+    def __init__(self, repository_id: str, detail: str = ""):
+        super().__init__(
+            f"Failed to load OmniVoice model asset: {repository_id}"
+            + (f" ({detail})" if detail else "")
+        )
         self.repository_id = repository_id
 
 
@@ -555,7 +558,10 @@ class OmniVoice(PreTrainedModel):
         asr_model_name = kwargs.pop("asr_model_name", _DEFAULT_ASR_MODEL)
         # Called with the fallback repo id right before it is used; the host
         # raises there if the user has not accepted that repo's licence.
+        # Fail closed: with no guard the Hub fallback is refused unless the
+        # caller opts out explicitly (standalone CLI/training tools).
         tokenizer_fallback_guard = kwargs.pop("tokenizer_fallback_guard", None)
+        allow_tokenizer_fallback = kwargs.pop("allow_tokenizer_fallback", False)
 
         # Suppress noisy INFO logs from transformers/huggingface_hub during
         # loading. Scoped to those two logger trees — NOT logging.disable(),
@@ -606,6 +612,12 @@ class OmniVoice(PreTrainedModel):
                     # HiggsAudioV2Tokenizer if the local subdirectory doesn't exist.
                     if tokenizer_fallback_guard is not None:
                         tokenizer_fallback_guard(_AUDIO_TOKENIZER_FALLBACK_REPO)
+                    elif not allow_tokenizer_fallback:
+                        raise OmniVoiceModelAssetError(
+                            _AUDIO_TOKENIZER_FALLBACK_REPO,
+                            "the checkpoint has no bundled audio_tokenizer and this "
+                            "caller has no licence guard for the fallback tokenizer",
+                        )
                     audio_tokenizer_path = _AUDIO_TOKENIZER_FALLBACK_REPO
 
                 # higgs-audio-v2-tokenizer does not support MPS (output channels > 65536)

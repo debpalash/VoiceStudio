@@ -3,6 +3,7 @@
 Lives apart from ``model_manager`` so the licence gate can read it without a
 cyclic import.
 """
+import importlib
 import logging
 import os
 
@@ -24,8 +25,8 @@ def resolve_omnivoice_checkpoint() -> str:
     """
     checkpoint = os.environ.get("OMNIVOICE_MODEL", "").strip()
     if not checkpoint:
-        from services.local_model_paths import get
-        local = get("tts", "omnivoice")
+        # Dynamic import: local_model_paths reaches back into model_manager.
+        local = importlib.import_module("services.local_model_paths").get("tts", "omnivoice")
         if local:
             # Inventory must remain accessible to repair missing local folders.
             # The actual load path validates before opening weights.

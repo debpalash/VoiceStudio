@@ -347,7 +347,9 @@ def omnivoice_tokenizer_fallback_needed() -> bool:
 
         checkpoint = resolve_omnivoice_checkpoint()
         if os.path.isdir(checkpoint):
-            return not os.path.isdir(os.path.join(checkpoint, "audio_tokenizer"))
+            # A local folder never falls back to the Hub: the loader rejects
+            # one lacking audio_tokenizer/ outright, so there is nothing to accept.
+            return False
         from huggingface_hub import snapshot_download
         from huggingface_hub.errors import LocalEntryNotFoundError
 

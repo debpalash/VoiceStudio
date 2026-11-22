@@ -2482,10 +2482,11 @@ def _repair_model_cache(checkpoint: str, *, force: bool = False) -> bool:
     return False
 
 
-from services.omnivoice_checkpoint import (  # noqa: E402,F401 — re-exported
-    _DEFAULT_OMNIVOICE_CHECKPOINT,
-    resolve_omnivoice_checkpoint,
-)
+from services import omnivoice_checkpoint as _omnivoice_checkpoint  # noqa: E402
+
+# Re-exported: callers and tests reach these through model_manager.
+_DEFAULT_OMNIVOICE_CHECKPOINT = _omnivoice_checkpoint._DEFAULT_OMNIVOICE_CHECKPOINT
+resolve_omnivoice_checkpoint = _omnivoice_checkpoint.resolve_omnivoice_checkpoint
 
 
 #: CPython's exact executor-rejection message once interpreter shutdown began
