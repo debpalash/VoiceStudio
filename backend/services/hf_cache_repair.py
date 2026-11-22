@@ -216,6 +216,36 @@ def _force_copy_mode(cache_root: str) -> bool:
         return False
 
 
+def _repo_is_gated(repo_id: str) -> bool:
+    """Whether the catalogue marks ``repo_id`` as Hub-gated, directly or as a
+    dependency of a gated model (the pyannote diarisation entry, for one).
+
+    A gated repository needs the Hugging Face token, which mirrors never
+    receive, so its restore must use the canonical endpoint unless the user
+    explicitly chose a mirror — the same rule every download applies through
+    ``endpoint_race.download_endpoint(gated=...)``. A repository the catalogue
+    does not match to an ungated entry also counts as gated: when the catalog
+    is empty or unreadable the pre-selection behaviour is the only safe one,
+    and an explicitly configured mirror still wins."""
+    try:
+        from services.model_catalogue import KNOWN_MODELS
+        ungated_match = False
+        for model in KNOWN_MODELS:
+            entry_gated = bool(model.get("gated") or model.get("requires_hf_token"))
+            if model.get("repo_id") == repo_id:
+                if entry_gated:
+                    return True
+                ungated_match = True
+            for dependency in model.get("dependencies") or []:
+                if isinstance(dependency, dict) and dependency.get("repo_id") == repo_id:
+                    if entry_gated:
+                        return True
+                    ungated_match = True
+        return not ungated_match
+    except Exception:  # noqa: BLE001 — a catalogue failure must not break the repair
+        return True
+
+
 def repair_repo_cache(repo_id: str, cache_dir: str | None = None) -> dict:
     """Repair a repo's cache: delete broken snapshot entries (and ONLY those),
     then ``snapshot_download`` to restore the missing files — hub reuses
@@ -315,7 +345,16 @@ def repair_repo_cache(repo_id: str, cache_dir: str | None = None) -> dict:
             "revision": revision,
             "cache_dir": cache_root,
         }
-        endpoint = os.environ.get("HF_ENDPOINT")
+        # Explicit endpoint (HF_ENDPOINT / pref) wins; otherwise the automatic
+        # endpoint selection's cached pick applies (services.endpoint_race).
+        # A Hub-gated repository needs the HF token, which mirrors never
+        # receive, so its restore uses the canonical endpoint unless the user
+        # explicitly chose a mirror — the same rule every download applies.
+        try:
+            from services import endpoint_race
+            endpoint = endpoint_race.download_endpoint(gated=_repo_is_gated(repo_id))
+        except Exception:  # endpoint resolution must never break the repair
+            endpoint = os.environ.get("HF_ENDPOINT")
         if endpoint:
             dl_kwargs["endpoint"] = endpoint
         from services.hf_auth import token_for_endpoint
