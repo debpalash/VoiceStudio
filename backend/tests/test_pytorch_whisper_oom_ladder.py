@@ -75,7 +75,7 @@ def test_exhausted_ladder_falls_back_to_cpu(backend):
     be = backend(pipe)
     out = be.transcribe("x.wav", word_timestamps=False)
     assert out["text"] == "hello"
-    assert _batches(pipe) == [16, 4, 1, 2]
+    assert _batches(pipe) == [16, 4, 1, 1]  # CPU runs batch 1 (#4318)
     assert pipe.calls[-1][0] == "cpu"
     assert pipe.model.moved is not None
 
@@ -99,7 +99,7 @@ def test_non_oom_errors_are_not_retried(backend):
 def test_cpu_pipeline_uses_small_batch(backend):
     pipe = FakePipe(device="cpu")
     backend(pipe).transcribe("x.wav", word_timestamps=False)
-    assert _batches(pipe) == [2]
+    assert _batches(pipe) == [1]  # batch 1 on CPU (#4318)
 
 
 def test_oom_classifier():
