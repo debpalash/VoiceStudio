@@ -89,8 +89,22 @@ def test_explicit_pin_wins(ab, monkeypatch):
 def test_loaded_backend_keeps_its_checkpoint_after_it_consumes_vram(ab, monkeypatch):
     _host(ab, monkeypatch, installed={LARGE}, free_gb=16)
     first = ab._select_capture_asr_backend(skip_sherpa=True)
+    first._pipe = types.SimpleNamespace(device="cuda:0")  # resident on the GPU
     _host(ab, monkeypatch, installed={LARGE}, free_gb=0.5)  # its own weights now
     assert ab._select_capture_asr_backend(skip_sherpa=True) is first
+
+
+@pytest.mark.parametrize("pipe", [None, types.SimpleNamespace(device="cpu")])
+def test_cold_or_cpu_backend_is_not_sticky(ab, monkeypatch, pipe):
+    # A large-v3 singleton holding no VRAM must not block turbo when the
+    # card has since filled up (otherwise its loader would land on the CPU).
+    _host(ab, monkeypatch, installed={LARGE, TURBO}, free_gb=16)
+    first = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert first._resolved_model_name() == LARGE
+    first._pipe = pipe
+    _host(ab, monkeypatch, installed={LARGE, TURBO}, free_gb=3.9)
+    be = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(be, ab.PyTorchWhisperBackend) and be._resolved_model_name() == TURBO
 
 
 @pytest.mark.parametrize("gate", ["_gpu_probe_skipped", "_rocm_torch"])

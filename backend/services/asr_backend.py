@@ -4633,7 +4633,7 @@ def _rocm_capture_fits(repo: str) -> bool:
 
     Fails open (True) when the probe is unavailable or the VRAM preflight is
     disabled, exactly like ``PyTorchWhisperBackend._pick_device``. A model the
-    live capture backend already holds counts as fitting: its own weights are
+    live capture backend already holds on the GPU counts as fitting: its own weights are
     what shrank the free VRAM, and re-picking would evict it.
     """
     if os.environ.get("OMNIVOICE_ASR_VRAM_PREFLIGHT", "1").strip().lower() in (
@@ -4641,9 +4641,11 @@ def _rocm_capture_fits(repo: str) -> bool:
     ):
         return True
     live = _capture_backend
-    if isinstance(live, PyTorchWhisperBackend):
+    if isinstance(live, PyTorchWhisperBackend) and getattr(live, "_pipe", None) is not None:
         try:
-            if live._resolved_model_name() == repo:
+            # Only weights resident on the GPU count: a cold or CPU-moved
+            # singleton holds no VRAM, so the probe must decide for it.
+            if live._resolved_model_name() == repo and not live._pipe_on_cpu():
                 return True
         except Exception:  # noqa: BLE001 — fall through to the probe
             pass
