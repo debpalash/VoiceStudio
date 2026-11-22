@@ -2942,7 +2942,8 @@
     "missingSpeech": "Konuşma eksik veya okunamıyor. Dışa aktarmadan önce ilgili bölümü yeniden oluşturun.",
     "timingOverflow": "Konuşma ayrılan süreyi aşıyor. Çeviriyi kısaltın veya kesin zaman aralığını ya da videoyu uzatmayı seçin.",
     "sourceChanged": "Bu dublaj oluşturulurken altyazılar değişti. Önceki parça korundu; yeni altyazıları kullanmak için yeniden oluşturun.",
-    "backgroundUnavailable": "Özgün ses korunamadı. Arka plan ayrımını ve diyalog zamanlarını kontrol edip yeniden deneyin veya yalnızca konuşmayı dışa aktarmayı seçin."
+    "backgroundUnavailable": "Özgün ses korunamadı. Arka plan ayrımını ve diyalog zamanlarını kontrol edip yeniden deneyin veya yalnızca konuşmayı dışa aktarmayı seçin.",
+    "untranslated": "Bu parçanın henüz çevirisi yok: tüm satırlar hâlâ kaynak metinle aynı. Çevirin veya kaynak dili seçin, ardından yeniden oluşturun."
   },
   "dubStyle": {
     "label": "Çeviri üslubu talimatları",

@@ -82,13 +82,11 @@ def test_real_ffmpeg_retime_and_cache_invalidation(tmp_path):
     asyncio.run(run())
 
 
-def test_missing_separation_blocks_preserved_export(monkeypatch):
+def test_missing_separation_falls_back_to_speech_only_export(monkeypatch):
+    """#4346: a finished dub without a bed still exports (speech only)."""
     import api.routers.dub_export as de
-    from fastapi import HTTPException
     monkeypatch.setattr(de, '_optional_dub_artifact', lambda *_: None)
-    with pytest.raises(HTTPException) as error:
-        asyncio.run(de._preserved_background({}, 'job', 'bn'))
-    assert error.value.status_code == 409
+    assert asyncio.run(de._preserved_background({}, 'job', 'bn')) is None
 
 
 def test_srt_cues_a_frame_apart_retime_with_real_ffmpeg(tmp_path):

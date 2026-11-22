@@ -173,13 +173,14 @@ def test_failed_separation_job_is_not_a_cache_hit(tmp_path, monkeypatch):
     d.mkdir()
     (d / "vocals.wav").write_bytes(b"RIFF")
     (d / "audio_hq.wav").write_bytes(b"RIFF")
+    (d / "no_vocals.wav").write_bytes(b"RIFF")
 
     def seed(extra):
         with db_conn() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO dub_history (id, job_data, content_hash, created_at)"
                 " VALUES (?, ?, ?, datetime('now'))",
-                ("job_failed", _json.dumps({"vocals_path": str(d / "vocals.wav"), **extra}), "hash_f"),
+                ("job_failed", _json.dumps({"vocals_path": str(d / "vocals.wav"), "no_vocals_path": str(d / "no_vocals.wav"), **extra}), "hash_f"),
             )
             conn.commit()
 

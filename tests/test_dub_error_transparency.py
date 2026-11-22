@@ -264,11 +264,13 @@ def test_pre_hq_stem_cache_is_not_reused(tmp_path, monkeypatch):
         d = tmp_path / job_id
         d.mkdir()
         (d / "vocals.wav").write_bytes(b"RIFF")
+        (d / "no_vocals.wav").write_bytes(b"RIFF")
         with db_conn() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO dub_history (id, job_data, content_hash, created_at)"
                 " VALUES (?, ?, ?, datetime('now'))",
-                (job_id, _json.dumps({"vocals_path": str(d / "vocals.wav")}), "hash1"),
+                (job_id, _json.dumps({"vocals_path": str(d / "vocals.wav"),
+                                      "no_vocals_path": str(d / "no_vocals.wav")}), "hash1"),
             )
             conn.commit()
         return d
