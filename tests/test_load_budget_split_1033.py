@@ -29,6 +29,11 @@ import pytest
 import torch
 
 
+# generate budget << load time: the load alone would blow the generate clock.
+_GENERATE_S = 0.75
+_LOAD_S = 1.5
+
+
 def _tts_mod():
     return importlib.import_module("services.tts_backend")
 
@@ -82,8 +87,8 @@ def test_base_ensure_ready_dispatches_to_lazy_loader():
 
 
 def test_speech_survives_a_load_slower_than_the_generate_budget(client, monkeypatch):
-    """The #1033/#1037 class, end to end: load (0.8s) > generate budget
-    (0.2s) but < load budget — must succeed. Before the fix the generate
+    """The #1033/#1037 class, end to end: load (1.5s) > generate budget
+    (0.75s) but < load budget — must succeed. Before the fix the generate
     guard killed the request mid-'download' with the misleading 503.
 
     Watermarking is disabled for the duration. It runs INSIDE the generate
@@ -102,12 +107,20 @@ def test_speech_survives_a_load_slower_than_the_generate_budget(client, monkeypa
 
     monkeypatch.setattr(wm, "is_enabled", lambda: False)
 
-    fake_cls = _make_slow_loading_engine("slow-load-engine", 0.8)
+    fake_cls = _make_slow_loading_engine("slow-load-engine", _LOAD_S)
     monkeypatch.setitem(_tts_mod()._REGISTRY, "slow-load-engine", fake_cls)
-    # Tiny generate budget; generous load budget — the exact asymmetry that
-    # used to be impossible because both ran on one clock.
-    monkeypatch.setattr(mm, "GPU_JOB_TIMEOUT_S", 0.2)
-    monkeypatch.setattr(oc, "run_on_gpu_pool_guarded", _patched_guard(mm, 0.2))
+    # Pay the one-off cold costs of the generate path (lazy imports of
+    # audio_dsp/torchaudio etc. inside _run_tts) BEFORE the tiny budget starts.
+    # On a loaded CI runner they exceeded the old 0.2s budget and 503'd with
+    # "more than 0s of actual compute time" depending only on which modules
+    # shared the xdist worker/shard — a timing flake, not a load/generate bug.
+    warm = _make_slow_loading_engine("slow-load-warmup", 0.0)()
+    oc._run_tts(warm, "warm", {})
+    # Small generate budget; load takes longer than it but fits the (large)
+    # load budget — the exact asymmetry that used to be impossible because
+    # both ran on one clock. Wide margins on both sides keep it deterministic.
+    monkeypatch.setattr(mm, "GPU_JOB_TIMEOUT_S", _GENERATE_S)
+    monkeypatch.setattr(oc, "run_on_gpu_pool_guarded", _patched_guard(mm, _GENERATE_S))
 
     res = client.post("/v1/audio/speech", json={
         "model": "slow-load-engine", "input": "Cold start.", "response_format": "wav",
