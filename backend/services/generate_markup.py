@@ -77,38 +77,56 @@ def _split_at_gaps(text: str, opts: JoinOptions) -> list[tuple[str, int]]:
     return pieces
 
 
-def _scan_tags(text: str, stack: list[str]) -> None:
-    """Update the open-tag ``stack`` with the SSML-lite tags in ``text``."""
-    from services.ssml_lite import _TAG_RE
-
-    for m in _TAG_RE.finditer(text):
-        name = m.group(2).lower()
-        if m.group(1) == "/":
-            for i in range(len(stack) - 1, -1, -1):
-                if stack[i] == name:
-                    del stack[i]
-                    break
-        else:
-            stack.append(name)
+#: Most SSML-lite tags one request may carry. Nesting depth is bounded by this,
+#: so tracking the open tags stays cheap whatever the text length.
+MAX_TAGS = 500
 
 
-def _ssml_pieces(text: str, stack: list[str]) -> list[tuple[str, Optional[float]]]:
-    """SSML-lite segments of ``text`` as ``(spoken_text, speed_factor)``.
+class _SsmlState:
+    """Open SSML-lite tags carried across pause and blank-line pieces.
 
-    ``stack`` holds the tags still open from earlier text (a ``[slow]`` that
-    spans a ``[pause]`` or a blank line); it is updated for the text after this one.
+    The effective prosody is resolved when a tag changes the stack, never per
+    piece, so the work is linear in text length plus tags (times depth).
     """
-    from services.ssml_lite import _TAG_RE, parse_ssml_lite, spell_out
 
-    if not stack and not _TAG_RE.search(text):
-        return [(text, None)]
-    reopened = "".join(f"[{name}]" for name in stack)
-    _scan_tags(text, stack)
-    out: list[tuple[str, Optional[float]]] = []
-    for seg in parse_ssml_lite(reopened + text):
-        spoken = spell_out(seg["text"]) if seg["spell"] else seg["text"]
-        out.append((spoken, seg["speed"]))
-    return out
+    def __init__(self) -> None:
+        from services.ssml_lite import _TAG_RE, _resolve
+
+        self._tag_re, self._resolve_stack = _TAG_RE, _resolve
+        self.stack: list[str] = []
+        self.props = self._resolve_stack(self.stack)
+
+    def feed(self, text: str) -> list[tuple[str, Optional[float]]]:
+        """Spoken ``(text, speed_factor)`` segments of ``text``; tags update the state."""
+        from services.ssml_lite import spell_out
+
+        segs: list[dict] = []
+
+        def emit(chunk: str) -> None:
+            if not chunk:
+                return
+            p = self.props
+            if segs and all(segs[-1][k] == p[k] for k in ("speed", "spell", "emphasis")):
+                segs[-1]["text"] += chunk
+            else:
+                segs.append({"text": chunk, **p})
+
+        last = 0
+        for m in self._tag_re.finditer(text):
+            emit(text[last:m.start()])
+            last = m.end()
+            name = m.group(2).lower()
+            if m.group(1) == "/":
+                for i in range(len(self.stack) - 1, -1, -1):
+                    if self.stack[i] == name:
+                        del self.stack[i]
+                        break
+            else:
+                self.stack.append(name)
+            self.props = self._resolve_stack(self.stack)
+        emit(text[last:])
+        return [(spell_out(g["text"]) if g["spell"] else g["text"], g["speed"])
+                for g in segs]
 
 
 def _merge_unspoken(spans: list[Span]) -> list[Span]:
@@ -146,13 +164,17 @@ def plan_spans(text: str, opts: Optional[JoinOptions] = None) -> list[Span]:
     opts = opts or JoinOptions()
     planned: list[Span] = []
     explicit_ms = 0
-    stack: list[str] = []
+    from services.ssml_lite import _TAG_RE
+
+    if len(_TAG_RE.findall(text)) > MAX_TAGS:
+        raise ValueError(f"Too many [slow]/[fast]/[emphasis]/[spell] tags (at most {MAX_TAGS}).")
+    state = _SsmlState()
     for pause_text, pause_ms in parse_pause_markers(text):
         explicit_ms += pause_ms
         inner: list[Span] = []
         pieces = _split_at_gaps(pause_text, opts) if opts.gaps_on else [(pause_text, 0)]
         for piece, gap_ms in pieces:
-            sub = [Span(t, 0, f) for t, f in _ssml_pieces(piece, stack)]
+            sub = [Span(t, 0, f) for t, f in state.feed(piece)]
             if sub:
                 sub[-1] = Span(sub[-1].text, gap_ms, sub[-1].speed_factor)
                 inner.extend(sub)

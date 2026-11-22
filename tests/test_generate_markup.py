@@ -11,6 +11,8 @@ import os
 import pytest
 import torch
 
+from test_text_normalization_routes import fake_engine  # noqa: F401
+
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 
@@ -254,7 +256,7 @@ def test_mcp_default_request_is_unchanged(monkeypatch):
 
 
 @pytest.mark.parametrize("stream", ["0", "1"])
-def test_budget_is_rechecked_after_respellings_as_a_400(monkeypatch, stream):
+def test_budget_is_rechecked_after_respellings_as_a_400(fake_engine, monkeypatch, stream):
     import asyncio
     import importlib
 
@@ -270,9 +272,24 @@ def test_budget_is_rechecked_after_respellings_as_a_400(monkeypatch, stream):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                      base_url="http://localhost") as api:
             return await api.post("/generate", data={
-                "text": "short", "language": "English",
+                "engine": "fake-norm-route", "text": "short", "language": "English",
                 "paragraph_gap_ms": "5000", "stream": stream})
 
     response = asyncio.run(run())
     assert response.status_code == 400
     assert "minutes" in response.text
+
+
+def test_nested_tags_over_many_paragraphs_plan_in_linear_time():
+    import time
+
+    text = "[slow]" * 400 + "A\n\n" * 20000
+    start = time.perf_counter()
+    spans = plan_spans(text, JoinOptions(paragraph_gap_ms=1))
+    assert time.perf_counter() - start < 3
+    assert all(s.speed_factor == pytest.approx(0.85) for s in spans)
+
+
+def test_too_many_tags_are_refused():
+    with pytest.raises(ValueError, match="Too many"):
+        plan_spans("[slow]" * 10000 + "A")
