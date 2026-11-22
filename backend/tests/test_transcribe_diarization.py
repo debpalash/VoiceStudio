@@ -6,6 +6,7 @@ did — so the transcription UI could not label speakers at all.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -64,15 +65,17 @@ def test_speaker_hint_is_bounded():
     assert [td.parse_speaker_hint(v) for v in (None, "", "0", "-1", "99", "two")] == [None] * 6
 
 
-def test_labels_follow_segments_and_skip_untimed(fakes):
+def test_labels_follow_segments_and_skip_untimed(fakes, tmp_path):
     seen = {}
 
-    def pipeline(path, num_speakers=None):
+    def pipeline(audio, num_speakers=None):
         seen["hint"] = num_speakers
         return "diar"
 
     fakes["pipeline"] = pipeline
-    labels, error = td.diarize_segments("a.wav", SEGMENTS, num_speakers=2)
+    source = tmp_path / "input.wav"
+    source.write_bytes(_tiny_wav())
+    labels, error = td.diarize_segments(str(source), SEGMENTS, num_speakers=2)
     assert (labels, error) == (["Speaker 1", "Speaker 2", None], None)
     assert seen["hint"] == 2
 
@@ -84,12 +87,14 @@ def test_missing_model_degrades_with_its_error_code(fakes):
     assert error == "MODEL_MISSING"
 
 
-def test_pipeline_crash_never_raises(fakes):
-    def boom(path, **_kw):
+def test_pipeline_crash_never_raises(fakes, tmp_path):
+    def boom(audio, **_kw):
         raise RuntimeError("cuda oom")
 
     fakes["pipeline"] = boom
-    assert td.diarize_segments("a.wav", SEGMENTS) == ([None, None, None], "DIARIZATION_FAILED")
+    source = tmp_path / "input.wav"
+    source.write_bytes(_tiny_wav())
+    assert td.diarize_segments(str(source), SEGMENTS) == ([None, None, None], "DIARIZATION_FAILED")
 
 
 def test_sortformer_never_receives_an_exact_count(fakes):
@@ -134,6 +139,46 @@ def test_accurate_diarize_labels_segments(transcript, monkeypatch):
     assert [s["speaker"] for s in body["segments"]] == ["Speaker 1", "Speaker 2"]
     assert body["speakers"] == ["Speaker 1", "Speaker 2"]
     assert "diarization_error" not in body
+
+
+def test_accurate_diarize_decodes_m4a(transcript, monkeypatch, tmp_path):
+    from pyannote.core import Annotation, Segment
+
+    from services import model_manager
+    from services.ffmpeg_utils import find_ffmpeg
+
+    source = tmp_path / "input.wav"
+    source.write_bytes(_tiny_wav())
+    encoded = tmp_path / "input.m4a"
+    ffmpeg = find_ffmpeg()
+    assert ffmpeg, "the maintained runtime bundles ffmpeg"
+    subprocess.run(
+        [ffmpeg, "-nostdin", "-loglevel", "error", "-stream_loop", "29", "-i", str(source), str(encoded)],
+        capture_output=True,
+        check=True,
+    )
+
+    diarization = Annotation()
+    diarization[Segment(0, 1)] = "SPEAKER_00"
+    diarization[Segment(1.5, 2.5)] = "SPEAKER_01"
+
+    def pipeline(audio, *, num_speakers=None):
+        assert num_speakers == 2
+        assert audio["sample_rate"] == 16000
+        assert audio["waveform"].shape[0] == 1
+        assert audio["waveform"].shape[1] >= 48000
+        return diarization
+
+    monkeypatch.setattr(model_manager, "get_diarization_pipeline", lambda **_: (pipeline, None))
+    response = _client("api.routers.capture").post(
+        "/transcribe",
+        files={"audio": ("input.m4a", encoded.read_bytes(), "audio/mp4")},
+        data={"mode": "accurate", "diarize": "true", "num_speakers": "2"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "diarization_error" not in body
+    assert [segment["speaker"] for segment in body["segments"]] == ["Speaker 1", "Speaker 2"]
 
 
 def test_diarize_is_off_unless_requested(transcript, monkeypatch):

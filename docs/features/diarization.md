@@ -61,6 +61,10 @@ pyannote bundle. Once its pipeline, segmentation and embedding files are cached,
 inference works offline without retaining the token. See
 [Hugging Face token setup](../setup/huggingface-token.md).
 
+In the Transcription workspace, Accurate mode decodes uploads locally before
+passing audio to Pyannote. M4A files use the installed FFmpeg fallback when
+the default decoder cannot open them.
+
 ## Troubleshooting
 
 - Install returns 401/403: verify that the token belongs to the account with

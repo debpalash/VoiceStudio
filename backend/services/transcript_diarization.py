@@ -52,9 +52,8 @@ def diarize_segments(
             return labels, error or "LOAD_FAILED"
         from services.diarization_native import NativeSortformer
 
-        # Sortformer detects up to four speakers and rejects an exact count.
-        hint = None if isinstance(pipeline, NativeSortformer) else num_speakers
         if isinstance(pipeline, NativeSortformer):
+            # Sortformer detects up to four speakers and rejects an exact count.
             # Its child process is the only part that can be stopped. When the
             # request is abandoned (timeout or client gone) the guard sets this
             # scope's cancellation; passing it through lets the child exit
@@ -66,7 +65,15 @@ def diarize_segments(
                 audio_path, cancel_check=scope.cancelled.is_set if scope else None
             )
         else:
-            diarization = pipeline(audio_path, num_speakers=hint) if hint else pipeline(audio_path)
+            from services.audio_io import load_audio
+
+            # Decode locally with the shared FFmpeg fallback for containers
+            # that Pyannote's file reader cannot open, such as M4A.
+            waveform, sample_rate = load_audio(audio_path)
+            diarization = pipeline(
+                {"waveform": waveform, "sample_rate": sample_rate},
+                num_speakers=num_speakers,
+            )
         assigned = assign_speakers_from_diarization([d for _, d in timed], diarization)
         for (index, _), item in zip(timed, assigned):
             labels[index] = item.get("speaker_id")
