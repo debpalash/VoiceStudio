@@ -39,11 +39,23 @@ def test_unload_frees_model_held_by_engine_cache_adapter(monkeypatch):
     assert ref() is None
 
 
-def test_unload_keeps_adapter_model_while_a_render_holds_an_inference_slot(monkeypatch):
+def test_unload_during_a_render_clears_the_adapter_but_not_the_running_call(monkeypatch):
+    """CodeRabbit on #4359: deferring the drop while a render ran left the
+    weights resident, because a later unload stops at ``model is None``. The
+    render now holds its own reference, so the drop is always safe."""
     ref, inst = _prime(monkeypatch, "active")
-    with mm.tts_inference():
-        assert mm.unload_shared_model() is True
-        assert inst._model is not None  # the in-flight render still reads it
-    monkeypatch.setattr(mm, "model", inst._model)
-    assert mm.unload_shared_model() is True
-    assert inst._model is None
+    monkeypatch.setattr(mm, "ensure_tts_on_device", lambda: None)
+    seen = []
+
+    def fake_generate(model, **_kw):
+        assert mm.unload_shared_model() is True  # unload lands mid-render
+        assert inst._model is None
+        seen.append(model)
+        return ["wav"]
+
+    monkeypatch.setattr(tb, "generate_with_cached_ref", fake_generate)
+    assert inst.generate("hello") == "wav"
+    assert seen and seen[0] is not None  # the running call kept its model
+    seen.clear()
+    gc.collect()
+    assert ref() is None  # freed once the render returned

@@ -1854,17 +1854,12 @@ def drop_omnivoice_instance_refs() -> None:
     kept the whole model (weights on the GPU) alive and ``empty_cache()`` freed
     almost nothing. Best-effort; never raises.
 
-    Skipped while any render holds a ``tts_inference()`` slot: the render
-    reads ``self._model`` after ``_ensure_loaded`` and must not find it
-    cleared mid-flight. Nothing guards that elsewhere (the unload path takes
-    no inference lock), so the check lives here; the next unload drops them.
+    Safe while a render is in flight: ``generate``/``generate_batch`` hold
+    their own reference from ``_ensure_loaded()``, so clearing the adapter
+    never hands ``None`` to a running model call, and the weights are freed
+    when that render returns.
     """
     try:
-        from services import model_manager as _mm
-
-        with _mm._placement_cond:
-            if _mm._inference_active > 0:
-                return
         with _ENGINE_CACHE_LOCK:
             held = [_active_instance, *_ENGINE_INSTANCES.values()]
         for inst in held:
@@ -1971,7 +1966,7 @@ class OmniVoiceBackend(TTSBackend):
             from services.model_manager import ensure_tts_on_device
 
             ensure_tts_on_device()
-            return
+            return self._model
         # Reuse model_manager's cached instance so we don't double-load.
         from services.model_manager import get_model
         import asyncio
@@ -1981,20 +1976,18 @@ class OmniVoiceBackend(TTSBackend):
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            self._model = asyncio.run(get_model())
-            return
+            self._model = model = asyncio.run(get_model())
+            return model
         raise RuntimeError(
             "OmniVoiceBackend.generate() called inside an async context without a pre-loaded model. "
             "Pass `model=await get_model()` to the constructor."
         )
 
     def generate(self, text, **kw) -> torch.Tensor:
-        self._ensure_loaded()
-        # Keep our own reference: an unload between the load check and the
-        # read below must not hand None to the model call (#4355).
-        model = self._model
-        if model is None:
-            self._ensure_loaded()
+        # Our own reference: an unload during this render may clear
+        # ``self._model`` (#4355) and must not hand None to the model call.
+        model = self._ensure_loaded()
+        if model is None:  # a stubbed loader (tests) leaves the preset model
             model = self._model
         language = kw.get("language")
         ref_audio = kw.get("ref_audio")
@@ -2036,7 +2029,9 @@ class OmniVoiceBackend(TTSBackend):
         model together; an incomplete prompt batch falls back to the proven
         single-item path instead of changing synthesis semantics.
         """
-        self._ensure_loaded()
+        model = self._ensure_loaded()
+        if model is None:
+            model = self._model
         if not texts:
             return []
         from services.model_manager import tts_inference
@@ -2044,9 +2039,11 @@ class OmniVoiceBackend(TTSBackend):
         # Holds the shared model in place for prompt encoding + the batch
         # generate (an offload can't move it mid-batch; #2618).
         with tts_inference():
-            return self._generate_batch_on_model(texts, **kw)
+            return self._generate_batch_on_model(texts, model=model, **kw)
 
-    def _generate_batch_on_model(self, texts: list[str], **kw) -> list[torch.Tensor]:
+    def _generate_batch_on_model(self, texts: list[str], *, model=None, **kw) -> list[torch.Tensor]:
+        if model is None:
+            model = self._ensure_loaded() or self._model
         def _items(value):
             if isinstance(value, list):
                 return value
@@ -2069,7 +2066,7 @@ class OmniVoiceBackend(TTSBackend):
                     prompts = []
                     break
                 prompt = _get_clone_prompt(
-                    self._model,
+                    model,
                     ref_audio,
                     ref_text,
                     preprocess_prompt,
@@ -2100,7 +2097,7 @@ class OmniVoiceBackend(TTSBackend):
         else:
             gen_kw["ref_audio"] = None
             gen_kw["ref_text"] = None
-        return self._model.generate(text=texts, **gen_kw)
+        return model.generate(text=texts, **gen_kw)
 
     def unload(self) -> None:
         """Release the OmniVoice model (MM2-02). OmniVoice shares the singleton

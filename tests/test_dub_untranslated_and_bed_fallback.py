@@ -142,7 +142,7 @@ def test_cache_does_not_reuse_a_job_whose_bed_is_missing(tmp_path, monkeypatch):
 
 
 def test_each_download_track_resolves_its_own_bed(export_module):
-    src = Path(export_module.__file__).read_text()
+    src = Path(export_module.__file__).read_text(encoding="utf-8")
     loop = src[src.index("for lang_code, track_info in filtered_tracks.items():"):]
     loop = loop[: loop.index("tracks_to_process.append")]
     assert loop.index("bg_idx = None") < loop.index("_preserved_background")
