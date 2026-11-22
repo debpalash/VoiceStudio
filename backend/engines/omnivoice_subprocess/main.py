@@ -210,6 +210,15 @@ def _skip_unused_heavy_imports():
                 del sys.modules[module]
 
 
+def _guard_tokenizer_fallback(repo_id: str) -> None:
+    """Allow the Hub fallback tokenizer only when the parent confirmed acceptance."""
+    if os.environ.get("OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED") != "1":
+        raise RuntimeError(
+            f"The licence for {repo_id} has not been accepted. Accept it in "
+            "Model Catalogue, then retry."
+        )
+
+
 def _load_model(stdout):
     """Cold-construct the OmniVoice model, reusing the parent's load path."""
     if _model is not None:
@@ -273,6 +282,7 @@ def _construct_model(stdout, progress: dict):
         _model = OmniVoice.from_pretrained(
             checkpoint, device_map=device,
             dtype=getattr(torch, tts_dtype_name(device)), load_asr=preload_asr,
+            tokenizer_fallback_guard=_guard_tokenizer_fallback,
         )
     finally:
         unregister_listener(lid)

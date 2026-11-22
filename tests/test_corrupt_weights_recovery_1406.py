@@ -233,10 +233,84 @@ def test_fallback_tokenizer_failure_identifies_its_repository(monkeypatch, tmp_p
     monkeypatch.setattr(model_module, "_audio_tokenizer_cls", lambda: BrokenTokenizer)
 
     with pytest.raises(model_module.OmniVoiceModelAssetError) as exc_info:
-        model_module.OmniVoice.from_pretrained("org/model")
+        model_module.OmniVoice.from_pretrained("org/model", allow_tokenizer_fallback=True)
 
     assert exc_info.value.repository_id == "eustlb/higgs-audio-v2-tokenizer"
     assert exc_info.value.__cause__ is corrupt
+
+
+def _patched_loader(monkeypatch, model_module, snapshot, loaded):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        model_module.PreTrainedModel, "from_pretrained",
+        classmethod(lambda cls, *a, **k: SimpleNamespace(device="cpu")),
+    )
+    monkeypatch.setattr(model_module.AutoTokenizer, "from_pretrained", lambda *a, **k: object())
+    monkeypatch.setattr(model_module, "_resolve_snapshot_dir", lambda _c: str(snapshot))
+
+    class Tok:
+        @classmethod
+        def from_pretrained(cls, path, **kwargs):
+            loaded.append(path)
+            raise RuntimeError("stop after the load was attempted")
+
+    monkeypatch.setattr(model_module, "_audio_tokenizer_cls", lambda: Tok)
+
+
+def test_uncached_custom_checkpoint_fallback_is_licence_guarded(monkeypatch, tmp_path):
+    """#4329: the gate cannot see a not-yet-downloaded custom checkpoint, so the
+    loader must stop before using the unreviewed fallback repo."""
+    from omnivoice.models import omnivoice as model_module
+
+    loaded: list[str] = []
+    _patched_loader(monkeypatch, model_module, tmp_path, loaded)  # no audio_tokenizer/
+
+    def deny(repo_id):
+        raise PermissionError(repo_id)
+
+    with pytest.raises(PermissionError):
+        model_module.OmniVoice.from_pretrained("org/custom", tokenizer_fallback_guard=deny)
+    assert loaded == []
+
+
+def test_fallback_is_refused_without_a_guard_unless_opted_out(monkeypatch, tmp_path):
+    """Fail closed: a caller that passes no guard (e.g. the subprocess sidecar)
+    cannot reach the unreviewed fallback repo; tools opt out explicitly."""
+    from omnivoice.models import omnivoice as model_module
+
+    loaded: list[str] = []
+    _patched_loader(monkeypatch, model_module, tmp_path, loaded)
+    with pytest.raises(model_module.OmniVoiceModelAssetError):
+        model_module.OmniVoice.from_pretrained("org/custom")
+    assert loaded == []
+    with pytest.raises(model_module.OmniVoiceModelAssetError):
+        model_module.OmniVoice.from_pretrained("org/custom", allow_tokenizer_fallback=True)
+    assert loaded == ["eustlb/higgs-audio-v2-tokenizer"]
+
+
+def test_subprocess_sidecar_passes_no_fallback_opt_out():
+    import pathlib
+
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "backend/engines/omnivoice_subprocess/main.py").read_text(encoding="utf-8")
+    assert "allow_tokenizer_fallback" not in src  # stays fail-closed
+    assert "tokenizer_fallback_guard=_guard_tokenizer_fallback" in src
+
+
+def test_bundled_tokenizer_never_calls_the_fallback_guard(monkeypatch, tmp_path):
+    from omnivoice.models import omnivoice as model_module
+
+    (tmp_path / "audio_tokenizer").mkdir()
+    loaded: list[str] = []
+    _patched_loader(monkeypatch, model_module, tmp_path, loaded)
+
+    def deny(repo_id):
+        raise AssertionError("guard must not run")
+
+    with pytest.raises(RuntimeError, match="stop after"):
+        model_module.OmniVoice.from_pretrained("org/custom", tokenizer_fallback_guard=deny)
+    assert loaded == [str(tmp_path / "audio_tokenizer")]
 
 
 def test_resume_that_exposes_corruption_switches_to_forced_repair(mm, monkeypatch):
@@ -353,3 +427,61 @@ def test_a_corrupt_config_is_force_repaired_and_retried(mm, monkeypatch):
     mm._load_model_sync()
     assert calls["load"] == 2
     assert calls["repair"] == [True]
+
+
+def _sidecar_main():
+    import importlib
+    import sys
+
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "backend"))
+    return importlib.import_module("engines.omnivoice_subprocess.main")
+
+
+def test_sidecar_guard_blocks_unless_parent_signalled_acceptance(monkeypatch):
+    main = _sidecar_main()
+    monkeypatch.delenv("OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED", raising=False)
+    with pytest.raises(RuntimeError, match="licence .* has not been accepted"):
+        main._guard_tokenizer_fallback("eustlb/higgs-audio-v2-tokenizer")
+    monkeypatch.setenv("OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED", "1")
+    main._guard_tokenizer_fallback("eustlb/higgs-audio-v2-tokenizer")
+
+
+def test_parent_signals_acceptance_to_the_sidecar(monkeypatch):
+    import importlib
+
+    ma = importlib.import_module("services.model_acceptance")
+    from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
+
+    backend = OmniVoiceSubprocessBackend.__new__(OmniVoiceSubprocessBackend)
+    state = {"required": True, "accepted": False}
+    monkeypatch.setattr(ma, "status", lambda repo: state)
+    assert backend.extra_spawn_env() == {}
+    state["accepted"] = True
+    assert backend.extra_spawn_env() == {"OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED": "1"}
+
+
+def test_subprocess_engine_gate_requires_the_fallback_licence_when_needed(monkeypatch):
+    import importlib
+
+    ma = importlib.import_module("services.model_acceptance")
+    monkeypatch.setattr(ma, "omnivoice_tokenizer_fallback_needed", lambda: True)
+    assert ma.FALLBACK_TOKENIZER_REPO in ma.repos_for_engine("omnivoice-subprocess")
+    monkeypatch.setattr(ma, "omnivoice_tokenizer_fallback_needed", lambda: False)
+    assert ma.FALLBACK_TOKENIZER_REPO not in ma.repos_for_engine("omnivoice-subprocess")
+
+
+def test_inherited_acceptance_signal_never_reaches_the_sidecar(monkeypatch):
+    import importlib
+
+    ma = importlib.import_module("services.model_acceptance")
+    from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
+
+    backend = OmniVoiceSubprocessBackend.__new__(OmniVoiceSubprocessBackend)
+    monkeypatch.setattr(ma, "status", lambda repo: {"required": True, "accepted": False})
+    env = {"OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED": "1", "PATH": "/bin"}
+    backend._apply_engine_env(env)
+    assert "OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED" not in env
+    assert env["PATH"] == "/bin"
+    monkeypatch.setattr(ma, "status", lambda repo: {"required": True, "accepted": True})
+    backend._apply_engine_env(env)
+    assert env["OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED"] == "1"

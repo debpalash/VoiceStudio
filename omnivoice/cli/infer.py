@@ -131,6 +131,7 @@ def main():
         args.model,
         device_map=device,
         dtype=getattr(torch, tts_dtype_name(device)),
+        allow_tokenizer_fallback=True,
     )
 
     logging.info(f"Generating audio for: {args.text[:80]}...")
