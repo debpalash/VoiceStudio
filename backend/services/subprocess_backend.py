@@ -531,6 +531,10 @@ class SubprocessBackend(TTSBackend):
 
     # ── lifecycle ──────────────────────────────────────────────────────────
 
+    def extra_spawn_env(self) -> dict[str, str]:
+        """Engine-specific environment for this sidecar process (default none)."""
+        return {}
+
     def _spawn(self) -> None:
         """Launch the sidecar if not already running. Blocks on the ready
         handshake. Caller must hold self._lock."""
@@ -567,6 +571,7 @@ class SubprocessBackend(TTSBackend):
         endpoint = endpoint_race.download_endpoint(gated=self.requires_hf_auth)
         if endpoint:
             env["HF_ENDPOINT"] = endpoint
+        env.update(self.extra_spawn_env())
         if not env_allows_token(env):
             env.pop("HF_TOKEN", None)
             env.pop("YOUR_HF_TOKEN", None)

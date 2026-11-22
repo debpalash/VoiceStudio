@@ -295,6 +295,7 @@ def test_subprocess_sidecar_passes_no_fallback_opt_out():
     src = (pathlib.Path(__file__).resolve().parents[1]
            / "backend/engines/omnivoice_subprocess/main.py").read_text(encoding="utf-8")
     assert "allow_tokenizer_fallback" not in src  # stays fail-closed
+    assert "tokenizer_fallback_guard=_guard_tokenizer_fallback" in src
 
 
 def test_bundled_tokenizer_never_calls_the_fallback_guard(monkeypatch, tmp_path):
@@ -426,3 +427,44 @@ def test_a_corrupt_config_is_force_repaired_and_retried(mm, monkeypatch):
     mm._load_model_sync()
     assert calls["load"] == 2
     assert calls["repair"] == [True]
+
+
+def _sidecar_main():
+    import importlib
+    import sys
+
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "backend"))
+    return importlib.import_module("engines.omnivoice_subprocess.main")
+
+
+def test_sidecar_guard_blocks_unless_parent_signalled_acceptance(monkeypatch):
+    main = _sidecar_main()
+    monkeypatch.delenv("OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED", raising=False)
+    with pytest.raises(RuntimeError, match="licence .* has not been accepted"):
+        main._guard_tokenizer_fallback("eustlb/higgs-audio-v2-tokenizer")
+    monkeypatch.setenv("OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED", "1")
+    main._guard_tokenizer_fallback("eustlb/higgs-audio-v2-tokenizer")
+
+
+def test_parent_signals_acceptance_to_the_sidecar(monkeypatch):
+    import importlib
+
+    ma = importlib.import_module("services.model_acceptance")
+    from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
+
+    backend = OmniVoiceSubprocessBackend.__new__(OmniVoiceSubprocessBackend)
+    state = {"required": True, "accepted": False}
+    monkeypatch.setattr(ma, "status", lambda repo: state)
+    assert backend.extra_spawn_env() == {}
+    state["accepted"] = True
+    assert backend.extra_spawn_env() == {"OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED": "1"}
+
+
+def test_subprocess_engine_gate_requires_the_fallback_licence_when_needed(monkeypatch):
+    import importlib
+
+    ma = importlib.import_module("services.model_acceptance")
+    monkeypatch.setattr(ma, "omnivoice_tokenizer_fallback_needed", lambda: True)
+    assert ma.FALLBACK_TOKENIZER_REPO in ma.repos_for_engine("omnivoice-subprocess")
+    monkeypatch.setattr(ma, "omnivoice_tokenizer_fallback_needed", lambda: False)
+    assert ma.FALLBACK_TOKENIZER_REPO not in ma.repos_for_engine("omnivoice-subprocess")

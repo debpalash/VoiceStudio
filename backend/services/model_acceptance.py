@@ -329,7 +329,7 @@ def repos_for_engine(engine_id: str, identity: str | None = None) -> list[str]:
 # k2-fsa/OmniVoice's licence row). The Higgs tokenizer repo below is only
 # loaded, or re-downloaded by the cache repair, when that bundled directory is
 # missing (``omnivoice.models.omnivoice``), so it gates an install only then (#4329).
-_FALLBACK_TOKENIZER_REPO = "eustlb/higgs-audio-v2-tokenizer"
+FALLBACK_TOKENIZER_REPO = "eustlb/higgs-audio-v2-tokenizer"
 
 
 def omnivoice_tokenizer_fallback_needed() -> bool:
@@ -370,7 +370,7 @@ def omnivoice_tokenizer_fallback_needed() -> bool:
 
 def _repo_applies(repo_id: str) -> bool:
     """False for a registry repo the installed engine does not actually load."""
-    if repo_id == _FALLBACK_TOKENIZER_REPO:
+    if repo_id == FALLBACK_TOKENIZER_REPO:
         return omnivoice_tokenizer_fallback_needed()
     return True
 

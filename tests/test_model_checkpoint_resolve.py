@@ -7,7 +7,7 @@ is honored; anything else falls back to the default.
 """
 import pytest
 
-from services.model_manager import (
+from services.omnivoice_checkpoint import (
     resolve_omnivoice_checkpoint,
     _DEFAULT_OMNIVOICE_CHECKPOINT,
 )

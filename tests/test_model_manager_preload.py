@@ -114,7 +114,7 @@ def test_checkpoint_resolution_preserves_test_sentinel_and_repairs_engine_id(
     monkeypatch.setenv("OMNIVOICE_MODEL", "test")
     assert manager.resolve_omnivoice_checkpoint() == "test"
     monkeypatch.setenv("OMNIVOICE_MODEL", "omnivoice")
-    assert manager.resolve_omnivoice_checkpoint() == manager._DEFAULT_OMNIVOICE_CHECKPOINT
+    assert manager.resolve_omnivoice_checkpoint() == importlib.import_module("services.omnivoice_checkpoint")._DEFAULT_OMNIVOICE_CHECKPOINT
 
 
 def _configure_preload(manager, monkeypatch, *, cached):
