@@ -167,7 +167,11 @@ def _prefetch_weights(checkpoint: str, stop: threading.Event) -> None:
         else:
             from huggingface_hub import snapshot_download  # noqa: PLC0415
 
-            root = snapshot_download(checkpoint, local_files_only=True)
+            from services.omnivoice_checkpoint import omnivoice_pin_kwargs  # noqa: PLC0415
+
+            # None only for an uncurated custom repo; installed files only.
+            revision = omnivoice_pin_kwargs(checkpoint).get("revision")
+            root = snapshot_download(checkpoint, revision=revision, local_files_only=True)
         for folder, _dirs, names in os.walk(root):
             for name in sorted(names):
                 if not name.endswith(".safetensors"):
@@ -247,6 +251,10 @@ def _construct_model(stdout, progress: dict):
         resolve_omnivoice_checkpoint,
         should_preload_tts_asr,
     )
+    from services.omnivoice_checkpoint import (  # noqa: PLC0415
+        omnivoice_asr_pin_kwargs,
+        omnivoice_pin_kwargs,
+    )
     from utils.hf_progress import register_listener, unregister_listener  # noqa: PLC0415
 
     # Forward real HF download/weight progress so the parent's recv loop keeps
@@ -283,6 +291,8 @@ def _construct_model(stdout, progress: dict):
             checkpoint, device_map=device,
             dtype=getattr(torch, tts_dtype_name(device)), load_asr=preload_asr,
             tokenizer_fallback_guard=_guard_tokenizer_fallback,
+            **omnivoice_pin_kwargs(checkpoint),
+            **{f"asr_{k}": v for k, v in omnivoice_asr_pin_kwargs().items()},
         )
     finally:
         unregister_listener(lid)
