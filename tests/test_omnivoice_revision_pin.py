@@ -3,14 +3,20 @@ from types import SimpleNamespace
 
 import pytest
 
-from omnivoice.models import omnivoice as ov
-
 PIN = "c5fdb5ccb189668d56333f77ba2629f4cd7535f4"
 FALLBACK_PIN = "528e871c2a26c4f0f7773b9754e2e1acae20899d"
 
 
 @pytest.fixture
-def seen(monkeypatch, tmp_path):
+def ov():
+    """The OmniVoice module, resolved at test time (never a stale import)."""
+    import importlib
+
+    return importlib.import_module("omnivoice.models.omnivoice")
+
+
+@pytest.fixture
+def seen(monkeypatch, tmp_path, ov):
     """Record every Hub-facing call made by ``OmniVoice.from_pretrained``."""
     import huggingface_hub
 
@@ -50,7 +56,7 @@ def seen(monkeypatch, tmp_path):
     return calls
 
 
-def test_revision_reaches_every_hub_call(seen):
+def test_revision_reaches_every_hub_call(seen, ov):
     ov.OmniVoice.from_pretrained("k2-fsa/OmniVoice", revision=PIN)
     assert seen["model"][0]["revision"] == PIN
     assert seen["tokenizer"][0]["revision"] == PIN
@@ -58,7 +64,7 @@ def test_revision_reaches_every_hub_call(seen):
     assert [k.get("revision") for k in seen["snapshot"]] == [PIN, PIN]
 
 
-def test_local_dir_ignores_revision_and_stays_offline(seen, tmp_path):
+def test_local_dir_ignores_revision_and_stays_offline(seen, tmp_path, ov):
     local = tmp_path / "local"
     (local / "audio_tokenizer").mkdir(parents=True)
     ov.OmniVoice.from_pretrained(str(local), revision=PIN)
@@ -67,14 +73,14 @@ def test_local_dir_ignores_revision_and_stays_offline(seen, tmp_path):
     assert seen["snapshot"] == []
 
 
-def test_unpinned_custom_repo_is_unchanged(seen):
+def test_unpinned_custom_repo_is_unchanged(seen, ov):
     ov.OmniVoice.from_pretrained("org/custom")
     assert "revision" not in seen["model"][0]
     assert "revision" not in seen["tokenizer"][0]
     assert seen["snapshot"] == [{"local_files_only": True}, {}]
 
 
-def test_fallback_audio_tokenizer_is_pinned(seen):
+def test_fallback_audio_tokenizer_is_pinned(seen, ov):
     seen["snap"].joinpath("audio_tokenizer").rmdir()
     ov.OmniVoice.from_pretrained(
         "k2-fsa/OmniVoice", revision=PIN,
@@ -86,7 +92,7 @@ def test_fallback_audio_tokenizer_is_pinned(seen):
     assert seen["extractor"][0][1]["revision"] == FALLBACK_PIN
 
 
-def test_bundled_audio_tokenizer_is_a_local_path_without_revision(seen):
+def test_bundled_audio_tokenizer_is_a_local_path_without_revision(seen, ov):
     ov.OmniVoice.from_pretrained("k2-fsa/OmniVoice", revision=PIN)
     assert "revision" not in seen["audio"][0][1]
 
@@ -103,7 +109,7 @@ def test_backend_load_kwargs_follow_the_curated_pins(tmp_path, monkeypatch):
     assert omnivoice_pin_kwargs(str(tmp_path)) == {}
 
 
-def test_asr_load_is_pinned_and_local_dir_is_not(monkeypatch, tmp_path):
+def test_asr_load_is_pinned_and_local_dir_is_not(monkeypatch, tmp_path, ov):
     import sys
 
     seen = []

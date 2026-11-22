@@ -169,9 +169,9 @@ def _prefetch_weights(checkpoint: str, stop: threading.Event) -> None:
 
             from services.omnivoice_checkpoint import omnivoice_pin_kwargs  # noqa: PLC0415
 
+            # None only for an uncurated custom repo; installed files only.
             revision = omnivoice_pin_kwargs(checkpoint).get("revision")
-            pin = {"revision": revision} if revision else {}
-            root = snapshot_download(checkpoint, local_files_only=True, **pin)
+            root = snapshot_download(checkpoint, revision=revision, local_files_only=True)
         for folder, _dirs, names in os.walk(root):
             for name in sorted(names):
                 if not name.endswith(".safetensors"):
