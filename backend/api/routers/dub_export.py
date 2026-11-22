@@ -65,9 +65,13 @@ async def _preserved_background(job: dict, job_id: str, lang: str, *, prepare: b
 
     bed = _optional_dub_artifact(job.get("no_vocals_path"), job_id)
     if not bed:
-        logger.warning(
+        status = str(job.get("background_separation") or "missing")
+        # A voice-only request skipped separation on purpose (#4218): speech-only
+        # is the requested result, not a degradation worth a warning.
+        logger.log(
+            logging.INFO if status == "skipped" else logging.WARNING,
             "Job %s has no separated background (separation=%s); exporting %s speech-only",
-            log_safe(job_id), log_safe(str(job.get("background_separation") or "missing")), log_safe(lang),
+            log_safe(job_id), log_safe(status), log_safe(lang),
         )
         return None
     source = _optional_dub_artifact(job.get("video_path"), job_id) or _optional_dub_artifact(job.get("audio_path"), job_id)
