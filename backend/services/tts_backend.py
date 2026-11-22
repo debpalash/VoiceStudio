@@ -3051,7 +3051,9 @@ class MLXAudioBackend(TTSBackend):
     gpu_compat = ("mps", "cpu")
     # generate() seeds mlx's RNG from the request's seed.
     supports_generation_seed = True
-    cloning_model_keys = ("csm", "qwen3-tts-base")
+    # voxcpm2: mlx-audio's VoxCPM2.generate takes ref_audio on its own
+    # (reference-cloning mode, no transcript), verified against mlx-audio 0.5.
+    cloning_model_keys = ("csm", "qwen3-tts-base", "voxcpm2")
 
     @classmethod
     def cloning_model_labels(cls) -> tuple[str, ...]:
@@ -3228,9 +3230,19 @@ class MLXAudioBackend(TTSBackend):
             config = json.loads((Path(self._model_id) / "config.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
+        if isinstance(config, dict) and config.get("model_type") == "kokoro":
+            return "kokoro"
         if isinstance(config, dict) and config.get("model_type") == "qwen3_tts" and config.get("tts_model_type") == "base":
             return "qwen3-tts-base"
         return None
+
+    def active_preset_voices(self) -> list[str]:
+        """Preset voices of the selected model: only Kokoro ships voice packs.
+
+        ``PRESET_VOICES`` is the Kokoro roster; every other model ignores a
+        ``voice`` kwarg, so offering the roster there picks nothing (#4344).
+        """
+        return list(self.PRESET_VOICES) if self._curated_key() == "kokoro" else []
 
     def _check_language(self, language: object) -> Optional[str]:
         # Kokoro's installed tables are authoritative and accept labels such
@@ -3396,9 +3408,12 @@ class MLXAudioBackend(TTSBackend):
         # stays empty and indexing into it raises an opaque
         # "IndexError: list index out of range" deep inside mlx-audio,
         # instead of ever attempting the clone. Community-diagnosed (#1012).
-        if ref_audio:
+        # VoxCPM2 clones from the clip alone; a transcript would only add an
+        # ASR pass.
+        needs_transcript = self._curated_key() != "voxcpm2"
+        if ref_audio and needs_transcript:
             ref_text = required_reference_transcript(ref_audio, ref_text)
-        if ref_audio and ref_text: kwargs["ref_text"] = ref_text
+        if ref_audio and ref_text and needs_transcript: kwargs["ref_text"] = ref_text
         if language and language.strip() and language.strip().lower() != "auto":
             if self._model_id == self.CURATED_MODELS.get("kokoro"):
                 # Kokoro's vendored pipeline hard-asserts `lang_code` against
@@ -4340,7 +4355,7 @@ _MLX_AUDIO_MODEL_LABELS: dict[str, str] = {
     "chatterbox": "Chatterbox",
     "melotts":    "MeloTTS (lightweight)",
     "outetts":    "OuteTTS",
-    "voxcpm2":    "VoxCPM2 8-bit (30 languages, 48 kHz)",
+    "voxcpm2":    "VoxCPM2 8-bit (30 languages, 48 kHz, voice cloning)",
 }
 
 

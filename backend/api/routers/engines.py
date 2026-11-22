@@ -97,7 +97,13 @@ def _family_payload(family: str, module):
                 backend["rendered_dialects"] = tts_backend.rendered_dialects(active)
             if engine_id == active == "mlx-audio":
                 # Constructor resolves model preferences only; never loads weights.
-                backend["supports_cloning"] = tts_backend.MLXAudioBackend().supports_cloning
+                _mlx = tts_backend.MLXAudioBackend()
+                backend["supports_cloning"] = _mlx.supports_cloning
+                # Only the selected model's own voices (#4344): Kokoro's
+                # roster is meaningless under VoxCPM2, CSM, Qwen3 and the rest.
+                backend["preset_voices"] = _mlx.active_preset_voices()
+                if not backend["preset_voices"]:
+                    backend["default_voice"] = None
             if engine_id in LICENSE_GATED_ENGINES:
                 backend["license_required"] = True
                 try:
