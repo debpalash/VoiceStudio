@@ -569,6 +569,7 @@ class OmniVoice(PreTrainedModel):
         train_mode = kwargs.pop("train", False)
         load_asr = kwargs.pop("load_asr", False)
         asr_model_name = kwargs.pop("asr_model_name", _DEFAULT_ASR_MODEL)
+        asr_revision = kwargs.pop("asr_revision", None)
         # Called with the fallback repo id right before it is used; the host
         # raises there if the user has not accepted that repo's licence.
         # Fail closed: with no guard the Hub fallback is refused unless the
@@ -669,7 +670,7 @@ class OmniVoice(PreTrainedModel):
                 model.duration_estimator = RuleDurationEstimator()
 
                 if load_asr:
-                    model.load_asr_model(model_name=asr_model_name)
+                    model.load_asr_model(model_name=asr_model_name, revision=asr_revision)
         finally:
             for _lg, _lvl in _prev_levels:
                 _lg.setLevel(_lvl)
@@ -685,11 +686,13 @@ class OmniVoice(PreTrainedModel):
     # ASR support (optional, for auto-transcription)
     # -------------------------------------------------------------------
 
-    def load_asr_model(self, model_name: str = _DEFAULT_ASR_MODEL):
+    def load_asr_model(self, model_name: str = _DEFAULT_ASR_MODEL, revision=None):
         """Load a Whisper ASR model for reference audio transcription.
 
         Args:
             model_name: HuggingFace model name for the Whisper model.
+            revision: Reviewed commit SHA for a Hub repo id (the host resolves
+                it). Ignored for a local directory.
         """
         from transformers import pipeline as hf_pipeline
 
@@ -701,11 +704,13 @@ class OmniVoice(PreTrainedModel):
         asr_dtype = (
             torch.float16 if str(self.device).startswith("cuda") else torch.float32
         )
+        pin = {"revision": revision} if revision and not os.path.isdir(model_name) else {}
         self._asr_pipe = hf_pipeline(
             "automatic-speech-recognition",
             model=model_name,
             dtype=asr_dtype,
             device_map=self.device,
+            **pin,
         )
         logger.info("ASR model loaded on %s.", self.device)
         _diag(f"ASR loaded dtype={asr_dtype} device={self.device}")

@@ -99,3 +99,32 @@ def test_backend_load_kwargs_follow_the_curated_pins(tmp_path):
     }
     assert omnivoice_pin_kwargs("org/custom") == {"tokenizer_fallback_revision": FALLBACK_PIN}
     assert omnivoice_pin_kwargs(str(tmp_path)) == {}
+
+
+def test_asr_load_is_pinned_and_local_dir_is_not(monkeypatch, tmp_path):
+    import sys
+
+    seen = []
+    fake = SimpleNamespace(pipeline=lambda *a, **k: seen.append(k) or object())
+    monkeypatch.setitem(sys.modules, "transformers", fake)
+    model = ov.OmniVoice.__new__(ov.OmniVoice)
+    monkeypatch.setattr(ov.OmniVoice, "device", property(lambda self: "cpu"))
+    model.load_asr_model(revision=PIN)
+    model.load_asr_model(model_name=str(tmp_path), revision=PIN)
+    assert seen[0]["revision"] == PIN
+    assert "revision" not in seen[1]
+
+
+def test_backend_asr_pin_and_every_call_site_use_it():
+    import pathlib
+    from services.omnivoice_checkpoint import omnivoice_asr_pin_kwargs
+    from services.hf_revisions import revision_for
+
+    assert omnivoice_asr_pin_kwargs() == {"revision": revision_for("openai/whisper-large-v3-turbo")}
+    root = pathlib.Path(__file__).resolve().parents[1] / "backend"
+    sub = (root / "engines/omnivoice_subprocess/main.py").read_text(encoding="utf-8")
+    mm = (root / "services/model_manager.py").read_text(encoding="utf-8")
+    assert "omnivoice_pin_kwargs(checkpoint)" in sub and "omnivoice_asr_pin_kwargs()" in sub
+    assert "revision_for(checkpoint)" in sub  # offline weight prefetch resolves the pinned snapshot
+    assert "omnivoice_pin_kwargs(checkpoint)" in mm
+    assert "load_asr_model(**omnivoice_asr_pin_kwargs())" in mm

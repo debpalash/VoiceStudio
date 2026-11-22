@@ -2492,6 +2492,7 @@ from services import omnivoice_checkpoint as _omnivoice_checkpoint  # noqa: E402
 # Re-exported: callers and tests reach it through model_manager.
 resolve_omnivoice_checkpoint = _omnivoice_checkpoint.resolve_omnivoice_checkpoint
 omnivoice_pin_kwargs = _omnivoice_checkpoint.omnivoice_pin_kwargs
+omnivoice_asr_pin_kwargs = _omnivoice_checkpoint.omnivoice_asr_pin_kwargs
 
 
 #: CPython's exact executor-rejection message once interpreter shutdown began
@@ -2885,7 +2886,7 @@ def _load_model_sync():
             # corrupt, it must never be mistaken for the TTS checkpoint and
             # trigger a second multi-GB TTS load/re-download (CodeRabbit).
             try:
-                _model.load_asr_model()
+                _model.load_asr_model(**omnivoice_asr_pin_kwargs())
             except Exception as asr_exc:
                 if not _is_corrupt_model_file_error(asr_exc):
                     raise

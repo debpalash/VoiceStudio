@@ -81,3 +81,13 @@ def omnivoice_pin_kwargs(checkpoint: str) -> dict:
     except ValueError:
         pass
     return kwargs
+
+
+def omnivoice_asr_pin_kwargs() -> dict:
+    """``load_asr_model`` kwargs pinning the default Whisper to its reviewed revision."""
+    from services.hf_revisions import revision_for
+
+    try:
+        return {"revision": revision_for("openai/whisper-large-v3-turbo")}
+    except ValueError:
+        return {}
