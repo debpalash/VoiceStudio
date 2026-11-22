@@ -105,6 +105,8 @@ it('waits while dubbing work is running', async () => {
   state.dub = { project: null, phase: 'dubbing', recovery: null, instruct: '' };
   renderList();
   expect(await screen.findByRole('button', { name: /^Launch video/ })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'common.delete Launch video' })).toBeDisabled();
+  expect(state.readProject).not.toHaveBeenCalled();
 });
 
 it('shows the empty state when there are no dub projects yet', async () => {

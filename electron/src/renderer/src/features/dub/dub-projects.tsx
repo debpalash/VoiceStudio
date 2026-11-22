@@ -87,7 +87,8 @@ export function DubProjects({ active = true }: { active?: boolean }) {
     !!longform.active || !!dub.recovery || !['idle', 'editing', 'done'].includes(dub.phase);
 
   const remove = async () => {
-    if (!deleting || locked || opening || request.current || deletePending.current || !active) return;
+    if (!deleting || locked || opening || request.current || deletePending.current || !active)
+      return;
     const row = deleting;
     deletePending.current = true;
     setDeletingBusy(true);
@@ -173,68 +174,68 @@ export function DubProjects({ active = true }: { active?: boolean }) {
             return (
               <>
                 <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={opening !== null || deletingBusy || locked}
-                  aria-busy={opening === row.id}
-                  aria-current={active ? 'true' : undefined}
-                  onClick={() => setConfirmation(row.id)}
-                  className={cn(
-                    'flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-start outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
-                    active
-                      ? 'bg-accent/80 text-foreground'
-                      : 'text-foreground/85 hover:bg-accent/50 hover:text-foreground',
-                  )}
-                >
-                  <FilmIcon
-                    aria-hidden="true"
+                  <button
+                    type="button"
+                    disabled={opening !== null || deletingBusy || locked}
+                    aria-busy={opening === row.id}
+                    aria-current={active ? 'true' : undefined}
+                    onClick={() => setConfirmation(row.id)}
                     className={cn(
-                      'size-4 shrink-0',
-                      active ? 'text-primary' : 'text-muted-foreground',
+                      'flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-start outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+                      active
+                        ? 'bg-accent/80 text-foreground'
+                        : 'text-foreground/85 hover:bg-accent/50 hover:text-foreground',
                     )}
-                  />
-                  <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                    <span className="truncate text-[13px] font-medium">{row.name}</span>
-                    {when && (
-                      <span className="truncate text-[11px] text-muted-foreground">{when}</span>
-                    )}
-                  </span>
-                </button>
-                <Button
-                  size="icon-xs"
-                  variant="ghost"
-                  aria-label={t('common.delete') + ' ' + row.name}
-                  disabled={locked || opening !== null || deletingBusy}
-                  onClick={() => {
-                    setConfirmation(null);
-                    setError(null);
-                    setDeleting(row);
-                  }}
-                >
-                  <Trash2Icon className="size-3.5" />
-                </Button>
-              </div>
-              {confirmation === row.id && (
-                <div className="space-y-2 rounded-md bg-muted/40 p-2 text-xs">
-                  <p>{t('projectActions.open', { name: row.name })}</p>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      disabled={locked || opening !== null}
-                      onClick={() => void open(row.id)}
-                    >
-                      {t('common.confirm')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={opening !== null}
-                      onClick={() => setConfirmation(null)}
-                    >
-                      {t('common.cancel')}
-                    </Button>
-                  </div>
+                  >
+                    <FilmIcon
+                      aria-hidden="true"
+                      className={cn(
+                        'size-4 shrink-0',
+                        active ? 'text-primary' : 'text-muted-foreground',
+                      )}
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                      <span className="truncate text-[13px] font-medium">{row.name}</span>
+                      {when && (
+                        <span className="truncate text-[11px] text-muted-foreground">{when}</span>
+                      )}
+                    </span>
+                  </button>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={t('common.delete') + ' ' + row.name}
+                    disabled={locked || opening !== null || deletingBusy}
+                    onClick={() => {
+                      setConfirmation(null);
+                      setError(null);
+                      setDeleting(row);
+                    }}
+                  >
+                    <Trash2Icon className="size-3.5" />
+                  </Button>
                 </div>
+                {confirmation === row.id && (
+                  <div className="space-y-2 rounded-md bg-muted/40 p-2 text-xs">
+                    <p>{t('projectActions.open', { name: row.name })}</p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={locked || opening !== null}
+                        onClick={() => void open(row.id)}
+                      >
+                        {t('common.confirm')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={opening !== null}
+                        onClick={() => setConfirmation(null)}
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </>
             );
