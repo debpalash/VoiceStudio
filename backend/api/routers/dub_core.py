@@ -339,9 +339,19 @@ async def dub_from_srt(file: UploadFile = File(...), source_lang: Optional[str] 
         "segments": [], "dubbed_tracks": {},
     }
     replace_source_segments(job, segments)
-    with dub_pipeline._dub_jobs_lock:
-        _save_job(job_id, job, strict=True)
-        _dub_jobs[job_id] = job
+    # Exports, the per-segment speech cache and history deletion all expect a
+    # job directory; a subtitle-only job has no media to create it.
+    job_dir = _safe_job_dir(job_id)
+    if not job_dir:
+        raise HTTPException(status_code=400, detail="Invalid job id")
+    os.makedirs(job_dir, exist_ok=True)
+    try:
+        with dub_pipeline._dub_jobs_lock:
+            _save_job(job_id, job, strict=True)
+            _dub_jobs[job_id] = job
+    except BaseException:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise
     return {
         "job_id": job_id, "filename": job["filename"],
         "duration": job["duration"], "source_lang": source,

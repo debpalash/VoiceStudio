@@ -228,6 +228,9 @@ def _discover_job_artifact(path: Path, job_id: str) -> Path | None:
 
 def _dub_artifact(value: object, job_id: str, *, missing_detail: str = "File not found") -> str:
     """Resolve a persisted job artifact inside the global dub-data boundary."""
+    if not value:
+        # A subtitle-only job (POST /dub/from-srt) never had source media.
+        raise HTTPException(status_code=404, detail=missing_detail)
     try:
         resolved = _resolve_dub_artifact(value, job_id)
     except UnsafePath as exc:
@@ -803,7 +806,6 @@ async def dub_download(
     if not filtered_tracks and not include_original:
         raise HTTPException(status_code=400, detail="No tracks selected for export")
 
-    video_path = _dub_artifact(job["video_path"], job_id, missing_detail="Source video not found")
     stamp = _unique_stamp()
     exports_dir = os.path.join(job_dir, "exports")
     os.makedirs(exports_dir, exist_ok=True)
@@ -878,6 +880,10 @@ async def dub_download(
             out_path, media_type=media_type,
             headers={"Content-Disposition": content_disposition(dl_name)},
         )
+
+    # Audio jobs returned above and need no source media (a subtitle-only job
+    # has none); only the video export resolves it.
+    video_path = _dub_artifact(job.get("video_path"), job_id, missing_detail="Source video not found")
 
     # Determine whether this export should drive video through a per-segment
     # retime (legacy stretch_video Mode B, or Smart Fit). Retime is keyed off
@@ -1232,7 +1238,7 @@ async def dub_get_media(job_id: str, request: Request):
     job = _get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    video_path = _dub_artifact(job["video_path"], job_id, missing_detail="Media file not found")
+    video_path = _dub_artifact(job.get("video_path"), job_id, missing_detail="Media file not found")
     # Pass an explicit media_type. Without this Starlette falls back to
     # mimetypes.guess_type, which on some platforms returns the wrong
     # MIME (e.g. "application/octet-stream" for .mkv), and the Tauri
