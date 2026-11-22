@@ -54,3 +54,30 @@ def resolve_omnivoice_checkpoint() -> str:
         checkpoint, _DEFAULT_OMNIVOICE_CHECKPOINT,
     )
     return _DEFAULT_OMNIVOICE_CHECKPOINT
+
+
+_AUDIO_TOKENIZER_FALLBACK_REPO = "eustlb/higgs-audio-v2-tokenizer"
+
+
+def omnivoice_pin_kwargs(checkpoint: str) -> dict:
+    """Reviewed-revision kwargs for ``OmniVoice.from_pretrained(checkpoint)``.
+
+    A curated repo id gets its pinned ``revision`` so a model (re)load can never
+    follow the Hub's moving ``main`` (2026-11-21 GPU node outage). A local
+    directory or an unpinned custom repo gets none and loads as before. The
+    fallback audio tokenizer repo is pinned independently.
+    """
+    from services.hf_revisions import revision_for
+
+    if os.path.isdir(checkpoint):
+        return {}
+    kwargs: dict = {}
+    try:
+        kwargs["revision"] = revision_for(checkpoint)
+    except ValueError:
+        pass
+    try:
+        kwargs["tokenizer_fallback_revision"] = revision_for(_AUDIO_TOKENIZER_FALLBACK_REPO)
+    except ValueError:
+        pass
+    return kwargs
