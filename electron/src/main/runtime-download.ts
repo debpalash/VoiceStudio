@@ -32,15 +32,26 @@ export function setupProxyForUrl(raw: string, env: NodeJS.ProcessEnv): string {
     .split(/[,\s]+/)
     .filter(Boolean)) {
     if (entry === '*') return '';
-    const match = /^(.*):(\d+)$/.exec(entry);
+    // A trailing `:port` is a port qualifier only when the host part is
+    // unambiguous: a bracketed IPv6 (`[::1]:8443`) or a colon-free host
+    // (`example.test:8443`). In a bare IPv6 address (`::1`, `fe80::1`) the
+    // tail digits are part of the address — downloadProxyEnv injects bare
+    // `::1` into NO_PROXY, so treating it as host+port skipped the entry
+    // for every target port and proxied loopback traffic.
+    const portQualified = /^\[[^\]]*\]:\d+$/.test(entry) || /^[^:]+:\d+$/.test(entry);
+    const match = portQualified ? /^(.*):(\d+)$/.exec(entry) : null;
     if (match && match[2] !== port) continue;
     const host = match?.[1] ?? entry;
     if (entry.includes('/') && inCidr(url.hostname, entry)) return '';
-    const suffix = host.replace(/^\*/, '');
+    // IPv6 entries match the hostname either way a URL may spell it: the
+    // WHATWG URL keeps brackets (`[::1]`), NO_PROXY commonly does not.
+    const bareHostname = url.hostname.replace(/^\[/, '').replace(/\]$/, '');
+    const entryHost = host.replace(/^\[/, '').replace(/\]$/, '');
+    const suffix = entryHost.replace(/^\*/, '');
     if (
-      url.hostname === host ||
-      (host.startsWith('.') && url.hostname === host.slice(1)) ||
-      (/^[.*]/.test(host) && url.hostname.endsWith(suffix))
+      bareHostname === entryHost ||
+      (entryHost.startsWith('.') && bareHostname === entryHost.slice(1)) ||
+      (/^[.*]/.test(entryHost) && bareHostname.endsWith(suffix))
     )
       return '';
   }
