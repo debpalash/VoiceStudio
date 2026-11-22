@@ -503,7 +503,28 @@ export function translationLaunchArgs(agent: RepairAgentId): string[] {
   ];
 }
 
-export function agentProviderFailure(output: string): Error | null {
+/**
+ * Codex reports provider failures as plain diagnostic log lines on stderr, not
+ * JSON events on stdout. It also echoes the prompt into that same stderr
+ * session log, so log patterns are only matched on diagnostic lines (those
+ * starting with a timestamp + ERROR or with the word error at the start).
+ */
+const PROVIDER_DIAGNOSTIC_LINE = /^\s*(?:\S+\s+)?(?:ERROR|error)\b/;
+const AUTH_FAILURE_LOG =
+  /401 Unauthorized|HTTP 401|invalid_refresh_token|invalid_jwt|Failed to refresh token|Please log out and sign in again|Could not find the appropriate key in your authentication token/i;
+const RATE_LIMIT_FAILURE_LOG = /\b429\b|rate.?limit|too many requests/i;
+const MODEL_FAILURE_LOG =
+  /HTTP 404|unknown model|model_not_found|model is not supported|not supported when using codex/i;
+const PROVIDER_FAILURE_MESSAGES: Record<string, string> = {
+  AgentAuthenticationError:
+    'The agent account is signed out or its login has expired (401). Sign in to the agent CLI again, or choose a different translation agent.',
+  AgentRateLimitError:
+    'The agent provider rate-limited the request (429). Wait a moment and retry.',
+  AgentModelError:
+    'The agent provider rejected the requested model (model not found). Update the agent CLI, sign in again, or choose a different translation agent.',
+};
+
+export function agentProviderFailure(output: string, stderr = ''): Error | null {
   for (const line of output.split(/\r?\n/)) {
     try {
       const event = JSON.parse(line);
@@ -514,10 +535,20 @@ export function agentProviderFailure(output: string): Error | null {
         name = 'AgentAuthenticationError';
       else if (status === 429) name = 'AgentRateLimitError';
       else if (status === 404) name = 'AgentModelError';
-      if (name) return Object.assign(new Error('Agent provider rejected the request'), { name });
+      if (name)
+        return Object.assign(new Error(PROVIDER_FAILURE_MESSAGES[name]), { name });
     } catch {
       /* Non-JSON progress is not a provider error. */
     }
+  }
+  for (const line of stderr.split(/\r?\n/)) {
+    if (!PROVIDER_DIAGNOSTIC_LINE.test(line)) continue;
+    let name = '';
+    if (AUTH_FAILURE_LOG.test(line)) name = 'AgentAuthenticationError';
+    else if (RATE_LIMIT_FAILURE_LOG.test(line)) name = 'AgentRateLimitError';
+    else if (MODEL_FAILURE_LOG.test(line)) name = 'AgentModelError';
+    if (name)
+      return Object.assign(new Error(PROVIDER_FAILURE_MESSAGES[name]), { name });
   }
   return null;
 }
@@ -967,6 +998,7 @@ export async function registerRepairAgents(
       );
     }
     let output = '';
+    let outputErr = '';
     const stdoutDecoder = new StringDecoder('utf8');
     const stderrDecoder = new StringDecoder('utf8');
     let pendingLog = '';
@@ -983,6 +1015,7 @@ export async function registerRepairAgents(
     };
     const append = (text: string, stdout = true) => {
       if (stdout) output = (output + text).slice(-MAX_TRANSLATION_OUTPUT);
+      else outputErr = (outputErr + text).slice(-MAX_TRANSLATION_OUTPUT);
       pendingLog = (pendingLog + text).slice(-250_000);
       if (!logTimer) logTimer = setTimeout(flushLog, 100);
     };
@@ -1027,13 +1060,26 @@ export async function registerRepairAgents(
         );
         translationChild.on('close', (code) =>
           finish(() => {
-            const providerFailure = agentProviderFailure(output);
+            const providerFailure = agentProviderFailure(output, outputErr);
             if (providerFailure) {
               rejectPromise(providerFailure);
               return;
             }
             if (code !== 0) {
-              rejectPromise(new Error(`Agent translation failed (exit code ${code ?? 'unknown'})`));
+              const tail = (outputErr || output)
+                .trim()
+                .split(/\r?\n/)
+                .filter(Boolean)
+                .slice(-10)
+                .join('\n')
+                .slice(-1600);
+              rejectPromise(
+                new Error(
+                  `Agent translation failed (exit code ${code ?? 'unknown'})${
+                    tail ? ` — last agent output:\n${tail}` : ''
+                  }`,
+                ),
+              );
               return;
             }
             try {

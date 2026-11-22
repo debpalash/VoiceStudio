@@ -39,6 +39,51 @@ describe('packaged app repair sessions', () => {
     );
     expect(agentProviderFailure('{"translations":[{"id":"reply","text":"ok"}]}')).toBeNull();
   });
+  it('classifies codex-style stderr provider failures without matching echoed prompts', () => {
+    expect(
+      agentProviderFailure(
+        '',
+        '2026-11-22T14:58:30.097789Z ERROR codex_login::auth::manager: Failed to refresh token: 401 Unauthorized: {"error":{"code":"invalid_refresh_token"}}',
+      )?.name,
+    ).toBe('AgentAuthenticationError');
+    expect(
+      agentProviderFailure(
+        '',
+        '2026-11-22T14:58:31.750435Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://chatgpt.com/backend-api/codex/responses',
+      )?.name,
+    ).toBe('AgentAuthenticationError');
+    expect(
+      agentProviderFailure(
+        '',
+        '2026-11-22T14:58:31.684262Z ERROR rmcp::transport::worker: worker quit with fatal: UnexpectedServerResponse("HTTP 429: Too Many Requests")',
+      )?.name,
+    ).toBe('AgentRateLimitError');
+    expect(
+      agentProviderFailure(
+        '',
+        '2026-11-22T14:58:31.684262Z ERROR codex_models_manager::manager: failed to refresh available models: unknown model gpt-404 (HTTP 404)',
+      )?.name,
+    ).toBe('AgentModelError');
+    expect(
+      agentProviderFailure(
+        '',
+        'ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-5.5\' model is not supported when using Codex with a ChatGPT account.","code":"model_not_found"}}',
+      )?.name,
+    ).toBe('AgentModelError');
+    expect(
+      agentProviderFailure(
+        '{"type":"error","error":{"data":{"statusCode":401}}}',
+        '',
+      )?.message,
+    ).toContain('signed out');
+    // The echoed dialogue prompt is not a diagnostic line and must not classify.
+    expect(
+      agentProviderFailure(
+        '',
+        'user\nYou are a translation agent. Translate {"segments":[{"id":"1","sourceText":"Please log out and sign in again","targetSeconds":2}]}',
+      ),
+    ).toBeNull();
+  });
   it('contains prompt pipe closures instead of raising uncaught process errors', () => {
     const stdin = new EventEmitter();
     const stdout = new EventEmitter();
