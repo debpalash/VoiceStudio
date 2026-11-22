@@ -91,8 +91,10 @@ def test_bundled_audio_tokenizer_is_a_local_path_without_revision(seen):
     assert "revision" not in seen["audio"][0][1]
 
 
-def test_backend_load_kwargs_follow_the_curated_pins(tmp_path):
+def test_backend_load_kwargs_follow_the_curated_pins(tmp_path, monkeypatch):
     from services.omnivoice_checkpoint import omnivoice_pin_kwargs
+
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty-cache"))  # fresh install
 
     assert omnivoice_pin_kwargs("k2-fsa/OmniVoice") == {
         "revision": PIN, "tokenizer_fallback_revision": FALLBACK_PIN,
@@ -115,16 +117,35 @@ def test_asr_load_is_pinned_and_local_dir_is_not(monkeypatch, tmp_path):
     assert "revision" not in seen[1]
 
 
-def test_backend_asr_pin_and_every_call_site_use_it():
+def test_backend_asr_pin_and_every_call_site_use_it(tmp_path, monkeypatch):
     import pathlib
     from services.omnivoice_checkpoint import omnivoice_asr_pin_kwargs
     from services.hf_revisions import revision_for
 
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty-cache"))  # fresh install
     assert omnivoice_asr_pin_kwargs() == {"revision": revision_for("openai/whisper-large-v3-turbo")}
     root = pathlib.Path(__file__).resolve().parents[1] / "backend"
     sub = (root / "engines/omnivoice_subprocess/main.py").read_text(encoding="utf-8")
     mm = (root / "services/model_manager.py").read_text(encoding="utf-8")
     assert "omnivoice_pin_kwargs(checkpoint)" in sub and "omnivoice_asr_pin_kwargs()" in sub
-    assert "revision_for(checkpoint)" in sub  # offline weight prefetch resolves the pinned snapshot
+    # The offline weight prefetch resolves the same installed-or-pinned snapshot.
+    assert 'omnivoice_pin_kwargs(checkpoint).get("revision")' in sub
     assert "omnivoice_pin_kwargs(checkpoint)" in mm
     assert "load_asr_model(**omnivoice_asr_pin_kwargs())" in mm
+
+
+def test_an_existing_cache_keeps_its_installed_revision(tmp_path, monkeypatch):
+    """Backward compatibility: a user who already has an OmniVoice snapshot
+    (recorded in ``refs/main`` by an older install) keeps loading it offline,
+    with no multi-GB re-download to the curated pin."""
+    from services.omnivoice_checkpoint import omnivoice_asr_pin_kwargs, omnivoice_pin_kwargs
+
+    installed = "1" * 40
+    cache = tmp_path / "hub"
+    for repo in ("models--k2-fsa--OmniVoice", "models--openai--whisper-large-v3-turbo"):
+        refs = cache / repo / "refs"
+        refs.mkdir(parents=True)
+        (refs / "main").write_text(installed, encoding="ascii")
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
+    assert omnivoice_pin_kwargs("k2-fsa/OmniVoice")["revision"] == installed
+    assert omnivoice_asr_pin_kwargs() == {"revision": installed}

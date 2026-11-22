@@ -167,12 +167,10 @@ def _prefetch_weights(checkpoint: str, stop: threading.Event) -> None:
         else:
             from huggingface_hub import snapshot_download  # noqa: PLC0415
 
-            from services.hf_revisions import revision_for  # noqa: PLC0415
+            from services.omnivoice_checkpoint import omnivoice_pin_kwargs  # noqa: PLC0415
 
-            try:
-                pin = {"revision": revision_for(checkpoint)}
-            except ValueError:
-                pin = {}
+            revision = omnivoice_pin_kwargs(checkpoint).get("revision")
+            pin = {"revision": revision} if revision else {}
             root = snapshot_download(checkpoint, local_files_only=True, **pin)
         for folder, _dirs, names in os.walk(root):
             for name in sorted(names):

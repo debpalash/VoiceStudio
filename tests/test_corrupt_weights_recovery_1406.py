@@ -400,7 +400,7 @@ def test_a_damaged_asr_shard_does_not_re_download_the_tts_model(mm, monkeypatch)
     class _Model:
         llm = loaded
 
-        def load_asr_model(self):
+        def load_asr_model(self, **_pin):
             raise _SafetensorError(REPORTED)
 
     def _load_tts_once(*a, **kw):

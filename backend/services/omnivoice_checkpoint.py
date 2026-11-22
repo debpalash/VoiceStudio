@@ -66,28 +66,38 @@ def omnivoice_pin_kwargs(checkpoint: str) -> dict:
     follow the Hub's moving ``main`` (2026-11-21 GPU node outage). A local
     directory or an unpinned custom repo gets none and loads as before. The
     fallback audio tokenizer repo is pinned independently.
-    """
-    from services.hf_revisions import revision_for
 
+    The revision is the one this machine already installed (VoiceStudio's
+    marker, else the cache's recorded ``refs/main``), falling back to the
+    curated pin only for a fresh install: an existing cache keeps loading the
+    bytes the user has, offline and with no re-download (CLAUDE.md backward
+    compatibility), while nothing follows the Hub's moving ``main`` again.
+    """
     if os.path.isdir(checkpoint):
         return {}
     kwargs: dict = {}
-    try:
-        kwargs["revision"] = revision_for(checkpoint)
-    except ValueError:
-        pass
-    try:
-        kwargs["tokenizer_fallback_revision"] = revision_for(_AUDIO_TOKENIZER_FALLBACK_REPO)
-    except ValueError:
-        pass
+    revision = _pinned_revision(checkpoint)
+    if revision:
+        kwargs["revision"] = revision
+    revision = _pinned_revision(_AUDIO_TOKENIZER_FALLBACK_REPO)
+    if revision:
+        kwargs["tokenizer_fallback_revision"] = revision
     return kwargs
+
+
+def _pinned_revision(repo_id: str) -> "str | None":
+    """Installed revision of a curated repo, else its pin; None if uncurated."""
+    from services.hf_revisions import installed_revision
+
+    try:
+        from services.hf_cache_repair import hf_cache_home
+
+        return installed_revision(repo_id, hf_cache_home())
+    except (OSError, ValueError):
+        return None
 
 
 def omnivoice_asr_pin_kwargs() -> dict:
     """``load_asr_model`` kwargs pinning the default Whisper to its reviewed revision."""
-    from services.hf_revisions import revision_for
-
-    try:
-        return {"revision": revision_for("openai/whisper-large-v3-turbo")}
-    except ValueError:
-        return {}
+    revision = _pinned_revision("openai/whisper-large-v3-turbo")
+    return {"revision": revision} if revision else {}
