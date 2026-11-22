@@ -79,7 +79,7 @@ def capture(cache_dir: str, repo_ids: Iterable[str]) -> CacheSnapshot:
             state.entries[root] = _walk(root) if existed else set()
         repo_dir = _roots(snapshot.cache_dir, repo_id)[0]
         for rel in state.entries[repo_dir]:
-            if rel == "voicestudio-revision" or rel.startswith("refs" + os.sep):
+            if rel in ("voicestudio-revision", "voicestudio-installing") or rel.startswith("refs" + os.sep):
                 path = os.path.join(repo_dir, rel)
                 try:
                     if os.path.isfile(path) and os.path.getsize(path) <= _MARKER_LIMIT:
