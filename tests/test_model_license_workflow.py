@@ -237,6 +237,24 @@ class WorkflowTests(unittest.TestCase):
         self.install(q)
         self.service.verify_installed(q["plan_digest"], self.fetch)
 
+    def test_adding_unrelated_model_keeps_pre_pr_receipt_valid(self):
+        p = self.prepare(); old = self.commit(p); self.install(p)
+        old_digest = old["registry_digest"]
+
+        other = copy.deepcopy(self.registry["models"][0])
+        other["id"] = "fixture/new-drama3-model"
+        self.registry["models"].append(other)
+
+        q = self.prepare()
+        self.assertNotEqual(q["registry_digest"], old_digest)
+        self.assertEqual(p["plan_digest"], q["plan_digest"])
+        self.assertEqual(old, self.commit(q))
+
+        exported = self.service.export(p["plan_digest"])
+        self.assertEqual(exported["receipt"]["registry_digest"], old_digest)
+        verified = self.service.verify_installed(p["plan_digest"], self.fetch)
+        self.assertEqual(verified["status"], "verified")
+
     def test_removal_requires_review_again_preserves_files(self):
         p = self.prepare(); self.commit(p); self.install(p)
         self.service.remove(p["plan_digest"])
@@ -358,7 +376,7 @@ class ProductionTests(unittest.TestCase):
 
     def test_production_rows_never_use_synthetic_positive_fixtures(self):
         registry = ml.load_registry()
-        self.assertEqual(len(registry["models"]), 73)
+        self.assertEqual(len(registry["models"]), 74)
         self.assertEqual(len(registry["dynamic_assets"]), 7)
         for row in registry["models"]:
             self.assertEqual(row["component_closure"], "incomplete")

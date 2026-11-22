@@ -44,8 +44,8 @@ which is a property of the bar, not a judgement of the contributor.
    non-commercial or uncleared assets on the backend unless the necessary
    rights are obtained. The application licence does not grant model or output
    rights. Existing integrations also need this audit; the controls remain
-   tracked in #2587. The previously approved `audiocpp` / Breeze-TTS-2 exception
-   remains restricted and stewarded by `@debpalash`.
+   tracked in #2587. The previously approved `audiocpp` / Breeze-TTS-2 and `audiocpp-drama3` / Fish Audio Drama 3 (#3129) exceptions
+   remain restricted (gated on first-use per-model licence acceptance via `services.model_acceptance`) and stewarded by `@debpalash`.
 3. **Every platform, or explicitly opt-in.** macOS (Apple Silicon and Intel),
    Windows, Linux. A CPU path is required — an engine that only runs on one
    accelerator is fine, but it must degrade rather than break, and a

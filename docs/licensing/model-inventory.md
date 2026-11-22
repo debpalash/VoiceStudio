@@ -101,3 +101,5 @@ Complete upstream evidence, selected-component closure, redistribution notices,
 provider-specific access handling and integration at all runtime boundaries
 remain unimplemented requirements, not properties of this preview.
 
+
+| `Jmica/Drama-3-GGUF` | `audiocpp-drama3` | `fish-audio-community-license-v1.0` | `unreviewed` | Built with Fish Audio — `fishaudio/drama-3` GGUF (`Q3_K_S`, ~18.93 GiB) |

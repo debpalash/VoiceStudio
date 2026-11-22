@@ -8,7 +8,7 @@
       "license": "CC-BY-NC (version unspecified); Higgs Audio 2; Meta Llama 3",
       "commercial_use": false,
       "review_status": "noncommercial",
-      "credit": "OmniVoice \u2014 Han Zhu and coauthors; tokenizer by Boson AI / Meta",
+      "credit": "OmniVoice — Han Zhu and coauthors; tokenizer by Boson AI / Meta",
       "source_url": "https://huggingface.co/k2-fsa/OmniVoice",
       "evidence_url": "https://huggingface.co/k2-fsa/OmniVoice/blob/c5fdb5ccb189668d56333f77ba2629f4cd7535f4/README.md",
       "revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
@@ -1180,7 +1180,7 @@
       "license": "CC-BY-NC-4.0",
       "commercial_use": false,
       "review_status": "noncommercial",
-      "credit": "NLLB-200 \u2014 Meta AI",
+      "credit": "NLLB-200 — Meta AI",
       "source_url": "https://huggingface.co/facebook/nllb-200-distilled-600M",
       "evidence_url": "https://huggingface.co/facebook/nllb-200-distilled-600M/blob/f8d333a098d19b4fd9a8b18f94170487ad3f821d/README.md",
       "revision": "f8d333a098d19b4fd9a8b18f94170487ad3f821d",
@@ -2139,7 +2139,7 @@
       "license": "CC-BY-NC-4.0; Higgs Audio 2; Meta Llama 3",
       "commercial_use": false,
       "review_status": "noncommercial",
-      "credit": "OmniVoice \u2014 Han Zhu and coauthors; GGUF conversion by Serveurperso; tokenizer by Boson AI / Meta",
+      "credit": "OmniVoice — Han Zhu and coauthors; GGUF conversion by Serveurperso; tokenizer by Boson AI / Meta",
       "source_url": "https://huggingface.co/Serveurperso/OmniVoice-GGUF",
       "evidence_url": "https://huggingface.co/Serveurperso/OmniVoice-GGUF/blob/017094167b5c9ed565a5076ac9b3b93c5ecf5c73/README.md",
       "revision": "017094167b5c9ed565a5076ac9b3b93c5ecf5c73",
@@ -3073,7 +3073,7 @@
       "license": "mit",
       "commercial_use": false,
       "review_status": "unreviewed",
-      "credit": "OpenAI \u2014 Whisper large-v3-turbo",
+      "credit": "OpenAI — Whisper large-v3-turbo",
       "source_url": "https://huggingface.co/openai/whisper-large-v3-turbo",
       "evidence_url": "https://huggingface.co/openai/whisper-large-v3-turbo/blob/41f01f3fe87f28c78e2fbf8b568835947dd65ed9/README.md",
       "revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
@@ -3785,6 +3785,31 @@
           "lexicon.txt"
         ]
       }
+    },
+    {
+      "id": "Jmica/Drama-3-GGUF",
+      "license": "fish-audio-community-license-v1.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Built with Fish Audio — fishaudio/drama-3 (GGUF repack: Jmica/Drama-3-GGUF)",
+      "source_url": "https://huggingface.co/Jmica/Drama-3-GGUF/blob/060acc8e5d9e5d16baf647c775dfe1a1438f5f35/drama-3-backbone-8bit-experts-Q3_K_S.gguf",
+      "evidence_url": "https://huggingface.co/Jmica/Drama-3-GGUF/blob/060acc8e5d9e5d16baf647c775dfe1a1438f5f35/README.md",
+      "revision": "060acc8e5d9e5d16baf647c775dfe1a1438f5f35",
+      "engines": [
+        "audiocpp-drama3"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Self-contained Q3_K_S GGUF quantization of Fish Audio Drama 3 (35B-A3B MoE) with tokenizer and 44.1 kHz Fish DAC codec. Derivative of fishaudio/drama-3 under Fish Audio Community License v1.0 (attribution 'Built with Fish Audio' required; free for research/non-commercial use; review terms before commercial use).",
+      "runtime_revision": "060acc8e5d9e5d16baf647c775dfe1a1438f5f35",
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": "backend/engines/audiocpp/bootstrap.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "restricted",
+      "commercial_outputs": "restricted",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown"
     }
   ],
   "dynamic_assets": [
