@@ -151,7 +151,7 @@ same. While it runs in the background it shows its tray (menu bar) icon.
   progress goes to stderr, a failed or cancelled task exits 1, and Ctrl+C also
   stops the task. `dub generate --output FILE` saves the dubbed audio track.
 - `models install` and `models license accept` list every licence the model
-  needs (OmniVoice also needs the Higgs audio tokenizer's) and accept them all
+  needs (OmniVoice also needs the Higgs audio tokenizer's only if its installed copy lacks the bundled tokenizer) and accept them all
   only with `--accept-license`.
 
 The app publishes its backend address in `backend.json` in its user-data folder,

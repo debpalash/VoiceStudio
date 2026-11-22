@@ -80,7 +80,8 @@ def test_revoke_blocks_again(store):
         ma.ensure_accepted(["k2-fsa/OmniVoice"])
 
 
-def test_error_lists_every_unaccepted_model_with_structured_detail(store):
+def test_error_lists_every_unaccepted_model_with_structured_detail(store, monkeypatch):
+    monkeypatch.setattr(ma, "omnivoice_tokenizer_fallback_needed", lambda: True)
     with pytest.raises(ma.ModelLicenceNotAccepted) as err:
         ma.ensure_engine_accepted("omnivoice")
     detail = err.value.detail()
