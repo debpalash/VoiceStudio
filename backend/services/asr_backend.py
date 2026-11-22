@@ -4530,16 +4530,11 @@ def _select_capture_asr_backend(*, skip_sherpa: bool) -> ASRBackend:
         # PyTorch weights would keep being served after the install, and the
         # (uncached) preflight would name the GPU repo while dictation stayed on
         # CTranslate2. Same reasoning as the parakeet gate above.
-        pytorch_model = _rocm_capture_pytorch_model()
-        # _gpu_probe_skipped() is asked before _cuda_reported_available(), which
-        # initialises the driver a "restart on CPU" recovery is avoiding (#4006).
         # The resolved model is part of the key as well, so repinning
-        # OMNIVOICE_PYTORCH_ASR_MODEL rebuilds the singleton.
-        rocm_pytorch = (_rocm_torch() and not _gpu_probe_skipped()
-                        and _cuda_reported_available()
-                        and not _ctranslate2_cuda_ok()
-                        and _rocm_capture_pick() is not None
-                        and _probe_available(PyTorchWhisperBackend))
+        # OMNIVOICE_PYTORCH_ASR_MODEL or a fit change rebuilds the singleton.
+        rocm_pick = _rocm_capture_gpu_pick()
+        rocm_pytorch = rocm_pick is not None
+        pytorch_model = rocm_pick or _rocm_capture_pytorch_model()
         auto_key = (
             f"auto:parakeet={int(prefer_parakeet)};rocm-pytorch={int(rocm_pytorch)}"
             f";pytorch={pytorch_model if _rocm_torch() else ''}"
@@ -4691,18 +4686,33 @@ def _rocm_capture_pick() -> str | None:
 def _rocm_capture_pytorch_model() -> str:
     """The PyTorch Whisper checkpoint the ROCm capture pick verifies and loads.
 
-    The fit-chosen installed checkpoint (:func:`_rocm_capture_pick`), else the
-    curated large-v3 repo so naming stays catalogue-backed (the download CTA and
-    last-resort loader). Being on disk and fitting are separate gates at the
-    call sites, so an uninstalled host keeps the preflighted CTranslate2 pick
-    rather than starting a multi-GB download (see
+    The pin, else the curated large-v3 repo, so naming stays catalogue-backed
+    for the last-resort loader. It never probes the GPU; the fit-chosen
+    installed checkpoint comes from :func:`_rocm_capture_gpu_pick`. Being on
+    disk and fitting are separate gates there, so an uninstalled host keeps the
+    preflighted CTranslate2 pick rather than starting a multi-GB download (see
     :func:`asr_model_missing_error` on why this repo is outside the CTA).
     """
-    return (
-        os.environ.get("OMNIVOICE_PYTORCH_ASR_MODEL")
-        or _rocm_capture_pick()
-        or _ROCM_CAPTURE_PYTORCH_REPO
-    )
+    return os.environ.get("OMNIVOICE_PYTORCH_ASR_MODEL") or _ROCM_CAPTURE_PYTORCH_REPO
+
+
+def _rocm_capture_gpu_pick() -> str | None:
+    """The checkpoint the ROCm/HIP capture tier loads, or ``None`` to skip it.
+
+    One evaluation shared by the picker and the dictation preflight, so both
+    name the same repo. The cheap host gates run first and the VRAM probe in
+    :func:`_rocm_capture_pick` only after them: ``_gpu_probe_skipped()`` is
+    asked before anything touches the driver a "restart on CPU" recovery is
+    avoiding (#4006), and non-ROCm hosts never probe at all.
+    """
+    if not (_rocm_torch() and not _gpu_probe_skipped()
+            and _cuda_reported_available()
+            and not _ctranslate2_cuda_ok()):
+        return None
+    pick = _rocm_capture_pick()
+    if pick is None or not _probe_available(PyTorchWhisperBackend):
+        return None
+    return pick
 
 
 def faster_whisper_model_id() -> str:
@@ -4846,13 +4856,10 @@ def _capture_whisper_repo() -> str | None:
     # Mirrors the picker's ROCm/HIP step: stock CTranslate2 has no GPU path
     # there (#1529), so the preflight must name the torch-native repo the
     # picker will actually load (#4317) instead of the CTranslate2 one.
+    rocm_pick = _rocm_capture_gpu_pick()
+    if rocm_pick is not None:
+        return rocm_pick
     pytorch_model = _rocm_capture_pytorch_model()
-    if (_rocm_torch() and not _gpu_probe_skipped()
-            and _cuda_reported_available()
-            and not _ctranslate2_cuda_ok()
-            and _rocm_capture_pick() is not None
-            and _probe_available(PyTorchWhisperBackend)):
-        return pytorch_model
     ok, _ = FasterWhisperBackend.is_available()
     if ok:
         # An unrecognized-but-valid alias (a name faster_whisper itself can

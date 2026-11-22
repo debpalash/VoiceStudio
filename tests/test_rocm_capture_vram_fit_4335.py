@@ -91,3 +91,19 @@ def test_loaded_backend_keeps_its_checkpoint_after_it_consumes_vram(ab, monkeypa
     first = ab._select_capture_asr_backend(skip_sherpa=True)
     _host(ab, monkeypatch, installed={LARGE}, free_gb=0.5)  # its own weights now
     assert ab._select_capture_asr_backend(skip_sherpa=True) is first
+
+
+@pytest.mark.parametrize("gate", ["_gpu_probe_skipped", "_rocm_torch"])
+def test_vram_probe_never_runs_when_the_rocm_tier_is_gated_off(ab, monkeypatch, gate):
+    # The probe initialises the driver a "restart on CPU" recovery avoids
+    # (#4006), and non-ROCm hosts must not pay for it at all.
+    _host(ab, monkeypatch, installed={LARGE, TURBO}, free_gb=8.0)
+
+    probes = []
+    sys.modules["torch"].cuda.mem_get_info = lambda: probes.append(1) or (0, 0)
+    monkeypatch.setattr(ab, gate, (lambda: True) if gate == "_gpu_probe_skipped"
+                        else (lambda: False))
+    be = ab._select_capture_asr_backend(skip_sherpa=True)
+    assert isinstance(be, ab.FasterWhisperBackend)
+    ab._capture_whisper_repo()
+    assert probes == []  # the probe's fail-open would hide a raise
