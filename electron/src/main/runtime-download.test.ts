@@ -31,6 +31,14 @@ it('resolves protocols, suffixes, ports, IPv6 and credential-bearing proxies', (
     'http://localhost:3128',
   );
 });
+it('honours the bare-IPv6 NO_PROXY entries downloadProxyEnv itself injects', () => {
+  // proxy-env.ts always appends bare `::1` (and `localhost`, `127.0.0.1`) to
+  // NO_PROXY before handing the env to this parser.
+  const env = { HTTPS_PROXY: 'http://proxy:1080', NO_PROXY: 'localhost,127.0.0.1,::1' };
+  expect(setupProxyForUrl('https://[::1]/setup', env)).toBe('');
+  expect(setupProxyForUrl('https://[fe80::1]/setup', { ...env, NO_PROXY: 'fe80::1' })).toBe('');
+  expect(setupProxyForUrl('https://public.test', env)).toBe('http://proxy:1080');
+});
 function reply(status: number, body: string, location?: string) {
   vi.mocked(get).mockImplementationOnce(((_url, _options, callback) => {
     const request = new EventEmitter();
