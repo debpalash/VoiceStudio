@@ -3359,7 +3359,8 @@
     "denoise": "Referans gürültüsünü temizle",
     "polish": "Üretilen sesi iyileştir",
     "basics": "1× normal hızdır. Doğal zamanlama için süreyi boş bırakın.",
-    "hint": "Genellikle varsayılanları koruyun. Yönlendirme istemin etkisini ayarlar; diğer kontroller modelin sesi oluşturma şeklini değiştirir. Her seferinde birini değiştirin."
+    "hint": "Genellikle varsayılanları koruyun. Yönlendirme istemin etkisini ayarlar; diğer kontroller modelin sesi oluşturma şeklini değiştirir. Her seferinde birini değiştirin.",
+    "pauses_hint": "Boş satırlarda sessizlik ekler. 0, motorun kendi temposunu korur."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} için tek bir {{language}} modeli var, bu yüzden aksan referans sesi izler.",

@@ -3359,7 +3359,8 @@
     "denoise": "Ruído de referencia limpo",
     "polish": "Audio xerado polaco",
     "basics": "1× é a velocidade normal. Deixa a duración en branco para o tempo natural.",
-    "hint": "Normalmente deixa estes predeterminado. A orientación axusta a influencia inmediata; os outros controis cambian como o modelo constrúe o son. Cambia un a un."
+    "hint": "Normalmente deixa estes predeterminado. A orientación axusta a influencia inmediata; os outros controis cambian como o modelo constrúe o son. Cambia un a un.",
+    "pauses_hint": "Engade silencio nas liñas en branco. 0 mantén o ritmo propio do motor."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} ten un modelo {{language}}, polo que o acento segue a voz de referencia.",

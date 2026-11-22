@@ -12,6 +12,8 @@ ignores.
 | You want | Do this | Works on |
 |---|---|---|
 | A pause | Type `[pause]`, `[pause 500ms]`, or `[pause 1.5s]` in the text | Every engine |
+| A pause between paragraphs | **Voice controls → Silence between paragraphs** (or `paragraph_gap_ms` on `/generate` and MCP `generate_speech`). See [Paragraph gaps](#paragraph-gaps) | Every engine |
+| A slower, faster or emphasized phrase | `[slow]…[/slow]`, `[fast]…[/fast]`, `[emphasis]…[/emphasis]`, `[spell]…[/spell]` in the text | Every engine |
 | Laughter or a sigh | ⊕ Insert → `[laughter]` / `[sigh]` | Default engine (VoiceStudio), CosyVoice 3 (`[laughter]`) |
 | An audible breath **on demand** | ⊕ Insert → `[breath]` | CosyVoice 3 only (opt-in) — see [Breaths](#breaths-specifically) |
 | Whispering | Style → `whisper` (the voice-design/style field) | Default engine |
@@ -75,6 +77,32 @@ lists the reaction tags its tokenizer renders.
   longer cuts out at every pause. It is derived from the generated take, needs
   no model, is reproducible, and falls back to silence when the take has no
   usable quiet floor. Long-text chunk joins are not changed.
+- **SSML-lite tags** — `[slow]…[/slow]` (0.85× speed), `[fast]…[/fast]`
+  (1.15×), `[emphasis]…[/emphasis]` (a gentle 0.92× slow-down) and
+  `[spell]…[/spell]` (letter by letter) work on the Voice page, `/generate`,
+  MCP `generate_speech`, Audiobook and Stories. The speed multiplies the take's
+  own speed. A tagged run is its own engine call, joined with no gap, so tag a
+  whole phrase or sentence rather than one word inside it. Tags are never read
+  aloud.
+
+### Paragraph gaps
+
+Long narration in one take can run topic changes together: the engine decides
+the pacing. **Voice controls** (the sliders button beside Synthesize) has
+**Silence between paragraphs** and **Remove engine edge silence**; the API
+fields are `paragraph_gap_ms` (0–5000 ms) and `trim_engine_silence` on
+`/generate` and the MCP `generate_speech` tool.
+
+- A blank line gets the paragraph gap. An explicit `[pause]` replaces the gap
+  at its place, and the end of the text never gets one.
+- With the gap on, each paragraph is its own engine call (like `[pause]`
+  spans), so a long script makes more calls and the live preview arrives as one
+  piece. The gaps can add at most 15 minutes of silence to one take.
+- **Remove engine edge silence** cuts each chunk's own lead-in and tail before
+  joining, so the gap you set is the gap you hear, even with the Raw effect
+  preset.
+- Both are off by default, so existing requests render exactly as before.
+  Around 700–1000 ms between paragraphs suits most narration.
 - **Punctuation** — ellipses, dashes, exclamation marks, and short fragments
   genuinely shape pacing and intonation. Cheap, underrated.
 - **The reference clip is a performance direction.** Zero-shot cloning mirrors
@@ -179,11 +207,11 @@ read, with a message to lower the gaps or split the chapter. Values around 250 m
 for lines and 350 ms for paragraphs suit most narration, but they are explicit
 choices: the defaults are 0.
 
-**Longform-only tags.** Audiobook and Stories additionally parse SSML-lite —
-`[slow]…[/slow]`, `[fast]…[/fast]`, `[emphasis]…[/emphasis]`, `[spell]` —
-plus `[voice:NAME]` for multi-voice scripts and `[emotion:TEXT]` for per-line
+**Longform-only tags.** Audiobook and Stories additionally parse
+`[voice:NAME]` for multi-voice scripts and `[emotion:TEXT]` for per-line
 emotion (`backend/services/longform_parser.py`). These are not parsed on the
-Voice page.
+Voice page. SSML-lite (`[slow]`, `[fast]`, `[emphasis]`, `[spell]`) works
+everywhere; see [Every engine](#every-engine).
 
 ### Per-line emotion (Audiobook and Stories)
 

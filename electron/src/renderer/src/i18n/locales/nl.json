@@ -3359,7 +3359,8 @@
     "denoise": "Ruis uit referentie verwijderen",
     "polish": "Gegenereerde audio verfijnen",
     "basics": "1× is normale snelheid. Laat de duur leeg voor een natuurlijk ritme.",
-    "hint": "Gebruik doorgaans de standaardwaarden. Sturing bepaalt de invloed van de instructie; de andere instellingen veranderen hoe het model geluid opbouwt. Wijzig één instelling tegelijk."
+    "hint": "Gebruik doorgaans de standaardwaarden. Sturing bepaalt de invloed van de instructie; de andere instellingen veranderen hoe het model geluid opbouwt. Wijzig één instelling tegelijk.",
+    "pauses_hint": "Voegt stilte toe bij lege regels. 0 behoudt het eigen tempo van de engine."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} heeft één model voor het {{language}}, dus het accent volgt de referentiestem.",

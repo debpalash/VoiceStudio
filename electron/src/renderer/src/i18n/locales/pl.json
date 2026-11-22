@@ -3385,7 +3385,8 @@
     "denoise": "Usuń szum z nagrania wzorcowego",
     "polish": "Dopracuj wygenerowany dźwięk",
     "basics": "1× to normalna prędkość. Pozostaw czas pusty, aby zachować naturalne tempo.",
-    "hint": "Zwykle najlepiej pozostawić wartości domyślne. Sterowanie określa wpływ polecenia; pozostałe ustawienia zmieniają sposób budowania dźwięku. Zmieniaj jedno naraz."
+    "hint": "Zwykle najlepiej pozostawić wartości domyślne. Sterowanie określa wpływ polecenia; pozostałe ustawienia zmieniają sposób budowania dźwięku. Zmieniaj jedno naraz.",
+    "pauses_hint": "Dodaje ciszę przy pustych wierszach. 0 zachowuje własne tempo silnika."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} ma jeden model dla języka: {{language}}, więc akcent podąża za głosem referencyjnym.",

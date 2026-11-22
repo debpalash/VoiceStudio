@@ -54,6 +54,8 @@ const settings = {
   denoise: false,
   postprocess: true,
   duration: '',
+  paragraphGapMs: 0,
+  trimEngineSilence: false,
   showOverrides: true,
   selectedProfileId: null,
   autoPlay: true,
@@ -167,6 +169,14 @@ describe('ActionBar', () => {
     expect(screen.getByText('Sound variation')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Reset to defaults' }));
     expect(resetVoiceControls).toHaveBeenCalled();
+  });
+
+  it('offers the paragraph pause with engine-silence trimming', () => {
+    render(<ProductionSettings />);
+    expect(screen.getByText('Silence between paragraphs')).toBeVisible();
+    expect(screen.getByText(/Adds silence at blank lines/)).toBeVisible();
+    fireEvent.click(screen.getByRole('switch', { name: 'Remove engine edge silence' }));
+    expect(setCloneSetting).toHaveBeenCalledWith('trimEngineSilence', true);
   });
 
   it('offers an icon-only reset in the Voice controls header', () => {

@@ -537,6 +537,8 @@ function useGenerateController(): UseGenerateClone {
         denoise: settings.denoise,
         postprocess: settings.postprocess,
         duration: settings.duration,
+        paragraphGapMs: settings.paragraphGapMs,
+        trimEngineSilence: settings.trimEngineSilence,
       };
       const spokenText = input.text.trim();
       return {
