@@ -129,6 +129,30 @@ it('keeps scheme- and port-qualified rules proxied instead of bypassing every re
   }
 });
 
+it('never widens a bypass rule to subdomains WinINET would proxy', () => {
+  const input = {
+    UV_EXTRA_INDEX_URL: 'https://private.files.corp.example/simple https://files.corp.example/simple',
+  };
+  const glob = downloadProxyEnv(input, 'win32', () => ({
+    server: 'proxy:1080',
+    bypass: 'files.*.example',
+  }));
+  expect(glob.NO_PROXY).toBe('localhost,127.0.0.1,::1');
+  expect(setupProxyForUrl('https://private.files.corp.example/x', glob)).toBe('http://proxy:1080');
+  const plain = downloadProxyEnv(
+    { UV_INDEX_URL: 'https://mirror.corp.example/simple https://sub.mirror.corp.example/simple' },
+    'win32',
+    () => ({ server: 'proxy:1080', bypass: 'mirror.corp.example' }),
+  );
+  expect(plain.NO_PROXY).toBe('localhost,127.0.0.1,::1');
+  const ok = downloadProxyEnv(
+    { UV_INDEX_URL: 'https://mirror.corp.example/simple' },
+    'win32',
+    () => ({ server: 'proxy:1080', bypass: 'mirror.corp.example' }),
+  );
+  expect(ok.NO_PROXY).toContain('mirror.corp.example');
+});
+
 it('does not throw for a rule that matches no setup host', () => {
   expect(() =>
     downloadProxyEnv({}, 'win32', () => ({ server: 'proxy:1080', bypass: '172.1?.*' })),

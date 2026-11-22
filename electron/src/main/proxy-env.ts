@@ -65,6 +65,16 @@ export const DEFAULT_SETUP_HOSTS: readonly string[] = [
   'stable.repo.amd.com',
 ];
 
+/** True when NO_PROXY entry `host` would also exclude a contacted subdomain of it. */
+function hasUncoveredSubdomain(
+  host: string,
+  contacted: readonly string[],
+  matches: (candidate: string) => boolean = () => false,
+): boolean {
+  const suffix = `.${host.toLowerCase()}`;
+  return contacted.some((other) => other.toLowerCase().endsWith(suffix) && !matches(other));
+}
+
 /** Hosts matched by a WinINET wildcard rule (`*` = any characters, case-insensitive). */
 function globMatchedHosts(rule: string, hosts: readonly string[]): string[] {
   // A scheme or port limits the rule to some requests; NO_PROXY hosts bypass all
@@ -82,7 +92,16 @@ function globMatchedHosts(rule: string, hosts: readonly string[]): string[] {
       .join('.*')}$`,
     'i',
   );
-  return hosts.filter((host) => pattern.test(host));
+  // NO_PROXY also excludes subdomains of an entry, so only keep a host whose
+  // contacted subdomains the rule matches too; the rest stay proxied.
+  return hosts.filter((host) => {
+    if (!pattern.test(host)) return false;
+    if (hasUncoveredSubdomain(host, hosts, (other) => pattern.test(other))) {
+      console.info('[proxy-env] not bypassing a glob match that would also bypass subdomains');
+      return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -127,6 +146,12 @@ export function proxyBypassHosts(
         console.info('[proxy-env] ignoring a system proxy bypass rule that matches no setup host');
       }
       hosts.push(...matched);
+      continue;
+    }
+    // NO_PROXY `foo.com` also bypasses `sub.foo.com`, WinINET's plain `foo.com`
+    // does not. If setup contacts such a subdomain, keep the whole entry proxied.
+    if (contactedHosts && !host.startsWith('.') && hasUncoveredSubdomain(host, contactedHosts)) {
+      console.info('[proxy-env] not bypassing a host rule that would also bypass its subdomains');
       continue;
     }
     hosts.push(host);
