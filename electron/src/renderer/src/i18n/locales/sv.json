@@ -2942,7 +2942,8 @@
     "missingSpeech": "Tal saknas eller kan inte läsas. Generera det berörda segmentet på nytt före export.",
     "timingOverflow": "Talet överskrider sin tidslucka. Korta översättningen eller välj strikt tidslucka eller sträck ut videon.",
     "sourceChanged": "Undertexterna ändrades medan dubbningen skapades. Det tidigare spåret behölls; generera igen för att använda de nya undertexterna.",
-    "backgroundUnavailable": "Originalljudet kunde inte bevaras. Kontrollera bakgrundssepareringen och dialogens tider och försök igen, eller välj att endast exportera tal."
+    "backgroundUnavailable": "Originalljudet kunde inte bevaras. Kontrollera bakgrundssepareringen och dialogens tider och försök igen, eller välj att endast exportera tal.",
+    "untranslated": "Det här spåret har ingen översättning än: alla rader är fortfarande lika med källtexten. Översätt det eller välj källspråket och generera igen."
   },
   "dubStyle": {
     "label": "Instruktioner för översättningsstil",

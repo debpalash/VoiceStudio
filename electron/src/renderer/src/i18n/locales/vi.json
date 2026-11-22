@@ -2942,7 +2942,8 @@
     "missingSpeech": "Lời nói bị thiếu hoặc không đọc được. Hãy tạo lại đoạn bị ảnh hưởng trước khi xuất.",
     "timingOverflow": "Lời nói vượt quá thời gian được phân bổ. Hãy rút ngắn bản dịch hoặc chọn khung thời gian nghiêm ngặt hay kéo dài video.",
     "sourceChanged": "Phụ đề đã thay đổi trong khi bản lồng tiếng này đang được tạo. Bản âm thanh trước được giữ nguyên; hãy tạo lại để dùng phụ đề mới.",
-    "backgroundUnavailable": "Không thể giữ âm thanh gốc. Hãy kiểm tra việc tách âm nền và thời gian hội thoại rồi thử lại, hoặc chọn chỉ xuất giọng nói."
+    "backgroundUnavailable": "Không thể giữ âm thanh gốc. Hãy kiểm tra việc tách âm nền và thời gian hội thoại rồi thử lại, hoặc chọn chỉ xuất giọng nói.",
+    "untranslated": "Bản này chưa được dịch: mọi dòng vẫn giống văn bản gốc. Hãy dịch hoặc chọn ngôn ngữ nguồn, rồi tạo lại."
   },
   "dubStyle": {
     "label": "Hướng dẫn phong cách dịch",

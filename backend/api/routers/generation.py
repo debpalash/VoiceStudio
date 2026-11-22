@@ -445,6 +445,25 @@ def _conditioning_refusal(backend_cls, *, profile_id=None, has_ref_audio=False,
                 "Choose an engine that supports voice cloning (for example "
                 "OmniVoice)."
             )
+        # Model-dependent engines (MLX-Audio) expose ``supports_cloning`` as
+        # a property: judge the model the request would load, before any
+        # synthesis, so a saved profile is never silently dropped for a
+        # preset voice (#4344). The constructor only resolves preferences.
+        if (
+            getattr(backend_cls, "cloning_model_keys", ())
+            and not isinstance(getattr(backend_cls, "supports_cloning", True), bool)
+        ):
+            try:
+                probe = backend_cls()
+                capable = bool(probe.supports_cloning)
+            except Exception:  # noqa: BLE001 - an unreadable probe never blocks synthesis
+                return None
+            if not capable:
+                from services.tts_backend import cloning_unavailable_detail
+
+                return cloning_unavailable_detail(
+                    getattr(backend_cls, "id", name), probe, "rendering this saved voice"
+                )
         return None
     if not designing or voice_design_support(backend_cls) is not False:
         return None
@@ -2162,6 +2181,9 @@ async def generate_speech(
     if preset_voice:
         from services.tts_backend import preset_voices_of
         _presets = preset_voices_of(backend_cls)
+        if getattr(backend_cls, "id", None) == "mlx-audio":
+            # Per selected model, as /engines lists them (#4344).
+            _presets = backend_cls().active_preset_voices()
         if not _presets:
             preset_voice = None  # engine has no presets: ignore, like other engine-specific fields
         elif preset_voice not in _presets:

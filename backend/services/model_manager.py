@@ -4018,6 +4018,11 @@ def unload_shared_model() -> bool:
     model = None
     _ram_offload = None
     release_tts_side_caches()
+    # Cached OmniVoiceBackend adapters hold their own strong ref to the model
+    # (#4355); without this the weights survive the unload.
+    _mod = sys.modules.get("services.tts_backend")
+    if _mod is not None:
+        _mod.drop_omnivoice_instance_refs()
     free_vram()
     return True
 
