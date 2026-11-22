@@ -81,6 +81,11 @@ _TERM_FIELDS = (
     "commercial_outputs", "redistribution", "voice_rights", "source_url",
     "evidence_url", "evidence_revision", "runtime_revision",
 )
+# Descriptive text the dialog shows beside the terms but which is not a
+# condition of them. An edit that rewords only these keeps an existing
+# acceptance (#4334): the stored snapshot decides, so the fingerprint format is
+# unchanged and every earlier v2 record stays valid. Any other change still asks.
+_EDITORIAL_FIELDS = frozenset({"notes"})
 _VARIANT_FIELDS = (
     "id", "label", "license_category", "commercial_inference", "commercial_outputs",
     "evidence_url",
@@ -226,6 +231,14 @@ def _changed_fields(before: dict | None, after: dict) -> list[str]:
     return sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
 
 
+def _only_editorial_change(record: dict, current_terms: dict) -> bool:
+    """Whether the terms changed since acceptance in editorial fields only."""
+    if record["last"].get("action") != "accepted":
+        return False
+    changed = _changed_fields(record.get("accepted_terms"), current_terms)
+    return bool(changed) and set(changed) <= _EDITORIAL_FIELDS
+
+
 def _evaluate(repo_id: str) -> tuple[dict, object]:
     info = _disclosure(repo_id)
     category = info.get("license_category") or "unknown"
@@ -242,7 +255,7 @@ def _evaluate(repo_id: str) -> tuple[dict, object]:
         state = "accepted" if _legacy_accepted(repo_id) else "not_accepted"
     elif last["action"] == "withdrawn":
         state = "withdrawn"
-    elif last.get("fingerprint") == current:
+    elif last.get("fingerprint") == current or _only_editorial_change(record, current_terms):
         state = "accepted"
     else:
         state = "terms_updated"

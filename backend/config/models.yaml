@@ -133,6 +133,15 @@ models:
     curated_on: [rocm]
     note: "CTranslate2 has no ROCm backend, so on AMD GPUs this PyTorch build is the accelerated route."
 
+  - repo_id: "openai/whisper-large-v3-turbo"
+    label: "Whisper large-v3 Turbo (PyTorch — GPU path for 4 GB AMD/ROCm cards)"
+    role: ASR
+    engines: [pytorch-whisper]
+    size_gb: 1.6
+    platforms: [cuda, rocm]
+    curated_on: [rocm]
+    note: "Smaller PyTorch build for AMD GPUs whose VRAM cannot hold large-v3; dictation picks it automatically when it is the one installed and fits."
+
   - repo_id: "mlx-community/whisper-tiny-mlx"
     label: "Whisper tiny (MLX ASR — fast fallback)"
     role: ASR
