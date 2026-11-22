@@ -468,3 +468,20 @@ def test_subprocess_engine_gate_requires_the_fallback_licence_when_needed(monkey
     assert ma.FALLBACK_TOKENIZER_REPO in ma.repos_for_engine("omnivoice-subprocess")
     monkeypatch.setattr(ma, "omnivoice_tokenizer_fallback_needed", lambda: False)
     assert ma.FALLBACK_TOKENIZER_REPO not in ma.repos_for_engine("omnivoice-subprocess")
+
+
+def test_inherited_acceptance_signal_never_reaches_the_sidecar(monkeypatch):
+    import importlib
+
+    ma = importlib.import_module("services.model_acceptance")
+    from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
+
+    backend = OmniVoiceSubprocessBackend.__new__(OmniVoiceSubprocessBackend)
+    monkeypatch.setattr(ma, "status", lambda repo: {"required": True, "accepted": False})
+    env = {"OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED": "1", "PATH": "/bin"}
+    backend._apply_engine_env(env)
+    assert "OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED" not in env
+    assert env["PATH"] == "/bin"
+    monkeypatch.setattr(ma, "status", lambda repo: {"required": True, "accepted": True})
+    backend._apply_engine_env(env)
+    assert env["OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED"] == "1"

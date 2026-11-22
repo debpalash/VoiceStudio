@@ -70,6 +70,8 @@ class OmniVoiceSubprocessBackend(SubprocessBackend):
     max_ref_seconds = 20.0
     ref_strategy = "best_window"
 
+    parent_owned_env = ("OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED",)
+
     def extra_spawn_env(self) -> dict[str, str]:
         """Tell the sidecar whether the user accepted the fallback tokenizer's licence.
 
