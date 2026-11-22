@@ -55,3 +55,8 @@ def test_year_context_across_bracket_span(normalize_text):
 def test_quantity_next_to_bracket_span(normalize_text):
     assert normalize_text("có [pause 300ms]3500 xe", "Vietnamese") == "có [pause 300ms]3.500 xe"
     assert normalize_text("[x nghìn 3500]3500", "Vietnamese") == "[x nghìn 3500]3.500"
+
+
+def test_percent_after_year_list_is_grouped(normalize_text):
+    assert normalize_text("Năm 2025, 1500%", "Vietnamese") == "Năm 2025, 1.500%"
+    assert normalize_text("năm 2008, 2010 và 2025", "Vietnamese") == "năm 2008, 2010 và 2025"

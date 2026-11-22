@@ -1019,7 +1019,11 @@ def _vietnamese_numbers(text: str) -> str:
     for m in _VI_PLAIN_INT_RE.finditer(masked):
         raw = m.group(1)
         # "năm 2026": a year, not a quantity — leave it alone.
-        if len(raw) == 4 and 1000 <= int(raw) <= 2100 and _VI_YEAR_PREFIX_RE.search(masked[: m.start()]):
+        # A number directly followed by "%" is a quantity, never a year-list item.
+        # (Word units like "xe" can't be told from a year list, so stay conservative.)
+        if (len(raw) == 4 and 1000 <= int(raw) <= 2100
+                and not masked[m.end():].lstrip(" ").startswith("%")
+                and _VI_YEAR_PREFIX_RE.search(masked[: m.start()])):
             continue
         edits.append((m.start(), m.end(), f"{int(raw):,}".replace(",", ".")))
     for a, b, rep in sorted(edits, reverse=True):
