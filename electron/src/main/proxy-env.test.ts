@@ -153,6 +153,21 @@ it('never widens a bypass rule to subdomains WinINET would proxy', () => {
   expect(ok.NO_PROXY).toContain('mirror.corp.example');
 });
 
+it('bypasses a parent host when other rules cover its contacted subdomains', () => {
+  const env = downloadProxyEnv(
+    { UV_INDEX_URL: 'https://mirror.corp.example/simple https://sub.mirror.corp.example/simple' },
+    'win32',
+    () => ({ server: 'proxy:1080', bypass: 'mirror.corp.example;sub.mirror.corp.example' }),
+  );
+  expect(env.NO_PROXY?.split(',')).toContain('mirror.corp.example');
+  const wild = downloadProxyEnv(
+    { UV_INDEX_URL: 'https://mirror.corp.example/simple https://sub.mirror.corp.example/simple' },
+    'win32',
+    () => ({ server: 'proxy:1080', bypass: 'mirror.corp.example;*.mirror.*' }),
+  );
+  expect(wild.NO_PROXY?.split(',')).toContain('mirror.corp.example');
+});
+
 it('does not throw for a rule that matches no setup host', () => {
   expect(() =>
     downloadProxyEnv({}, 'win32', () => ({ server: 'proxy:1080', bypass: '172.1?.*' })),

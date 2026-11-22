@@ -69,39 +69,51 @@ export const DEFAULT_SETUP_HOSTS: readonly string[] = [
 function hasUncoveredSubdomain(
   host: string,
   contacted: readonly string[],
-  matches: (candidate: string) => boolean = () => false,
+  covered: (candidate: string) => boolean,
 ): boolean {
   const suffix = `.${host.toLowerCase()}`;
-  return contacted.some((other) => other.toLowerCase().endsWith(suffix) && !matches(other));
+  return contacted.some((other) => other.toLowerCase().endsWith(suffix) && !covered(other));
 }
 
 /** Hosts matched by a WinINET wildcard rule (`*` = any characters, case-insensitive). */
-function globMatchedHosts(rule: string, hosts: readonly string[]): string[] {
+function globMatchedHosts(
+  rule: string,
+  hosts: readonly string[],
+  covered: (host: string) => boolean,
+): string[] {
   // A scheme or port limits the rule to some requests; NO_PROXY hosts bypass all
   // of them, so a qualified rule is not translated (the host stays proxied).
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rule) || /:\d*$/.test(rule) || /[/\\]/.test(rule)) {
     console.info('[proxy-env] not bypassing a scheme- or port-qualified system proxy rule');
     return [];
   }
-  const body = rule;
-  if (!body) return [];
-  const pattern = new RegExp(
-    `^${body
-      .split('*')
-      .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-      .join('.*')}$`,
-    'i',
-  );
+  const matches = ruleMatcher(rule);
+  if (!matches) return [];
   // NO_PROXY also excludes subdomains of an entry, so only keep a host whose
-  // contacted subdomains the rule matches too; the rest stay proxied.
+  // contacted subdomains some rule in the list covers too; the rest stay proxied.
   return hosts.filter((host) => {
-    if (!pattern.test(host)) return false;
-    if (hasUncoveredSubdomain(host, hosts, (other) => pattern.test(other))) {
+    if (!matches(host)) return false;
+    if (hasUncoveredSubdomain(host, hosts, covered)) {
       console.info('[proxy-env] not bypassing a glob match that would also bypass subdomains');
       return false;
     }
     return true;
   });
+}
+
+/** WinINET matching for one bypass rule: case-insensitive, `*` = any characters, no scheme/port/path. */
+function ruleMatcher(rule: string): ((host: string) => boolean) | null {
+  if (!rule || rule.includes('<')) return null;
+  if (rule === '*') return () => true;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rule) || /:\d*$/.test(rule) || /[/\\]/.test(rule)) return null;
+  const pattern = new RegExp(
+    `^${rule
+      .split('*')
+      .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+      .join('.*')}$`,
+    'i',
+  );
+  return (host) => pattern.test(host);
 }
 
 /**
@@ -118,10 +130,13 @@ export function proxyBypassHosts(
   contactedHosts?: readonly string[],
 ): string[] | null {
   const hosts: string[] = [];
-  for (const value of raw
+  const rules = raw
     .split(';')
     .map((part) => part.trim())
-    .filter(Boolean)) {
+    .filter(Boolean);
+  const matchers = rules.map(ruleMatcher).filter((m) => m !== null);
+  const covered = (host: string) => matchers.some((matches) => matches(host));
+  for (const value of rules) {
     if (value === '*') {
       hosts.push(value);
       continue;
@@ -141,7 +156,7 @@ export function proxyBypassHosts(
       // NO_PROXY cannot express this rule, but WinINET treats it as a
       // case-insensitive `*` glob. Bypass exactly the hosts setup contacts that
       // it matches; a rule matching none cannot affect any setup request.
-      const matched = globMatchedHosts(value, contactedHosts);
+      const matched = globMatchedHosts(value, contactedHosts, covered);
       if (matched.length === 0) {
         console.info('[proxy-env] ignoring a system proxy bypass rule that matches no setup host');
       }
@@ -150,7 +165,7 @@ export function proxyBypassHosts(
     }
     // NO_PROXY `foo.com` also bypasses `sub.foo.com`, WinINET's plain `foo.com`
     // does not. If setup contacts such a subdomain, keep the whole entry proxied.
-    if (contactedHosts && !host.startsWith('.') && hasUncoveredSubdomain(host, contactedHosts)) {
+    if (contactedHosts && !host.startsWith('.') && hasUncoveredSubdomain(host, contactedHosts, covered)) {
       console.info('[proxy-env] not bypassing a host rule that would also bypass its subdomains');
       continue;
     }
