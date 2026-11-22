@@ -292,7 +292,7 @@ def _audio_tokenizer_cls():
     return HiggsAudioV2TokenizerModel
 
 
-def _resolve_snapshot_dir(checkpoint) -> str:
+def _resolve_snapshot_dir(checkpoint, revision=None) -> str:
     """Local snapshot directory for ``checkpoint`` (a local dir or a HF repo id).
 
     Cache-first (#959): a COMPLETE local cache is resolved with
@@ -303,16 +303,20 @@ def _resolve_snapshot_dir(checkpoint) -> str:
     already-installed model. Only a cache miss / incomplete cache falls
     through to the original network ``snapshot_download``, whose errors
     (auth, connectivity, proxy) surface exactly as before.
+
+    ``revision`` (a reviewed commit SHA) pins both lookups so a moving Hub
+    ``main`` can never resolve, or download, a different snapshot.
     """
     if os.path.isdir(checkpoint):
         return checkpoint
     from huggingface_hub import snapshot_download
 
+    pin = {"revision": revision} if revision else {}
     try:
-        return snapshot_download(checkpoint, local_files_only=True)
+        return snapshot_download(checkpoint, local_files_only=True, **pin)
     except Exception:
         # Miss/incomplete (LocalEntryNotFoundError et al.) → network path.
-        return snapshot_download(checkpoint)
+        return snapshot_download(checkpoint, **pin)
 
 
 _DEFAULT_ASR_MODEL = "openai/whisper-large-v3-turbo"
@@ -553,6 +557,15 @@ class OmniVoice(PreTrainedModel):
             raise FileNotFoundError("The local OmniVoice checkpoint no longer exists")
         if local_checkpoint:
             kwargs["local_files_only"] = True
+        # A reviewed commit SHA for a Hub repo id (the host resolves it; this
+        # package knows nothing of the pin registry). A local directory has no
+        # revision. ``tokenizer_fallback_revision`` pins the fallback repo.
+        revision = kwargs.pop("revision", None)
+        if local_checkpoint:
+            revision = None
+        elif revision:
+            kwargs["revision"] = revision
+        tokenizer_fallback_revision = kwargs.pop("tokenizer_fallback_revision", None)
         train_mode = kwargs.pop("train", False)
         load_asr = kwargs.pop("load_asr", False)
         asr_model_name = kwargs.pop("asr_model_name", _DEFAULT_ASR_MODEL)
@@ -597,10 +610,15 @@ class OmniVoice(PreTrainedModel):
                 # Resolve local path for audio tokenizer subdirectory —
                 # cache-first so a proxy-broken HTTP session can't fail an
                 # installed model (#959; see _resolve_snapshot_dir).
-                resolved_path = _resolve_snapshot_dir(pretrained_model_name_or_path)
+                resolved_path = _resolve_snapshot_dir(
+                    pretrained_model_name_or_path,
+                    **({"revision": revision} if revision else {}),
+                )
 
+                tokenizer_pin = {"revision": revision} if revision else {}
                 model.text_tokenizer = AutoTokenizer.from_pretrained(
-                    pretrained_model_name_or_path, local_files_only=local_checkpoint
+                    pretrained_model_name_or_path, local_files_only=local_checkpoint,
+                    **tokenizer_pin,
                 )
 
                 audio_tokenizer_path = os.path.join(resolved_path, "audio_tokenizer")
@@ -620,6 +638,12 @@ class OmniVoice(PreTrainedModel):
                         )
                     audio_tokenizer_path = _AUDIO_TOKENIZER_FALLBACK_REPO
 
+                audio_pin = (
+                    {"revision": tokenizer_fallback_revision}
+                    if tokenizer_fallback_revision
+                    and audio_tokenizer_path == _AUDIO_TOKENIZER_FALLBACK_REPO
+                    else {}
+                )
                 # higgs-audio-v2-tokenizer does not support MPS (output channels > 65536)
                 tokenizer_device = (
                     "cpu" if str(model.device).startswith("mps") else model.device
@@ -627,10 +651,11 @@ class OmniVoice(PreTrainedModel):
                 try:
                     model.audio_tokenizer = _audio_tokenizer_cls().from_pretrained(
                         audio_tokenizer_path, device_map=tokenizer_device,
-                        local_files_only=local_checkpoint,
+                        local_files_only=local_checkpoint, **audio_pin,
                     )
                     model.feature_extractor = AutoFeatureExtractor.from_pretrained(
-                        audio_tokenizer_path, local_files_only=local_checkpoint
+                        audio_tokenizer_path, local_files_only=local_checkpoint,
+                        **audio_pin,
                     )
                 except Exception as exc:
                     if audio_tokenizer_path != _AUDIO_TOKENIZER_FALLBACK_REPO:
