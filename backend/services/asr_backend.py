@@ -2022,11 +2022,22 @@ class PyTorchWhisperBackend(ASRBackend):
         return self._attempt_on_cpu(audio, rate, word_timestamps, generate_kwargs)
 
     def _attempt_on_cpu(self, audio, rate, word_timestamps, generate_kwargs):
+        # Only a pipeline that really sits on the CPU gets batch 1 and the
+        # host-RAM rule; MPS also lands here (it is not on the CUDA/XPU ladder)
+        # and keeps its batch of 2 and the requested word timestamps.
+        if not self._pipe_on_cpu():
+            return self._call_pipe(audio, rate, 2, word_timestamps, generate_kwargs)
         # Batch 1: float32 activations on CPU gain nothing from batching.
         return self._call_pipe(
             audio, rate, 1, self._cpu_word_timestamps_ok(word_timestamps),
             generate_kwargs,
         )
+
+    def _pipe_on_cpu(self) -> bool:
+        try:
+            return str(getattr(self._pipe, "device", "cpu")).lower().startswith("cpu")
+        except Exception:  # noqa: BLE001
+            return True
 
     def _rebuild_on_cpu(self) -> None:
         """Move the existing pipeline to CPU without resolving any model files."""

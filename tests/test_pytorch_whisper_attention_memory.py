@@ -5,11 +5,16 @@ the encoder kept a [batch, heads, 1500, 1500] map per layer (~11 GB at batch 2
 for large-v3-turbo) and the CPU fallback was OOM-killed. DTW alignment needs only
 decoder cross-attention.
 """
+import importlib
 import types
 
 import pytest
 
-from services import asr_backend as ab
+
+@pytest.fixture
+def ab():
+    # Resolved per test: another test may swap services.asr_backend in sys.modules.
+    return importlib.import_module("services.asr_backend")
 
 
 def _tiny_whisper():
@@ -24,7 +29,7 @@ def _tiny_whisper():
     return torch, tf.WhisperForConditionalGeneration(cfg).eval()
 
 
-def test_encoder_attentions_dropped_but_decoder_cross_attention_kept():
+def test_encoder_attentions_dropped_but_decoder_cross_attention_kept(ab):
     torch, model = _tiny_whisper()
     feats = torch.zeros(1, 80, 3000)
     ids = torch.tensor([[1]])
@@ -46,12 +51,12 @@ def test_encoder_attentions_dropped_but_decoder_cross_attention_kept():
     assert len(after.cross_attentions) == 2  # alignment heads still available
 
 
-def test_limit_encoder_attention_tolerates_foreign_pipes():
+def test_limit_encoder_attention_tolerates_foreign_pipes(ab):
     ab.PyTorchWhisperBackend(asr_pipe=object())._limit_encoder_attention()
     ab.PyTorchWhisperBackend(asr_pipe=types.SimpleNamespace(model=object()))._limit_encoder_attention()
 
 
-def _backend_on_cpu(monkeypatch, free_gb):
+def _backend_on_cpu(ab, monkeypatch, free_gb):
     be = ab.PyTorchWhisperBackend(asr_pipe=object())
     calls = []
     monkeypatch.setattr(be, "_call_pipe", lambda a, r, b, w, g: calls.append((b, w)) or {})
@@ -60,21 +65,21 @@ def _backend_on_cpu(monkeypatch, free_gb):
     return be, calls
 
 
-def test_cpu_runs_batch_one_and_keeps_words_with_headroom(monkeypatch):
-    be, calls = _backend_on_cpu(monkeypatch, 16.0)
+def test_cpu_runs_batch_one_and_keeps_words_with_headroom(ab, monkeypatch):
+    be, calls = _backend_on_cpu(ab, monkeypatch, 16.0)
     be._run_with_oom_fallback(None, 16000, True, None)
     assert calls == [(1, True)]
 
 
-def test_cpu_low_ram_degrades_to_segment_timestamps_with_logged_reason(monkeypatch, caplog):
-    be, calls = _backend_on_cpu(monkeypatch, 1.0)
+def test_cpu_low_ram_degrades_to_segment_timestamps_with_logged_reason(ab, monkeypatch, caplog):
+    be, calls = _backend_on_cpu(ab, monkeypatch, 1.0)
     with caplog.at_level("WARNING"):
         be._run_with_oom_fallback(None, 16000, True, None)
     assert calls == [(1, False)]
     assert "segment timestamps" in caplog.text
 
 
-def test_gpu_oom_falls_back_to_cpu_batch_one(monkeypatch):
+def test_gpu_oom_falls_back_to_cpu_batch_one(ab, monkeypatch):
     be = ab.PyTorchWhisperBackend(asr_pipe=object())
     calls = []
 
@@ -92,3 +97,13 @@ def test_gpu_oom_falls_back_to_cpu_batch_one(monkeypatch):
     monkeypatch.setattr(mm, "release_after_oom", lambda exc: None)
     be._run_with_oom_fallback(None, 16000, True, None)
     assert calls == [8, 2, 1, 1]
+
+
+def test_mps_keeps_batch_two_and_word_timestamps_on_low_ram(ab, monkeypatch):
+    """The CPU memory rule must not touch an MPS pipeline (not on the CUDA ladder)."""
+    be = ab.PyTorchWhisperBackend(asr_pipe=types.SimpleNamespace(device="mps"))
+    calls = []
+    monkeypatch.setattr(be, "_call_pipe", lambda a, r, b, w, g: calls.append((b, w)) or {})
+    monkeypatch.setattr(be, "_host_free_gb", lambda: 1.0)
+    be._run_with_oom_fallback(None, 16000, True, None)
+    assert calls == [(2, True)]
