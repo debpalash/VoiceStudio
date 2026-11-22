@@ -247,6 +247,7 @@ def _construct_model(stdout, progress: dict):
         resolve_omnivoice_checkpoint,
         should_preload_tts_asr,
     )
+    from services.omnivoice_checkpoint import omnivoice_pin_kwargs  # noqa: PLC0415
     from utils.hf_progress import register_listener, unregister_listener  # noqa: PLC0415
 
     # Forward real HF download/weight progress so the parent's recv loop keeps
@@ -283,6 +284,7 @@ def _construct_model(stdout, progress: dict):
             checkpoint, device_map=device,
             dtype=getattr(torch, tts_dtype_name(device)), load_asr=preload_asr,
             tokenizer_fallback_guard=_guard_tokenizer_fallback,
+            **omnivoice_pin_kwargs(checkpoint),
         )
     finally:
         unregister_listener(lid)
