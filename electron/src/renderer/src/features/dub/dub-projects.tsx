@@ -49,6 +49,8 @@ export function DubProjects({ active = true }: { active?: boolean }) {
   const [opening, setOpening] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   useLayoutEffect(() => {
     if (!active) {
       request.current?.abort();
@@ -106,6 +108,9 @@ export function DubProjects({ active = true }: { active?: boolean }) {
     } finally {
       deletePending.current = false;
       setDeletingBusy(false);
+      // The pane went inactive mid-request: its effect left the dialog for
+      // this settlement to close (retry stays available on an active pane).
+      if (!activeRef.current) setDeleting(null);
     }
   };
 

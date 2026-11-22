@@ -222,3 +222,18 @@ it('requires confirmation to delete and keeps the working draft detached from th
   await waitFor(() => expect(state.detach).toHaveBeenCalledWith('d2'));
   await waitFor(() => expect(screen.queryByRole('button', { name: /^Podcast intro/ })).toBeNull());
 });
+
+it('closes the delete dialog when a request fails after the pane went inactive', async () => {
+  const view = renderList();
+  fireEvent.click(await screen.findByRole('button', { name: 'common.delete Podcast intro' }));
+  let fail: (reason: Error) => void = () => {};
+  state.readProject.mockImplementation(
+    () => new Promise((_resolve, reject) => (fail = reject)),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'common.delete' }));
+  view.setActive(false);
+  await act(async () => fail(new Error('offline')));
+  view.setActive(true);
+  expect(screen.queryByRole('button', { name: 'common.cancel' })).toBeNull();
+  expect(state.detach).not.toHaveBeenCalled();
+});
