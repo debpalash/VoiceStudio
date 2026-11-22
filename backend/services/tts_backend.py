@@ -1989,6 +1989,9 @@ class OmniVoiceBackend(TTSBackend):
         model = self._ensure_loaded()
         if model is None:  # a stubbed loader (tests) leaves the preset model
             model = self._model
+        return self._generate_on_model(model, text, **kw)
+
+    def _generate_on_model(self, model, text, **kw) -> torch.Tensor:
         language = kw.get("language")
         ref_audio = kw.get("ref_audio")
         ref_text = kw.get("ref_text")
@@ -2078,7 +2081,9 @@ class OmniVoiceBackend(TTSBackend):
                 prompts.append(prompt)
 
         if any(ref_audios) and len(prompts) != len(texts):
-            return [self.generate(text, **_item_kwargs(i))
+            # The retained model: an unload mid-batch must not make the
+            # single-item fallback cold-load a second copy (#4355).
+            return [self._generate_on_model(model, text, **_item_kwargs(i))
                     for i, text in enumerate(texts)]
 
         gen_kw = dict(
