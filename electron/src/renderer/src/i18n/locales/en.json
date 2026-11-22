@@ -2942,7 +2942,8 @@
     "missingSpeech": "Speech is missing or unreadable. Regenerate the affected segment before exporting.",
     "timingOverflow": "Speech exceeds its time slot. Shorten the translation or choose Strict Slot or Stretch Video.",
     "sourceChanged": "The subtitles changed while this dub was rendering. The previous track was kept; generate again to use the new subtitles.",
-    "backgroundUnavailable": "Original sound could not be preserved. Check background separation and dialogue timing, then retry, or explicitly export speech only."
+    "backgroundUnavailable": "Original sound could not be preserved. Check background separation and dialogue timing, then retry, or explicitly export speech only.",
+    "untranslated": "This track has no translation yet: every line still matches the source text. Translate it or choose the source language, then generate again."
   },
   "dubStyle": {
     "label": "Translation style prompt",

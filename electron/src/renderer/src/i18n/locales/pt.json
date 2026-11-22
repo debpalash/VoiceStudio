@@ -2944,7 +2944,8 @@
     "missingSpeech": "A fala está ausente ou ilegível. Gere novamente o segmento afetado antes de exportar.",
     "timingOverflow": "A fala excede o intervalo de tempo. Encurte a tradução ou escolha um intervalo estrito ou estique o vídeo.",
     "sourceChanged": "As legendas mudaram enquanto esta dublagem era gerada. A faixa anterior foi mantida; gere novamente para usar as novas legendas.",
-    "backgroundUnavailable": "Não foi possível preservar o som original. Verifique a separação do fundo e os tempos do diálogo e tente novamente, ou escolha exportar apenas a fala."
+    "backgroundUnavailable": "Não foi possível preservar o som original. Verifique a separação do fundo e os tempos do diálogo e tente novamente, ou escolha exportar apenas a fala.",
+    "untranslated": "Esta faixa ainda não tem tradução: todas as falas continuam iguais ao texto original. Traduza-a ou escolha o idioma de origem e gere novamente."
   },
   "dubStyle": {
     "label": "Instruções de estilo de tradução",

@@ -2944,7 +2944,8 @@
     "missingSpeech": "Falta audio de voz o no se puede leer. Regenera el segmento afectado antes de exportar.",
     "timingOverflow": "La voz supera su intervalo de tiempo. Acorta la traducción o elige un intervalo estricto o alargar el vídeo.",
     "sourceChanged": "Los subtítulos cambiaron mientras se generaba este doblaje. Se conservó la pista anterior; vuelve a generarlo para usar los nuevos subtítulos.",
-    "backgroundUnavailable": "No se pudo conservar el sonido original. Revisa la separación del fondo y los tiempos del diálogo e inténtalo de nuevo, o exporta solo la voz explícitamente."
+    "backgroundUnavailable": "No se pudo conservar el sonido original. Revisa la separación del fondo y los tiempos del diálogo e inténtalo de nuevo, o exporta solo la voz explícitamente.",
+    "untranslated": "Esta pista aún no tiene traducción: todas las líneas siguen igual que el texto original. Tradúcela o elige el idioma de origen y vuelve a generar."
   },
   "dubStyle": {
     "label": "Instrucciones de estilo de traducción",
