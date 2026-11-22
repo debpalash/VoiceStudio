@@ -7,7 +7,7 @@ is honored; anything else falls back to the default.
 """
 import pytest
 
-from services.model_manager import (
+from services.omnivoice_checkpoint import (
     resolve_omnivoice_checkpoint,
     _DEFAULT_OMNIVOICE_CHECKPOINT,
 )
@@ -61,6 +61,7 @@ def test_omnivoice_model_is_only_read_through_the_resolver():
     backend = pathlib.Path(__file__).resolve().parents[1] / "backend"
     allowed = {
         "services/model_manager.py",
+        "services/omnivoice_checkpoint.py",  # the resolver itself
         "api/routers/personas.py",
         # Suite-wide sentinel SETTER (os.environ.setdefault("OMNIVOICE_MODEL",
         # "test")) — a write, not a raw read; the value is still only ever

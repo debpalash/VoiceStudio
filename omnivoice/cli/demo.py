@@ -531,6 +531,7 @@ def main(argv=None) -> int:
         checkpoint,
         device_map=device,
         dtype=getattr(torch, tts_dtype_name(device)),
+        allow_tokenizer_fallback=True,
         load_asr=not args.no_asr,
     )
     print("Model loaded.")

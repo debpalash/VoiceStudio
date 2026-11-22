@@ -318,7 +318,61 @@ def repos_for_engine(engine_id: str, identity: str | None = None) -> list[str]:
         # A local model folder is not a registry model (ASR treats it the same way).
         return []
     rows = _registry()["models"]  # unreadable registry: let the caller fail closed
-    return [row["id"] for row in rows if engine_id in (row.get("engines") or [])]
+    return [
+        row["id"]
+        for row in rows
+        if engine_id in (row.get("engines") or []) and _repo_applies(row["id"])
+    ]
+
+
+# OmniVoice's own snapshot bundles ``audio_tokenizer/`` (covered by
+# k2-fsa/OmniVoice's licence row). The Higgs tokenizer repo below is only
+# loaded, or re-downloaded by the cache repair, when that bundled directory is
+# missing (``omnivoice.models.omnivoice``), so it gates an install only then (#4329).
+FALLBACK_TOKENIZER_REPO = "eustlb/higgs-audio-v2-tokenizer"
+
+
+def omnivoice_tokenizer_fallback_needed() -> bool:
+    """True when the installed OmniVoice would load the fallback tokenizer repo.
+
+    Local cache lookup only, never the network. An OmniVoice that is not
+    installed yet downloads its bundled tokenizer with the snapshot, so it does
+    not need the fallback (a custom checkpoint that turns out to lack it is
+    stopped at the loader, which calls the same acceptance check). Anything unreadable fails closed (needs it).
+    """
+    try:
+        import os
+
+        from services.omnivoice_checkpoint import resolve_omnivoice_checkpoint
+
+        checkpoint = resolve_omnivoice_checkpoint()
+        if os.path.isdir(checkpoint):
+            # A local folder never falls back to the Hub: the loader rejects
+            # one lacking audio_tokenizer/ outright, so there is nothing to accept.
+            return False
+        from huggingface_hub import snapshot_download
+        from huggingface_hub.errors import LocalEntryNotFoundError
+
+        try:
+            # The loader resolves the cached ``main`` ref the same way
+            # (omnivoice.models.omnivoice._resolve_snapshot_dir), so the gate
+            # and the loader read the same snapshot.
+            snapshot = snapshot_download(  # nosec B615 — local cache only, same ref as the loader
+                checkpoint, revision="main", local_files_only=True
+            )
+        except (LocalEntryNotFoundError, FileNotFoundError):
+            return False
+        return not os.path.isdir(os.path.join(snapshot, "audio_tokenizer"))
+    except Exception:  # noqa: BLE001 — unknown install state must not open the gate
+        logger.warning("OmniVoice tokenizer install check failed", exc_info=True)
+        return True
+
+
+def _repo_applies(repo_id: str) -> bool:
+    """False for a registry repo the installed engine does not actually load."""
+    if repo_id == FALLBACK_TOKENIZER_REPO:
+        return omnivoice_tokenizer_fallback_needed()
+    return True
 
 
 def ensure_engine_accepted(engine_id: str, identity: str | None = None) -> None:
