@@ -150,6 +150,8 @@ def test_install_preflight_download_and_repair_marker_share_revision(models_mod,
     monkeypatch.setattr(download, "_segmented_enabled", lambda: False)
     monkeypatch.setattr(download, "_validate_snapshot_has_weights", lambda *_a: None)
     monkeypatch.setattr(hf_revisions, "remember_revision", lambda *args: remembered.append(args))
+    # These fakes use no real cache; completeness verification has its own tests.
+    monkeypatch.setattr(hf_revisions, "settle_install_pending", lambda *a, **k: "cleared")
     from services import performance_profiles
     monkeypatch.setattr(
         performance_profiles,
@@ -202,6 +204,8 @@ def test_install_honors_catalog_allow_patterns(models_mod, monkeypatch, tmp_path
     monkeypatch.setattr(download, "_segmented_snapshot", segmented_must_not_run)
     monkeypatch.setattr(download, "_validate_snapshot_has_weights", lambda *_a: None)
     monkeypatch.setattr(hf_revisions, "remember_revision", lambda *_args: None)
+    # These fakes use no real cache; completeness verification has its own tests.
+    monkeypatch.setattr(hf_revisions, "settle_install_pending", lambda *a, **k: "cleared")
 
     async def run_install():
         await download.install_model(download.InstallModelRequest(repo_id=repo_id))

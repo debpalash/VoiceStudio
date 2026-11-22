@@ -200,6 +200,8 @@ def test_install_downloads_the_package_from_its_hub_repo(download, monkeypatch, 
     monkeypatch.setattr(download, "disk_space_error", lambda *_a, **_k: None)
     monkeypatch.setattr(download, "_validate_snapshot_has_weights", lambda *_a: None)
     monkeypatch.setattr(hf_revisions, "remember_revision", lambda *a: remembered.append(a))
+    # No real cache here; completeness verification has its own tests.
+    monkeypatch.setattr(hf_revisions, "settle_install_pending", lambda *a, **k: "cleared")
     from services import performance_profiles
     monkeypatch.setattr(performance_profiles, "reconcile_active_profile", lambda: {})
 
@@ -323,6 +325,8 @@ def test_cosyvoice_catalogue_install_filters_preflight_and_transfer(download, mo
     monkeypatch.setattr(download, "_install_tasks", set())
     monkeypatch.setattr(download, "_install_tasks_by_repo", {})
     monkeypatch.setattr(hf_revisions, "remember_revision", lambda *args: remembered.append(args))
+    # These fakes use no real cache; completeness verification has its own tests.
+    monkeypatch.setattr(hf_revisions, "settle_install_pending", lambda *a, **k: "cleared")
     monkeypatch.setattr(performance_profiles, "reconcile_active_profile", lambda: {})
     monkeypatch.setattr(token_resolver, "resolve", lambda: None)
 
