@@ -237,11 +237,11 @@ metadata and the backend fallback mirror it.
 
 **Highlights**
 
-- Optional automatic error reports stay off until separately allowed in Privacy
-- Android Stories and Audiobook keep long manuscripts scrollable and recover drafts through activity recreation
-- Stories can merge adjacent lines with compatible speaker and voice settings
-- Linux ROCm setup preserves its installed PyTorch stack, and GPU readiness reflects failed self-tests
-- Phone dub exports check available space and avoid false low-space errors on iOS
+- Faster app launch and dubbing start, and installers about 425 MB smaller (#4320, #4322, #4323)
+- Generate and the MCP tool add paragraph pauses and understand [slow], [fast], [emphasis] and [spell] (#4254)
+- Dubbing no longer renders an untranslated track as the target language, and a finished dub always exports (#4347, #4346)
+- Linux ROCm dictation stays on the GPU, including 4 GB AMD cards (#4327, #4336)
+- OmniVoice frees its GPU memory on unload and always loads its reviewed model version (#4355, #4360)
 
 ### Changed
 
@@ -451,6 +451,15 @@ metadata and the backend fallback mirror it.
 
 ### Bug reporters
 
+- @luanweslley77 — untranslated dubs, missing-background exports, ROCm dictation on 4 GB cards and licence notes edits (#4317, #4318, #4334, #4335, #4346, #4347)
+- @yuningceng518-cloud — MLX VoxCPM2 ignoring the saved voice profile (#4344)
+- @nklowns — OmniVoice keeping GPU memory after unload (#4355)
+- @trankeny545-sudo — Vietnamese numbers losing magnitude words (#4319)
+- @Estcool9 — the fallback tokenizer licence blocking generation (#4329)
+- @Redamancy056 and @1250809257-alt — Windows proxy bypass entries stopping setup (#4288, #4289, #4328)
+- @LucasMLara — VoxCPM2 failing to install on Windows (#4316)
+- @MASHHOOD2019 — the Pro licence and model-weights wording (#4267)
+- @Paulo-Brito-Jr — MCP shim session handling; the original failure is still being confirmed (#4345)
 - @gaino-svg — long Android manuscripts (#4201)
 - @renaldyramadani123-code and @freemood36-svg — native-crash evidence that improved manual reports; the underlying Windows crash remains unresolved (#4142, #4158, #4162)
 - @rockziepromax — MOSS-TTS-Nano voice cloning (#4063)
