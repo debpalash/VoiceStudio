@@ -1939,6 +1939,63 @@ class PyTorchWhisperBackend(ASRBackend):
         except Exception:  # noqa: BLE001
             return False
 
+    # Free host RAM (GB) below which the CPU fallback stops asking for word
+    # timestamps: segment timestamps need no attention tensors at all.
+    _CPU_WORD_TIMESTAMP_MIN_FREE_GB = 3.0
+
+    def _limit_encoder_attention(self) -> None:
+        """Stop the encoder from retaining its self-attention maps.
+
+        Word timestamps make transformers request ``output_attentions`` for the
+        whole model, so the encoder keeps a ``[batch, heads, 1500, 1500]`` map
+        per layer (about 0.18 GB per layer per sample for large-v3-turbo: 11 GB
+        at batch 2) although DTW alignment reads only decoder cross-attention.
+        A forward pre-hook pins the encoder's flag off; the decoder keeps its
+        cross-attentions, so word timestamps are unchanged. Idempotent, and a
+        pipeline whose model cannot take the hook is left as it was.
+        """
+        encoder = getattr(getattr(getattr(self._pipe, "model", None), "model", None), "encoder", None)
+        if encoder is None or getattr(encoder, "_vs_no_encoder_attentions", False):
+            return
+        try:
+            def _force_off(_module, args, kwargs):
+                if kwargs.get("output_attentions"):
+                    kwargs["output_attentions"] = False
+                return args, kwargs
+
+            encoder.register_forward_pre_hook(_force_off, with_kwargs=True)
+            encoder._vs_no_encoder_attentions = True
+        except Exception as exc:  # noqa: BLE001 — memory optimisation only
+            logger.warning(
+                "PyTorch Whisper: could not disable encoder attention capture "
+                "(%s: %s); word timestamps will use more memory.",
+                type(exc).__name__, exc,
+            )
+
+    @classmethod
+    def _host_free_gb(cls) -> float | None:
+        try:
+            import psutil
+
+            return psutil.virtual_memory().available / 1024**3
+        except Exception:  # noqa: BLE001 — unknown RAM must not block ASR
+            return None
+
+    def _cpu_word_timestamps_ok(self, word_timestamps: bool) -> bool:
+        """On CPU, keep word timestamps only while host RAM has headroom."""
+        if not word_timestamps:
+            return False
+        free_gb = self._host_free_gb()
+        if free_gb is not None and free_gb < self._CPU_WORD_TIMESTAMP_MIN_FREE_GB:
+            logger.warning(
+                "PyTorch Whisper on CPU: only %.1f GB RAM free (< %.1f GB) — "
+                "using segment timestamps instead of word timestamps to avoid "
+                "exhausting memory.",
+                free_gb, self._CPU_WORD_TIMESTAMP_MIN_FREE_GB,
+            )
+            return False
+        return True
+
     def _call_pipe(self, audio, rate, batch, word_timestamps, generate_kwargs):
         options = {
             "return_timestamps": "word" if word_timestamps else True,
@@ -1956,7 +2013,7 @@ class PyTorchWhisperBackend(ASRBackend):
             return self._call_pipe(audio, rate, batch, word_timestamps, generate_kwargs)
 
         if not self._pipe_on_gpu():
-            return attempt(2)
+            return self._attempt_on_cpu(audio, rate, word_timestamps, generate_kwargs)
         sizes = list(
             self._CUDA_BATCH_LADDER_WORDS if word_timestamps
             else self._CUDA_BATCH_LADDER
@@ -1984,7 +2041,25 @@ class PyTorchWhisperBackend(ASRBackend):
             "moving the pipeline to CPU for this request."
         )
         self._rebuild_on_cpu()
-        return attempt(2)
+        return self._attempt_on_cpu(audio, rate, word_timestamps, generate_kwargs)
+
+    def _attempt_on_cpu(self, audio, rate, word_timestamps, generate_kwargs):
+        # Only a pipeline that really sits on the CPU gets batch 1 and the
+        # host-RAM rule; MPS also lands here (it is not on the CUDA/XPU ladder)
+        # and keeps its batch of 2 and the requested word timestamps.
+        if not self._pipe_on_cpu():
+            return self._call_pipe(audio, rate, 2, word_timestamps, generate_kwargs)
+        # Batch 1: float32 activations on CPU gain nothing from batching.
+        return self._call_pipe(
+            audio, rate, 1, self._cpu_word_timestamps_ok(word_timestamps),
+            generate_kwargs,
+        )
+
+    def _pipe_on_cpu(self) -> bool:
+        try:
+            return str(getattr(self._pipe, "device", "cpu")).lower().startswith("cpu")
+        except Exception:  # noqa: BLE001
+            return True
 
     def _rebuild_on_cpu(self) -> None:
         """Move the existing pipeline to CPU without resolving any model files."""
@@ -2017,6 +2092,7 @@ class PyTorchWhisperBackend(ASRBackend):
         """Decode audio and normalize PyTorch Whisper output with safe generation options."""
         import soundfile as sf
         self._ensure_pipe()
+        self._limit_encoder_attention()
         # transformers' Whisper generate() takes language/task; a prompt needs
         # tokenizer-specific prompt_ids, so it is not advertised here.
         generate_kwargs = whisper_request_options(language, None, None, task)
