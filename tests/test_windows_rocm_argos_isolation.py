@@ -52,7 +52,7 @@ async def test_translate_refuses_argos_before_loading_ctranslate2(rocm10):
     assert response.status_code == 400
     body = json.loads(response.body)
     assert body["detail"]["code"] == "argos_runtime_unavailable"
-    assert "ROCm 10" in body["error"]
+    assert "Windows ROCm" in body["error"]
 
 
 def test_other_environments_keep_argos(monkeypatch):

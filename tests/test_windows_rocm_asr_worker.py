@@ -40,7 +40,7 @@ def test_worker_never_imports_torch_and_requires_its_own_gpu_gate(
 
 
 @pytest.mark.parametrize("platform,version", [
-    ("win32", "2.9.1+rocm7.2.1"), ("win32", "2.8.0+cu128"),
+    ("win32", "2.8.0+cu128"),
     ("win32", "2.8.0+cpu"), ("linux", "2.13.0+rocm10.0.0"),
     ("darwin", "2.8.0"),
 ])
@@ -54,3 +54,13 @@ def test_other_runtimes_retain_in_process_execution(monkeypatch, platform, versi
     assert isolation.worker_device() is None
     assert isolation.availability_status() is None
     assert not ab.FasterWhisperBackend.runtime_runs_out_of_process()
+
+
+@pytest.mark.parametrize("version", ["2.9.1+rocm7.2.1", "2.13.0+rocm10.0.0"])
+def test_every_windows_hip_torch_isolates_ctranslate2(monkeypatch, version):
+    """ROCm 7.2.1 Torch also loads libomp140; in-process CT2 deadlocked the API (gfx1201)."""
+    isolation = importlib.import_module("core.windows_rocm.asr_isolation")
+    policy = importlib.import_module("core.windows_rocm.isolation_policy")
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(policy.metadata, "version", lambda name: version)
+    assert isolation.isolation_required()

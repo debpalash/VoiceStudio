@@ -7,12 +7,12 @@ class PipelineCompatibilityError(ImportError):
 
 
 def whisperx_error(device=None):
-    """WhisperX shares Torch's process; ROCm 10 CT2 CPU fallback is unsafe."""
+    """WhisperX shares Torch's process; Windows ROCm CT2 CPU fallback is unsafe."""
     from .isolation_policy import isolation_required
 
     if isolation_required():
         return (
-            "WhisperX transcription is unavailable in the Windows ROCm 10 environment: "
+            "WhisperX transcription is unavailable in the Windows ROCm environment: "
             "Torch and CTranslate2 use incompatible OpenMP runtimes. Use faster-whisper "
             "(isolated automatically) or PyTorch Whisper for transcription. CPU-only "
             "wav2vec2 alignment and pyannote are separate pipelines. "

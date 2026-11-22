@@ -1,4 +1,4 @@
-"""Keep ROCm 10 Torch and CT2's incompatible OpenMP runtimes apart."""
+"""Keep Windows ROCm Torch and CT2's incompatible OpenMP runtimes apart."""
 import weakref
 from importlib import util
 from threading import Lock
@@ -9,7 +9,7 @@ _PROXY_LOCK = Lock()
 
 
 def worker_device(parent_device=None):
-    """Resolve Windows ROCm 10 without importing Torch in the inference child."""
+    """Resolve Windows ROCm without importing Torch in the inference child."""
     if not isolation_required():
         return None
     from core.device_caps import requested_device_override
@@ -35,7 +35,7 @@ def availability_status():
 
     if requested_device_override() != "cpu" and (status := hip_status()) is not None:
         return status
-    return True, "Windows ROCm 10 CTranslate2 runs in a separate inference process"
+    return True, "Windows ROCm CTranslate2 runs in a separate inference process"
 
 
 def _proxy(owner):

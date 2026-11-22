@@ -1,4 +1,4 @@
-"""Lazy model loading; ROCm 10 inference never imports Torch here."""
+"""Lazy model loading; Windows ROCm inference never imports Torch here."""
 import os
 import sys
 
