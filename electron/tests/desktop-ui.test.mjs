@@ -390,9 +390,12 @@ test('runtime install status bursts keep the renderer and lifecycle usable', asy
         BrowserWindow.getAllWindows()[0].webContents.send('backend:status', next);
       }, status);
     await send({ ...ready, stage: 'starting', elapsedMs: 1000 });
+    // 'starting' keeps counting on the renderer's own one-second clock, so a
+    // slow runner can already show 2s or more. Any value under 80s proves the
+    // burst's 80s+ install clock was replaced instead of carried over.
     await page
       .getByTestId('backend-status-pill')
-      .getByText('1s elapsed', { exact: true })
+      .getByText(/^([1-9]|[1-7]\d)s elapsed$/)
       .waitFor();
     await send({ ...ready, stage: 'crashed', message: 'Fixture process exited', exitCode: 1 });
     await page.locator('[data-testid="backend-status-pill"][data-state="failed"]').waitFor();
