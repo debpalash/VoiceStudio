@@ -725,6 +725,10 @@ SPECS: dict[str, SidecarSpec] = {
     # leaves torch unpinned, so the pair is pinned here; each build of it was
     # resolved with voxcpm==2.0.3 on 2026-09-10 (Windows and Linux: +cu128 and
     # +cpu; Apple Silicon: plain). Weights download on first synthesis.
+    # voxcpm -> wetext -> kaldifst, which has no MSVC-buildable sdist (openfst
+    # uses __builtin_ctzll, #4316) and published 1.9.1's sdist before its wheels.
+    # The pin is a release whose wheels cover every host, and --only-binary makes
+    # a missing wheel fail fast instead of compiling from source.
     "voxcpm2": SidecarSpec(
         engine_id="voxcpm2",
         display_name="VoxCPM2",
@@ -735,7 +739,7 @@ SPECS: dict[str, SidecarSpec] = {
         probe_module="voxcpm",
         has_source=False,
         venv_args=("--python", "3.11"),
-        install_args=("voxcpm==2.0.3",),
+        install_args=("voxcpm==2.0.3", "kaldifst==1.9.0", "--only-binary", "kaldifst"),
         torch_pins=("torch==2.11.0", "torchaudio==2.11.0"),
         docs_path="docs/engines/voxcpm2.md",
         # CUDA torch (~5 GB unpacked) + transformers.
