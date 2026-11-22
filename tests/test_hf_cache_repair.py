@@ -2,15 +2,15 @@
 
 The reported first-run breaker (Windows 11): every blob of the TTS repo is
 fully downloaded (multi-GB files under ``blobs/``), but the
-``snapshots/<rev>/`` entries pointing at them are dangling symlinks (0 KB) —
-so ``os.path.isfile()`` is False and transformers dies with "… does not appear
+``snapshots/<rev>/`` entries pointing at them are dangling symlinks (0 KB) â€”
+so ``os.path.isfile()`` is False and transformers dies with "â€¦ does not appear
 to have a file named pytorch_model.bin or model.safetensors" even though the
 bytes are on disk. The pre-existing resume repair (#581/#739) can't fix that
 state; the fix adds rung 0 to the recovery ladder: delete exactly the broken
 entries, ``snapshot_download`` to restore them, retry the load once (guarded
 per repo per process). These tests fail before the fix and pass after.
 
-All network is mocked — ``snapshot_download`` never runs for real.
+All network is mocked â€” ``snapshot_download`` never runs for real.
 """
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ def _symlink_or_skip(target: str, link: str) -> None:
 def _no_ambient_offline_mode(monkeypatch):
     """All network in this file is mocked, but `repair_repo_cache` itself
     deliberately refuses to delete anything while HF offline mode is set
-    ("don't delete what we can't restore"). An ambient HF_HUB_OFFLINE=1 —
-    offline CI, air-gapped dev shell — must not silently flip these tests
+    ("don't delete what we can't restore"). An ambient HF_HUB_OFFLINE=1 â€”
+    offline CI, air-gapped dev shell â€” must not silently flip these tests
     onto that skip path. `test_repair_offline_deletes_nothing` opts back in
     explicitly via monkeypatch.setenv."""
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
@@ -74,7 +74,7 @@ def _no_ambient_offline_mode(monkeypatch):
 
 def _mk_repo_cache(tmp_path, repo_id: str = "test/checkpoint"):
     """The canonical HF cache layout for ``repo_id``, with one healthy blob,
-    one healthy snapshot link, one healthy regular file — and no breakage yet.
+    one healthy snapshot link, one healthy regular file â€” and no breakage yet.
 
     Returns (cache_dir, repo_dir, snap_dir)."""
     repo_dir = tmp_path / ("models--" + repo_id.replace("/", "--"))
@@ -89,7 +89,7 @@ def _mk_repo_cache(tmp_path, repo_id: str = "test/checkpoint"):
     return tmp_path, repo_dir, snap
 
 
-# ── find_dangling_entries ──────────────────────────────────────────────────
+# â”€â”€ find_dangling_entries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def test_healthy_cache_scan_is_a_noop(tmp_path):
@@ -122,7 +122,7 @@ def test_dangling_symlink_in_subfolder_detected(tmp_path):
 
 
 def test_zero_byte_weight_and_config_files_flagged(tmp_path):
-    # A 0-byte regular file standing where weights/config must be is broken —
+    # A 0-byte regular file standing where weights/config must be is broken â€”
     # those formats are never legitimately empty.
     _cache, repo_dir, snap = _mk_repo_cache(tmp_path)
     (snap / "model.safetensors").write_bytes(b"")
@@ -134,7 +134,7 @@ def test_zero_byte_weight_and_config_files_flagged(tmp_path):
 
 
 def test_zero_byte_unknown_suffix_not_flagged(tmp_path):
-    # Conservatism: when unsure, don't flag — repos legitimately ship empty
+    # Conservatism: when unsure, don't flag â€” repos legitimately ship empty
     # markers / text files.
     _cache, repo_dir, snap = _mk_repo_cache(tmp_path)
     (snap / "README.md").write_bytes(b"")
@@ -144,7 +144,7 @@ def test_zero_byte_unknown_suffix_not_flagged(tmp_path):
 
 
 def test_resolving_symlink_to_zero_byte_blob_not_flagged(tmp_path):
-    # An entry that RESOLVES is never touched, even if its target is empty —
+    # An entry that RESOLVES is never touched, even if its target is empty â€”
     # the heal repairs broken links, it doesn't second-guess repo content.
     _cache, repo_dir, snap = _mk_repo_cache(tmp_path)
     (repo_dir / "blobs" / "blob-empty").write_bytes(b"")
@@ -153,7 +153,7 @@ def test_resolving_symlink_to_zero_byte_blob_not_flagged(tmp_path):
     assert hf_cache_repair.find_dangling_entries(str(repo_dir)) == []
 
 
-# ── repair_repo_cache ──────────────────────────────────────────────────────
+# â”€â”€ repair_repo_cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def test_repair_removes_only_broken_and_redownloads(tmp_path, monkeypatch):
@@ -185,6 +185,240 @@ def test_repair_removes_only_broken_and_redownloads(tmp_path, monkeypatch):
     assert (snap / "config.json").read_bytes() == b'{"ok": true}'
     assert (snap / "tokenizer.json").read_bytes() == b'{"tok": 1}'
     assert (repo_dir / "blobs" / "blob-config").exists()
+
+
+def test_repair_restores_through_the_selected_endpoint(tmp_path, monkeypatch):
+    """The restore follows the endpoint selection every download already uses.
+
+    Explicit ``HF_ENDPOINT`` still wins. When it is unset and the automatic
+    selection's cached decision picked a mirror, the parallel repair path
+    (``model_manager._repair_model_cache``) re-downloads from that mirror â€”
+    this path always fell back to huggingface.co, which is unreachable for
+    exactly the users a mirror exists for, so a healed cache failed to
+    restore there. Built without symlinks so the case runs on every host.
+    """
+    import huggingface_hub
+
+    # huggingface_hub fixes its default endpoint from the environment at import
+    # time; a dev shell that exported HF_ENDPOINT=... must not leak into the
+    # assertions that exercise the "no endpoint picked" path.
+    from huggingface_hub import constants as hf_constants
+
+    monkeypatch.setattr(hf_constants, "ENDPOINT", "https://huggingface.co")
+
+    repo_dir = tmp_path / "models--k2-fsa--OmniVoice"
+    snap = repo_dir / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    (snap / "tokenizer.json").write_bytes(b'{"tok": 1}')  # healthy regular file
+    calls = []
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    from services.hf_revisions import CURATED_REVISIONS
+    monkeypatch.setitem(CURATED_REVISIONS, "k2-fsa/OmniVoice", "a" * 40)
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+    from services import endpoint_race
+    monkeypatch.setattr(endpoint_race, "effective_endpoint",
+                        lambda: "https://hf-mirror.com")
+
+    (snap / "model.safetensors").write_bytes(b"")  # zero-byte weight = broken
+    summary = hf_cache_repair.repair_repo_cache("k2-fsa/OmniVoice")
+    assert summary["ok"] is True
+    assert calls == [{
+        "repo_id": "k2-fsa/OmniVoice",
+        "revision": "a" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://hf-mirror.com",
+        "token": False,  # a mirror never receives the HF token
+    }]
+    assert not os.path.lexists(snap / "model.safetensors")
+    # The canonical endpoint is never forced on an auto host without a pick.
+    monkeypatch.setattr(endpoint_race, "effective_endpoint", lambda: None)
+    calls.clear()
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+    (snap / "model.safetensors").write_bytes(b"")
+    summary = hf_cache_repair.repair_repo_cache("k2-fsa/OmniVoice")
+    assert summary["ok"] is True
+    assert calls == [{"repo_id": "k2-fsa/OmniVoice", "revision": "a" * 40,
+                      "cache_dir": str(tmp_path)}]
+
+
+def test_repair_of_an_unmatched_repo_defaults_to_the_canonical_endpoint(
+    tmp_path, monkeypatch
+):
+    """When the catalogue cannot confirm a repository is ungated (empty or
+    unreadable catalog), the restore stays on the canonical endpoint, which is
+    where it ran before the automatic selection was consulted. A genuinely
+    gated repository whose entry failed to load must therefore never reach an
+    automatically picked mirror, because the mirror gets no token."""
+    import huggingface_hub
+
+    from services import endpoint_race
+    from services import model_catalogue
+    from services.hf_revisions import CURATED_REVISIONS
+
+    from huggingface_hub import constants as hf_constants
+
+    monkeypatch.setattr(hf_constants, "ENDPOINT", "https://huggingface.co")
+    monkeypatch.setattr(model_catalogue, "KNOWN_MODELS", [])
+    monkeypatch.setattr(
+        endpoint_race, "effective_endpoint", lambda: "https://hf-mirror.com"
+    )
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+
+    repo_dir = tmp_path / "models--pyannote--speaker-diarization-3.1"
+    snap = repo_dir / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setitem(
+        CURATED_REVISIONS, "pyannote/speaker-diarization-3.1", "b" * 40
+    )
+    calls = []
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+
+    (snap / "pipeline_config.json").write_bytes(b"")  # zero-byte JSON = broken
+    summary = hf_cache_repair.repair_repo_cache("pyannote/speaker-diarization-3.1")
+    assert summary["ok"] is True
+    assert calls == [{
+        "repo_id": "pyannote/speaker-diarization-3.1",
+        "revision": "b" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://huggingface.co",
+    }]
+
+
+def test_repair_of_a_gated_repo_restores_through_the_canonical_endpoint(
+    tmp_path, monkeypatch
+):
+    """A gated repository cannot be restored through an automatically picked
+    mirror: mirrors never receive the HF token. The restore falls back to the
+    canonical endpoint unless the user explicitly configured a mirror, the
+    same rule ``endpoint_race.download_endpoint(gated=True)`` applies to
+    downloads. The synthetic catalogue carries an ungated entry that lists the
+    gated repo as a dependency, so if the direct gated match were skipped the
+    dependency edge alone would classify the repo as ungated and this test
+    would fail (the mirror would be selected)."""
+    import huggingface_hub
+
+    from services import endpoint_race
+    from services import model_catalogue
+    from services.hf_revisions import CURATED_REVISIONS
+
+    from huggingface_hub import constants as hf_constants
+
+    monkeypatch.setattr(hf_constants, "ENDPOINT", "https://huggingface.co")
+    monkeypatch.setattr(model_catalogue, "KNOWN_MODELS", [
+        {
+            "repo_id": "pyannote/speaker-diarization-3.1",
+            "gated": True,
+            "requires_hf_token": True,
+            "dependencies": [{"repo_id": "pyannote/segmentation-3.0"}],
+        },
+        {
+            "repo_id": "other-public-model",
+            "dependencies": [{"repo_id": "pyannote/speaker-diarization-3.1"}],
+        },
+    ])
+    real_effective_endpoint = endpoint_race.effective_endpoint
+    monkeypatch.setattr(
+        endpoint_race, "effective_endpoint", lambda: "https://hf-mirror.com"
+    )
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+
+    repo_dir = tmp_path / "models--pyannote--speaker-diarization-3.1"
+    snap = repo_dir / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    (snap / "pipeline_config.json").write_bytes(b"pipeline: init\n")
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setitem(
+        CURATED_REVISIONS, "pyannote/speaker-diarization-3.1", "b" * 40
+    )
+    calls = []
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+
+    (snap / "pipeline_config.json").write_bytes(b"")  # zero-byte JSON = broken
+    summary = hf_cache_repair.repair_repo_cache("pyannote/speaker-diarization-3.1")
+    assert summary["ok"] is True
+    # The automatic mirror is ignored for a gated repo; the canonical
+    # endpoint restores it and the token policy adds no explicit token (the
+    # library's own lookup applies on huggingface.co).
+    assert calls == [{
+        "repo_id": "pyannote/speaker-diarization-3.1",
+        "revision": "b" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://huggingface.co",
+    }]
+    # An explicit user mirror still wins, gating included: the user chose it.
+    # Restore the real effective_endpoint so the explicit configuration flows
+    # through exactly as production resolves it.
+    monkeypatch.setenv("HF_ENDPOINT", "https://user-chosen.example/mirror")
+    monkeypatch.setattr(endpoint_race, "effective_endpoint", real_effective_endpoint)
+    calls.clear()
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+    (snap / "pipeline_config.json").write_bytes(b"")
+    summary = hf_cache_repair.repair_repo_cache("pyannote/speaker-diarization-3.1")
+    assert summary["ok"] is True
+    assert calls == [{
+        "repo_id": "pyannote/speaker-diarization-3.1",
+        "revision": "b" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://user-chosen.example/mirror",
+        "token": False,
+    }]
+
+
+def test_repair_of_a_gated_dependency_also_avoids_the_mirror(tmp_path, monkeypatch):
+    """pyannote/segmentation-3.0 is not its own catalogue entry; it ships as a
+    dependency of the gated diarisation entry, so the gating lookup must see
+    it through that edge. The synthetic catalogue also carries an ungated
+    direct entry for the dependency repo, so if the dependency edge were
+    ignored the repo would classify as ungated and this test would fail (the
+    mirror would be selected)."""
+    import huggingface_hub
+
+    from services import endpoint_race
+    from services import model_catalogue
+    from services.hf_revisions import CURATED_REVISIONS
+
+    from huggingface_hub import constants as hf_constants
+
+    monkeypatch.setattr(hf_constants, "ENDPOINT", "https://huggingface.co")
+    monkeypatch.setattr(model_catalogue, "KNOWN_MODELS", [
+        {
+            "repo_id": "pyannote/speaker-diarization-3.1",
+            "gated": True,
+            "requires_hf_token": True,
+            "dependencies": [{"repo_id": "pyannote/segmentation-3.0"}],
+        },
+        {"repo_id": "pyannote/segmentation-3.0"},
+    ])
+    monkeypatch.setattr(
+        endpoint_race, "effective_endpoint", lambda: "https://hf-mirror.com"
+    )
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+
+    repo_dir = tmp_path / "models--pyannote--segmentation-3.0"
+    snap = repo_dir / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setitem(CURATED_REVISIONS, "pyannote/segmentation-3.0", "c" * 40)
+    calls = []
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+
+    (snap / "pytorch_model.bin").write_bytes(b"")
+    summary = hf_cache_repair.repair_repo_cache("pyannote/segmentation-3.0")
+    assert summary["ok"] is True
+    assert calls == [{
+        "repo_id": "pyannote/segmentation-3.0",
+        "revision": "c" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://huggingface.co",
+    }]
 
 
 def test_repair_noop_on_healthy_cache_skips_download(tmp_path, monkeypatch):
@@ -229,7 +463,7 @@ def test_restore_that_recreates_dangling_links_forces_copy_mode(
     tmp_path, monkeypatch
 ):
     """The reporter's root cause: hub's memoized symlink probe says links work,
-    but real snapshot links come out dangling — a plain snapshot_download retry
+    but real snapshot links come out dangling â€” a plain snapshot_download retry
     recreates the SAME broken links. The repair must verify after restoring,
     force copy-mode (pre-seed hub's private memo with False), delete the
     re-broken entries, and restore once more with real file copies."""
@@ -328,7 +562,7 @@ def test_repo_cache_dir_uses_env_cache(monkeypatch, tmp_path):
     )
 
 
-# ── model_manager wiring ───────────────────────────────────────────────────
+# â”€â”€ model_manager wiring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 @pytest.fixture
@@ -347,7 +581,7 @@ def _healed_summary(repo_id="test/checkpoint"):
                          ids=["weights", "feature-extractor"])
 def test_signature_failure_link_repairs_and_retries(model_manager, monkeypatch, signature):
     """The core fix: first load hits the missing-weights signature, the link
-    self-heal repairs the snapshot, and the single retry succeeds — the legacy
+    self-heal repairs the snapshot, and the single retry succeeds â€” the legacy
     resume ladder (a real network re-download) is never entered."""
     repair_calls = []
     monkeypatch.setattr(
@@ -376,12 +610,12 @@ def test_signature_failure_link_repairs_and_retries(model_manager, monkeypatch, 
     loaded = model_manager._load_model_sync()
     assert loaded.llm is not None
     assert repair_calls == ["test/checkpoint"]
-    assert FlakyOmniVoice.attempts == 2  # load, link-repair, reload — once
+    assert FlakyOmniVoice.attempts == 2  # load, link-repair, reload â€” once
 
 
 def test_link_repair_runs_at_most_once_per_repo(model_manager, monkeypatch):
     """Retry-once guard: when the cache stays broken after a 'successful'
-    repair, the second load failure must NOT re-trigger the link repair —
+    repair, the second load failure must NOT re-trigger the link repair â€”
     it falls through to the legacy ladder / actionable message instead."""
     repair_calls = []
     monkeypatch.setattr(
@@ -432,7 +666,7 @@ def test_unrelated_load_error_does_not_trigger_repair(model_manager, monkeypatch
 @pytest.mark.parametrize("signature", [_SIGNATURE, _FEATURE_EXTRACTOR_SIGNATURE],
                          ids=["weights", "feature-extractor"])
 def test_noop_repair_falls_through_to_resume_ladder(model_manager, monkeypatch, signature):
-    """No broken links found → rung 0 must not eat the load retry budget; the
+    """No broken links found â†’ rung 0 must not eat the load retry budget; the
     pre-existing resume repair (#581) still runs and heals the cache."""
     monkeypatch.setattr(
         "services.hf_cache_repair.repair_repo_cache",
@@ -470,7 +704,7 @@ def test_repair_failed_message_names_the_real_cache_path(
     model_manager, monkeypatch, tmp_path
 ):
     """When every rung fails, the surfaced error must tell the user the exact
-    models--<org>--<name> folder to delete — resolved from the cache in effect
+    models--<org>--<name> folder to delete â€” resolved from the cache in effect
     (the Windows short cache, HF_HOME, or the default)."""
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
     monkeypatch.setattr(
@@ -497,7 +731,7 @@ def test_repair_failed_message_names_the_real_cache_path(
     assert "restart" in str(excinfo.value)
 
 
-# ── failure classification ─────────────────────────────────────────────────
+# â”€â”€ failure classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def test_classify_missing_weights_signature():
@@ -505,8 +739,8 @@ def test_classify_missing_weights_signature():
     evt = failure.build_failure(_SIGNATURE, stage="model-load",
                                 include_diagnostic=False)
     assert evt["docs_topic"] == "MODEL_CACHE_CORRUPT"
-    # The hint covers both halves of the class since #1406 — a file that is
-    # missing and one that arrived damaged — so it no longer names only the
+    # The hint covers both halves of the class since #1406 â€” a file that is
+    # missing and one that arrived damaged â€” so it no longer names only the
     # broken-link cause. What must survive is that it promises the automatic
     # repair and names the manual fallback.
     assert "missing or damaged" in evt["hint"]
@@ -518,7 +752,7 @@ def test_classify_repair_messages():
     # OmniVoice's own wording (status detail / logs / bug reports) must name
     # the same class as the raw transformers error.
     assert failure.classify(
-        "Model cache had broken file links — repaired automatically, retrying…"
+        "Model cache had broken file links â€” repaired automatically, retryingâ€¦"
     ) == "MODEL_CACHE_CORRUPT"
     assert failure.classify(
         "The TTS model cache for private/repo is incomplete and could not be auto-repaired."
@@ -530,13 +764,13 @@ def test_classify_unrelated_errors_not_cache_corrupt():
     assert failure.classify("") != "MODEL_CACHE_CORRUPT"
 
 
-# ── the second transformers wording (#1273) ────────────────────────────────
+# â”€â”€ the second transformers wording (#1273) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #
 # transformers has two unrelated ways of saying "this snapshot has no weight
 # shard". The hub-load wording is _SIGNATURE above; loading a *subfolder* of
 # an already-cached snapshot raises this one instead, with no words in common.
 # Matching only the first meant a half-written repo produced neither the
-# automatic repair nor an actionable message — just a raw 500 (#1273, on a
+# automatic repair nor an actionable message â€” just a raw 500 (#1273, on a
 # host with 10 GB free, i.e. a download that ran out of room).
 _SIGNATURE_LOCAL_DIR = (
     "Error no file named model.safetensors, or pytorch_model.bin, found in "
@@ -554,7 +788,7 @@ def test_classify_local_directory_missing_weights_signature():
 
 
 def test_self_heal_recognises_both_wordings():
-    """The repair ladder keys off the same predicate as the classifier — if it
+    """The repair ladder keys off the same predicate as the classifier â€” if it
     misses a wording, the user gets a hint about an automatic repair that
     never ran."""
     from services import model_manager as mm
