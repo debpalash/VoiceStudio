@@ -177,6 +177,45 @@ QC_FIELDS = (
 )
 
 
+def _untranslated_track_error(job: dict, req: DubRequest, lang_code: str) -> str | None:
+    """Detect a render that would speak the source language as the target (#4347).
+
+    The editor falls back to the source text when a row has no translation, so
+    a job that never translated (e.g. source language undetected, translate
+    refused with ``source_language_required``) still reaches this endpoint with
+    every row equal to the source. Hours later the "target" track is the
+    original language. Refuse before spending TTS time unless the job is known
+    to be in the target language already. Returns the reason, or ``None``.
+    """
+    target = lang_code.split("-")[0].lower()
+    if target == "und":
+        return None
+    source = str(job.get("source_lang_override") or job.get("source_lang") or "").split("-")[0].lower()
+    if source and source == target:
+        return None
+    if not source and not job.get("source_lang_detection_missing"):
+        # Legacy job that never recorded a source language: nothing proves
+        # the rows should differ, so keep its behaviour.
+        return None
+    existing = [s for s in (job.get("segments") or []) if isinstance(s, dict)]
+    by_id = {str(s["id"]): s for s in existing if s.get("id") is not None}
+    ids = req.segment_ids or []
+    speakable = unchanged = 0
+    for i, seg in enumerate(req.segments):
+        text = (seg.text or "").strip()
+        if not any(ch.isalpha() for ch in text):
+            continue
+        prev = by_id.get(str(ids[i])) if i < len(ids) and ids[i] is not None else None
+        if prev is None and i < len(existing):
+            prev = existing[i]
+        speakable += 1
+        if prev is not None and text == str(prev.get("text_original") or prev.get("text") or "").strip():
+            unchanged += 1
+    if speakable and unchanged == speakable:
+        return "no_translation"
+    return None
+
+
 def _sync_job_segments(job: dict, req: DubRequest) -> None:
     """Persist the segments this dub was actually generated from back onto the job.
 
@@ -544,6 +583,19 @@ async def dub_generate(job_id: str, req: DubRequest):
     # subtitles are replaced before this render publishes, its result belongs
     # to subtitles the user no longer has.
     admitted_rev = source_segments_revision(job)
+
+    if _untranslated_track_error(job, req, lang_code):
+        logger.warning(
+            "Refusing dub %s/%s: every segment still equals its source text (source_lang=%s)",
+            log_safe(job_id), log_safe(lang_code), log_safe(str(job.get("source_lang") or job.get("source_lang_override") or "unknown")),
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "dub_untranslated",
+                "message": "This track has no translation yet: every line still matches the source text. Translate it or choose the source language, then generate again.",
+            },
+        )
 
     # ── Engine resolution (issue #312 class) ────────────────────────────────
     # Every rendered segment clones either source speech or a saved profile,

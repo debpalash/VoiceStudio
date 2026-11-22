@@ -2942,7 +2942,8 @@
     "missingSpeech": "Audio ucapan hilang atau tidak dapat dibaca. Buat ulang segmen terkait sebelum mengekspor.",
     "timingOverflow": "Ucapan melebihi jatah waktunya. Persingkat terjemahan atau pilih slot ketat atau rentangkan video.",
     "sourceChanged": "Subtitle berubah saat sulih suara ini sedang dibuat. Trek sebelumnya dipertahankan; buat ulang untuk memakai subtitle baru.",
-    "backgroundUnavailable": "Suara asli tidak dapat dipertahankan. Periksa pemisahan latar dan waktu dialog, lalu coba lagi, atau pilih ekspor suara saja."
+    "backgroundUnavailable": "Suara asli tidak dapat dipertahankan. Periksa pemisahan latar dan waktu dialog, lalu coba lagi, atau pilih ekspor suara saja.",
+    "untranslated": "Trek ini belum diterjemahkan: semua baris masih sama dengan teks sumber. Terjemahkan atau pilih bahasa sumber, lalu buat lagi."
   },
   "dubStyle": {
     "label": "Instruksi gaya terjemahan",
