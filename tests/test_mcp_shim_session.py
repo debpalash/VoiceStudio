@@ -1,13 +1,18 @@
 """stdio shim must carry Mcp-Session-Id and recover from expiry (#4345)."""
 
 import asyncio
+import importlib
 import json
 
 import httpx
-
-from mcp_shim import __main__ as shim
+import pytest
 
 URL = "http://x/mcp/"
+
+
+@pytest.fixture
+def shim():
+    return importlib.import_module("mcp_shim.__main__")
 
 
 class _Server:
@@ -50,7 +55,7 @@ INITED = {"jsonrpc": "2.0", "method": "notifications/initialized"}
 LIST = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
 
 
-def _send(monkeypatch, srv, session, messages):
+def _send(shim, monkeypatch, srv, session, messages):
     out = []
     monkeypatch.setattr(shim, "_write_stdout", out.append)
 
@@ -63,27 +68,51 @@ def _send(monkeypatch, srv, session, messages):
     return out
 
 
-def test_session_id_forwarded_after_initialize(monkeypatch):
+def test_session_id_forwarded_after_initialize(shim, monkeypatch):
     srv = _Server()
-    out = _send(monkeypatch, srv, shim._Session(), [INIT, INITED, LIST])
+    out = _send(shim, monkeypatch, srv, shim._Session(), [INIT, INITED, LIST])
     assert out[-1]["result"] == {"ok": 1}
     assert srv.log[1:] == [("notifications/initialized", "s1"), ("tools/list", "s1")]
 
 
-def test_expired_session_reinitializes_and_retries(monkeypatch):
+def test_expired_session_reinitializes_and_retries(shim, monkeypatch):
     srv = _Server()
     session = shim._Session()
-    out = _send(monkeypatch, srv, session, [INIT, INITED])
+    out = _send(shim, monkeypatch, srv, session, [INIT, INITED])
     srv.valid.clear()  # backend restart / expiry
-    out += _send(monkeypatch, srv, session, [{**LIST, "id": 3}])
+    out += _send(shim, monkeypatch, srv, session, [{**LIST, "id": 3}])
     assert out[-1] == {"jsonrpc": "2.0", "id": 3, "result": {"ok": 1}}
     assert session.id == "s2"
     assert sum(1 for m, _ in srv.log if m == "initialize") == 2
     assert not any("error" in o for o in out)
 
 
-def test_unrecoverable_404_returns_error(monkeypatch):
+def test_unrecoverable_404_returns_error(shim, monkeypatch):
     session = shim._Session()
     session.id = "gone"  # no cached initialize to replay
-    out = _send(monkeypatch, _Server(), session, [LIST])
+    out = _send(shim, monkeypatch, _Server(), session, [LIST])
     assert out[-1]["error"]["code"] == -32000
+
+
+def test_400_with_new_id_after_failed_handshake_still_recovers(shim, monkeypatch):
+    """A session-less request that the server answers 400 *with* a fresh id
+    must still trigger the replay: judge the request sent, not session.id."""
+    srv = _Server()
+    session = shim._Session()
+    session.initialize = json.dumps(INIT)
+    calls = {"n": 0}
+    inner = srv.__call__
+
+    def handler(request):
+        body = json.loads(request.content)
+        if body.get("method") != "initialize" and not request.headers.get("mcp-session-id"):
+            calls["n"] += 1
+            srv.n += 1
+            new = f"s{srv.n}"
+            srv.valid.add(new)
+            return httpx.Response(400, headers={"mcp-session-id": new}, text="Missing session ID")
+        return inner(request)
+
+    out = _send(shim, monkeypatch, handler, session, [LIST])
+    assert out[-1]["result"] == {"ok": 1}
+    assert sum(1 for m, _ in srv.log if m == "initialize") == 1

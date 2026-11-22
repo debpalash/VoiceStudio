@@ -1,5 +1,6 @@
 """#4347 untranslated renders are refused; #4346 a missing bed falls back to speech-only."""
 import asyncio
+import importlib
 import importlib.util
 import json
 import sys
@@ -8,20 +9,17 @@ from pathlib import Path
 
 import pytest
 
-from schemas.requests import DubRequest
-
-
-def _req(texts, ids=None, code="pt"):
+def _req(texts, ids=None, code="pt", dur=1):
+    DubRequest = importlib.import_module("schemas.requests").DubRequest
     return DubRequest(
-        segments=[{"start": i, "end": i + 1, "text": t} for i, t in enumerate(texts)],
+        segments=[{"start": i, "end": i + dur, "text": t} for i, t in enumerate(texts)],
         segment_ids=ids or [f"s{i}" for i in range(len(texts))],
         language="Portuguese", language_code=code,
     )
 
 
 def _guard():
-    from api.routers import dub_generate
-    return dub_generate._untranslated_track_error
+    return importlib.import_module("api.routers.dub_generate")._untranslated_track_error
 
 
 SOURCE = [{"id": "s0", "text": "This is helium.", "start": 0, "end": 1},
@@ -66,6 +64,18 @@ def test_regenerating_a_translated_track_compares_against_text_original():
 def test_rows_without_letters_do_not_count():
     job = {"segments": [{"id": "s0", "text": "...", "start": 0, "end": 1}]}
     assert _guard()(job, _req(["..."], ids=["s0"]), "pt") is None
+
+
+def test_rows_the_renderer_silences_do_not_count_as_speech():
+    """A changed row <= the silence threshold must not admit a request whose
+    audible rows are all still the source text."""
+    job = {"source_lang": "en", "segments": [
+        {"id": "s0", "text": "This is helium.", "start": 0, "end": 1},
+        {"id": "s1", "text": "Hi.", "start": 1, "end": 1.04},
+    ]}
+    req = _req(["This is helium.", "Oi."], dur=1)
+    req.segments[1].end = req.segments[1].start + 0.04
+    assert _guard()(job, req, "pt") == "no_translation"
 
 
 # 4346
@@ -129,3 +139,10 @@ def test_cache_does_not_reuse_a_job_whose_bed_is_missing(tmp_path, monkeypatch):
     (d / "no_vocals.wav").write_bytes(b"RIFF")
     seed({"no_vocals_path": str(d / "no_vocals.wav")})
     assert dp.find_cached_job("hash_legacy", "other")["job_id"] == "legacy"
+
+
+def test_each_download_track_resolves_its_own_bed(export_module):
+    src = Path(export_module.__file__).read_text()
+    loop = src[src.index("for lang_code, track_info in filtered_tracks.items():"):]
+    loop = loop[: loop.index("tracks_to_process.append")]
+    assert loop.index("bg_idx = None") < loop.index("_preserved_background")

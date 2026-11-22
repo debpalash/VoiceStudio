@@ -215,10 +215,13 @@ async def _handle_request(
     elif method == "notifications/initialized":
         session.initialized = raw
 
+    # Judge the request that went out, not session.id afterwards: a 400 can
+    # arrive with a freshly allocated id that _post stores.
+    had_session_id = bool(session.id)
     status = await _post(client, url, raw, headers, session, message)
     # 404 = session expired / backend restarted; 400 with no id = the first
     # handshake never produced one. Re-initialize once, then retry.
-    if method != "initialize" and (status == 404 or (status == 400 and not session.id)):
+    if method != "initialize" and (status == 404 or (status == 400 and not had_session_id)):
         session.id = None
         if await _reinitialize(client, url, headers, session):
             status = await _post(client, url, raw, headers, session, message)

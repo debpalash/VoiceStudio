@@ -1853,8 +1853,18 @@ def drop_omnivoice_instance_refs() -> None:
     /model/unload/tts`` only drops ``model_manager.model``, so those adapters
     kept the whole model (weights on the GPU) alive and ``empty_cache()`` freed
     almost nothing. Best-effort; never raises.
+
+    Skipped while any render holds a ``tts_inference()`` slot: the render
+    reads ``self._model`` after ``_ensure_loaded`` and must not find it
+    cleared mid-flight. Nothing guards that elsewhere (the unload path takes
+    no inference lock), so the check lives here; the next unload drops them.
     """
     try:
+        from services import model_manager as _mm
+
+        with _mm._placement_cond:
+            if _mm._inference_active > 0:
+                return
         with _ENGINE_CACHE_LOCK:
             held = [_active_instance, *_ENGINE_INSTANCES.values()]
         for inst in held:
@@ -1980,6 +1990,12 @@ class OmniVoiceBackend(TTSBackend):
 
     def generate(self, text, **kw) -> torch.Tensor:
         self._ensure_loaded()
+        # Keep our own reference: an unload between the load check and the
+        # read below must not hand None to the model call (#4355).
+        model = self._model
+        if model is None:
+            self._ensure_loaded()
+            model = self._model
         language = kw.get("language")
         ref_audio = kw.get("ref_audio")
         ref_text = kw.get("ref_text")
@@ -2008,7 +2024,7 @@ class OmniVoiceBackend(TTSBackend):
         # one place here and a subtly different one there is exactly how the cache
         # came to be wired into the adapter and nowhere else.
         audios = generate_with_cached_ref(
-            self._model, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
+            model, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
         )
         return audios[0]
 
@@ -3072,7 +3088,11 @@ class MLXAudioBackend(TTSBackend):
     supports_generation_seed = True
     # voxcpm2: mlx-audio's VoxCPM2.generate takes ref_audio on its own
     # (reference-cloning mode, no transcript), verified against mlx-audio 0.5.
-    cloning_model_keys = ("csm", "qwen3-tts-base", "voxcpm2")
+    # outetts: generate() turns the reference into a speaker file (#2700);
+    # dia: its generate() loads ref_audio from a path (the transcript is
+    # speaker-tagged above). chatterbox is NOT listed: mlx-audio treats a
+    # str ref_audio as an array, so a saved clip path cannot clone there.
+    cloning_model_keys = ("csm", "qwen3-tts-base", "voxcpm2", "outetts", "dia")
 
     @classmethod
     def cloning_model_labels(cls) -> tuple[str, ...]:
@@ -3251,6 +3271,8 @@ class MLXAudioBackend(TTSBackend):
             return None
         if isinstance(config, dict) and config.get("model_type") == "kokoro":
             return "kokoro"
+        if isinstance(config, dict) and config.get("model_type") == "voxcpm2":
+            return "voxcpm2"
         if isinstance(config, dict) and config.get("model_type") == "qwen3_tts" and config.get("tts_model_type") == "base":
             return "qwen3-tts-base"
         return None

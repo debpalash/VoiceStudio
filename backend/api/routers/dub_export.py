@@ -986,6 +986,9 @@ async def dub_download(
     bg_idx = None
     tracks_to_process = []
     for lang_code, track_info in filtered_tracks.items():
+        # Per track: a lookup that finds no bed must not inherit the previous
+        # track's bed (timed for another language).
+        bg_idx = None
         if preserve_bg:
             bg_audio = await _preserved_background(job, job_id, lang_code)
             if bg_audio:
@@ -1077,25 +1080,21 @@ async def dub_download(
     ):
         apad_dur = retime_decision.video_dur
 
-    if bg_idx is not None:
-        for i, t in enumerate(tracks_to_process):
+    for i, t in enumerate(tracks_to_process):
+        if t["bg_idx"] is not None:
             tail = f",apad=whole_dur={apad_dur:.4f}" if apad_dur else ""
             filter_parts.append(bed_mix_filter(
                 f"{t['bg_idx']}:a", f"{t['idx']}:a", out=f"aout{i}", tail=tail, uniq=str(i), bed_gain=bed_level,
             ))
             t["out_label"] = f"[aout{i}]"
-        for t in tracks_to_process:
-            cmd += ["-map", t["out_label"]]
-    elif apad_dur:
-        for i, t in enumerate(tracks_to_process):
+        elif apad_dur:
             out_label = f"[aout{i}]"
             filter_parts.append(f"[{t['idx']}:a]apad=whole_dur={apad_dur:.4f}{out_label}")
             t["out_label"] = out_label
-        for t in tracks_to_process:
-            cmd += ["-map", t["out_label"]]
-    else:
-        for t in tracks_to_process:
-            cmd += ["-map", f"{t['idx']}:a:0"]
+        else:
+            t["out_label"] = f"{t['idx']}:a:0"
+    for t in tracks_to_process:
+        cmd += ["-map", t["out_label"]]
 
     if filter_parts:
         cmd += ["-filter_complex", ";".join(filter_parts)]

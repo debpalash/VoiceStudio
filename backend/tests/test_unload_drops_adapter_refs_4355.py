@@ -37,3 +37,13 @@ def test_unload_frees_model_held_by_engine_cache_adapter(monkeypatch):
     assert mm.unload_shared_model() is True
     gc.collect()
     assert ref() is None
+
+
+def test_unload_keeps_adapter_model_while_a_render_holds_an_inference_slot(monkeypatch):
+    ref, inst = _prime(monkeypatch, "active")
+    with mm.tts_inference():
+        assert mm.unload_shared_model() is True
+        assert inst._model is not None  # the in-flight render still reads it
+    monkeypatch.setattr(mm, "model", inst._model)
+    assert mm.unload_shared_model() is True
+    assert inst._model is None

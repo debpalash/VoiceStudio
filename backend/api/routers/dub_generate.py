@@ -61,7 +61,7 @@ def _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts):
         return
     for index, segment in enumerate(req.segments):
         sid = seg_ids[index] if index < len(seg_ids) else f"seg_{index}"
-        if segment.end - segment.start <= 0.05 or not spoken_texts[index].strip() or (regen_only is not None and sid not in regen_only):
+        if segment.end - segment.start <= MIN_SPOKEN_SEGMENT_S or not spoken_texts[index].strip() or (regen_only is not None and sid not in regen_only):
             continue
         check(segment.target_lang or req.language)
 
@@ -164,6 +164,8 @@ def _underrun_min_rate() -> float:
 # colliding with the next speaker's onset.
 GAP_OVERFLOW_MAX_S = 0.25
 GAP_OVERFLOW_BUFFER_S = 0.05
+# A row this short is rendered as silence, so it never counts as speech.
+MIN_SPOKEN_SEGMENT_S = 0.05
 
 
 # Second-pass ASR annotations (/dub/qc) describe one rendered track. They are
@@ -203,7 +205,7 @@ def _untranslated_track_error(job: dict, req: DubRequest, lang_code: str) -> str
     speakable = unchanged = 0
     for i, seg in enumerate(req.segments):
         text = (seg.text or "").strip()
-        if not any(ch.isalpha() for ch in text):
+        if seg.end - seg.start <= MIN_SPOKEN_SEGMENT_S or not any(ch.isalpha() for ch in text):
             continue
         prev = by_id.get(str(ids[i])) if i < len(ids) and ids[i] is not None else None
         if prev is None and i < len(existing):
@@ -1101,7 +1103,7 @@ async def dub_generate(job_id: str, req: DubRequest):
             yield f"data: {json.dumps({'type': 'progress', 'current': i, 'total': total, 'text': seg.text[:50]})}\n\n"
 
             seg_duration = seg.end - seg.start
-            if seg_duration <= 0.05 or not spoken_texts[i].strip():
+            if seg_duration <= MIN_SPOKEN_SEGMENT_S or not spoken_texts[i].strip():
                 silence = torch.zeros(
                     (1, max(0, int(seg_duration * backend.sample_rate)))
                 )
@@ -1114,7 +1116,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                         f"mix_{seg_id}",
                     )
                 )
-                if seg_duration > 0.05 and seg.text.strip() and not spoken_texts[i].strip():
+                if seg_duration > MIN_SPOKEN_SEGMENT_S and seg.text.strip() and not spoken_texts[i].strip():
                     # An explicit deletion replaces any older spoken cache at
                     # the same guarded publication boundary as generated audio.
                     try:
