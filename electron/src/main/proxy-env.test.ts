@@ -102,10 +102,76 @@ it('converts the bypass list proxy tools write by default instead of blocking se
   expect(proxyBypassHosts('300.*')).toBeNull();
 });
 
-it('names unrepresentable proxy bypass rules instead of falling into misleading DNS errors', () => {
+it('glob-matches unrepresentable bypass rules against the hosts setup contacts', () => {
+  const env = downloadProxyEnv(
+    { UV_INDEX_URL: 'https://Mirror.Corp.example/simple' },
+    'win32',
+    () => ({
+      server: 'socks=proxy:1080',
+      bypass: '172.1?.*;*.pythonhosted.*;*MIRROR*example;nothing-*.invalid',
+    }),
+  );
+  expect(env.HTTPS_PROXY).toBe('socks5h://proxy:1080');
+  const list = env.NO_PROXY?.split(',') ?? [];
+  expect(list).toContain('files.pythonhosted.org');
+  expect(list).toContain('mirror.corp.example');
+  expect(list).not.toContain('pypi.org');
+  expect(list.join(',')).not.toMatch(/invalid|\?/);
+  expect(setupProxyForUrl('https://files.pythonhosted.org/x', env)).toBe('');
+  expect(setupProxyForUrl('https://pypi.org/x', env)).toBe('socks5h://proxy:1080');
+});
+
+it('keeps scheme- and port-qualified rules proxied instead of bypassing every request', () => {
+  for (const bypass of ['http://pypi.org', '*pypi.org:8080', 'https://*.pythonhosted.org']) {
+    const env = downloadProxyEnv({}, 'win32', () => ({ server: 'proxy:1080', bypass }));
+    expect(env.NO_PROXY).toBe('localhost,127.0.0.1,::1');
+    expect(setupProxyForUrl('https://pypi.org/x', env)).toBe('http://proxy:1080');
+  }
+});
+
+it('never widens a bypass rule to subdomains WinINET would proxy', () => {
+  const input = {
+    UV_EXTRA_INDEX_URL: 'https://private.files.corp.example/simple https://files.corp.example/simple',
+  };
+  const glob = downloadProxyEnv(input, 'win32', () => ({
+    server: 'proxy:1080',
+    bypass: 'files.*.example',
+  }));
+  expect(glob.NO_PROXY).toBe('localhost,127.0.0.1,::1');
+  expect(setupProxyForUrl('https://private.files.corp.example/x', glob)).toBe('http://proxy:1080');
+  const plain = downloadProxyEnv(
+    { UV_INDEX_URL: 'https://mirror.corp.example/simple https://sub.mirror.corp.example/simple' },
+    'win32',
+    () => ({ server: 'proxy:1080', bypass: 'mirror.corp.example' }),
+  );
+  expect(plain.NO_PROXY).toBe('localhost,127.0.0.1,::1');
+  const ok = downloadProxyEnv(
+    { UV_INDEX_URL: 'https://mirror.corp.example/simple' },
+    'win32',
+    () => ({ server: 'proxy:1080', bypass: 'mirror.corp.example' }),
+  );
+  expect(ok.NO_PROXY).toContain('mirror.corp.example');
+});
+
+it('bypasses a parent host when other rules cover its contacted subdomains', () => {
+  const env = downloadProxyEnv(
+    { UV_INDEX_URL: 'https://mirror.corp.example/simple https://sub.mirror.corp.example/simple' },
+    'win32',
+    () => ({ server: 'proxy:1080', bypass: 'mirror.corp.example;sub.mirror.corp.example' }),
+  );
+  expect(env.NO_PROXY?.split(',')).toContain('mirror.corp.example');
+  const wild = downloadProxyEnv(
+    { UV_INDEX_URL: 'https://mirror.corp.example/simple https://sub.mirror.corp.example/simple' },
+    'win32',
+    () => ({ server: 'proxy:1080', bypass: 'mirror.corp.example;*.mirror.*' }),
+  );
+  expect(wild.NO_PROXY?.split(',')).toContain('mirror.corp.example');
+});
+
+it('does not throw for a rule that matches no setup host', () => {
   expect(() =>
-    downloadProxyEnv({}, 'win32', () => ({ server: 'socks=proxy:1080', bypass: '172.1?.*' })),
-  ).toThrow('VOICESTUDIO_PROXY_BYPASS_UNSUPPORTED');
+    downloadProxyEnv({}, 'win32', () => ({ server: 'proxy:1080', bypass: '172.1?.*' })),
+  ).not.toThrow();
 });
 
 it('keeps configured dotless download hosts direct when <local> is present', () => {
