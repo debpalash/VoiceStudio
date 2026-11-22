@@ -2,15 +2,15 @@
 
 The reported first-run breaker (Windows 11): every blob of the TTS repo is
 fully downloaded (multi-GB files under ``blobs/``), but the
-``snapshots/<rev>/`` entries pointing at them are dangling symlinks (0 KB) â€”
-so ``os.path.isfile()`` is False and transformers dies with "â€¦ does not appear
+``snapshots/<rev>/`` entries pointing at them are dangling symlinks (0 KB) —
+so ``os.path.isfile()`` is False and transformers dies with "… does not appear
 to have a file named pytorch_model.bin or model.safetensors" even though the
 bytes are on disk. The pre-existing resume repair (#581/#739) can't fix that
 state; the fix adds rung 0 to the recovery ladder: delete exactly the broken
 entries, ``snapshot_download`` to restore them, retry the load once (guarded
 per repo per process). These tests fail before the fix and pass after.
 
-All network is mocked â€” ``snapshot_download`` never runs for real.
+All network is mocked — ``snapshot_download`` never runs for real.
 """
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ def _symlink_or_skip(target: str, link: str) -> None:
 def _no_ambient_offline_mode(monkeypatch):
     """All network in this file is mocked, but `repair_repo_cache` itself
     deliberately refuses to delete anything while HF offline mode is set
-    ("don't delete what we can't restore"). An ambient HF_HUB_OFFLINE=1 â€”
-    offline CI, air-gapped dev shell â€” must not silently flip these tests
+    ("don't delete what we can't restore"). An ambient HF_HUB_OFFLINE=1 —
+    offline CI, air-gapped dev shell — must not silently flip these tests
     onto that skip path. `test_repair_offline_deletes_nothing` opts back in
     explicitly via monkeypatch.setenv."""
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
@@ -74,7 +74,7 @@ def _no_ambient_offline_mode(monkeypatch):
 
 def _mk_repo_cache(tmp_path, repo_id: str = "test/checkpoint"):
     """The canonical HF cache layout for ``repo_id``, with one healthy blob,
-    one healthy snapshot link, one healthy regular file â€” and no breakage yet.
+    one healthy snapshot link, one healthy regular file — and no breakage yet.
 
     Returns (cache_dir, repo_dir, snap_dir)."""
     repo_dir = tmp_path / ("models--" + repo_id.replace("/", "--"))
@@ -89,7 +89,7 @@ def _mk_repo_cache(tmp_path, repo_id: str = "test/checkpoint"):
     return tmp_path, repo_dir, snap
 
 
-# â”€â”€ find_dangling_entries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── find_dangling_entries ──────────────────────────────────────────────────
 
 
 def test_healthy_cache_scan_is_a_noop(tmp_path):
@@ -122,7 +122,7 @@ def test_dangling_symlink_in_subfolder_detected(tmp_path):
 
 
 def test_zero_byte_weight_and_config_files_flagged(tmp_path):
-    # A 0-byte regular file standing where weights/config must be is broken â€”
+    # A 0-byte regular file standing where weights/config must be is broken —
     # those formats are never legitimately empty.
     _cache, repo_dir, snap = _mk_repo_cache(tmp_path)
     (snap / "model.safetensors").write_bytes(b"")
@@ -134,7 +134,7 @@ def test_zero_byte_weight_and_config_files_flagged(tmp_path):
 
 
 def test_zero_byte_unknown_suffix_not_flagged(tmp_path):
-    # Conservatism: when unsure, don't flag â€” repos legitimately ship empty
+    # Conservatism: when unsure, don't flag — repos legitimately ship empty
     # markers / text files.
     _cache, repo_dir, snap = _mk_repo_cache(tmp_path)
     (snap / "README.md").write_bytes(b"")
@@ -144,7 +144,7 @@ def test_zero_byte_unknown_suffix_not_flagged(tmp_path):
 
 
 def test_resolving_symlink_to_zero_byte_blob_not_flagged(tmp_path):
-    # An entry that RESOLVES is never touched, even if its target is empty â€”
+    # An entry that RESOLVES is never touched, even if its target is empty —
     # the heal repairs broken links, it doesn't second-guess repo content.
     _cache, repo_dir, snap = _mk_repo_cache(tmp_path)
     (repo_dir / "blobs" / "blob-empty").write_bytes(b"")
@@ -153,7 +153,7 @@ def test_resolving_symlink_to_zero_byte_blob_not_flagged(tmp_path):
     assert hf_cache_repair.find_dangling_entries(str(repo_dir)) == []
 
 
-# â”€â”€ repair_repo_cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── repair_repo_cache ──────────────────────────────────────────────────────
 
 
 def test_repair_removes_only_broken_and_redownloads(tmp_path, monkeypatch):
@@ -192,7 +192,7 @@ def test_repair_restores_through_the_selected_endpoint(tmp_path, monkeypatch):
 
     Explicit ``HF_ENDPOINT`` still wins. When it is unset and the automatic
     selection's cached decision picked a mirror, the parallel repair path
-    (``model_manager._repair_model_cache``) re-downloads from that mirror â€”
+    (``model_manager._repair_model_cache``) re-downloads from that mirror —
     this path always fell back to huggingface.co, which is unreachable for
     exactly the users a mirror exists for, so a healed cache failed to
     restore there. Built without symlinks so the case runs on every host.
@@ -463,7 +463,7 @@ def test_restore_that_recreates_dangling_links_forces_copy_mode(
     tmp_path, monkeypatch
 ):
     """The reporter's root cause: hub's memoized symlink probe says links work,
-    but real snapshot links come out dangling â€” a plain snapshot_download retry
+    but real snapshot links come out dangling — a plain snapshot_download retry
     recreates the SAME broken links. The repair must verify after restoring,
     force copy-mode (pre-seed hub's private memo with False), delete the
     re-broken entries, and restore once more with real file copies."""
@@ -562,7 +562,7 @@ def test_repo_cache_dir_uses_env_cache(monkeypatch, tmp_path):
     )
 
 
-# â”€â”€ model_manager wiring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── model_manager wiring ───────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -581,7 +581,7 @@ def _healed_summary(repo_id="test/checkpoint"):
                          ids=["weights", "feature-extractor"])
 def test_signature_failure_link_repairs_and_retries(model_manager, monkeypatch, signature):
     """The core fix: first load hits the missing-weights signature, the link
-    self-heal repairs the snapshot, and the single retry succeeds â€” the legacy
+    self-heal repairs the snapshot, and the single retry succeeds — the legacy
     resume ladder (a real network re-download) is never entered."""
     repair_calls = []
     monkeypatch.setattr(
@@ -610,12 +610,12 @@ def test_signature_failure_link_repairs_and_retries(model_manager, monkeypatch, 
     loaded = model_manager._load_model_sync()
     assert loaded.llm is not None
     assert repair_calls == ["test/checkpoint"]
-    assert FlakyOmniVoice.attempts == 2  # load, link-repair, reload â€” once
+    assert FlakyOmniVoice.attempts == 2  # load, link-repair, reload — once
 
 
 def test_link_repair_runs_at_most_once_per_repo(model_manager, monkeypatch):
     """Retry-once guard: when the cache stays broken after a 'successful'
-    repair, the second load failure must NOT re-trigger the link repair â€”
+    repair, the second load failure must NOT re-trigger the link repair —
     it falls through to the legacy ladder / actionable message instead."""
     repair_calls = []
     monkeypatch.setattr(
@@ -666,7 +666,7 @@ def test_unrelated_load_error_does_not_trigger_repair(model_manager, monkeypatch
 @pytest.mark.parametrize("signature", [_SIGNATURE, _FEATURE_EXTRACTOR_SIGNATURE],
                          ids=["weights", "feature-extractor"])
 def test_noop_repair_falls_through_to_resume_ladder(model_manager, monkeypatch, signature):
-    """No broken links found â†’ rung 0 must not eat the load retry budget; the
+    """No broken links found → rung 0 must not eat the load retry budget; the
     pre-existing resume repair (#581) still runs and heals the cache."""
     monkeypatch.setattr(
         "services.hf_cache_repair.repair_repo_cache",
@@ -704,7 +704,7 @@ def test_repair_failed_message_names_the_real_cache_path(
     model_manager, monkeypatch, tmp_path
 ):
     """When every rung fails, the surfaced error must tell the user the exact
-    models--<org>--<name> folder to delete â€” resolved from the cache in effect
+    models--<org>--<name> folder to delete — resolved from the cache in effect
     (the Windows short cache, HF_HOME, or the default)."""
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
     monkeypatch.setattr(
@@ -731,7 +731,7 @@ def test_repair_failed_message_names_the_real_cache_path(
     assert "restart" in str(excinfo.value)
 
 
-# â”€â”€ failure classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── failure classification ─────────────────────────────────────────────────
 
 
 def test_classify_missing_weights_signature():
@@ -739,8 +739,8 @@ def test_classify_missing_weights_signature():
     evt = failure.build_failure(_SIGNATURE, stage="model-load",
                                 include_diagnostic=False)
     assert evt["docs_topic"] == "MODEL_CACHE_CORRUPT"
-    # The hint covers both halves of the class since #1406 â€” a file that is
-    # missing and one that arrived damaged â€” so it no longer names only the
+    # The hint covers both halves of the class since #1406 — a file that is
+    # missing and one that arrived damaged — so it no longer names only the
     # broken-link cause. What must survive is that it promises the automatic
     # repair and names the manual fallback.
     assert "missing or damaged" in evt["hint"]
@@ -752,7 +752,7 @@ def test_classify_repair_messages():
     # OmniVoice's own wording (status detail / logs / bug reports) must name
     # the same class as the raw transformers error.
     assert failure.classify(
-        "Model cache had broken file links â€” repaired automatically, retryingâ€¦"
+        "Model cache had broken file links — repaired automatically, retrying…"
     ) == "MODEL_CACHE_CORRUPT"
     assert failure.classify(
         "The TTS model cache for private/repo is incomplete and could not be auto-repaired."
@@ -764,13 +764,13 @@ def test_classify_unrelated_errors_not_cache_corrupt():
     assert failure.classify("") != "MODEL_CACHE_CORRUPT"
 
 
-# â”€â”€ the second transformers wording (#1273) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── the second transformers wording (#1273) ────────────────────────────────
 #
 # transformers has two unrelated ways of saying "this snapshot has no weight
 # shard". The hub-load wording is _SIGNATURE above; loading a *subfolder* of
 # an already-cached snapshot raises this one instead, with no words in common.
 # Matching only the first meant a half-written repo produced neither the
-# automatic repair nor an actionable message â€” just a raw 500 (#1273, on a
+# automatic repair nor an actionable message — just a raw 500 (#1273, on a
 # host with 10 GB free, i.e. a download that ran out of room).
 _SIGNATURE_LOCAL_DIR = (
     "Error no file named model.safetensors, or pytorch_model.bin, found in "
@@ -788,7 +788,7 @@ def test_classify_local_directory_missing_weights_signature():
 
 
 def test_self_heal_recognises_both_wordings():
-    """The repair ladder keys off the same predicate as the classifier â€” if it
+    """The repair ladder keys off the same predicate as the classifier — if it
     misses a wording, the user gets a hint about an automatic repair that
     never ran."""
     from services import model_manager as mm
