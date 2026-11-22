@@ -1845,6 +1845,25 @@ def clear_clone_prompt_cache(*, keep_passage_choices: bool = False) -> None:
         _unresolved_prompt_recognizers.clear()
 
 
+def drop_omnivoice_instance_refs() -> None:
+    """Clear the shared model from every cached ``OmniVoiceBackend`` (#4355).
+
+    ``_ensure_loaded`` stores the singleton on the adapter, and the adapter is
+    cached in ``_active_instance`` / ``_ENGINE_INSTANCES``. ``POST
+    /model/unload/tts`` only drops ``model_manager.model``, so those adapters
+    kept the whole model (weights on the GPU) alive and ``empty_cache()`` freed
+    almost nothing. Best-effort; never raises.
+    """
+    try:
+        with _ENGINE_CACHE_LOCK:
+            held = [_active_instance, *_ENGINE_INSTANCES.values()]
+        for inst in held:
+            if isinstance(inst, OmniVoiceBackend):
+                inst._model = None
+    except Exception:  # noqa: BLE001 — cache hygiene must never break an unload
+        logger.debug("dropping cached OmniVoice adapter refs failed", exc_info=True)
+
+
 # NB: model_manager.release_tts_side_caches() calls clear_clone_prompt_cache()
 # above whenever it drops the TTS model — the prompts belong to that model
 # instance and an "unload" that leaves them behind isn't an unload (#1119). It
