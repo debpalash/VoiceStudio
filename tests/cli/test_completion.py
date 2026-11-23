@@ -122,3 +122,8 @@ def test_powershell_script_registers(shell_env):
                             capture_output=True, text=True, timeout=60, env=shell_env)
     assert result.returncode == 0, result.stderr
     assert 'reference' in result.stdout.split()
+
+def test_global_flags_complete_before_a_command_and_within_groups():
+    assert names(['--tim']) == ['--timeout']
+    assert names(['--ur']) == ['--url']
+    assert names(['voices', '--ver']) == ['--verbose']
