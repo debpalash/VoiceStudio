@@ -117,6 +117,7 @@ def test_batch_worker_records_actionable_source_language_failure(monkeypatch):
 def test_whole_file_dub_preserves_unknown_or_explicit_source(tmp_path, monkeypatch, m, override):
     import numpy as np
     from api.routers import dub_core as dc
+    (tmp_path / 'input.wav').write_bytes(b'')  # the route refuses a job with no audio file
     job = {'audio_path': str(tmp_path / 'input.wav'), 'duration': 2, 'source_lang_override': override}
     monkeypatch.setattr(dc, '_get_job', lambda _: job)
     monkeypatch.setattr(dc, '_save_job', lambda *args: None)

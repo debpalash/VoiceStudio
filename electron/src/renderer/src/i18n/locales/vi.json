@@ -1624,7 +1624,8 @@
     "open": "Mở “{{name}}” và thay thế bản nháp hiện tại? Hãy lưu công việc trước.",
     "save_copy": "Lưu bản sao",
     "new": "Dự án mới",
-    "new_confirm": "Bắt đầu một dự án mới, trống? Các dự án đã lưu vẫn giữ nguyên; những thay đổi chưa lưu trong bản nháp hiện tại sẽ bị mất."
+    "new_confirm": "Bắt đầu một dự án mới, trống? Các dự án đã lưu vẫn giữ nguyên; những thay đổi chưa lưu trong bản nháp hiện tại sẽ bị mất.",
+    "delete_hint": "Chỉ dự án đã lưu bị xóa khỏi danh sách. Tệp phương tiện và giọng nói vẫn được giữ."
   },
   "sidebar": {
     "save_project": "Lưu dự án lồng tiếng",

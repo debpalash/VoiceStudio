@@ -1817,7 +1817,8 @@
     "open": "Queres abrir \"{{name}}\" e substituír o borrador actual? Garda primeiro o teu traballo actual.",
     "save_copy": "Garda unha copia",
     "new": "Novo proxecto",
-    "new_confirm": "Comezar un proxecto novo e baleiro? Os proxectos gardados non cambian; perderanse os cambios sen gardar do borrador actual."
+    "new_confirm": "Comezar un proxecto novo e baleiro? Os proxectos gardados non cambian; perderanse os cambios sen gardar do borrador actual.",
+    "delete_hint": "Só se elimina o proxecto gardado da lista. Consérvanse os ficheiros de audio e vídeo e as voces."
   },
   "sidebar": {
     "save_project": "Gardar proxecto de dobraxe",

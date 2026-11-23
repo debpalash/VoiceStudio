@@ -64,7 +64,7 @@ describe('VoiceSelector', () => {
     const onChange = vi.fn();
     renderVS({ value: '', onChange, profiles: PROFILES });
     open();
-    fireEvent.mouseDown(screen.getByText('Aria'));
+    fireEvent.click(screen.getByText('Aria'));
     expect(onChange).toHaveBeenCalledWith('p_clone');
   });
 
@@ -78,7 +78,7 @@ describe('VoiceSelector', () => {
       .getAllByRole('option')
       .find((el) => el.textContent && /Authoritative|Preset|🎙/.test(el.textContent));
     // fall back to any non-default option if preset names change
-    fireEvent.mouseDown(presetRow || screen.getAllByRole('option')[1]);
+    fireEvent.click(presetRow || screen.getAllByRole('option')[1]);
     expect(onChange.mock.calls[0][0]).toMatch(/^preset:/);
   });
 
@@ -87,7 +87,7 @@ describe('VoiceSelector', () => {
     renderVS({ value: '', onChange, profiles: [], speakerClones: { 'Speaker 1': {} } });
     open();
     expect(screen.getByText('From video')).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByText('🎤 Speaker 1'));
+    fireEvent.click(screen.getByText('🎤 Speaker 1'));
     expect(onChange).toHaveBeenCalledWith('auto:speaker_1');
   });
 
@@ -95,7 +95,7 @@ describe('VoiceSelector', () => {
     const onChange = vi.fn();
     renderVS({ value: '', onChange, profiles: [], speakerClones: { SPEAKER_00: {} } });
     open();
-    fireEvent.mouseDown(screen.getByText('🎤 SPEAKER_00'));
+    fireEvent.click(screen.getByText('🎤 SPEAKER_00'));
     expect(onChange).toHaveBeenCalledWith('auto:speaker00');
   });
 
@@ -112,7 +112,7 @@ describe('VoiceSelector', () => {
     renderVS({ value: 'p_clone', onChange, profiles: PROFILES, recentsKey: 'vs_test' });
     open();
     // pick engine default ('')
-    fireEvent.mouseDown(screen.getByText('Engine default'));
+    fireEvent.click(screen.getByText('Engine default'));
     expect(onChange).toHaveBeenCalledWith('');
     const recents = JSON.parse(window.localStorage.getItem('vs_test') || '[]');
     expect(recents).not.toContain('');
@@ -121,7 +121,7 @@ describe('VoiceSelector', () => {
   it('DOES record a real profile id as a recent', () => {
     renderVS({ value: '', onChange: vi.fn(), profiles: PROFILES, recentsKey: 'vs_test2' });
     open();
-    fireEvent.mouseDown(screen.getByText('Aria'));
+    fireEvent.click(screen.getByText('Aria'));
     const recents = JSON.parse(window.localStorage.getItem('vs_test2') || '[]');
     expect(recents).toContain('p_clone');
   });
@@ -193,7 +193,7 @@ describe('VoiceSelector', () => {
       const onChange = vi.fn();
       renderVS({ value: '', onChange, profiles: PROFILES });
       open();
-      fireEvent.mouseDown(screen.getByText('The Librarian'));
+      fireEvent.click(screen.getByText('The Librarian'));
       await waitFor(() =>
         expect(vi.mocked(useArchetypeAsProfile)).toHaveBeenCalledWith('a_lib', 'The Librarian'),
       );
@@ -208,7 +208,7 @@ describe('VoiceSelector', () => {
       const onChange = vi.fn();
       renderVS({ value: 'p_clone', onChange, profiles: PROFILES });
       open();
-      fireEvent.mouseDown(screen.getByText('The Mate'));
+      fireEvent.click(screen.getByText('The Mate'));
       await waitFor(() =>
         expect(vi.mocked(useArchetypeAsProfile)).toHaveBeenCalledWith('a_mate', 'The Mate'),
       );

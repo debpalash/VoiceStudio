@@ -92,7 +92,7 @@ jobs:
             mobile package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
             config/analytics.json config/diagnostics.json tests/fixtures/diagnostic-app-events.json
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: steps.pass.outputs.hit != 'true'
         with:
           distribution: temurin
@@ -118,6 +118,44 @@ jobs:
         with:
           path: mobile/native/android/build
           key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
+
+      # Robolectric's android-all jars (~100 MB each) come from Maven Central, which
+      # rate-limits (HTTP 429) shared runner IPs. setup-gradle's cache is read-only
+      # off the default branch and only saved after a green job, so a 429 on main
+      # leaves nothing to restore. Cache the resolved jars on their own, keyed on
+      # the two catalog versions, save them as soon as they resolve, and retry the
+      # resolution with backoff.
+      - name: Robolectric SDK cache key
+        id: robolectric
+        if: steps.pass.outputs.hit != 'true'
+        run: echo "key=robolectric-sdk-$(grep 'android-all-instrumented' gradle/libs.versions.toml | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Robolectric SDK jars
+        id: robolectric-cache
+        if: steps.pass.outputs.hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/android/app/build/robolectric-sdk
+          key: ${{ steps.robolectric.outputs.key }}
+
+      - name: Resolve Robolectric SDK (retry on rate limits)
+        if: steps.pass.outputs.hit != 'true'
+        run: |
+          for delay in 0 30 90 180; do
+            sleep "$delay"
+            ./gradlew --no-daemon :app:prepareRobolectricSdk && exit 0
+            echo "::warning::Robolectric SDK download failed; retrying"
+          done
+          exit 1
+
+      # Saved as soon as the jars resolve, not after a green job: a later test
+      # failure must not throw away a download that succeeded.
+      - name: Save Robolectric SDK jars
+        if: steps.pass.outputs.hit != 'true' && steps.robolectric-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/android/app/build/robolectric-sdk
+          key: ${{ steps.robolectric.outputs.key }}
 
       - name: Build, unit tests, lint
         if: steps.pass.outputs.hit != 'true'
@@ -464,7 +502,7 @@ jobs:
             mobile package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
             config/analytics.json config/diagnostics.json tests/fixtures/diagnostic-app-events.json
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: steps.pass.outputs.hit != 'true'
         with:
           distribution: temurin
@@ -528,7 +566,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: "21"
