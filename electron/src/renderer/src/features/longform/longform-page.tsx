@@ -22,7 +22,7 @@ import { clearedScriptPatch, scriptSize } from './story-clear';
 import { ConfirmDialog } from '../clone/confirm-dialog';
 import { AudiobookMarkupToolbar } from './audiobook-markup-toolbar';
 import { ChapterOutline } from './chapter-outline';
-import { storyVoicesReady } from './story-inputs';
+import { storyHasContent, storyVoicesReady } from './story-inputs';
 import { ProjectSettings } from './project-settings';
 import { ProductionSettings } from './production-settings';
 import { ChapterPreviews } from './chapter-previews';
@@ -104,7 +104,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
   const usable =
     mode === 'audiobook'
       ? draft.script.trim().length > 0
-      : draft.lines.some((line) => line.text.trim() && !line.text.trim().startsWith('#'));
+      : storyHasContent(draft.lines);
   const castReady = names.every(
     (name) =>
       !castVoice(draft.voiceCast, name) ||

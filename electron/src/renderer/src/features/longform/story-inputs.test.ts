@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { blankLongformDraft, renderBody } from './longform-session';
-import { storyVoicesReady } from './story-inputs';
+import { storyHasContent, storyVoicesReady } from './story-inputs';
 it('resolves character inheritance, line overrides and speed through the shared compiler', () => {
   const draft = {
     ...blankLongformDraft(),
@@ -40,4 +40,17 @@ it('ignores a removed voice on a chapter heading, which is never spoken', () => 
       [{ id: 'actor' }],
     ),
   ).toBe(false);
+});
+
+
+it.each([
+  ['# Chapter', false],
+  ['   ', false],
+  ['## A line of dialogue', true],
+  ['#hashtag', true],
+])('uses the Story compiler heading syntax when checking %j', (text, usable) => {
+  const lines = [{ id: 'line', text, profileId: 'actor' }];
+  const draft = { ...blankLongformDraft(), lines };
+  expect(renderBody('stories', draft).chapters).toHaveLength(usable ? 1 : 0);
+  expect(storyHasContent(lines)).toBe(usable);
 });

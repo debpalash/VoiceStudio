@@ -2,6 +2,10 @@ import { storyToSpans } from '@shared/utils/storyToSpans';
 import { isChapterLine } from '@shared/utils/storyExport';
 import { castVoice } from './cast-map';
 import type { Draft } from './longform-session';
+export function storyHasContent(lines: Draft['lines']) {
+  return lines.some(({ text }) => text.trim().length > 0 && !isChapterLine(text));
+}
+
 export function storyVoicesReady(draft: Draft, profiles: { id: string }[]) {
   if (
     draft.lines.some((line) => {
