@@ -1727,6 +1727,13 @@ export async function translateDub(
             slot_seconds: segment.end - segment.start,
           })),
         }),
+      }).catch((error: unknown) => {
+        // Sending the same request again cannot succeed until the source
+        // language is chosen, so the activity dock must not offer a Retry
+        // that silently re-fails (#4347).
+        if (error instanceof ApiError && error.payload?.code === 'source_language_required')
+          updateTranslationRun(activityId!, { retry: undefined });
+        throw error;
       });
       if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
       updateTranslationRun(activityId!, {

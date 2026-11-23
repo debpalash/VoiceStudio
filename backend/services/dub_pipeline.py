@@ -385,6 +385,12 @@ def find_cached_job(content_hash: str, exclude_job_id: str) -> Optional[dict]:
         # audio as its "vocals"; reusing it would make a retry skip separation.
         if job.get("background_separation") == "failed":
             continue
+        # Jobs written before the marker above existed carry no flag: a cache
+        # without a bed on disk is the same failed separation (#4346), and its
+        # "vocals" is a byte copy of the source mix.
+        no_vocals = job.get("no_vocals_path")
+        if not no_vocals or not os.path.isfile(no_vocals):
+            continue
         if not os.path.isfile(os.path.join(cached_dir, "audio_hq.wav")):
             logger.info(
                 "cache candidate %s has pre-HQ (mono/16k-derived) stems — "

@@ -98,6 +98,14 @@ describe("errorFromResponse", () => {
     expect(err.detail).not.toContain("Raw diagnostic");
     expect(err.payload?.detail).toEqual(detail);
   });
+  it("localizes the untranslated-track refusal", async () => {
+    const detail = { code: "dub_untranslated", message: "Raw diagnostic" };
+    const err = await errorFromResponse(
+      new Response(JSON.stringify({ detail }), { status: 409 }),
+    );
+    expect(err.detail).not.toContain("Raw diagnostic");
+    expect(err.payload?.detail).toEqual(detail);
+  });
   it("uses a string detail verbatim and keeps the payload", async () => {
     const res = new Response(
       JSON.stringify({ detail: "Unsupported instruct items" }),

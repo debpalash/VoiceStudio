@@ -104,51 +104,63 @@ def _write_stdout(obj: Any) -> None:
     sys.stdout.flush()
 
 
-async def _handle_request(
+class _Session:
+    """Streamable-HTTP session state shared by every request.
+
+    The server issues ``Mcp-Session-Id`` on the ``initialize`` response and
+    requires it on every later request; a 404 means it expired or the backend
+    restarted, so the handshake must be replayed.
+    """
+
+    def __init__(self) -> None:
+        self.id: str | None = None
+        self.initialize: str | None = None  # last client ``initialize`` body
+        self.initialized: str | None = None  # last ``notifications/initialized``
+
+
+def _method(message: Any) -> str | None:
+    return message.get("method") if isinstance(message, dict) else None
+
+
+async def _post(
     client: httpx.AsyncClient,
     url: str,
     raw: str,
     headers: dict[str, str],
-    session_id: list[str | None],
-) -> None:
-    try:
-        message = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        _err(f"invalid JSON on stdin: {exc}")
-        return
-
+    session: _Session,
+    message: Any,
+    *,
+    emit: bool = True,
+) -> int:
+    """POST one message, relay the reply to stdout, return the HTTP status."""
     req_headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
         **headers,
     }
-    if session_id[0]:
-        req_headers[SESSION_HEADER] = session_id[0]
-
-    is_notification = isinstance(message, dict) and "id" not in message
+    is_init = _method(message) == "initialize"
+    if is_init:
+        session.id = None  # a fresh handshake never carries a stale id
+    elif session.id:
+        req_headers[SESSION_HEADER] = session.id
 
     async with client.stream("POST", url, headers=req_headers, content=raw.encode("utf-8")) as response:
-        if session_id[0] is None:
-            sid = response.headers.get(SESSION_HEADER)
-            if sid:
-                session_id[0] = sid
+        sid = response.headers.get(SESSION_HEADER)
+        if sid and (is_init or session.id is None):
+            session.id = sid
 
-        if response.status_code == 202:
-            return  # notification acknowledged
-        if response.status_code >= 400:
+        status = response.status_code
+        if status == 202:
+            return status  # notification acknowledged
+        if status >= 400:
             body = await response.aread()
-            _err(f"server {response.status_code}: {body.decode('utf-8', errors='replace')[:400]}")
-            if is_notification:
-                return
-            _write_stdout({
-                "jsonrpc": "2.0",
-                "id": message.get("id"),
-                "error": {"code": -32000, "message": f"VoiceStudio MCP proxy got HTTP {response.status_code}"},
-            })
-            return
+            _err(f"server {status}: {body.decode('utf-8', errors='replace')[:400]}")
+            return status
 
         ctype = response.headers.get("content-type", "")
-        if "text/event-stream" in ctype:
+        if not emit:
+            await response.aread()
+        elif "text/event-stream" in ctype:
             async for line in response.aiter_lines():
                 if line.startswith("data:"):
                     payload = line[5:].strip()
@@ -164,6 +176,61 @@ async def _handle_request(
                 _write_stdout(json.loads(body))
             except json.JSONDecodeError:
                 _err(f"non-JSON response ({ctype}): {body.decode('utf-8', errors='replace')[:200]}")
+        return status
+
+
+async def _reinitialize(
+    client: httpx.AsyncClient, url: str, headers: dict[str, str], session: _Session
+) -> bool:
+    """Replay the cached handshake silently (the client already has its reply)."""
+    if not session.initialize:
+        return False
+    init = json.loads(session.initialize)
+    status = await _post(client, url, session.initialize, headers, session, init, emit=False)
+    if status >= 400 or not session.id:
+        return False
+    if session.initialized:
+        await _post(
+            client, url, session.initialized, headers, session, json.loads(session.initialized), emit=False
+        )
+    return True
+
+
+async def _handle_request(
+    client: httpx.AsyncClient,
+    url: str,
+    raw: str,
+    headers: dict[str, str],
+    session: _Session,
+) -> None:
+    try:
+        message = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        _err(f"invalid JSON on stdin: {exc}")
+        return
+
+    method = _method(message)
+    if method == "initialize":
+        session.initialize = raw
+    elif method == "notifications/initialized":
+        session.initialized = raw
+
+    # Judge the request that went out, not session.id afterwards: a 400 can
+    # arrive with a freshly allocated id that _post stores.
+    had_session_id = bool(session.id)
+    status = await _post(client, url, raw, headers, session, message)
+    # 404 = session expired / backend restarted; 400 with no id = the first
+    # handshake never produced one. Re-initialize once, then retry.
+    if method != "initialize" and (status == 404 or (status == 400 and not had_session_id)):
+        session.id = None
+        if await _reinitialize(client, url, headers, session):
+            status = await _post(client, url, raw, headers, session, message)
+    if status >= 400 and status != 202 and isinstance(message, dict) and "id" in message:
+        _write_stdout({
+            "jsonrpc": "2.0",
+            "id": message.get("id"),
+            "error": {"code": -32000, "message": f"VoiceStudio MCP proxy got HTTP {status}"},
+        })
 
 
 async def _run() -> int:
@@ -179,7 +246,7 @@ async def _run() -> int:
             return 1
         forward_headers["Authorization"] = f"Bearer {api_key}"
 
-    session_id: list[str | None] = [None]
+    session = _Session()
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
         if not await _wait_for_backend(client, health_url, forward_headers):
@@ -193,7 +260,7 @@ async def _run() -> int:
                 line = line.strip()
                 if not line:
                     continue
-                await _handle_request(client, url, line, forward_headers, session_id)
+                await _handle_request(client, url, line, forward_headers, session)
         except (KeyboardInterrupt, SystemExit):
             return 0
         except Exception as exc:

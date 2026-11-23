@@ -1845,6 +1845,30 @@ def clear_clone_prompt_cache(*, keep_passage_choices: bool = False) -> None:
         _unresolved_prompt_recognizers.clear()
 
 
+def drop_omnivoice_instance_refs() -> None:
+    """Clear the shared model from every cached ``OmniVoiceBackend`` (#4355).
+
+    ``_ensure_loaded`` stores the singleton on the adapter, and the adapter is
+    cached in ``_active_instance`` / ``_ENGINE_INSTANCES``. ``POST
+    /model/unload/tts`` only drops ``model_manager.model``, so those adapters
+    kept the whole model (weights on the GPU) alive and ``empty_cache()`` freed
+    almost nothing. Best-effort; never raises.
+
+    Safe while a render is in flight: ``generate``/``generate_batch`` hold
+    their own reference from ``_ensure_loaded()``, so clearing the adapter
+    never hands ``None`` to a running model call, and the weights are freed
+    when that render returns.
+    """
+    try:
+        with _ENGINE_CACHE_LOCK:
+            held = [_active_instance, *_ENGINE_INSTANCES.values()]
+        for inst in held:
+            if isinstance(inst, OmniVoiceBackend):
+                inst._model = None
+    except Exception:  # noqa: BLE001 — cache hygiene must never break an unload
+        logger.debug("dropping cached OmniVoice adapter refs failed", exc_info=True)
+
+
 # NB: model_manager.release_tts_side_caches() calls clear_clone_prompt_cache()
 # above whenever it drops the TTS model — the prompts belong to that model
 # instance and an "unload" that leaves them behind isn't an unload (#1119). It
@@ -1942,7 +1966,7 @@ class OmniVoiceBackend(TTSBackend):
             from services.model_manager import ensure_tts_on_device
 
             ensure_tts_on_device()
-            return
+            return self._model
         # Reuse model_manager's cached instance so we don't double-load.
         from services.model_manager import get_model
         import asyncio
@@ -1952,15 +1976,22 @@ class OmniVoiceBackend(TTSBackend):
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            self._model = asyncio.run(get_model())
-            return
+            self._model = model = asyncio.run(get_model())
+            return model
         raise RuntimeError(
             "OmniVoiceBackend.generate() called inside an async context without a pre-loaded model. "
             "Pass `model=await get_model()` to the constructor."
         )
 
     def generate(self, text, **kw) -> torch.Tensor:
-        self._ensure_loaded()
+        # Our own reference: an unload during this render may clear
+        # ``self._model`` (#4355) and must not hand None to the model call.
+        model = self._ensure_loaded()
+        if model is None:  # a stubbed loader (tests) leaves the preset model
+            model = self._model
+        return self._generate_on_model(model, text, **kw)
+
+    def _generate_on_model(self, model, text, **kw) -> torch.Tensor:
         language = kw.get("language")
         ref_audio = kw.get("ref_audio")
         ref_text = kw.get("ref_text")
@@ -1989,7 +2020,7 @@ class OmniVoiceBackend(TTSBackend):
         # one place here and a subtly different one there is exactly how the cache
         # came to be wired into the adapter and nowhere else.
         audios = generate_with_cached_ref(
-            self._model, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
+            model, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
         )
         return audios[0]
 
@@ -2001,7 +2032,9 @@ class OmniVoiceBackend(TTSBackend):
         model together; an incomplete prompt batch falls back to the proven
         single-item path instead of changing synthesis semantics.
         """
-        self._ensure_loaded()
+        model = self._ensure_loaded()
+        if model is None:
+            model = self._model
         if not texts:
             return []
         from services.model_manager import tts_inference
@@ -2009,9 +2042,11 @@ class OmniVoiceBackend(TTSBackend):
         # Holds the shared model in place for prompt encoding + the batch
         # generate (an offload can't move it mid-batch; #2618).
         with tts_inference():
-            return self._generate_batch_on_model(texts, **kw)
+            return self._generate_batch_on_model(texts, model=model, **kw)
 
-    def _generate_batch_on_model(self, texts: list[str], **kw) -> list[torch.Tensor]:
+    def _generate_batch_on_model(self, texts: list[str], *, model=None, **kw) -> list[torch.Tensor]:
+        if model is None:
+            model = self._ensure_loaded() or self._model
         def _items(value):
             if isinstance(value, list):
                 return value
@@ -2034,7 +2069,7 @@ class OmniVoiceBackend(TTSBackend):
                     prompts = []
                     break
                 prompt = _get_clone_prompt(
-                    self._model,
+                    model,
                     ref_audio,
                     ref_text,
                     preprocess_prompt,
@@ -2046,7 +2081,9 @@ class OmniVoiceBackend(TTSBackend):
                 prompts.append(prompt)
 
         if any(ref_audios) and len(prompts) != len(texts):
-            return [self.generate(text, **_item_kwargs(i))
+            # The retained model: an unload mid-batch must not make the
+            # single-item fallback cold-load a second copy (#4355).
+            return [self._generate_on_model(model, text, **_item_kwargs(i))
                     for i, text in enumerate(texts)]
 
         gen_kw = dict(
@@ -2065,7 +2102,7 @@ class OmniVoiceBackend(TTSBackend):
         else:
             gen_kw["ref_audio"] = None
             gen_kw["ref_text"] = None
-        return self._model.generate(text=texts, **gen_kw)
+        return model.generate(text=texts, **gen_kw)
 
     def unload(self) -> None:
         """Release the OmniVoice model (MM2-02). OmniVoice shares the singleton
@@ -3051,7 +3088,13 @@ class MLXAudioBackend(TTSBackend):
     gpu_compat = ("mps", "cpu")
     # generate() seeds mlx's RNG from the request's seed.
     supports_generation_seed = True
-    cloning_model_keys = ("csm", "qwen3-tts-base")
+    # voxcpm2: mlx-audio's VoxCPM2.generate takes ref_audio on its own
+    # (reference-cloning mode, no transcript), verified against mlx-audio 0.5.
+    # outetts: generate() turns the reference into a speaker file (#2700);
+    # dia: its generate() loads ref_audio from a path (the transcript is
+    # speaker-tagged above). chatterbox is NOT listed: mlx-audio treats a
+    # str ref_audio as an array, so a saved clip path cannot clone there.
+    cloning_model_keys = ("csm", "qwen3-tts-base", "voxcpm2", "outetts", "dia")
 
     @classmethod
     def cloning_model_labels(cls) -> tuple[str, ...]:
@@ -3228,9 +3271,21 @@ class MLXAudioBackend(TTSBackend):
             config = json.loads((Path(self._model_id) / "config.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
+        if isinstance(config, dict) and config.get("model_type") == "kokoro":
+            return "kokoro"
+        if isinstance(config, dict) and config.get("model_type") == "voxcpm2":
+            return "voxcpm2"
         if isinstance(config, dict) and config.get("model_type") == "qwen3_tts" and config.get("tts_model_type") == "base":
             return "qwen3-tts-base"
         return None
+
+    def active_preset_voices(self) -> list[str]:
+        """Preset voices of the selected model: only Kokoro ships voice packs.
+
+        ``PRESET_VOICES`` is the Kokoro roster; every other model ignores a
+        ``voice`` kwarg, so offering the roster there picks nothing (#4344).
+        """
+        return list(self.PRESET_VOICES) if self._curated_key() == "kokoro" else []
 
     def _check_language(self, language: object) -> Optional[str]:
         # Kokoro's installed tables are authoritative and accept labels such
@@ -3396,9 +3451,12 @@ class MLXAudioBackend(TTSBackend):
         # stays empty and indexing into it raises an opaque
         # "IndexError: list index out of range" deep inside mlx-audio,
         # instead of ever attempting the clone. Community-diagnosed (#1012).
-        if ref_audio:
+        # VoxCPM2 clones from the clip alone; a transcript would only add an
+        # ASR pass.
+        needs_transcript = self._curated_key() != "voxcpm2"
+        if ref_audio and needs_transcript:
             ref_text = required_reference_transcript(ref_audio, ref_text)
-        if ref_audio and ref_text: kwargs["ref_text"] = ref_text
+        if ref_audio and ref_text and needs_transcript: kwargs["ref_text"] = ref_text
         if language and language.strip() and language.strip().lower() != "auto":
             if self._model_id == self.CURATED_MODELS.get("kokoro"):
                 # Kokoro's vendored pipeline hard-asserts `lang_code` against
@@ -4343,7 +4401,7 @@ _MLX_AUDIO_MODEL_LABELS: dict[str, str] = {
     "chatterbox": "Chatterbox",
     "melotts":    "MeloTTS (lightweight)",
     "outetts":    "OuteTTS",
-    "voxcpm2":    "VoxCPM2 8-bit (30 languages, 48 kHz)",
+    "voxcpm2":    "VoxCPM2 8-bit (30 languages, 48 kHz, voice cloning)",
 }
 
 

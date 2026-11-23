@@ -2491,6 +2491,8 @@ from services import omnivoice_checkpoint as _omnivoice_checkpoint  # noqa: E402
 
 # Re-exported: callers and tests reach it through model_manager.
 resolve_omnivoice_checkpoint = _omnivoice_checkpoint.resolve_omnivoice_checkpoint
+omnivoice_pin_kwargs = _omnivoice_checkpoint.omnivoice_pin_kwargs
+omnivoice_asr_pin_kwargs = _omnivoice_checkpoint.omnivoice_asr_pin_kwargs
 
 
 #: CPython's exact executor-rejection message once interpreter shutdown began
@@ -2707,6 +2709,7 @@ def _load_model_sync():
                 checkpoint, device_map=device,
                 dtype=getattr(torch, tts_dtype_name(device)), load_asr=False,
                 tokenizer_fallback_guard=_guard_tokenizer_fallback,
+                **omnivoice_pin_kwargs(checkpoint),
             )
 
         def _recover_corrupt_weights(exc: BaseException):
@@ -2883,7 +2886,7 @@ def _load_model_sync():
             # corrupt, it must never be mistaken for the TTS checkpoint and
             # trigger a second multi-GB TTS load/re-download (CodeRabbit).
             try:
-                _model.load_asr_model()
+                _model.load_asr_model(**omnivoice_asr_pin_kwargs())
             except Exception as asr_exc:
                 if not _is_corrupt_model_file_error(asr_exc):
                     raise
@@ -4015,6 +4018,11 @@ def unload_shared_model() -> bool:
     model = None
     _ram_offload = None
     release_tts_side_caches()
+    # Cached OmniVoiceBackend adapters hold their own strong ref to the model
+    # (#4355); without this the weights survive the unload.
+    _mod = sys.modules.get("services.tts_backend")
+    if _mod is not None:
+        _mod.drop_omnivoice_instance_refs()
     free_vram()
     return True
 
