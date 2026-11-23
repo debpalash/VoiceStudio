@@ -46,7 +46,12 @@ def plan(number: int, author: str, open_prs: list[dict], limit: int = LIMIT) -> 
         if (pr.get("user") or {}).get("login") == author and pr["number"] != number
     )
     ordered = [*others, number]
-    return ordered[:limit], ordered[limit:]
+    kept, excess = ordered[:limit], ordered[limit:]
+    # The triggering pull request closes first, so a failed later API call
+    # never leaves it open.
+    if number in excess:
+        excess = [number, *(n for n in excess if n != number)]
+    return kept, excess
 
 
 def _api(method: str, path: str, token: str, body: dict | None = None):

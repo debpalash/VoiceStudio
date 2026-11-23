@@ -40,7 +40,7 @@ def test_reopening_an_older_pull_request_closes_that_one():
 def test_a_pull_request_a_skipped_run_missed_is_closed_too():
     limit = _script()
     prs = [_pr(1, "a"), _pr(2, "a"), _pr(4, "a"), _pr(5, "a")]
-    assert limit.plan(5, "a", prs) == ([1, 2], [4, 5])
+    assert limit.plan(5, "a", prs) == ([1, 2], [5, 4])  # the triggering one first
 
 
 def test_maintainers_and_bots_are_exempt():
