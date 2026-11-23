@@ -36,3 +36,27 @@ def test_concurrent_cross_device_replace_uses_private_staging(tmp_path, monkeypa
     assert len(set(staged)) == 2
     assert target.read_bytes() in {b"audio-a", b"audio-b"}
     assert list(tmp_path.iterdir()) == [target]
+
+
+def test_cross_device_replace_keeps_the_source_file_mode(tmp_path, monkeypatch):
+    import os
+    import pytest
+
+    if os.name == "nt":
+        pytest.skip("POSIX file modes")
+    from utils import fsops
+
+    source = tmp_path / "a.wav"
+    source.write_bytes(b"audio")
+    os.chmod(source, 0o644)
+    target = tmp_path / "target.wav"
+    replace = fsops.os.replace
+
+    def cross_device(src, dst):
+        if str(src) == str(source):
+            raise OSError(errno.EXDEV, "cross-device move")
+        replace(src, dst)
+
+    monkeypatch.setattr(fsops.os, "replace", cross_device)
+    fsops.safe_replace(str(source), str(target))
+    assert target.stat().st_mode & 0o777 == 0o644

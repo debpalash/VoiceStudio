@@ -37,6 +37,12 @@ def safe_replace(src: str, dst: str) -> None:
     os.close(fd)
     try:
         shutil.copyfile(src, tmp)
+        # mkstemp creates 0600; keep the source's mode so the replaced file is not
+        # unreadable to other users (e.g. a shared Docker volume).
+        try:
+            shutil.copymode(src, tmp)
+        except OSError:
+            pass
         with open(tmp, "rb+") as f:
             f.flush()
             os.fsync(f.fileno())
