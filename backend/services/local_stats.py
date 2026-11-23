@@ -80,13 +80,15 @@ def usage_summary() -> dict:
 
         by_mode = _distribution(
             conn,
-            "SELECT mode, COUNT(*) FROM generation_history "
-            "GROUP BY mode ORDER BY COUNT(*) DESC",
+            "SELECT COALESCE(NULLIF(TRIM(mode), ''), 'unknown') AS name, COUNT(*) "
+            "FROM generation_history "
+            "GROUP BY name ORDER BY COUNT(*) DESC, name",
         )
         by_language = _distribution(
             conn,
-            "SELECT language, COUNT(*) FROM generation_history "
-            "GROUP BY language ORDER BY COUNT(*) DESC LIMIT 12",
+            "SELECT COALESCE(NULLIF(TRIM(language), ''), 'unknown') AS name, COUNT(*) "
+            "FROM generation_history "
+            "GROUP BY name ORDER BY COUNT(*) DESC, name LIMIT 12",
         )
 
         voices = int(_scalar(conn, "SELECT COUNT(*) FROM voice_profiles"))
