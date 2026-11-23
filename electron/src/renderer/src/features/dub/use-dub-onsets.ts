@@ -20,6 +20,7 @@ export function useDubOnsets(jobId: string | null, active: boolean) {
       signal: controller.signal,
     })
       .then((response) => {
+        if (controller.signal.aborted) return;
         const onsets = Array.isArray(response.onsets)
           ? response.onsets
               .map(Number)
@@ -37,7 +38,7 @@ export function useDubOnsets(jobId: string | null, active: boolean) {
         });
       })
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === 'AbortError'))
+        if (!controller.signal.aborted && !(error instanceof DOMException && error.name === 'AbortError'))
           setResult({ jobId, onsets: EMPTY, peaks: EMPTY, source: null });
       });
     return () => controller.abort();
