@@ -15,8 +15,8 @@ it('exports the exact selected interval as mono PCM WAV', async () => {
   expect(view.getUint32(24, true)).toBe(100);
   expect(view.getInt16(44, true)).toBe(8191);
 });
-it('exports a 20 ms selection between decimal timestamps', () => {
-  expect(trimmedAudio(buffer, 0.28, 0.3).size).toBe(44 + 2 * 2);
+it.each([[0.28, 0.3], [0.56, 0.58]])('exports a 20 ms selection from %s to %s', (start, end) => {
+  expect(trimmedAudio(buffer, start, end).size).toBe(44 + 2 * 2);
 });
 it('rejects invalid, empty and out-of-bounds selections', () => {
   for (const [start, end] of [
