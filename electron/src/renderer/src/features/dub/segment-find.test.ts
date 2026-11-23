@@ -95,3 +95,10 @@ describe('textUpdates', () => {
     expect(textUpdates(rows, next)).toEqual([{ id: 'a', text: 'Hello Apex city' }]);
   });
 });
+
+it('finds more matches in one cue than the JavaScript argument limit', () => {
+  const text = 'a'.repeat(150_000);
+  const matches = collectMatches([{ id: 'long', text }], 'a');
+  expect(matches).toHaveLength(text.length);
+  expect(matches.at(-1)).toEqual({ id: 'long', field: 'text', start: text.length - 1, end: text.length });
+});
