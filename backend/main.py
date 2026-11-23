@@ -150,6 +150,17 @@ except ImportError:
 if sys.platform == "win32":
     os.environ.setdefault("HF_DEACTIVATE_ASYNC_LOAD", "1")
 
+# Windows: transformers memory-maps .safetensors and the first read through
+# that copy-on-write view can fault below Python (0xC0000005 in
+# torch/storage.py during _materialize_copy — #4142; upstream fix
+# huggingface/transformers#48341, released in 5.17.0, after our lock). Route
+# those reads through safetensors' pread backend instead. After .env load so
+# OMNIVOICE_SAFETENSORS_PREAD=0 is honored; before transformers so every
+# `from safetensors import safe_open` binds the wrapper.
+from omnivoice.utils.safetensors_pread import install_pread_backend as _install_pread_backend  # noqa: E402
+
+_install_pread_backend()
+
 # A mirror in HF_ENDPOINT must never receive the Hugging Face token, here or in
 # engine processes that inherit this environment.
 from services.hf_auth import apply_process_token_policy as _apply_hf_token_policy  # noqa: E402

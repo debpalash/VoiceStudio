@@ -603,6 +603,13 @@ class OmniVoice(PreTrainedModel):
             os.environ["TQDM_DISABLE"] = "1"
 
         try:
+            # Windows: the mmap-backed safetensors read this call performs can
+            # fault below Python (0xC0000005 in torch/storage.py — #4142).
+            # Route reads through pread; idempotent, no-op off Windows, and it
+            # rebinds safe_open even when transformers was already imported.
+            from omnivoice.utils.safetensors_pread import install_pread_backend
+
+            install_pread_backend()
             model = super().from_pretrained(
                 pretrained_model_name_or_path, *args, **kwargs
             )
