@@ -8,9 +8,31 @@ _BACKEND_DIR = Path(__file__).resolve().parents[3] / "backend"
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-from engines.audiocpp import DRAMA3_ENGINE_ID, AudioCPPDrama3Backend  # noqa: E402
-from engines.audiocpp.bootstrap import BREEZE, DOTS, DRAMA3, DRAMA3_HF_MODEL_REPO, DRAMA3_HF_MODEL_REVISION, ModelPackage  # noqa: E402
-from services.tts_backend import _ENGINE_DOCS, _INSTALL_HINTS, _LAZY_REGISTRY, get_backend_class  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _fresh_app_modules():
+    """Resolve app modules at test time: an earlier test may reset sys.modules,
+    and collection-time bindings would then point at stale module objects."""
+    import importlib
+
+    audiocpp = importlib.import_module("engines.audiocpp")
+    bootstrap = importlib.import_module("engines.audiocpp.bootstrap")
+    tts = importlib.import_module("services.tts_backend")
+    globals().update(
+        DRAMA3_ENGINE_ID=audiocpp.DRAMA3_ENGINE_ID,
+        AudioCPPDrama3Backend=audiocpp.AudioCPPDrama3Backend,
+        BREEZE=bootstrap.BREEZE,
+        DOTS=bootstrap.DOTS,
+        DRAMA3=bootstrap.DRAMA3,
+        DRAMA3_HF_MODEL_REPO=bootstrap.DRAMA3_HF_MODEL_REPO,
+        DRAMA3_HF_MODEL_REVISION=bootstrap.DRAMA3_HF_MODEL_REVISION,
+        ModelPackage=bootstrap.ModelPackage,
+        _ENGINE_DOCS=tts._ENGINE_DOCS,
+        _INSTALL_HINTS=tts._INSTALL_HINTS,
+        _LAZY_REGISTRY=tts._LAZY_REGISTRY,
+        get_backend_class=tts.get_backend_class,
+    )
 
 
 def test_drama3_package_spec_is_isolated_and_pinned():
