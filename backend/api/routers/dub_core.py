@@ -917,6 +917,7 @@ async def dub_upload(
     job_id: Optional[str] = Form(None),
     input_type: str = Form("video"),
     source_lang: Optional[str] = Form(None),
+    separate_background: bool = Form(True),
 ):
     """Accept a media upload, write to disk, queue background prep task.
 
@@ -1049,6 +1050,7 @@ async def dub_upload(
             "path": video_path,
             "input_type": input_type,
             "source_lang": source_lang_override,
+            "separate_background": separate_background,
         },
         filename,
     )

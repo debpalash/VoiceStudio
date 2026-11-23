@@ -1099,6 +1099,11 @@
       ],
       "title": "Job Id"
      },
+     "separate_background": {
+      "default": true,
+      "title": "Separate Background",
+      "type": "boolean"
+     },
      "source_lang": {
       "anyOf": [
        {
