@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Optional
 
+from core.failure import strip_ansi
 from services.ffmpeg_utils import local_inputs_only
 
 _BITRATE_RE = re.compile(r"^\d{2,3}k$")
@@ -688,6 +689,13 @@ def parse_loudnorm_measure(stderr_text: Optional[str]) -> Optional[MeasuredLoudn
     the five required keys to finite floats."""
     if not stderr_text:
         return None
+    stderr_text = strip_ansi(stderr_text)
+    # FFmpeg can mention arbitrary filenames before the measurement. A brace
+    # in a path is not the opening of the JSON report.
+    report_start = 0
+    for report in re.finditer(r"(?m)^\[Parsed_loudnorm_\d+ @ [^\r\n]*\][ \t]*\r?\n[ \t]*(?=\{)", stderr_text):
+        report_start = report.end()
+    stderr_text = stderr_text[report_start:]
     # Find the last balanced top-level {...} block via a single linear scan.
     start = -1
     depth = 0
