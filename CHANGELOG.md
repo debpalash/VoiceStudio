@@ -91,9 +91,9 @@ metadata and the backend fallback mirror it.
 - Stories Auto-cast preserves speakers in scripts with carriage-return line endings (#4375) — thanks @ShuaixinHuang!
 - Source Repair explains when a VoiceStudio ZIP needs to be replaced with a Git clone, even inside another repository (#4374) — thanks @ShuaixinHuang!
 - Stories skips malformed WebVTT blocks when importing subtitles for narration (#4373) — thanks @ShuaixinHuang!
-- Translating a dub with an agent CLI now says when its login expired, it hit a rate limit or the model is unsupported, instead of "exit code 1" (#4371) — thanks @tng7576650-commits for the original fix (#4356)!
-- Accurate transcription keeps its speaker labels for M4A and other uploads libsndfile cannot open (#4371) — thanks @Error404-page for the original fix (#4337)!
-- A paid translation API that rejects your key now shows its own reason and what to check, instead of a bare "403 Forbidden" (#4371) — thanks @tng7576650-commits for the report and original fix (#4357)!
+- Translating a dub with an agent CLI now says when its login expired, it hit a rate limit or the model is unsupported, instead of "exit code 1" (#4371, #4356) — thanks @tng7576650-commits!
+- Accurate transcription keeps its speaker labels for M4A and other uploads libsndfile cannot open (#4371, #4337) — thanks @Error404-page!
+- A paid translation API that rejects your key now shows its own reason and what to check, instead of a bare "403 Forbidden" (#4371, #4357) — thanks @tng7576650-commits!
 - Voice selections commit reliably when clicked (#4216) — thanks @davidsiguenza!
 - OmniVoice always loads its reviewed model version, so a new upstream commit can no longer change or break an installed model (#4339, #4360) — thanks @velixio!
 - The stdio MCP shim starts a new session when the server reports an expired one, as the MCP spec requires, and keeps the session id on every request (#4345, #4359) — thanks @Paulo-Brito-Jr!
@@ -360,9 +360,9 @@ metadata and the backend fallback mirror it.
 - Stories Auto-cast preserves speakers in scripts with carriage-return line endings (#4375) — thanks @ShuaixinHuang!
 - Source Repair explains when a VoiceStudio ZIP needs to be replaced with a Git clone, even inside another repository (#4374) — thanks @ShuaixinHuang!
 - Stories skips malformed WebVTT blocks when importing subtitles for narration (#4373) — thanks @ShuaixinHuang!
-- Translating a dub with an agent CLI now says when its login expired, it hit a rate limit or the model is unsupported, instead of "exit code 1" (#4371) — thanks @tng7576650-commits for the original fix (#4356)!
-- Accurate transcription keeps its speaker labels for M4A and other uploads libsndfile cannot open (#4371) — thanks @Error404-page for the original fix (#4337)!
-- A paid translation API that rejects your key now shows its own reason and what to check, instead of a bare "403 Forbidden" (#4371) — thanks @tng7576650-commits for the report and original fix (#4357)!
+- Translating a dub with an agent CLI now says when its login expired, it hit a rate limit or the model is unsupported, instead of "exit code 1" (#4371, #4356) — thanks @tng7576650-commits!
+- Accurate transcription keeps its speaker labels for M4A and other uploads libsndfile cannot open (#4371, #4337) — thanks @Error404-page!
+- A paid translation API that rejects your key now shows its own reason and what to check, instead of a bare "403 Forbidden" (#4371, #4357) — thanks @tng7576650-commits!
 - Voice selections commit reliably when clicked (#4216) — thanks @davidsiguenza!
 - OmniVoice always loads its reviewed model version, so a new upstream commit can no longer change or break an installed model (#4339, #4360) — thanks @velixio!
 - The stdio MCP shim starts a new session when the server reports an expired one, as the MCP spec requires, and keeps the session id on every request (#4345, #4359) — thanks @Paulo-Brito-Jr!
