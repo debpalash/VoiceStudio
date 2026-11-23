@@ -89,7 +89,7 @@ describe('snapTime', () => {
 });
 
 describe('snapCandidates', () => {
-  it('includes onsets, neighbour edges and playhead', () => {
+  it('includes the nearest onset, neighbour edges and playhead', () => {
     const c = snapCandidates({
       onsets: [1.1, 2.2],
       prevEnd: 0.5,
@@ -98,9 +98,21 @@ describe('snapCandidates', () => {
       pxPerSec: 100,
       t: 1.5,
     });
-    expect(c).toEqual(expect.arrayContaining([1.1, 2.2, 0.5, 3.3, 2.0]));
+    expect(c).toEqual(expect.arrayContaining([1.1, 0.5, 3.3, 2.0]));
     // High zoom → no integer grid.
     expect(c).not.toContain(1);
+  });
+
+  it('finds the nearest of thousands of onsets without scanning them on every drag', () => {
+    let reads = 0;
+    const onsets = new Proxy(Array.from({ length: 10_000 }, (_, i) => i / 4), {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    expect(snapCandidates({ onsets, pxPerSec: 100, t: 1000.125 })).toContain(1000);
+    expect(reads).toBeLessThan(24);
   });
 
   it('adds the integer grid only at low zoom', () => {
