@@ -174,3 +174,69 @@ def test_paid_provider_rejects_insecure_url_before_request(monkeypatch, provider
     monkeypatch.setattr(httpx, "Client", lambda **kw: pytest.fail("Must reject before constructing HTTP client"))
     with pytest.raises(ValueError, match="HTTPS"):
         Translator(provider, "auto", "en", api_key="fixture").translate("hello")
+
+
+@pytest.mark.parametrize("provider,status,body,expected", [
+    ("deepl", 403, {"message": "Authorization failed. Please supply a valid auth_key parameter."},
+     ["DeepL refused the translation (HTTP 403)", "Authorization failed", "Settings"]),
+    ("microsoft", 401, {"error": {"code": 401000, "message": "The request is not authorized because credentials are missing or invalid."}},
+     ["Microsoft Translator refused the translation (HTTP 401)", "credentials are missing or invalid", "Settings"]),
+    ("google-cloud", 400, {"error": {"code": 400, "message": "API key not valid. Please pass a valid API key."}},
+     ["Google Cloud Translation refused the translation (HTTP 400)", "API key not valid"]),
+    ("deepl", 456, {"message": "Quota exceeded"}, ["HTTP 456", "Quota exceeded", "quota is used up"]),
+    ("microsoft", 500, None, ["HTTP 500", "server problem"]),
+    ("google-cloud", 403, "Authentication rejected by upstream", ["HTTP 403", "Authentication rejected by upstream"]),
+])
+def test_paid_provider_rejection_explains_itself_without_the_key(monkeypatch, provider, status, body, expected):
+    """#4357: raise_for_status() dropped the provider's error body, so a wrong or
+    expired key showed only a bare "403 Forbidden for url ..."."""
+    from services.translation_apis import TranslationProviderError, Translator
+    for name in ["DEEPL_API_KEY", "DEEPL_BASE_URL", "MICROSOFT_API_KEY", "MICROSOFT_BASE_URL", "GOOGLE_TRANSLATE_API_KEY"]:
+        monkeypatch.delenv(name, raising=False)
+    key = "-".join(["fixture", "secret", "value", "1234"])  # built at runtime: not a real key
+    echoed = dict(body) if isinstance(body, dict) else body
+    if isinstance(echoed, dict) and "message" in echoed:
+        echoed["message"] += f" (got {key})"
+
+    def handler(request):
+        if echoed is None:
+            return httpx.Response(status, text="")
+        if isinstance(echoed, str):
+            return httpx.Response(status, json=echoed)
+        return httpx.Response(status, json=echoed)
+
+    client_type = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: client_type(transport=httpx.MockTransport(handler), **kw))
+    with pytest.raises(TranslationProviderError) as caught:
+        Translator(provider, "auto", "de", api_key=key).translate("hello")
+    message = str(caught.value)
+    for part in expected:
+        assert part in message
+    assert key not in message
+    assert caught.value.status == status
+
+
+def test_a_short_echoed_key_is_still_redacted(monkeypatch):
+    from services.translation_apis import TranslationProviderError, Translator
+    for name in ["DEEPL_API_KEY", "DEEPL_BASE_URL"]:
+        monkeypatch.delenv(name, raising=False)
+    client_type = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: client_type(
+        transport=httpx.MockTransport(lambda r: httpx.Response(403, json="key abc rejected")), **kw))
+    with pytest.raises(TranslationProviderError) as caught:
+        Translator("deepl", "auto", "de", api_key="abc").translate("hello")
+    assert "abc" not in str(caught.value)
+
+
+def test_a_key_with_stray_whitespace_is_redacted_before_normalising(monkeypatch):
+    from services.translation_apis import TranslationProviderError, Translator
+    for name in ["DEEPL_API_KEY", "DEEPL_BASE_URL"]:
+        monkeypatch.delenv(name, raising=False)
+    key = " ".join(["pasted", "", "key", "value"])  # "pasted  key value": doubled space
+    client_type = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: client_type(
+        transport=httpx.MockTransport(lambda r: httpx.Response(403, json={"message": f"bad key {key}"})), **kw))
+    with pytest.raises(TranslationProviderError) as caught:
+        Translator("deepl", "auto", "de", api_key=key).translate("hello")
+    message = str(caught.value)
+    assert "pasted" not in message and "key value" not in message
