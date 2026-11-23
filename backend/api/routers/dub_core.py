@@ -1,4 +1,5 @@
 import os
+import posixpath
 import re
 import errno
 import functools
@@ -332,9 +333,10 @@ async def dub_from_srt(file: UploadFile = File(...), source_lang: Optional[str] 
                 for i, seg in enumerate(result.segments)]
     job_id = str(uuid.uuid4())
     job = {
-        # Either separator: os.path.basename keeps a Windows client path whole
-        # on POSIX, and a home path must never be persisted.
-        "filename": os.path.basename((file.filename or "").replace("\\", "/")) or "subtitles.srt",
+        # Either separator, with POSIX semantics on every OS: os.path.basename
+        # keeps a Windows client path whole on POSIX and splits on ':' on
+        # Windows, and a home path must never be persisted.
+        "filename": posixpath.basename((file.filename or "").replace("\\", "/")) or "subtitles.srt",
         "duration": max(seg["end"] for seg in segments),
         "input_type": "audio", "subtitle_only": True,
         "source_lang": source, "source_lang_override": source,

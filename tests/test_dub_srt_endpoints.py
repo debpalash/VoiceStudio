@@ -217,3 +217,13 @@ def test_a_windows_client_path_is_not_persisted_as_the_filename(api):
     job_id = response.json()["job_id"]
     api.created.append(job_id)
     assert dub_core._get_job(job_id)["filename"] == "talk.srt"
+
+
+def test_a_colon_in_the_upload_name_is_kept_on_every_os(api):
+    from api.routers import dub_core
+
+    response = api.admin.post("/dub/from-srt", files={"file": ("a:b.srt", SRT)}, data={"source_lang": "es"})
+    assert response.status_code == 200, response.text
+    job_id = response.json()["job_id"]
+    api.created.append(job_id)
+    assert dub_core._get_job(job_id)["filename"] == "a:b.srt"
