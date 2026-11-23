@@ -64,10 +64,6 @@ function isTimingLine(line) {
   );
 }
 
-function isWebVttMetadata(first) {
-  return first === 'STYLE' || first === 'REGION' || /^NOTE(?:[ \t]|$)/.test(first);
-}
-
 /** Keep ruby base text; unclosed annotations end at this cue's boundary. */
 function stripRubyAnnotations(text, webvtt) {
   const out = [];
@@ -129,11 +125,10 @@ function captionBlocks(text, webvtt) {
     if (!lines.length) return false;
     const first = lines[0];
     if (/^WEBVTT(?:[ \t]|$)/.test(first)) return false;
-    if (!isWebVttMetadata(first)) return true;
-    // A timing line in position two outranks a STYLE/REGION identifier
-    // (https://www.w3.org/TR/webvtt1/#file-parsing), but a NOTE block is a
-    // private comment and never speech. Mirrors parse_srt.
-    return !first.startsWith('NOTE') && lines.length > 1 && isTimingLine(lines[1]);
+    if (/^NOTE(?:[ \t]|$)/.test(first)) return false;
+    // A cue starts with a timing line or an identifier immediately followed
+    // by one. This also permits STYLE and REGION as cue identifiers.
+    return isTimingLine(first) || (lines.length > 1 && isTimingLine(lines[1]));
   });
 }
 
