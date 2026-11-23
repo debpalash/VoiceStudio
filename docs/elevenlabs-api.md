@@ -7,11 +7,15 @@ changing one setting: the base URL. Point them at
 sent to ElevenLabs.
 
 ```python
+import os
+
 from elevenlabs.client import ElevenLabs
 
 client = ElevenLabs(
     base_url="http://127.0.0.1:3900/elevenlabs",
-    api_key="local",  # any value on this machine; the backend's API key when remote
+    # The backend's API key when it has one; leave it unset otherwise. A wrong
+    # key is refused even where no key is needed (Docker, a trusted network).
+    api_key=os.environ.get("OMNIVOICE_API_KEY"),
 )
 voices = client.voices.search().voices
 audio = client.text_to_speech.convert(
@@ -40,7 +44,7 @@ curl http://127.0.0.1:3900/elevenlabs/v1/text-to-speech/default?output_format=pc
 | `POST /v1/speech-to-speech/{voice_id}` | Voice changer: says the uploaded speech in a voice profile's voice, keeping its timing and intonation (the app's Convert → Keep my delivery). Without a voice-conversion engine it transcribes and re-speaks the clip instead and sets `X-OmniVoice-Fallback: respoken`. |
 | `POST /v1/sound-generation` | Sound effects from a description; needs Tools → Sound effects installed. `prompt_influence` and `loop` are accepted without effect. |
 | `POST /v1/speech-to-text` | Uses the active speech-recognition engine; returns `words` with `spacing` items. `diarize=true` adds `speaker_id` to each word; if speaker identification can't run, the transcript comes back without labels and `X-OmniVoice-Diarization-Error` says why. |
-| `POST /v1/audio-isolation` | The voice from a recording, with music and background removed (Demucs, as in Dubbing). |
+| `POST /v1/audio-isolation` | The voice from a recording, with music and background removed (Demucs, as in Dubbing). The request never downloads a model: until vocals have been separated once in the app (Dubbing or Clean audio), it returns `409 audio_isolation_model_missing`. |
 | `GET /v1/voices`, `GET /v2/voices`, `GET /v1/voices/{voice_id}` | Your voice profiles (`cloned`) plus `default`, the active engine's own voice. |
 | `GET /v1/voices/settings/default`, `GET /v1/voices/{voice_id}/settings` | ElevenLabs' default values, for clients that read them first. |
 | `GET /v1/models` | The ElevenLabs model ids below, plus every installed VoiceStudio engine. |
@@ -53,9 +57,11 @@ curl http://127.0.0.1:3900/elevenlabs/v1/text-to-speech/default?output_format=pc
 - **Models:** `eleven_*` model ids (`eleven_multilingual_v2`,
   `eleven_flash_v2_5`, `eleven_v3`, …) use the engine that is active in the app.
   A VoiceStudio engine id, such as `voxcpm2`, uses that engine.
-- **Output formats:** `mp3_*`, `opus_48000_*`, `wav_*`, `pcm_8000` to
-  `pcm_48000`, `ulaw_8000` and `alaw_8000`. PCM is 16-bit little-endian mono at
-  the requested rate.
+- **Output formats:** `mp3_<rate>_<kbps>` (for example `mp3_44100_128` or
+  `mp3_22050_32`), `opus_48000_<kbps>`, `wav_<rate>`, `pcm_8000` to
+  `pcm_48000`, `ulaw_8000` and `alaw_8000`, each delivered at exactly the rate
+  and bitrate it names; other combinations return 422. PCM and WAV are 16-bit;
+  PCM is little-endian mono.
 - **Voice settings:** `speed` is applied. `stability`, `similarity_boost`,
   `style` and `use_speaker_boost` have no VoiceStudio equivalent and are
   accepted without effect.

@@ -178,6 +178,11 @@ it('gives the API and container cards runnable snippets for the right endpoints 
   expect(text).toContain('curl http://127.0.0.1:3912/v1/audio/transcriptions');
   expect(text).toContain('base_url="http://127.0.0.1:3912/v1"');
   expect(text).toContain('base_url="http://127.0.0.1:3912/elevenlabs"');
+  // Never a placeholder key, which a non-loopback peer would be refused for.
+  expect(text).not.toContain('xi-api-key');
+  expect(api.find((block) => block.id === 'elevenlabs')!.text).toContain(
+    'api_key=os.environ.get("OMNIVOICE_API_KEY"),',
+  );
   expect(INTEGRATION_SETUPS['voicestudio-api'].blocks('https://u:p@host')).toBeNull();
   const docker = INTEGRATION_SETUPS.docker
     .blocks('')!
@@ -215,10 +220,12 @@ it('keeps remote scheme, path prefix and credential placeholders without exporti
     expect(api.find((block) => block.id === id)!.text).toContain(
       '-H "Authorization: Bearer $OMNIVOICE_API_KEY"',
     );
-  for (const id of ['python', 'elevenlabs'])
-    expect(api.find((block) => block.id === id)!.text).toContain(
-      'api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed")',
-    );
+  expect(api.find((block) => block.id === 'python')!.text).toContain(
+    'api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed")',
+  );
+  expect(api.find((block) => block.id === 'elevenlabs')!.text).toContain(
+    'api_key=os.environ.get("OMNIVOICE_API_KEY"),',
+  );
   expect(api.find((block) => block.id === 'elevenlabs')!.text).toContain(
     'base_url="https://gpu.example/voicestudio/elevenlabs"',
   );
@@ -246,6 +253,7 @@ it('never sends an API key to a remote plain-http backend', () => {
     .join('\n');
   expect(api).not.toContain('Authorization');
   expect(api).not.toContain('os.environ');
+  expect(api).toContain('api_key=None,');
   expect(INTEGRATION_SETUPS['voicestudio-api'].blocks(insecure)![0].hintKey).toBe(
     'integrationCatalog.apiInsecureHint',
   );

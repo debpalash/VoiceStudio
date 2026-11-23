@@ -1177,6 +1177,16 @@ async def create_speech(req: SpeechRequest):
 # ── STT: POST /v1/audio/transcriptions and /v1/audio/translations ──────────
 
 _TRANSCRIPT_FORMATS = ("json", "text", "srt", "verbose_json", "vtt")
+#: Uploads for transcription are staged in chunks under this cap.
+MAX_TRANSCRIPTION_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+def _discard(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
 
 
 class _TaskUnsupported(Exception):
@@ -1324,13 +1334,26 @@ async def _transcribe_request(
 
     # Write uploaded file to a temp location
     # Content is probed by ffmpeg, so an unusable extension just gets ".wav".
+    # Streamed to disk in chunks under a cap, never read whole into memory.
     suffix = upload_suffix(file.filename, ".wav") or ".wav"
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    total = 0
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await file.read()
-            tmp.write(content)
-            tmp_path = tmp.name
+        with os.fdopen(fd, "wb") as tmp:
+            while chunk := await file.read(_UPLOAD_CHUNK_BYTES):
+                total += len(chunk)
+                if total > MAX_TRANSCRIPTION_UPLOAD_BYTES:
+                    raise OpenAIError(
+                        413, "The audio file is larger than 2 GB. Split it, or transcribe "
+                        "it in the app's Transcriptions page.",
+                        param="file", code="file_too_large",
+                    )
+                await asyncio.to_thread(tmp.write, chunk)
+    except OpenAIError:
+        _discard(tmp_path)
+        raise
     except Exception as e:
+        _discard(tmp_path)
         raise OpenAIError(400, f"Could not read audio file: {e}", param="file")
 
     options = {

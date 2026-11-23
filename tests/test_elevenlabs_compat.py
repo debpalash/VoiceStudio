@@ -7,6 +7,7 @@ gapless streaming resampler.
 from __future__ import annotations
 
 import importlib
+import io
 import os
 import uuid
 
@@ -234,6 +235,13 @@ def test_audio_isolation_returns_the_vocal_stem(client, monkeypatch):
 
     monkeypatch.setattr(vs, "separation_available", lambda: True)
     monkeypatch.setattr(vs, "separate_vocals", fake_separate)
+    monkeypatch.setattr(_el(), "isolation_weights_cached", lambda: False)
+    res = client.post("/elevenlabs/v1/audio-isolation", params={"output_format": "pcm_16000"},
+                      files={"audio": ("song.mp3", b"x", "audio/mpeg")})
+    assert res.status_code == 409  # never starts a model download
+    assert res.json()["detail"]["status"] == "audio_isolation_model_missing"
+    assert "source" not in seen
+    monkeypatch.setattr(_el(), "isolation_weights_cached", lambda: True)
     res = client.post("/elevenlabs/v1/audio-isolation", params={"output_format": "pcm_16000"},
                       files={"audio": ("song.mp3", b"song-bytes", "audio/mpeg")})
     assert res.status_code == 200, res.text
@@ -311,6 +319,7 @@ def test_speech_to_speech_keeps_delivery_then_falls_back(client, monkeypatch, pr
     assert calls == [(pid, True, b"source-bytes"), (pid, False, b"source-bytes")]
 
     missing = client.post("/elevenlabs/v1/speech-to-speech/default",
+                          params={"output_format": "pcm_16000"},
                           files={"audio": ("in.wav", b"x", "audio/wav")})
     assert missing.status_code == 404
     assert missing.json()["detail"]["status"] == "voice_not_found"
@@ -341,3 +350,72 @@ def test_sound_generation_returns_the_saved_effect(client, monkeypatch, saved_ta
     assert err.status_code == 409
     detail = err.json()["detail"]
     assert detail["status"] == "sfx_not_installed" and detail["message"] == "Install it."
+
+
+def test_the_isolation_checkpoint_matches_the_installed_demucs():
+    import os
+
+    demucs = pytest.importorskip("demucs")
+    remote = os.path.join(os.path.dirname(demucs.__file__), "remote")
+    with open(os.path.join(remote, "files.txt"), encoding="utf-8") as fh:
+        files = fh.read().split()
+    assert _el().HTDEMUCS_CHECKPOINT in files
+
+
+@pytest.mark.parametrize("fmt", ["mp3_44100", "mp3_44100_8", "opus_24000_64", "wav_44100_128",
+                                 "pcm_44100_128", "ulaw_16000", "flac_44100"])
+def test_combinations_the_encoders_cannot_honour_are_rejected(fmt):
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        _el().output_spec(fmt)
+    assert exc.value.status_code == 422
+
+
+def test_mp3_and_wav_use_the_requested_rate_and_bitrate(client, engine):
+    import shutil
+    import subprocess
+
+    import soundfile as sf
+
+    wav = _tts(client, fmt="wav_16000")
+    assert wav.status_code == 200, wav.text
+    info = sf.info(io.BytesIO(wav.content))
+    assert info.samplerate == 16000 and info.subtype == "PCM_16"
+
+    if not shutil.which("ffprobe"):
+        pytest.skip("ffprobe is not installed")
+    low = _tts(client, fmt="mp3_22050_32")
+    high = _tts(client, fmt="mp3_44100_128")
+    assert low.status_code == high.status_code == 200
+    assert len(low.content) < len(high.content)
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=sample_rate",
+                            "-of", "csv=p=0", "-"], input=low.content, capture_output=True)
+    assert probe.stdout.strip() == b"22050"
+
+
+def test_audio_routes_declare_audio_in_the_api_contract(client):
+    spec = client.get("/openapi.json").json()["paths"]
+    for path in ("/elevenlabs/v1/text-to-speech/{voice_id}", "/elevenlabs/v1/audio-isolation"):
+        content = spec[path]["post"]["responses"]["200"]["content"]
+        assert "audio/mpeg" in content and "application/json" not in content
+
+
+@pytest.mark.parametrize("route,diarize", [
+    ("/v1/audio/transcriptions", None),
+    ("/elevenlabs/v1/speech-to-text", "false"),
+    ("/elevenlabs/v1/speech-to-text", "true"),
+])
+def test_transcription_uploads_are_capped_and_cleaned_up(client, monkeypatch, tmp_path, route, diarize):
+    import tempfile
+
+    oc = importlib.import_module("api.routers.openai_compat")
+    asr = importlib.import_module("services.asr_backend")
+    monkeypatch.setattr(asr, "asr_model_missing_error", lambda: None)
+    monkeypatch.setattr(oc, "MAX_TRANSCRIPTION_UPLOAD_BYTES", 1000)
+    monkeypatch.setattr(_el(), "_MAX_UPLOAD_BYTES", 1000)
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    data = {"model": "whisper-1"} if diarize is None else {"diarize": diarize}
+    res = client.post(route, data=data, files={"file": ("big.wav", b"x" * 5000, "audio/wav")})
+    assert res.status_code == 413, res.text
+    assert list(tmp_path.iterdir()) == []

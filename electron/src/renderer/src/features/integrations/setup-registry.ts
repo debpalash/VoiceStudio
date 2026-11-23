@@ -323,15 +323,18 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           id: 'elevenlabs',
           titleKey: 'integrationCatalog.block.elevenlabsPython',
           language: 'python',
+          // No placeholder key: an explicit wrong xi-api-key is refused even
+          // where no key is needed (a Docker host, a trusted network). Unset
+          // means None, and the SDK then sends no key.
           text: [
-            ...(policy === 'bearer' ? ['import os', ''] : []),
+            ...(policy === 'insecure' ? [] : ['import os', '']),
             'from elevenlabs.client import ElevenLabs',
             '',
             'client = ElevenLabs(',
             `    base_url="${base}/elevenlabs",`,
-            policy === 'bearer'
-              ? '    api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed"),'
-              : '    api_key="voicestudio",',
+            policy === 'insecure'
+              ? '    api_key=None,'
+              : '    api_key=os.environ.get("OMNIVOICE_API_KEY"),',
             ')',
             '',
             'audio = client.text_to_speech.convert(',

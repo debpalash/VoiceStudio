@@ -20,6 +20,7 @@ key as ``xi-api-key`` (what ElevenLabs SDKs send) or as a Bearer token.
 """
 from __future__ import annotations
 
+import io
 import json
 import logging
 import math
@@ -27,7 +28,7 @@ import re
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -54,6 +55,12 @@ _MEDIA = {
     "ulaw": "audio/basic",
     "alaw": "audio/x-alaw-basic",
 }
+#: OpenAPI: audio routes answer with audio in the requested format, not JSON.
+AUDIO_RESPONSES = {200: {
+    "description": "Audio in the requested output_format.",
+    "content": {media: {"schema": {"type": "string", "format": "binary"}}
+                for media in dict.fromkeys(_MEDIA.values())},
+}}
 _DEFAULT_VOICE_SETTINGS = {
     "stability": 0.5,
     "similarity_boost": 0.75,
@@ -133,23 +140,39 @@ router = APIRouter(
 # ── Output formats and audio conversion ─────────────────────────────────────
 
 
-def parse_output_format(value: str) -> tuple[str, int]:
-    """``"pcm_16000"`` → ``("pcm", 16000)``; raises a 422 for anything else."""
+_MP3_RATES = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000}
+_WAV_RATES = {8000, 16000, 22050, 24000, 32000, 44100, 48000}
+
+
+def output_spec(value: str) -> tuple[str, int, Optional[int]]:
+    """``"mp3_22050_32"`` → ``("mp3", 22050, 32)``; a 422 for any combination
+    the encoders can't produce exactly as named."""
     m = _OUTPUT_FORMAT_RE.match(value or "")
     if m:
         family, rate = m.group(1), int(m.group(2))
-        if family in ("ulaw", "alaw") and rate == 8000:
-            return family, rate
-        if family == "pcm" and rate in _PCM_RATES:
-            return family, rate
-        if family in ("mp3", "opus", "wav"):
-            return family, rate
+        bitrate = int(m.group(3)) if m.group(3) else None
+        ok = {
+            "ulaw": rate == 8000 and bitrate is None,
+            "alaw": rate == 8000 and bitrate is None,
+            "pcm": rate in _PCM_RATES and bitrate is None,
+            "wav": rate in _WAV_RATES and bitrate is None,
+            "mp3": rate in _MP3_RATES and bitrate is not None and 32 <= bitrate <= 320,
+            "opus": rate == 48000 and bitrate is not None and 32 <= bitrate <= 256,
+        }[family]
+        if ok:
+            return family, rate, bitrate
     raise _error(
         422, "invalid_output_format",
-        f"Unsupported output_format '{value}'. Use mp3_44100_128 (default), "
-        "mp3_22050_32, pcm_8000/16000/22050/24000/44100/48000, ulaw_8000, "
-        "alaw_8000, opus_48000_64 or wav_44100.",
+        f"Unsupported output_format '{value}'. Use mp3_44100_128 (default) or another "
+        "mp3_<rate>_<kbps>, pcm_8000/16000/22050/24000/44100/48000, ulaw_8000, "
+        "alaw_8000, opus_48000_<kbps> or wav_<rate>.",
     )
+
+
+def parse_output_format(value: str) -> tuple[str, int]:
+    """``"pcm_16000"`` → ``("pcm", 16000)``; raises a 422 for anything else."""
+    family, rate, _ = output_spec(value)
+    return family, rate
 
 
 def lin2alaw(pcm16) -> bytes:
@@ -337,7 +360,13 @@ async def _speech(voice_id: str, body: TextToSpeechRequest, output_format: str, 
             "Split the text, or use the app's Long-form page for longer scripts.",
         )
     speed = body.voice_settings.speed if body.voice_settings and body.voice_settings.speed else 1.0
-    upstream_format = "pcm" if family in ("pcm", "ulaw", "alaw") else family
+    # Raw families come from the handler's 24 kHz PCM (streamable); the rest
+    # render WAV at the engine's own rate and are encoded here, so the rate
+    # and bitrate named in output_format are the ones delivered.
+    raw = family in ("pcm", "ulaw", "alaw")
+    upstream_format = "pcm" if raw else "wav"
+    if not raw:
+        await _ffmpeg_ready(output_format)
     req = SpeechRequest(
         model=_engine_model(body.model_id),
         input=body.text,
@@ -346,11 +375,23 @@ async def _speech(voice_id: str, body: TextToSpeechRequest, output_format: str, 
         speed=speed,
         language=body.language_code,
         seed=body.seed,
-        stream_format="audio" if stream else None,
+        stream_format="audio" if stream and raw else None,
     )
     resp = await create_speech(req)
     media = _MEDIA[family]
-    if upstream_format != "pcm" or (family == "pcm" and rate == _SOURCE_RATE):
+    if not raw:
+        import asyncio
+
+        import soundfile as sf
+
+        wav = b"".join([chunk async for chunk in resp.body_iterator])
+        data, sr = await asyncio.to_thread(sf.read, io.BytesIO(wav), dtype="float32", always_2d=True)
+        encoded = await _tensor_response(data, sr, output_format, _passthrough_headers(resp))
+        if not stream:
+            return encoded
+        return StreamingResponse(_chunks(encoded.body), media_type=media,
+                                 headers=_passthrough_headers(resp))
+    if family == "pcm" and rate == _SOURCE_RATE:
         resp.headers["content-type"] = media
         return resp
     if stream:
@@ -362,12 +403,21 @@ async def _speech(voice_id: str, body: TextToSpeechRequest, output_format: str, 
         resp.headers["content-type"] = media
         return resp
     data = b"".join([chunk async for chunk in resp.body_iterator])
-    headers = {k: v for k, v in resp.headers.items()
-               if k.lower().startswith("x-omnivoice-")}
-    return Response(convert_pcm24k(data, family, rate), media_type=media, headers=headers)
+    return Response(convert_pcm24k(data, family, rate), media_type=media,
+                    headers=_passthrough_headers(resp))
 
 
-@router.post("/v1/text-to-speech/{voice_id}")
+def _passthrough_headers(resp) -> dict:
+    """VoiceStudio's routing notices from the speech handler."""
+    return {k: v for k, v in resp.headers.items() if k.lower().startswith("x-omnivoice-")}
+
+
+def _chunks(data: bytes, size: int = 64 * 1024):
+    for i in range(0, len(data), size):
+        yield data[i:i + size]
+
+
+@router.post("/v1/text-to-speech/{voice_id}", response_class=Response, responses=AUDIO_RESPONSES)
 async def text_to_speech(
     voice_id: str,
     body: TextToSpeechRequest,
@@ -379,7 +429,7 @@ async def text_to_speech(
     return await _speech(voice_id, body, output_format, stream=False)
 
 
-@router.post("/v1/text-to-speech/{voice_id}/stream")
+@router.post("/v1/text-to-speech/{voice_id}/stream", response_class=Response, responses=AUDIO_RESPONSES)
 async def text_to_speech_stream(
     voice_id: str,
     body: TextToSpeechRequest,
@@ -402,6 +452,7 @@ _UPLOAD_CHUNK = 1024 * 1024
 
 async def _save_upload(upload: UploadFile, suffix_default: str = ".wav") -> str:
     """Stream ``upload`` to a new temp file and return its path."""
+    import asyncio
     import os
     import tempfile
 
@@ -415,7 +466,7 @@ async def _save_upload(upload: UploadFile, suffix_default: str = ".wav") -> str:
                 total += len(chunk)
                 if total > _MAX_UPLOAD_BYTES:
                     raise _error(413, "file_too_large", "The file is larger than 2 GB.")
-                dest.write(chunk)
+                await asyncio.to_thread(dest.write, chunk)
     except BaseException:
         _unlink(path)
         raise
@@ -563,7 +614,7 @@ def list_models():
                 models.append(_model_entry(b["id"], b.get("display_name") or b["id"],
                                            "VoiceStudio engine."))
     except Exception:
-        logger.warning("Could not list TTS engines for the ElevenLabs model list", exc_info=True)
+        logger.warning("Could not list TTS engines for the ElevenLabs model list")
     return models
 
 
@@ -706,21 +757,68 @@ async def _audio_url_response(result: dict, output_format: str, headers: Optiona
 
 
 async def _tensor_response(data, sr: int, output_format: str, headers: Optional[dict] = None):
-    """``(frames, channels)`` float audio → ``output_format``."""
+    """``(frames, channels)`` float audio → ``output_format``, at exactly the
+    rate and bitrate it names."""
     import asyncio
 
     import torch
 
-    from api.routers.openai_compat import _encode_audio, _pcm24k
+    from api.routers.openai_compat import _pcm24k
 
-    family, rate = parse_output_format(output_format)
+    family, rate, bitrate = output_spec(output_format)
     wav = torch.from_numpy(data.T.copy())
     if family in ("pcm", "ulaw", "alaw"):
         pcm = await asyncio.to_thread(_pcm24k, wav, sr)
         body = await asyncio.to_thread(convert_pcm24k, pcm, family, rate)
+    elif family == "wav":
+        body = await asyncio.to_thread(_wav_bytes, wav, sr, rate)
     else:
-        body, _, _ = await _encode_audio(wav, sr, family)
+        body = await _ffmpeg_encode(wav, sr, family, rate, bitrate)
     return Response(body, media_type=_MEDIA[family], headers=headers)
+
+
+def _wav_bytes(wav, sr: int, rate: int) -> bytes:
+    import soundfile as sf
+    import torchaudio.functional as AF
+
+    if sr != rate:
+        wav = AF.resample(wav, sr, rate)
+    buf = io.BytesIO()
+    sf.write(buf, wav.clamp(-1.0, 1.0).T.numpy(), rate, format="WAV", subtype="PCM_16")
+    return buf.getvalue()
+
+
+async def _ffmpeg_encode(wav, sr: int, family: str, rate: int, bitrate: int) -> bytes:
+    import asyncio
+    import os
+    import tempfile
+
+    from api.routers.openai_compat import _ffmpeg_or_error
+    from services.ffmpeg_utils import run_ffmpeg
+
+    ffmpeg = await asyncio.to_thread(_ffmpeg_or_error, family)
+    codec, container = ("libmp3lame", "mp3") if family == "mp3" else ("libopus", "ogg")
+    fd, src = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        await asyncio.to_thread(_write_wav, src, wav, sr)
+        rc, out, err = await run_ffmpeg(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-i", src,
+             "-ar", str(rate), "-c:a", codec, "-b:a", f"{bitrate}k", "-f", container, "pipe:1"],
+            timeout=300.0,
+        )
+    finally:
+        _unlink(src)
+    if rc != 0 or not out:
+        raise _error(500, "encoding_failed",
+                     f"Encoding the audio as {family} failed. Request a pcm_ or wav_ output_format instead.")
+    return out
+
+
+def _write_wav(path: str, wav, sr: int) -> None:
+    import soundfile as sf
+
+    sf.write(path, wav.clamp(-1.0, 1.0).T.numpy(), sr, format="WAV", subtype="FLOAT")
 
 
 async def _ffmpeg_ready(output_format: str) -> None:
@@ -729,7 +827,7 @@ async def _ffmpeg_ready(output_format: str) -> None:
 
     from api.routers.openai_compat import _ffmpeg_or_error
 
-    family, _ = parse_output_format(output_format)
+    family, _, _ = output_spec(output_format)
     if family in ("mp3", "opus"):
         await asyncio.to_thread(_ffmpeg_or_error, family)
 
@@ -737,7 +835,7 @@ async def _ffmpeg_ready(output_format: str) -> None:
 # ── Voice changer ───────────────────────────────────────────────────────────
 
 
-@router.post("/v1/speech-to-speech/{voice_id}")
+@router.post("/v1/speech-to-speech/{voice_id}", response_class=Response, responses=AUDIO_RESPONSES)
 async def speech_to_speech(
     voice_id: str,
     audio: UploadFile = File(...),
@@ -796,7 +894,7 @@ class SoundGenerationRequest(BaseModel):
     model_config = {"extra": "allow"}
 
 
-@router.post("/v1/sound-generation")
+@router.post("/v1/sound-generation", response_class=Response, responses=AUDIO_RESPONSES)
 async def sound_generation(
     body: SoundGenerationRequest,
     output_format: str = Query(default="mp3_44100_128"),
@@ -816,7 +914,20 @@ async def sound_generation(
 # ── Voice isolation ─────────────────────────────────────────────────────────
 
 
-@router.post("/v1/audio-isolation")
+#: The htdemucs checkpoint Demucs fetches into the torch hub cache on first use
+#: (demucs/remote/htdemucs.yaml → files.txt).
+HTDEMUCS_CHECKPOINT = "955717e8-8726e21a.th"
+
+
+def isolation_weights_cached() -> bool:
+    import os
+
+    import torch
+
+    return os.path.isfile(os.path.join(torch.hub.get_dir(), "checkpoints", HTDEMUCS_CHECKPOINT))
+
+
+@router.post("/v1/audio-isolation", response_class=Response, responses=AUDIO_RESPONSES)
 async def audio_isolation(
     audio: UploadFile = File(...),
     file_format: Optional[str] = Form(default=None, description="Accepted; the upload's format is detected."),
@@ -839,9 +950,17 @@ async def audio_isolation(
             "Voice isolation needs Demucs, which is missing from this install. "
             "Repair the install from Settings, then try again.",
         )
+    if not await asyncio.to_thread(isolation_weights_cached):
+        # An API request never starts a model download.
+        raise _error(
+            409, "audio_isolation_model_missing",
+            "Voice isolation's model is not downloaded yet. Separate vocals once in "
+            "the app (Dubbing or Clean audio) to download it, then try again.",
+        )
     source = await _save_upload(audio)
-    workdir = tempfile.mkdtemp(prefix="el-isolate-")
+    workdir = None
     try:
+        workdir = tempfile.mkdtemp(prefix="el-isolate-")
         stems = await separate_vocals(source, workdir)
         if stems is None:
             raise _error(
@@ -851,5 +970,6 @@ async def audio_isolation(
         data, sr = await asyncio.to_thread(sf.read, stems[0], dtype="float32", always_2d=True)
     finally:
         _unlink(source)
-        shutil.rmtree(workdir, ignore_errors=True)
+        if workdir:
+            shutil.rmtree(workdir, ignore_errors=True)
     return await _tensor_response(data, sr, output_format)
