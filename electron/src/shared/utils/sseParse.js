@@ -12,7 +12,8 @@
  * @returns {{ lines: string[], rest: string }}
  */
 export function splitSSEBuffer(buffer) {
-  const parts = (buffer || '').split('\n');
+  // A final CR may be the first half of a CRLF split across chunks.
+  const parts = (buffer || '').split(/\r\n|\r(?!$)|\n/);
   const rest = parts.pop() ?? ''; // last part has no trailing newline yet
   return { lines: parts, rest };
 }

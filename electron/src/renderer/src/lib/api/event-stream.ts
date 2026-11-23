@@ -49,8 +49,7 @@ export async function consumeTaskStream(
       if (chunk.done && buffer) buffer += '\n';
       const split = splitSSEBuffer(buffer);
       buffer = split.rest;
-      for (const raw of split.lines) {
-        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+      for (const line of split.lines) {
         if (!line) {
           if (dispatch()) {
             terminal = true;
