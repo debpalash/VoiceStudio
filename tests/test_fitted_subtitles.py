@@ -63,3 +63,31 @@ def test_legacy_sequential_stretch_plan_keeps_caption_after_previous_voice():
 def test_empty_plan_cues_match_original():
     segs = [{"start": 1.0, "end": 2.5}]
     assert fitted_cues(segs, []) == [(pytest.approx(1.0), pytest.approx(2.5))]
+
+
+def test_fitted_cues_indexes_long_shared_timeline():
+    class CountedChunk(dict):
+        reads = 0
+
+        def get(self, key, default=None):
+            CountedChunk.reads += 1
+            return super().get(key, default)
+
+    plan = [
+        CountedChunk(orig_start=3 * i, orig_end=3 * i + 2,
+                     new_start=4 * i, new_end=4 * i + 3)
+        for i in range(256)
+    ]
+    # Exercise exact ends, gaps and cues that extend into the next chunk.
+    durations = (2, 2.5, 4)
+    segments = [
+        dict(start=3 * i, end=3 * i + durations[i % len(durations)])
+        for i in range(len(plan))
+    ]
+    plain_plan = [dict(chunk) for chunk in plan]
+    assert fitted_cues(segments, plan) == [
+        (map_time_to_fitted(seg["start"], plain_plan),
+         map_time_to_fitted(seg["end"], plain_plan))
+        for seg in segments
+    ]
+    assert CountedChunk.reads <= 12 * len(plan)
