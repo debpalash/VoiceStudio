@@ -39,6 +39,7 @@ Engine availability depends on installed models, hardware, and configured provid
 - pockettts
 - audiocpp — [Guide](engines/audio-cpp.md)
 - audiocpp-dots — [Guide](engines/audio-cpp.md)
+- audiocpp-drama3 — [Guide](engines/audio-cpp.md)
 - CosyVoice 3 GGUF — [Vulkan setup](engines/cosyvoice-gguf.md)
 
 ## Transcription
