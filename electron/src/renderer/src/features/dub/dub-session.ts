@@ -758,7 +758,7 @@ export function keepDubSourceText(sourceLanguage?: string) {
   const sourceCode = dubSourceLanguage(sourceLanguage, dubSession.state.sourceLang)?.toLowerCase();
   const sourceLabel = translationTargetLabel(sourceCode);
   const next = dubSession.state.segments.map((segment) => {
-    const text = segment.text_original || segment.text;
+    const text = segment.text_original ?? segment.text;
     return {
       ...segment,
       text,
@@ -778,7 +778,7 @@ export function keepDubSourceText(sourceLanguage?: string) {
 export function restoreDubSegments() {
   let changed = false;
   const next = dubSession.state.segments.map((segment) => {
-    const text = segment.text_original || segment.text;
+    const text = segment.text_original ?? segment.text;
     if (
       text === segment.text &&
       !segment.translate_error &&

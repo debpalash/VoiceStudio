@@ -80,6 +80,7 @@ import {
   translateDubWithAgent,
   setDubTarget,
   keepDubSourceText,
+  restoreDubSegments,
   splitDubSegment,
   undoDubEdit,
   nextDubSpeakerId,
@@ -1417,4 +1418,19 @@ it('warns when a cached job has no background stem (#3751)', async () => {
   await uploadDub(new File(['audio'], 'voice.wav', { type: 'audio/wav' }));
   expect(warning.mock.calls.map((call) => call[0])).toEqual(['dub.bg_separation_failed']);
   warning.mockRestore();
+});
+
+
+it.each([restoreDubSegments, keepDubSourceText])('restores a deliberately blank source cue via %p', (restore) => {
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    segments: [
+      { id: 'blank', start: 0, end: 1, text: 'Added translation', text_original: '' },
+      { id: 'old', start: 1, end: 2, text: 'Legacy cue' },
+    ],
+  }));
+  restore();
+  expect(dubSession.state.segments.map((cue) => cue.text)).toEqual(['', 'Legacy cue']);
 });
