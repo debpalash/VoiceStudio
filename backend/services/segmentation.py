@@ -1000,7 +1000,7 @@ def deduplicate_chunk_segments(segments: list[dict]) -> list[dict]:
             if not remaining:
                 continue
             text = _clean(' '.join(str(w.get('text', w.get('word', ''))) for w in remaining))
-            segment = {**segment, 'start': remaining[0]['start'], 'end': remaining[-1]['end'],
+            segment = {**segment, 'start': min(w['start'] for w in remaining), 'end': max(w['end'] for w in remaining),
                        'text': text, 'text_original': text, 'words': remaining}
         result.append(segment)
     def bounds(row):

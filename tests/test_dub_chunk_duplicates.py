@@ -67,3 +67,12 @@ def test_chunk_dedup_does_not_discard_unmatched_tail_after_a_confirmed_prefix():
     result = deduplicate_chunk_segments([earlier, later])
     assert result[1]['text'] == 'works now'
     assert result[1]['start'] == later['words'][3]['start']
+
+
+def test_out_of_order_unmatched_tail_keeps_a_valid_cue_interval():
+    earlier = segment('a', words('I think it works', 10))
+    tail = words('I think it works', 10) + [{'text': 'Earlier?', 'start': 10.5, 'end': 10.9}]
+    tail[3] = {'text': 'works', 'start': 12, 'end': 12.4}
+    later = segment('b', tail)
+    result = deduplicate_chunk_segments([earlier, later])
+    assert all(row['start'] < row['end'] for row in result)
