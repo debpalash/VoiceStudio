@@ -2,10 +2,12 @@
 
 import pytest
 
-from services.longform_import import pdf_to_chapter_script
 
 
 def test_unreadable_pdf_page_tree_reports_import_error(monkeypatch):
+    import importlib
+
+    pdf_to_chapter_script = importlib.import_module("services.longform_import").pdf_to_chapter_script  # resolved at test time
     import pypdf
 
     class BrokenPages:

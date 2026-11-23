@@ -167,6 +167,13 @@ describe('insertionSlot', () => {
   it('uses a gap of exactly 300 ms despite floating-point subtraction', () => {
     expect(insertionSlot({ end: 1.1 }, { start: 1.4 })).toEqual({ start: 1.1, end: 1.4 });
   });
+  it('accepts an exact custom threshold and falls back when the next start is missing', () => {
+    expect(insertionSlot({ end: 1 }, { start: 5.001 }, { minGap: 4.001 })).toEqual({
+      start: 1,
+      end: 5.001,
+    });
+    expect(insertionSlot({ end: 1 }, {}, { defaultDur: 2 })).toEqual({ start: 1, end: 3 });
+  });
 
   it('fills the silent gap before the next line', () => {
     expect(insertionSlot({ end: 2 }, { start: 5 })).toEqual({ start: 2, end: 5 });

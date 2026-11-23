@@ -2,10 +2,12 @@
 
 import pytest
 
-from services.longform_progress import RenderProgress
 
 
 def test_progress_does_not_rescan_completed_chapters(monkeypatch):
+    import importlib
+
+    RenderProgress = importlib.import_module("services.longform_progress").RenderProgress  # resolved at test time
     progress = RenderProgress([10] * 500)
     for index in range(400):
         progress.finish_chapter(index)
