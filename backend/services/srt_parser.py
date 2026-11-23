@@ -47,6 +47,24 @@ def _ts_to_seconds(h: str, m: str, s: str, ms: str) -> float:
     return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
 
 
+def parse_webvtt_timing_line(line: str) -> tuple[float, float] | None:
+    """Read a complete subtitle timing line, ignoring trailing cue settings."""
+    match = _TIMING_RE.fullmatch(line)
+    if match is None:
+        return None
+    suffix = line[match.end(8):]
+    if suffix and not suffix[0].isspace():
+        return None
+    h1, m1, s1, frac1, h2, m2, s2, frac2 = match.groups()
+    try:
+        # Downloaded WebVTT uses decimal seconds, even for short fractions.
+        start = _ts_to_seconds(h1, m1, s1, frac1.ljust(3, "0"))
+        end = _ts_to_seconds(h2, m2, s2, frac2.ljust(3, "0"))
+    except (ValueError, OverflowError):
+        return None
+    return (start, end) if end > start else None
+
+
 def _is_valid_timing_line(line: str) -> bool:
     """A timing line whose millisecond fields fit the three-digit format."""
     match = _TIMING_RE.match(line)
