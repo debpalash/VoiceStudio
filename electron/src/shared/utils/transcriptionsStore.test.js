@@ -91,6 +91,15 @@ describe('transcription identities', () => {
     removeTranscription(7);
     expect(loadTranscriptions().map((entry) => entry.text)).toEqual(['b', 'c']);
   });
+
+  it('removes the visible row, not a hidden corrupt row sharing its id', () => {
+    localStorage.setItem(
+      TRANSCRIPTIONS_KEY,
+      JSON.stringify([{ id: 7, text: 5 }, { id: 7, text: 'visible' }]),
+    );
+    removeTranscription(7);
+    expect(loadTranscriptions()).toEqual([]);
+  });
 });
 
 it('keeps readable transcripts when another stored row is corrupt', () => {

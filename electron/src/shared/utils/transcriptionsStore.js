@@ -12,14 +12,16 @@ export const TRANSCRIPTION_EVENT = 'omni:transcription-added';
  * (newest-first, as written). [] on absent/empty/malformed/non-array/blocked.
  * @returns {Array<object>}
  */
+function isReadableEntry(entry) {
+  return Number.isSafeInteger(entry?.id) && typeof entry.text === 'string';
+}
+
 export function loadTranscriptions() {
   try {
     const parsed = JSON.parse(localStorage.getItem(TRANSCRIPTIONS_KEY) || '[]');
     if (!Array.isArray(parsed)) return [];
     // A corrupt row should not make the rest of the history unreadable.
-    return parsed.filter(
-      (entry) => Number.isSafeInteger(entry?.id) && typeof entry.text === 'string',
-    );
+    return parsed.filter(isReadableEntry);
   } catch {
     return [];
   }
@@ -86,7 +88,8 @@ export function subscribeTranscriptions(listener) {
 export function removeTranscription(id) {
   const entries = JSON.parse(localStorage.getItem(TRANSCRIPTIONS_KEY) || '[]');
   if (!Array.isArray(entries)) throw new Error('Invalid transcription history');
-  const index = entries.findIndex((entry) => entry?.id === id);
+  // Same eligibility as the loader, so a hidden corrupt row sharing the id is not the one removed.
+  const index = entries.findIndex((entry) => isReadableEntry(entry) && entry.id === id);
   if (index >= 0) entries.splice(index, 1);
   localStorage.setItem(TRANSCRIPTIONS_KEY, JSON.stringify(entries));
   window.dispatchEvent(new CustomEvent(TRANSCRIPTION_EVENT));

@@ -711,7 +711,7 @@ export function TranscriptionsPage() {
                     </Button>
                   </details>
                 ) : null}
-                {selected.segments?.length > 0 && (
+                {Array.isArray(selected.segments) && selected.segments.length > 0 && (
                   <TranscriptSegments key={selected.id} segments={selected.segments} scrollRef={detailRef} />
                 )}
                 <Button

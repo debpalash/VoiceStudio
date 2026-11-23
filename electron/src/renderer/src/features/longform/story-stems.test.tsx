@@ -26,7 +26,7 @@ it('does not retain audio object URLs when encoding is canceled partway through'
     { character: 'b', blob: audio },
   ]);
   vi.mocked(apiFetch)
-    .mockResolvedValueOnce(new Response(audio))
+    .mockResolvedValueOnce(new Response('audio'))
     .mockImplementationOnce((_path, options) => new Promise((_, reject) => {
       options?.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true });
     }));
