@@ -207,7 +207,8 @@ export function snapCandidates({ onsets = [], prevEnd, nextStart, playhead, pxPe
  * mode: 'start' | 'end' | 'move'
  * Default = hard non-overlap: edges clamp exactly at the neighbour's
  * boundary (segments may touch, never cross). With allowOverlap (Alt held)
- * the edge may push up to MAX_OVERLAP past the neighbour. Reordering past a
+ * the edge may push up to MAX_OVERLAP past the neighbour. An existing overlap
+ * may stay the same or shrink. Reordering past a
  * neighbour is never possible. Resizes preserve MIN_SEG_DUR against the
  * opposite edge; moves preserve duration.
  */
@@ -217,8 +218,8 @@ export function clampSegmentEdit(segments, index, mode, proposed, opts = {}) {
   const prev = index > 0 ? segments[index - 1] : null;
   const next = index < segments.length - 1 ? segments[index + 1] : null;
   const give = allowOverlap ? MAX_OVERLAP : 0;
-  const minStart = Math.max(0, prev ? prev.end - give : 0);
-  const maxEnd = Math.min(duration, next ? next.start + give : duration);
+  const minStart = prev ? Math.max(0, prev.start, Math.min(seg.start, prev.end - give)) : 0;
+  const maxEnd = next ? Math.min(duration, Math.max(seg.end, next.start + give)) : duration;
 
   let start;
   let end;

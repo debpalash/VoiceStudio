@@ -381,3 +381,14 @@ it('flags every nested overlap, not just consecutive intervals', () => {
     ].sort(),
   ).toEqual(['a', 'b', 'long']);
 });
+
+it('does not jump a cue across an existing overlap when nudging its timeline edges', () => {
+  const cues = [
+    { id: 'left', start: 0, end: 3 },
+    { id: 'middle', start: 2, end: 5 },
+    { id: 'right', start: 4, end: 7 },
+  ];
+  expect(clampSegmentEdit(cues, 1, 'start', { start: 2.1, end: 5 })).toEqual({ start: 2.1, end: 5 });
+  expect(clampSegmentEdit(cues, 1, 'end', { start: 2, end: 4.9 })).toEqual({ start: 2, end: 4.9 });
+  expect(clampSegmentEdit(cues, 1, 'move', { start: 2.1, end: 5.1 })).toEqual({ start: 2, end: 5 });
+});
