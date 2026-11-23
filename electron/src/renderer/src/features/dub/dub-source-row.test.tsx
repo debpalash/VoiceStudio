@@ -2,13 +2,18 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { DubEmptyState } from './dub-empty-state';
 import type { DubSession } from './dub-session';
-import { DubSourceRow, formatFileSize } from './dub-source-row';
+import { compactSourceLabel, DubSourceRow, formatFileSize } from './dub-source-row';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
 }));
 
 afterEach(cleanup);
+
+it('keeps a local filename with a colon while shortening web URLs to the host', () => {
+  expect(compactSourceLabel('Interview:session.wav')).toBe('Interview:session.wav');
+  expect(compactSourceLabel('https://www.example.com/session.wav')).toBe('example.com');
+});
 
 const row = (overrides: Partial<Parameters<typeof DubSourceRow>[0]> = {}) => {
   const props = {
