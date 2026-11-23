@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from typing import Optional
 
 from core.durable_io import flush_dir, flush_fd
@@ -99,10 +100,14 @@ def write_manifest(manifest: dict) -> Optional[str]:
     path = manifest_path(manifest.get("job_type", ""), manifest.get("job_id", ""))
     if path is None:
         return None
+    directory = os.path.dirname(path)
+    tmp = None
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
+        os.makedirs(directory, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=directory, suffix=".tmp", delete=False,
+        ) as f:
+            tmp = f.name
             json.dump(manifest, f, ensure_ascii=False)
             # Flushed before the rename: without it a power-off can publish
             # the name ahead of the data and leave an empty manifest, which is
@@ -110,10 +115,17 @@ def write_manifest(manifest: dict) -> Optional[str]:
             f.flush()
             flush_fd(f.fileno())
         os.replace(tmp, path)  # atomic — a half-written manifest never resumes
-        flush_dir(os.path.dirname(path))
+        tmp = None  # the staging file now has the final name
+        flush_dir(directory)
         return path
-    except OSError:
+    except (OSError, TypeError, ValueError):
         return None
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass  # best-effort cleanup on an unwritable filesystem
 
 
 def read_manifest(job_type: str, job_id: str) -> Optional[dict]:
