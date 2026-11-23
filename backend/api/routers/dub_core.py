@@ -295,6 +295,72 @@ def dub_parse_subtitle_text(req: ParseSubtitleTextRequest):
     }
 
 
+async def _read_subtitle_upload(file: UploadFile):
+    from services.text_upload import decode_text_upload
+    from services.srt_parser import parse_srt
+
+    raw = await file.read(_MAX_SUBTITLE_PASTE_CHARS + 1)
+    if len(raw) > _MAX_SUBTITLE_PASTE_CHARS:
+        raise HTTPException(status_code=413, detail="Subtitle file exceeds 2 MB.")
+    result = parse_srt(decode_text_upload(raw))
+    if not result.segments:
+        raise HTTPException(status_code=400, detail="No valid subtitle cues found.")
+    return result
+
+
+@router.post("/dub/validate-srt", dependencies=[Depends(require_admin)])
+async def dub_validate_srt(file: UploadFile = File(...)):
+    """Validate a selected subtitle file without starting or changing a job."""
+    try:
+        result = await _read_subtitle_upload(file)
+        return {"imported": len(result.segments)}
+    finally:
+        await file.close()
+
+
+@router.post("/dub/from-srt", dependencies=[Depends(require_admin)])
+async def dub_from_srt(file: UploadFile = File(...), source_lang: Optional[str] = Form(None)):
+    """Create a speech-only project, with no media preparation or ASR."""
+    source = _source_lang_override(source_lang)
+    if not source:
+        raise HTTPException(status_code=400, detail="Choose the subtitle source language.")
+    try:
+        result = await _read_subtitle_upload(file)
+    finally:
+        await file.close()
+    segments = [{**seg, "id": str(i), "text_original": seg["text"]}
+                for i, seg in enumerate(result.segments)]
+    job_id = str(uuid.uuid4())
+    job = {
+        "filename": os.path.basename(file.filename or "subtitles.srt"),
+        "duration": max(seg["end"] for seg in segments),
+        "input_type": "audio", "subtitle_only": True,
+        "source_lang": source, "source_lang_override": source,
+        "segments": [], "dubbed_tracks": {},
+    }
+    replace_source_segments(job, segments)
+    # Exports, the per-segment speech cache and history deletion all expect a
+    # job directory; a subtitle-only job has no media to create it.
+    job_dir = _safe_job_dir(job_id)
+    if not job_dir:
+        raise HTTPException(status_code=400, detail="Invalid job id")
+    os.makedirs(job_dir, exist_ok=True)
+    try:
+        with dub_pipeline._dub_jobs_lock:
+            _save_job(job_id, job, strict=True)
+            _dub_jobs[job_id] = job
+    except BaseException:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise
+    return {
+        "job_id": job_id, "filename": job["filename"],
+        "duration": job["duration"], "source_lang": source,
+        "segments": segments,
+        "stats": {"imported": len(segments), "skipped_malformed": result.skipped_cues,
+                  "dropped_overlap": result.dropped_overlaps, "clamped_to_duration": 0},
+    }
+
+
 @router.post("/dub/import-srt/{job_id}", dependencies=[Depends(require_admin)])
 async def dub_import_srt(job_id: str, file: UploadFile = File(...)):
     """Replace `job["segments"]` with timestamps + text parsed from an SRT
