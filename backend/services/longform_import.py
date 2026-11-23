@@ -194,6 +194,18 @@ class _TextExtractor(HTMLParser):
             if separator and local == "type" and namespaces.get(prefix) == self._EPUB_NS:
                 types.update((value or "").split())
 
+        if tag in {"rb", "rt", "rp", "rtc"}:
+            # HTML end tags for ruby annotations are optional: a new ruby part
+            # closes any annotation left open, or its hidden depth would swallow
+            # the base text that follows.
+            for index in range(len(self._elements) - 1, -1, -1):
+                if self._elements[index][0] in {"rt", "rp"}:
+                    removed = self._elements[index:]
+                    del self._elements[index:]
+                    self._skip_depth -= sum(frame[2] for frame in removed)
+                    self._pagebreak_depth -= sum(frame[3] for frame in removed)
+                    break
+
         is_hidden = tag in self._SKIP
         is_pagebreak = self._is_pagebreak(attrs, types)
         if tag not in self._VOID:

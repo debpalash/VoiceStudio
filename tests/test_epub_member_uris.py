@@ -41,3 +41,10 @@ def test_epub_ruby_annotations_are_not_read_as_duplicate_words():
         '<p>今日は<ruby>晴<rt>は</rt></ruby>れです。</p>'
     )
     assert _html_to_title_body(xhtml) == ("東京の旅", "今日は晴れです。")
+
+
+def test_epub_unclosed_ruby_annotation_does_not_swallow_the_next_base():
+    from services.longform_import import _html_to_title_body
+
+    xhtml = '<p><ruby>東<rt>とう<rb>京</rb><rt>きょう</rt></ruby>と漢<ruby>字<rt>じ</ruby>です</p>'
+    assert _html_to_title_body(xhtml) == ("", "東京と漢字です")
