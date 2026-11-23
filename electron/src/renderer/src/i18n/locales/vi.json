@@ -2485,7 +2485,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Xem chi tiết sự cố",
-    "field_exit": "Ra",
+    "field_exit": "Trạng thái thoát",
     "field_when": "Khi",
     "field_version": "Phiên bản phụ trợ",
     "no_stderr": "Không có đầu ra lỗi nào được ghi lại.",
@@ -4349,5 +4349,12 @@
     "unavailable": "Báo cáo tự động không khả dụng hoặc đã bị tắt cho ứng dụng này.",
     "managed": "Quản lý lựa chọn này trong ứng dụng máy tính kết nối với trình duyệt này.",
     "save_failed": "Không thể lưu lựa chọn này. Vui lòng thử lại."
+  },
+  "tray": {
+    "open": "Mở {{app}}",
+    "start_dictation": "Bắt đầu đọc chính tả",
+    "stop_dictation": "Dừng đọc chính tả",
+    "settings": "Cài đặt",
+    "quit": "Thoát"
   }
 }

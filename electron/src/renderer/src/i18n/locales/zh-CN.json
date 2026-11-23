@@ -2480,7 +2480,7 @@
   },
   "crash": {
     "view": "查看崩溃详情",
-    "field_exit": "退出码",
+    "field_exit": "退出状态",
     "field_when": "发生时间",
     "field_uptime": "崩溃前运行时长",
     "field_version": "后端版本",
@@ -4349,5 +4349,12 @@
     "unavailable": "此应用的自动报告不可用或已被禁用。",
     "managed": "请在与此浏览器连接的桌面应用中管理此选项。",
     "save_failed": "无法保存此选择，请重试。"
+  },
+  "tray": {
+    "open": "打开 {{app}}",
+    "start_dictation": "开始听写",
+    "stop_dictation": "停止听写",
+    "settings": "设置",
+    "quit": "退出"
   }
 }

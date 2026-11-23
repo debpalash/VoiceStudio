@@ -2487,7 +2487,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Afficher les détails de l'accident",
-    "field_exit": "Sortie",
+    "field_exit": "Code de sortie",
     "field_when": "Quand",
     "field_uptime": "Disponibilité avant le crash",
     "field_version": "Version back-end",
@@ -4351,5 +4351,12 @@
     "unavailable": "Les rapports automatiques sont indisponibles ou désactivés pour cette application.",
     "managed": "Gérez ce choix dans l’application de bureau connectée à ce navigateur.",
     "save_failed": "Impossible d’enregistrer ce choix. Veuillez réessayer."
+  },
+  "tray": {
+    "open": "Ouvrir {{app}}",
+    "start_dictation": "Démarrer la dictée",
+    "stop_dictation": "Arrêter la dictée",
+    "settings": "Paramètres",
+    "quit": "Quitter"
   }
 }
