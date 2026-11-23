@@ -78,7 +78,7 @@ function _isSpeakerTag(name) {
 /** True when the text uses `[Name]` speaker tags (so parseScript routes here). */
 export function hasSpeakerTags(text) {
   return String(text || '')
-    .split(/\r?\n/)
+    .split(/\r\n?|\n/)
     .some((line) => {
       const m = line.match(_SPEAKER_TAG);
       return !!(m && _isSpeakerTag(m[1]));
@@ -93,7 +93,7 @@ export function hasSpeakerTags(text) {
 export function parseTaggedScript(text) {
   const out = [];
   const src = String(text || '')
-    .replace(/\r\n/g, '\n')
+    .replace(/\r\n?/g, '\n')
     .trim();
   if (!src) return out;
 
@@ -121,7 +121,7 @@ export function parseTaggedScript(text) {
 export function parseScript(text) {
   const out = [];
   const src = String(text || '')
-    .replace(/\r\n/g, '\n')
+    .replace(/\r\n?/g, '\n')
     .trim();
   if (!src) return out;
 
