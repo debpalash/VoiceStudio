@@ -15,7 +15,11 @@ export const TRANSCRIPTION_EVENT = 'omni:transcription-added';
 export function loadTranscriptions() {
   try {
     const parsed = JSON.parse(localStorage.getItem(TRANSCRIPTIONS_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // A corrupt row should not make the rest of the history unreadable.
+    return parsed.filter(
+      (entry) => Number.isSafeInteger(entry?.id) && typeof entry.text === 'string',
+    );
   } catch {
     return [];
   }
