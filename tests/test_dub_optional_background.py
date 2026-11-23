@@ -8,11 +8,12 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from services import dub_pipeline as dp
-
 
 @pytest.mark.parametrize('separate,failure', [(False, False), (True, False), (True, True)])
 def test_ingest_respects_background_choice(monkeypatch, tmp_path, separate, failure):
+    import importlib
+
+    dp = importlib.import_module('services.dub_pipeline')  # resolved at run time
     commands, cache_keys, separations = [], [], []
     source = tmp_path / 'input.wav'
     sf.write(source, np.ones(16000, dtype=np.float32) * .05, 16000)
