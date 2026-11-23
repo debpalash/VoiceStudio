@@ -151,13 +151,22 @@ def multipart(fields: dict, files: dict):
         raise
 
 
+def _validate_download_size(response, received):
+    expected = response.headers.get('Content-Length')
+    if expected is not None and received != int(expected):
+        raise CLIError('incomplete_response', 'Download ended before all bytes arrived')
+
+
 def download(response, destination: str, *, overwrite: bool = False) -> dict:
     import sys
     if destination == '-':
         if is_terminal(sys.stdout):
             raise CLIError('usage_error', 'Refusing binary output to a terminal; use --output <file>', exit_code=2)
+        received = 0
         while chunk := response.read(CHUNK):
             sys.stdout.buffer.write(chunk)
+            received += len(chunk)
+        _validate_download_size(response, received)
         return {'output': '-'}
     path = Path(destination).expanduser()
     if path.exists() and not overwrite:
@@ -169,9 +178,7 @@ def download(response, destination: str, *, overwrite: bool = False) -> dict:
             while chunk := response.read(CHUNK):
                 stream.write(chunk)
                 received += len(chunk)
-        expected = response.headers.get('Content-Length')
-        if expected is not None and received != int(expected):
-            raise CLIError('incomplete_response', 'Download ended before all bytes arrived')
+        _validate_download_size(response, received)
         if overwrite:
             os.replace(name, path)
         else:
