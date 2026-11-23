@@ -115,6 +115,12 @@ GET /dub/transcribe-stream/{job_id}
 GET /dub/txt/{job_id}
 GET /dub/vtt/{job_id}
 GET /dub/vtt/{job_id}/{filename}
+GET /elevenlabs/v1/models
+GET /elevenlabs/v1/voices
+GET /elevenlabs/v1/voices/settings/default
+GET /elevenlabs/v1/voices/{voice_id}
+GET /elevenlabs/v1/voices/{voice_id}/settings
+GET /elevenlabs/v2/voices
 GET /engines
 GET /engines/asr
 GET /engines/audiocpp/runtime/install/status
@@ -261,6 +267,9 @@ POST /dub/translate
 POST /dub/upload
 POST /dub/use-downloaded-captions/{job_id}
 POST /dub/validate-srt
+POST /elevenlabs/v1/speech-to-text
+POST /elevenlabs/v1/text-to-speech/{voice_id}
+POST /elevenlabs/v1/text-to-speech/{voice_id}/stream
 POST /engines/audiocpp/runtime/install
 POST /engines/diarisation/select
 POST /engines/omnivoice-gguf/gpu-offer

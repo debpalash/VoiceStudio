@@ -1,0 +1,212 @@
+"""ElevenLabs-compatible API under /elevenlabs (api.routers.elevenlabs_compat).
+
+Pinned: output formats (incl. resampled PCM, μ-law and A-law), voice lookup,
+the ElevenLabs error shape, voice/model lists, speech-to-text words, and the
+gapless streaming resampler.
+"""
+from __future__ import annotations
+
+import importlib
+import os
+import uuid
+
+import numpy as np
+import pytest
+import torch
+from fastapi.testclient import TestClient
+
+os.environ.setdefault("OMNIVOICE_MODEL", "test")
+os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
+
+SECONDS = 0.5
+
+
+def _el():
+    return importlib.import_module("api.routers.elevenlabs_compat")
+
+
+@pytest.fixture()
+def engine(monkeypatch):
+    tts = importlib.import_module("services.tts_backend")
+
+    class _Engine(tts.TTSBackend):
+        id = "elevenlabs-compat-engine"
+        display_name = "ElevenLabs compat engine (test)"
+        gpu_compat = ("cpu",)
+        calls: list = []
+
+        @property
+        def sample_rate(self) -> int:
+            return 24000
+
+        @property
+        def supported_languages(self) -> list[str]:
+            return ["multi"]
+
+        @classmethod
+        def is_available(cls):
+            return True, "ready"
+
+        def generate(self, text, **kw):
+            type(self).calls.append(kw)
+            t = torch.arange(int(24000 * SECONDS)) / 24000
+            return (0.3 * torch.sin(2 * torch.pi * 220 * t)).unsqueeze(0)
+
+    _Engine.calls = []
+    inst = _Engine()
+    monkeypatch.setitem(tts._REGISTRY, _Engine.id, _Engine)
+    monkeypatch.setattr(tts, "get_active_tts_backend", lambda: inst)
+    monkeypatch.setattr(tts, "get_engine_instance_for", lambda _id: inst)
+    from services import engine_routing
+
+    async def _profile(*_a, **_k):
+        return {"routing_status": "native", "routing_reason": ""}
+
+    monkeypatch.setattr(engine_routing, "runtime_compute_profile_async", _profile)
+    return _Engine
+
+
+@pytest.fixture()
+def client():
+    from main import app
+
+    return TestClient(app, client=("127.0.0.1", 50000))
+
+
+@pytest.fixture()
+def profile():
+    from core.db import db_conn, init_db
+
+    init_db()
+    pid = str(uuid.uuid4())
+    name = f"el-{uuid.uuid4().hex[:8]}"
+    with db_conn() as conn:
+        conn.execute(
+            "INSERT INTO voice_profiles (id, name, kind, created_at, ref_text, ref_audio_path, language) "
+            "VALUES (?, ?, 'clone', 0, '', ?, 'en')",
+            (pid, name, f"{pid}.wav"),
+        )
+    yield pid, name
+    with db_conn() as conn:
+        conn.execute("DELETE FROM voice_profiles WHERE id=?", (pid,))
+
+
+def _tts(client, voice="default", fmt=None, stream=False, **body):
+    path = f"/elevenlabs/v1/text-to-speech/{voice}" + ("/stream" if stream else "")
+    params = {"output_format": fmt} if fmt else None
+    return client.post(path, params=params, json={"text": "Hello there.", **body})
+
+
+@pytest.mark.parametrize("fmt,rate,width", [
+    ("pcm_24000", 24000, 2), ("pcm_16000", 16000, 2), ("pcm_44100", 44100, 2),
+    ("ulaw_8000", 8000, 1), ("alaw_8000", 8000, 1),
+])
+@pytest.mark.parametrize("stream", [False, True])
+def test_raw_formats_have_the_requested_rate(client, engine, fmt, rate, width, stream):
+    res = _tts(client, fmt=fmt, stream=stream, model_id="eleven_multilingual_v2")
+    assert res.status_code == 200, res.text
+    samples = len(res.content) // width
+    assert abs(samples - rate * SECONDS) <= 2
+    assert res.headers["content-type"].startswith(_el()._MEDIA[fmt.split("_")[0]])
+
+
+def test_wav_and_profile_voice(client, engine, profile):
+    pid, _ = profile
+    res = _tts(client, voice=pid, fmt="wav_44100", language_code="en",
+               voice_settings={"stability": 0.4, "similarity_boost": 0.8, "speed": 1.1}, seed=7)
+    assert res.status_code == 200, res.text
+    assert res.content[:4] == b"RIFF"
+    kw = engine.calls[-1]
+    assert kw["ref_audio"].endswith(f"{pid}.wav")
+    assert kw["speed"] == pytest.approx(1.1)
+    assert kw["seed"] == 7
+    assert kw["language"] == "en"
+
+
+def test_unknown_elevenlabs_voice_id_is_a_404(client, engine):
+    res = _tts(client, voice="21m00Tcm4TlvDq8ikWAM", fmt="pcm_24000")
+    assert res.status_code == 404
+    detail = res.json()["detail"]
+    assert detail["status"] == "voice_not_found"
+    assert "/elevenlabs/v1/voices" in detail["message"]
+    assert engine.calls == []
+
+
+def test_bad_output_format_is_rejected_before_generation(client, engine):
+    res = _tts(client, fmt="flac_48000")
+    assert res.status_code == 422
+    assert res.json()["detail"]["status"] == "invalid_output_format"
+    assert engine.calls == []
+
+
+def test_voice_and_model_lists(client, engine, profile):
+    pid, name = profile
+    voices = client.get("/elevenlabs/v1/voices").json()["voices"]
+    entry = next(v for v in voices if v["voice_id"] == pid)
+    assert entry["name"] == name and entry["category"] == "cloned"
+    assert voices[0]["voice_id"] == "default"
+
+    assert client.get(f"/elevenlabs/v1/voices/{pid}").json()["name"] == name
+    missing = client.get("/elevenlabs/v1/voices/nope")
+    assert missing.status_code == 404 and missing.json()["detail"]["status"] == "voice_not_found"
+
+    page = client.get("/elevenlabs/v2/voices", params={"search": name, "page_size": 1}).json()
+    assert [v["voice_id"] for v in page["voices"]] == [pid]
+    assert page["has_more"] is False and page["total_count"] == 1
+
+    assert client.get("/elevenlabs/v1/voices/settings/default").json()["similarity_boost"] == 0.75
+    ids = [m["model_id"] for m in client.get("/elevenlabs/v1/models").json()]
+    assert "eleven_multilingual_v2" in ids
+
+
+def test_speech_to_text_returns_elevenlabs_words(client, monkeypatch):
+    oc = importlib.import_module("api.routers.openai_compat")
+    seen = {}
+
+    async def fake(**kw):
+        seen.update(kw)
+        return {"text": "Hi there", "language": "en",
+                "words": [{"word": "Hi", "start": 0.0, "end": 0.3},
+                          {"word": "there", "start": 0.4, "end": 0.8}]}
+
+    monkeypatch.setattr(oc, "_transcribe_request", fake)
+    res = client.post("/elevenlabs/v1/speech-to-text",
+                      data={"model_id": "scribe_v1", "language_code": "en"},
+                      files={"file": ("a.wav", b"RIFF", "audio/wav")})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["text"] == "Hi there" and body["language_code"] == "en"
+    assert [w["type"] for w in body["words"]] == ["word", "spacing", "word"]
+    assert body["words"][1] == {"text": " ", "start": 0.3, "end": 0.4, "type": "spacing", "logprob": 0.0}
+    assert seen["response_format"] == "verbose_json" and seen["language"] == "en"
+
+    diar = client.post("/elevenlabs/v1/speech-to-text", data={"diarize": "true"},
+                       files={"file": ("a.wav", b"RIFF", "audio/wav")})
+    assert diar.status_code == 422
+    assert diar.json()["detail"]["status"] == "diarize_unsupported"
+
+
+@pytest.mark.parametrize("rate", [8000, 16000, 22050, 44100, 48000])
+def test_stream_resampler_matches_whole_signal(rate):
+    import torchaudio.functional as AF
+
+    rng = np.random.default_rng(rate)
+    pcm = (rng.standard_normal(24000) * 6000).clip(-32768, 32767).astype("<i2")
+    whole = AF.resample(torch.from_numpy(pcm.astype(np.float32) / 32768.0), 24000, rate).numpy()
+    rs = _el().StreamResampler(rate)
+    raw = pcm.tobytes()
+    parts, i = [], 0
+    for size in (1, 333, 4097, 2, 9000, 77):  # odd sizes split int16 samples
+        parts.append(rs.feed(raw[i:i + size]))
+        i += size
+    parts.append(rs.feed(raw[i:]))
+    parts.append(rs.flush())
+    out = np.concatenate(parts).astype(np.float32) / 32768.0
+    assert len(out) == len(whole)
+    assert np.max(np.abs(out - whole)) < 2 / 32768.0
+
+
+def test_alaw_matches_reference_codec():
+    audioop = pytest.importorskip("audioop")
+    pcm = np.arange(-32768, 32768, dtype=np.int16)
+    assert _el().lin2alaw(pcm) == audioop.lin2alaw(pcm.astype("<i2").tobytes(), 2)

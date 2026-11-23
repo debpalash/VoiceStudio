@@ -79,6 +79,7 @@ their unchanged legacy frames and `EOF` control.
 | Transport | Endpoint | Use |
 |---|---|---|
 | OpenAI-compatible HTTP | `POST :3900/v1/audio/transcriptions` | Files, scripts, existing SDKs |
+| ElevenLabs-compatible HTTP | `POST :3900/elevenlabs/v1/speech-to-text` | Apps built for ElevenLabs ([guide](elevenlabs-api.md)) |
 | WebSocket | `:3900/v1/audio/transcriptions/stream` | Partial and final live text |
 | MCP Streamable HTTP | `POST :3900/mcp/` (bare `/mcp` on current backends) | Modern agent clients |
 | MCP stdio | `python -m backend.mcp_shim` | Claude Code, Codex, and stdio-only clients |

@@ -61,6 +61,9 @@ URL with copyable `curl` and OpenAI Python SDK snippets for
 `/v1/audio/speech` and `/v1/audio/transcriptions`. Loopback requests need no
 key; remote ones need the backend's API key (see [API authentication](api-auth.md)).
 
+Apps built for ElevenLabs can use the [ElevenLabs-compatible API](elevenlabs-api.md)
+at `<backend>/elevenlabs` instead.
+
 The **Docker** and **GitHub Container Registry** pages give a `docker run` (POSIX shell and Windows PowerShell) and a
 Compose snippet for `palashdeb/omnivoice-studio:stable` and
 `ghcr.io/debpalash/voicestudio:stable`. `:stable` is the latest tagged

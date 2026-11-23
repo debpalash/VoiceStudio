@@ -814,6 +814,7 @@ def _phase_a_build_inner() -> None:
         speech_platform,
         dictation,
         openai_compat,
+        elevenlabs_compat,  # ElevenLabs-compatible API under /elevenlabs
         tts_stream,
         marketplace,
         personas,
@@ -836,7 +837,7 @@ def _phase_a_build_inner() -> None:
         dub_export, dub_translate, projects, glossary, engines, tools,
         stories, setup, gallery, demo_assets_router, archetypes, describe_voice, community,
         batch, watermark, events, capture, capture_ws, speech_platform, dictation,
-        openai_compat, tts_stream, marketplace, personas, sonitranslate,
+        openai_compat, elevenlabs_compat, tts_stream, marketplace, personas, sonitranslate,
         audiobook, longform_jobs, pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router,
         _telephony_twilio_router, _calls_router, _cloud_sync_router,
