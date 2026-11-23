@@ -70,11 +70,15 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
 }
 export function projectPayload(session: DubSession, name: string) {
   const prior = session.project;
+  const sourceDuration = session.duration;
   return {
     name: name.trim(),
     video_path: prior?.video_path || session.filename,
     audio_path: prior?.audio_path ?? null,
-    duration: prior?.duration ?? Math.max(0, ...session.segments.map((s) => s.end)),
+    duration:
+      typeof sourceDuration === 'number' && Number.isFinite(sourceDuration) && sourceDuration > 0
+        ? sourceDuration
+        : prior?.duration ?? session.segments.reduce((end, segment) => Math.max(end, segment.end), 0),
     state: {
       ...prior?.state,
       dubJobId: session.jobId,

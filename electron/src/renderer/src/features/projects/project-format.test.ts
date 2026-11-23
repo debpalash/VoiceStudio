@@ -69,3 +69,16 @@ it('discards malformed segments without inventing active tasks', () => {
   expect(session.segments).toEqual([]);
   expect(session.recovery).toBeNull();
 });
+
+
+it('saves and restores the full source duration when the last cue ends early', () => {
+  const session: DubSession = {
+    ...defaults,
+    duration: 12,
+    segments: [{ id: 'a', start: 2, end: 5, text: 'Dialogue' }],
+  };
+  const saved = projectPayload(session, 'Clip with a quiet ending');
+  expect(saved.duration).toBe(12);
+  expect(projectSession({ id: 'saved', ...saved }, defaults).duration).toBe(12);
+  expect(projectPayload({ ...session, duration: undefined }, 'Legacy draft').duration).toBe(5);
+});
