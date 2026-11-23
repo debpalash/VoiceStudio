@@ -144,6 +144,36 @@ try {
 # redirected a fresh reinstall's model cache to the old location.
 $userEnvDir = Join-Path ([Environment]::GetEnvironmentVariable('USERPROFILE')) '.config\omnivoice'
 
+# Resolve a target the way Remove-Item will: against PowerShell's current provider
+# location, not the .NET working directory, so the path that gets validated is the
+# same absolute path that gets removed.
+function Resolve-DeleteTarget {
+  param([string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+  try {
+    return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+  } catch {
+    return $null
+  }
+}
+
+# An override can name any folder ($env:OMNIVOICE_DATA_DIR = $HOME is enough), so
+# every deletion target is checked first. A drive root, the user profile, or any
+# parent of it is never a VoiceStudio folder.
+function Test-UnsafeDeleteRoot {
+  param([string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+  $trimmed = $Path.TrimEnd([char[]]@('\', '/'))
+  if ($trimmed -eq '' -or $trimmed -match '^[A-Za-z]:$') { return $true }
+  $profile = [Environment]::GetEnvironmentVariable('USERPROFILE')
+  if ([string]::IsNullOrWhiteSpace($profile)) { return $false }
+  $profileFull = Resolve-DeleteTarget $profile
+  if ([string]::IsNullOrWhiteSpace($profileFull)) { return $false }
+  $profileFull = $profileFull.TrimEnd([char[]]@('\', '/'))
+  if ($trimmed -ieq $profileFull) { return $true }
+  return $profileFull.StartsWith($trimmed + '\', [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 $appTargets = @()
 foreach ($p in @($dataDir, $electronUserData, $electronRuntime, $electronCache) + $legacyConfig + @($logsDefault, $userEnvDir)) {
   if ($p -and (Test-Path -LiteralPath $p)) { $appTargets += $p }
@@ -233,14 +263,30 @@ try {
 $deleted = 0
 foreach ($t in $appTargets) {
   if ($t -like 'MSI product:*' -or $t -like 'App: *') { continue }
-  Write-Host "Removing $t"
-  Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue
+  $target = Resolve-DeleteTarget $t
+  if (-not $target) {
+    Write-Warning "Skipping $t — it does not resolve to a filesystem path."
+    continue
+  }
+  if (Test-UnsafeDeleteRoot $target) {
+    Write-Warning "Refusing to remove $target — that is the user profile, a parent of it, or a drive root, not a VoiceStudio folder."
+    continue
+  }
+  Write-Host "Removing $target"
+  Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
   $deleted++
 }
 if ($Models -and $modelsPresent) {
-  Write-Host "Removing $modelsDir"
-  Remove-Item -LiteralPath $modelsDir -Recurse -Force -ErrorAction SilentlyContinue
-  $deleted++
+  $modelsTarget = Resolve-DeleteTarget $modelsDir
+  if (-not $modelsTarget) {
+    Write-Warning "Skipping $modelsDir — it does not resolve to a filesystem path."
+  } elseif (Test-UnsafeDeleteRoot $modelsTarget) {
+    Write-Warning "Refusing to remove $modelsTarget — that is the user profile, a parent of it, or a drive root, not a model cache."
+  } else {
+    Write-Host "Removing $modelsTarget"
+    Remove-Item -LiteralPath $modelsTarget -Recurse -Force -ErrorAction SilentlyContinue
+    $deleted++
+  }
 } elseif ($modelsPresent) {
   Write-Host "Kept model cache ($modelsDir) — re-run with -Models to remove it."
 }

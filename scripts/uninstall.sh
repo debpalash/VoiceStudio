@@ -252,15 +252,80 @@ PYTHON
 send_uninstall_ping
 
 # ── Delete ──────────────────────────────────────────────────────────────────
+# Resolve through symlinks when the path exists, so the guard sees what a trailing
+# slash would have let `rm -rf` follow. Two shell details matter here: CDPATH is
+# cleared because `cd` otherwise echoes the directory it picked, and a relative
+# operand is prefixed with ./ because `cd -` visits OLDPWD instead of a directory
+# named "-". A path that does not exist resolves to itself.
+resolve_delete_target() {
+  local path="$1" operand
+  if [ -n "$path" ] && [ -d "$path" ]; then
+    case "$path" in
+      /*) operand="$path" ;;
+      *) operand="./$path" ;;
+    esac
+    (unset CDPATH && cd -P -- "$operand" 2>/dev/null && pwd -P) || printf '%s\n' "$path"
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
+# An override can name any folder (OMNIVOICE_DATA_DIR=$HOME is enough), so every
+# deletion target is checked first. These shapes are never a VoiceStudio folder:
+# the filesystem root, the home directory, and any parent of home — removing
+# /home, /Users or "$HOME/.." takes unrelated data with it.
+#
+# Home is resolved once, before the first deletion, because a deleted app folder can
+# hold the symlink that named it; resolving it per call would compare the remaining
+# targets against a link that no longer exists.
+RESOLVED_HOME=$(resolve_delete_target "${HOME:-}")
+
+# A target that carries a line break cannot be compared faithfully: command
+# substitution drops trailing newlines, so the path that is checked and the path
+# that is removed could differ. No supported data location contains one.
+has_line_break() {
+  [ "$(printf '%s' "$1" | tr -d '\n\r')" != "$1" ]
+}
+
+is_unsafe_delete_root() {
+  local target home="$RESOLVED_HOME"
+  target=$(resolve_delete_target "$1")
+  [ -z "$target" ] && return 0
+  [ -z "$home" ] && return 1
+  [ "$target" = "$home" ] && return 0
+  case "$home/" in "$target"/*) return 0 ;; esac
+  return 1
+}
+
+# A trailing slash changes what `rm -rf` does with a symlinked folder: "dir/"
+# recurses into the link target while "dir" removes only the link. The strip runs
+# in place on the variable, never through command substitution, which would also
+# drop a trailing newline and delete a different directory than the one named.
 deleted=0
 for t in "${app_targets[@]:-}"; do
   [ -z "$t" ] && continue
+  while [ "${t%/}" != "$t" ]; do t="${t%/}"; done
+  if has_line_break "$t"; then
+    echo "Refusing to remove $t — the path contains a line break, which cannot be checked safely." >&2
+    continue
+  fi
+  if is_unsafe_delete_root "$t"; then
+    echo "Refusing to remove $t — that is the home directory, a parent of it, or the filesystem root, not a VoiceStudio folder." >&2
+    continue
+  fi
   echo "Removing $t"
   rm -rf -- "$t" && deleted=$((deleted + 1))
 done
 if [ "$INCLUDE_MODELS" -eq 1 ] && [ "$models_present" -eq 1 ]; then
-  echo "Removing $MODELS_DIR"
-  rm -rf -- "$MODELS_DIR" && deleted=$((deleted + 1))
+  while [ "${MODELS_DIR%/}" != "$MODELS_DIR" ]; do MODELS_DIR="${MODELS_DIR%/}"; done
+  if has_line_break "$MODELS_DIR"; then
+    echo "Refusing to remove $MODELS_DIR — the path contains a line break, which cannot be checked safely." >&2
+  elif is_unsafe_delete_root "$MODELS_DIR"; then
+    echo "Refusing to remove $MODELS_DIR — that is the home directory, a parent of it, or the filesystem root, not a model cache." >&2
+  else
+    echo "Removing $MODELS_DIR"
+    rm -rf -- "$MODELS_DIR" && deleted=$((deleted + 1))
+  fi
 elif [ "$models_present" -eq 1 ]; then
   echo "Kept model cache ($MODELS_DIR) — re-run with --models to remove it."
 fi
