@@ -31,3 +31,13 @@ def test_spine_and_navigation_resolve_uri_paths(filename, href):
             '</body></html>')
         archive.writestr('OPS/text/' + filename, '<html><body><p>All the chapter words survive.</p></body></html>')
     assert epub_to_chapter_script(buffer.getvalue()) == '# Publisher title\n\nAll the chapter words survive.'
+
+
+def test_epub_ruby_annotations_are_not_read_as_duplicate_words():
+    from services.longform_import import _html_to_title_body
+
+    xhtml = (
+        '<h1><ruby>東京<rp>(</rp><rt>とうきょう</rt><rp>)</rp></ruby>の旅</h1>'
+        '<p>今日は<ruby>晴<rt>は</rt></ruby>れです。</p>'
+    )
+    assert _html_to_title_body(xhtml) == ("東京の旅", "今日は晴れです。")

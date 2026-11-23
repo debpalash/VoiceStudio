@@ -128,7 +128,8 @@ def chapterize_plaintext(text: str) -> str:
 class _TextExtractor(HTMLParser):
     """Extract a chapter heading, visible prose, and EPUB semantic types."""
 
-    _SKIP = {"script", "style", "head"}
+    # Ruby readings and their fallback parentheses annotate the base text.
+    _SKIP = {"script", "style", "head", "rt", "rp", "rtc"}
     _BREAK = {
         "p", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol",
         "tr", "td", "th", "table", "caption", "thead", "tbody", "tfoot",
@@ -213,7 +214,7 @@ class _TextExtractor(HTMLParser):
             and not (self.document_title if tag == "title" else self.title)
             and not self._in_title
             and not self._pagebreak_depth
-            and not any(frame[0] in {"script", "style"} for frame in self._elements)
+            and not any(frame[2] and frame[0] != "head" for frame in self._elements)
         ):
             self._in_title = True
             self._title_tag = tag
@@ -253,7 +254,7 @@ class _TextExtractor(HTMLParser):
                 self._parts.append("\n")
 
     def handle_data(self, data: str) -> None:
-        if self._pagebreak_depth or any(frame[0] in {"script", "style"} for frame in self._elements):
+        if self._pagebreak_depth or any(frame[2] and frame[0] != "head" for frame in self._elements):
             return
         if self._skip_depth and not self._in_title:
             return
