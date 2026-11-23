@@ -10,7 +10,8 @@ exactly as they do on ``/v1/audio/speech``.
 Supported: text to speech (``/v1/text-to-speech/{voice_id}`` and ``/stream``,
 every ``output_format`` family), speech to text (``/v1/speech-to-text``), the
 voice changer (``/v1/speech-to-speech/{voice_id}``), sound effects
-(``/v1/sound-generation``), the voice list (``/v1/voices``, ``/v2/voices``, ``/v1/voices/{voice_id}``), default
+(``/v1/sound-generation``), voice isolation (``/v1/audio-isolation``), the
+voice list (``/v1/voices``, ``/v2/voices``, ``/v1/voices/{voice_id}``), default
 voice settings and the model list. ElevenLabs model ids (``eleven_*``) use the
 active VoiceStudio engine; a VoiceStudio engine id picks that engine.
 
@@ -392,6 +393,45 @@ async def text_to_speech_stream(
     return await _speech(voice_id, body, output_format, stream=True)
 
 
+# ── Uploads ─────────────────────────────────────────────────────────────────
+
+#: Recordings for transcription and isolation can be long; stream them to disk
+#: in chunks under this cap rather than holding them in memory.
+_MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
+_UPLOAD_CHUNK = 1024 * 1024
+
+
+async def _save_upload(upload: UploadFile, suffix_default: str = ".wav") -> str:
+    """Stream ``upload`` to a new temp file and return its path."""
+    import os
+    import tempfile
+
+    from core.path_security import upload_suffix
+
+    fd, path = tempfile.mkstemp(suffix=upload_suffix(upload.filename, suffix_default) or suffix_default)
+    total = 0
+    try:
+        with os.fdopen(fd, "wb") as dest:
+            while chunk := await upload.read(_UPLOAD_CHUNK):
+                total += len(chunk)
+                if total > _MAX_UPLOAD_BYTES:
+                    raise _error(413, "file_too_large", "The file is larger than 2 GB.")
+                dest.write(chunk)
+    except BaseException:
+        _unlink(path)
+        raise
+    return path
+
+
+def _unlink(path: str) -> None:
+    import os
+
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 # ── Voices and models ───────────────────────────────────────────────────────
 
 
@@ -531,18 +571,57 @@ def list_models():
 # ── Speech to text ──────────────────────────────────────────────────────────
 
 
-def _scribe_words(words: list[dict]) -> list[dict]:
+def _scribe_words(words: list[dict], speakers: Optional[list[Optional[str]]] = None) -> list[dict]:
     """OpenAI words → ElevenLabs words, with the ``spacing`` items it puts
-    between them."""
+    between them; ``speaker_id`` when ``speakers`` labels each word."""
     out: list[dict] = []
     for i, w in enumerate(words):
+        speaker = speakers[i] if speakers else None
         if i:
             prev_end = out[-1]["end"]
-            out.append({"text": " ", "start": prev_end, "end": max(prev_end, w["start"]),
-                        "type": "spacing", "logprob": 0.0})
-        out.append({"text": w["word"], "start": w["start"], "end": w["end"],
-                    "type": "word", "logprob": 0.0})
+            spacing = {"text": " ", "start": prev_end, "end": max(prev_end, w["start"]),
+                       "type": "spacing", "logprob": 0.0}
+            if speaker:
+                spacing["speaker_id"] = speaker
+            out.append(spacing)
+        item = {"text": w["word"], "start": w["start"], "end": w["end"],
+                "type": "word", "logprob": 0.0}
+        if speaker:
+            item["speaker_id"] = speaker
+        out.append(item)
     return out
+
+
+def _speaker_ids(labels: list[Optional[str]]) -> list[Optional[str]]:
+    """Engine speaker labels → ElevenLabs' ``speaker_0``, ``speaker_1``, … in
+    order of first appearance."""
+    names: dict[str, str] = {}
+    out: list[Optional[str]] = []
+    for label in labels:
+        if label is None:
+            out.append(None)
+            continue
+        out.append(names.setdefault(label, f"speaker_{len(names)}"))
+    return out
+
+
+async def _diarize_words(path: str, words: list[dict], num_speakers: Optional[int]):
+    """Per-word speaker ids, or ``(None, error)`` when identification can't run."""
+    from services.model_manager import run_on_gpu_pool_guarded
+    from services.transcript_diarization import diarize_segments
+
+    spans = [{"start": w["start"], "end": w["end"]} for w in words]
+    try:
+        labels, error = await run_on_gpu_pool_guarded(
+            lambda: diarize_segments(path, spans, num_speakers),
+            what="Speaker identification",
+            timeout=max(300.0, 2.0 * (spans[-1]["end"] if spans else 0.0)),
+        )
+    except TimeoutError:
+        return None, "DIARIZATION_TIMEOUT"
+    if error:
+        return None, error
+    return _speaker_ids(labels), None
 
 
 @router.post("/v1/speech-to-text")
@@ -553,34 +632,59 @@ async def speech_to_text(
     timestamps_granularity: str = Form(default="word"),
     diarize: bool = Form(default=False),
     tag_audio_events: bool = Form(default=True, description="Accepted without effect."),
-    num_speakers: Optional[int] = Form(default=None),
+    num_speakers: Optional[int] = Form(default=None, ge=1, le=32),
 ):
     """Transcription in ElevenLabs' response shape, from the active ASR
-    engine. ``timestamps_granularity=character`` returns word timings."""
+    engine. ``timestamps_granularity=character`` returns word timings.
+    ``diarize=true`` labels each word's speaker; when speaker identification
+    can't run, the transcript comes back unlabelled with the reason in
+    ``X-OmniVoice-Diarization-Error``."""
+    from starlette.datastructures import Headers
+    from starlette.datastructures import UploadFile as StarletteUpload
+
     from api.routers.openai_compat import _transcribe_request
 
     if timestamps_granularity not in ("none", "word", "character"):
         raise _error(422, "invalid_timestamps_granularity",
                      "timestamps_granularity must be 'none', 'word' or 'character'.")
-    if diarize:
-        raise _error(
-            422, "diarize_unsupported",
-            "Speaker labels are not available on this endpoint yet. Send diarize=false, "
-            "or use the app's Transcriptions page, which labels speakers.",
+    want_words = timestamps_granularity != "none" or diarize
+    kept = None
+    upload = file
+    try:
+        if diarize:
+            # Transcription deletes its own copy; speaker identification needs one too.
+            kept = await _save_upload(file)
+            upload = StarletteUpload(
+                open(kept, "rb"), filename=file.filename,
+                headers=Headers({"content-type": file.content_type or "application/octet-stream"}),
+            )
+        result = await _transcribe_request(
+            task="transcribe", file=upload, model=None, language=language_code, prompt=None,
+            response_format="verbose_json", temperature=None,
+            timestamp_granularities=["word", "segment"] if want_words else ["segment"],
         )
-    want_words = timestamps_granularity != "none"
-    result = await _transcribe_request(
-        task="transcribe", file=file, model=None, language=language_code, prompt=None,
-        response_format="verbose_json", temperature=None,
-        timestamp_granularities=["word", "segment"] if want_words else ["segment"],
-    )
-    words = _scribe_words(result.get("words") or []) if want_words else []
-    return {
+        raw_words = result.get("words") or []
+        speakers, error = (None, None)
+        if diarize and raw_words:
+            speakers, error = await _diarize_words(kept, raw_words, num_speakers)
+    finally:
+        if upload is not file:
+            upload.file.close()
+        if kept is not None:
+            _unlink(kept)
+    words = _scribe_words(raw_words, speakers) if want_words else []
+    if timestamps_granularity == "none":
+        words = []
+    body = {
         "language_code": result.get("language") or language_code or "",
         "language_probability": 1.0 if language_code else 0.0,
         "text": result.get("text", ""),
         "words": words,
     }
+    if error:
+        logger.info("ElevenLabs speech-to-text: speaker identification unavailable (%s)", error)
+        return JSONResponse(body, headers={"X-OmniVoice-Diarization-Error": error})
+    return body
 
 
 # ── Files produced by the app's own handlers ────────────────────────────────
@@ -592,16 +696,25 @@ async def _audio_url_response(result: dict, output_format: str, headers: Optiona
     import asyncio
 
     import soundfile as sf
-    import torch
 
-    from api.routers.openai_compat import _encode_audio, _pcm24k
     from core.config import OUTPUTS_DIR
     from core.path_security import contained_join
 
-    family, rate = parse_output_format(output_format)
     name = str(result.get("audio_url") or "").rsplit("/", 1)[-1]
     path = contained_join(OUTPUTS_DIR, name)
     data, sr = await asyncio.to_thread(sf.read, path, dtype="float32", always_2d=True)
+    return await _tensor_response(data, sr, output_format, headers)
+
+
+async def _tensor_response(data, sr: int, output_format: str, headers: Optional[dict] = None):
+    """``(frames, channels)`` float audio → ``output_format``."""
+    import asyncio
+
+    import torch
+
+    from api.routers.openai_compat import _encode_audio, _pcm24k
+
+    family, rate = parse_output_format(output_format)
     wav = torch.from_numpy(data.T.copy())
     if family in ("pcm", "ulaw", "alaw"):
         pcm = await asyncio.to_thread(_pcm24k, wav, sr)
@@ -699,3 +812,45 @@ async def sound_generation(
         seconds = _limits()["default_seconds"]
     result = await sfx_generate(SfxRequest(prompt=body.text, duration=seconds))
     return await _audio_url_response(result, output_format)
+
+
+# ── Voice isolation ─────────────────────────────────────────────────────────
+
+
+@router.post("/v1/audio-isolation")
+async def audio_isolation(
+    audio: UploadFile = File(...),
+    file_format: Optional[str] = Form(default=None, description="Accepted; the upload's format is detected."),
+    output_format: str = Query(default="mp3_44100_128"),
+):
+    """The voice from a recording with music and background noise removed
+    (Demucs, as Dubbing uses)."""
+    import asyncio
+    import shutil
+    import tempfile
+
+    import soundfile as sf
+
+    from services.video_voice_swap import separate_vocals, separation_available
+
+    await _ffmpeg_ready(output_format)
+    if not separation_available():
+        raise _error(
+            409, "audio_isolation_unavailable",
+            "Voice isolation needs Demucs, which is missing from this install. "
+            "Repair the install from Settings, then try again.",
+        )
+    source = await _save_upload(audio)
+    workdir = tempfile.mkdtemp(prefix="el-isolate-")
+    try:
+        stems = await separate_vocals(source, workdir)
+        if stems is None:
+            raise _error(
+                500, "audio_isolation_failed",
+                "Voice isolation failed on this file. Check that it is playable audio and try again.",
+            )
+        data, sr = await asyncio.to_thread(sf.read, stems[0], dtype="float32", always_2d=True)
+    finally:
+        _unlink(source)
+        shutil.rmtree(workdir, ignore_errors=True)
+    return await _tensor_response(data, sr, output_format)

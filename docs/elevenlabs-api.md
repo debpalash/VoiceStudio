@@ -39,7 +39,8 @@ curl http://127.0.0.1:3900/elevenlabs/v1/text-to-speech/default?output_format=pc
 | `POST /v1/text-to-speech/{voice_id}/stream` | PCM, μ-law and A-law stream sentence by sentence, or chunk by chunk on engines with native streaming. |
 | `POST /v1/speech-to-speech/{voice_id}` | Voice changer: says the uploaded speech in a voice profile's voice, keeping its timing and intonation (the app's Convert → Keep my delivery). Without a voice-conversion engine it transcribes and re-speaks the clip instead and sets `X-OmniVoice-Fallback: respoken`. |
 | `POST /v1/sound-generation` | Sound effects from a description; needs Tools → Sound effects installed. `prompt_influence` and `loop` are accepted without effect. |
-| `POST /v1/speech-to-text` | Uses the active speech-recognition engine; returns `words` with `spacing` items. |
+| `POST /v1/speech-to-text` | Uses the active speech-recognition engine; returns `words` with `spacing` items. `diarize=true` adds `speaker_id` to each word; if speaker identification can't run, the transcript comes back without labels and `X-OmniVoice-Diarization-Error` says why. |
+| `POST /v1/audio-isolation` | The voice from a recording, with music and background removed (Demucs, as in Dubbing). |
 | `GET /v1/voices`, `GET /v2/voices`, `GET /v1/voices/{voice_id}` | Your voice profiles (`cloned`) plus `default`, the active engine's own voice. |
 | `GET /v1/voices/settings/default`, `GET /v1/voices/{voice_id}/settings` | ElevenLabs' default values, for clients that read them first. |
 | `GET /v1/models` | The ElevenLabs model ids below, plus every installed VoiceStudio engine. |
@@ -60,9 +61,9 @@ curl http://127.0.0.1:3900/elevenlabs/v1/text-to-speech/default?output_format=pc
   accepted without effect.
 - **Also applied:** `language_code`, `seed`, and your
   [pronunciation dictionary](expressive-speech.md).
-- **Limits:** up to 4,096 characters per request; use the Long-form page for
-  longer scripts. Speech to text does not label speakers yet (`diarize=true`
-  returns 422); the Transcriptions page does.
+- **Limits:** up to 4,096 characters per text-to-speech request (use the
+  Long-form page for longer scripts) 2 GB per recording for speech to text and voice isolation, and 64 MB for
+  the voice changer.
 - **Errors** use ElevenLabs' shape, `{"detail": {"status": "...", "message": "..."}}`.
 
 Generated audio carries VoiceStudio's AI watermark, as on every other route.

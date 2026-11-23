@@ -180,10 +180,71 @@ def test_speech_to_text_returns_elevenlabs_words(client, monkeypatch):
     assert body["words"][1] == {"text": " ", "start": 0.3, "end": 0.4, "type": "spacing", "logprob": 0.0}
     assert seen["response_format"] == "verbose_json" and seen["language"] == "en"
 
-    diar = client.post("/elevenlabs/v1/speech-to-text", data={"diarize": "true"},
-                       files={"file": ("a.wav", b"RIFF", "audio/wav")})
-    assert diar.status_code == 422
-    assert diar.json()["detail"]["status"] == "diarize_unsupported"
+
+
+def test_speech_to_text_labels_speakers(client, monkeypatch):
+    oc = importlib.import_module("api.routers.openai_compat")
+    td = importlib.import_module("services.transcript_diarization")
+    seen = {}
+
+    async def fake(**kw):
+        seen["upload"] = kw["file"].file.read()
+        return {"text": "Hi there friend", "language": "en",
+                "words": [{"word": "Hi", "start": 0.0, "end": 0.3},
+                          {"word": "there", "start": 0.4, "end": 0.8},
+                          {"word": "friend", "start": 1.0, "end": 1.4}]}
+
+    def fake_diarize(path, spans, num_speakers):
+        seen["path"] = path
+        seen["kept"] = open(path, "rb").read()
+        seen["spans"], seen["n"] = spans, num_speakers
+        return ["SPEAKER_07", "SPEAKER_07", "SPEAKER_02"], None
+
+    monkeypatch.setattr(oc, "_transcribe_request", fake)
+    monkeypatch.setattr(td, "diarize_segments", fake_diarize)
+    res = client.post("/elevenlabs/v1/speech-to-text", data={"diarize": "true", "num_speakers": "2"},
+                      files={"file": ("a.wav", b"RIFF-audio", "audio/wav")})
+    assert res.status_code == 200, res.text
+    words = res.json()["words"]
+    assert [w.get("speaker_id") for w in words if w["type"] == "word"] == ["speaker_0", "speaker_0", "speaker_1"]
+    assert seen["upload"] == seen["kept"] == b"RIFF-audio"
+    assert seen["n"] == 2 and len(seen["spans"]) == 3
+    assert not os.path.exists(seen["path"])  # the kept copy is removed
+
+    monkeypatch.setattr(td, "diarize_segments", lambda *a: ([None] * 3, "LOAD_FAILED"))
+    res = client.post("/elevenlabs/v1/speech-to-text", data={"diarize": "true"},
+                      files={"file": ("a.wav", b"RIFF-audio", "audio/wav")})
+    assert res.status_code == 200
+    assert res.headers["x-omnivoice-diarization-error"] == "LOAD_FAILED"
+    assert all("speaker_id" not in w for w in res.json()["words"])
+
+
+def test_audio_isolation_returns_the_vocal_stem(client, monkeypatch):
+    import soundfile as sf
+
+    vs = importlib.import_module("services.video_voice_swap")
+    seen = {}
+
+    async def fake_separate(track, workdir):
+        seen["source"] = open(track, "rb").read()
+        seen["track"] = track
+        vocals = os.path.join(workdir, "vocals.wav")
+        sf.write(vocals, np.zeros((44100, 2), dtype=np.float32), 44100)
+        return vocals, vocals
+
+    monkeypatch.setattr(vs, "separation_available", lambda: True)
+    monkeypatch.setattr(vs, "separate_vocals", fake_separate)
+    res = client.post("/elevenlabs/v1/audio-isolation", params={"output_format": "pcm_16000"},
+                      files={"audio": ("song.mp3", b"song-bytes", "audio/mpeg")})
+    assert res.status_code == 200, res.text
+    assert len(res.content) == 16000 * 2
+    assert seen["source"] == b"song-bytes" and not os.path.exists(seen["track"])
+
+    monkeypatch.setattr(vs, "separation_available", lambda: False)
+    res = client.post("/elevenlabs/v1/audio-isolation", params={"output_format": "pcm_16000"},
+                      files={"audio": ("song.mp3", b"x", "audio/mpeg")})
+    assert res.status_code == 409
+    assert res.json()["detail"]["status"] == "audio_isolation_unavailable"
 
 
 @pytest.mark.parametrize("rate", [8000, 16000, 22050, 44100, 48000])

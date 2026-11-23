@@ -267,6 +267,7 @@ POST /dub/translate
 POST /dub/upload
 POST /dub/use-downloaded-captions/{job_id}
 POST /dub/validate-srt
+POST /elevenlabs/v1/audio-isolation
 POST /elevenlabs/v1/sound-generation
 POST /elevenlabs/v1/speech-to-speech/{voice_id}
 POST /elevenlabs/v1/speech-to-text

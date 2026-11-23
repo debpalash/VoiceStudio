@@ -691,6 +691,32 @@
     "title": "AutoExtractRequest",
     "type": "object"
    },
+   "Body_audio_isolation_elevenlabs_v1_audio_isolation_post": {
+    "properties": {
+     "audio": {
+      "contentMediaType": "application/octet-stream",
+      "title": "Audio",
+      "type": "string"
+     },
+     "file_format": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted; the upload's format is detected.",
+      "title": "File Format"
+     }
+    },
+    "required": [
+     "audio"
+    ],
+    "title": "Body_audio_isolation_elevenlabs_v1_audio_isolation_post",
+    "type": "object"
+   },
    "Body_audiobook_cover_audiobook_cover_post": {
     "properties": {
      "cover": {
@@ -1792,6 +1818,8 @@
      "num_speakers": {
       "anyOf": [
        {
+        "maximum": 32.0,
+        "minimum": 1.0,
         "type": "integer"
        },
        {
@@ -14397,6 +14425,58 @@
     "summary": "Dub Export Vtt"
    }
   },
+  "/elevenlabs/v1/audio-isolation": {
+   "post": {
+    "description": "The voice from a recording with music and background noise removed\n(Demucs, as Dubbing uses).",
+    "operationId": "audio_isolation_elevenlabs_v1_audio_isolation_post",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "output_format",
+      "required": false,
+      "schema": {
+       "default": "mp3_44100_128",
+       "title": "Output Format",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_audio_isolation_elevenlabs_v1_audio_isolation_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Audio Isolation",
+    "tags": [
+     "ElevenLabs-Compatible API"
+    ]
+   }
+  },
   "/elevenlabs/v1/models": {
    "get": {
     "description": "ElevenLabs model aliases (served by the active engine) plus every\ninstalled VoiceStudio engine.",
@@ -14532,7 +14612,7 @@
   },
   "/elevenlabs/v1/speech-to-text": {
    "post": {
-    "description": "Transcription in ElevenLabs' response shape, from the active ASR\nengine. ``timestamps_granularity=character`` returns word timings.",
+    "description": "Transcription in ElevenLabs' response shape, from the active ASR\nengine. ``timestamps_granularity=character`` returns word timings.\n``diarize=true`` labels each word's speaker; when speaker identification\ncan't run, the transcript comes back unlabelled with the reason in\n``X-OmniVoice-Diarization-Error``.",
     "operationId": "speech_to_text_elevenlabs_v1_speech_to_text_post",
     "requestBody": {
      "content": {
