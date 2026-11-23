@@ -252,15 +252,63 @@ PYTHON
 send_uninstall_ping
 
 # ── Delete ──────────────────────────────────────────────────────────────────
+# A trailing slash changes what `rm -rf` does with a symlinked folder: "dir/"
+# recurses into the link target while "dir" removes only the link. The target is
+# normalised once, and that exact string is both checked and removed.
+strip_trailing_slashes() {
+  local path="$1"
+  while [ "${path%/}" != "$path" ]; do path="${path%/}"; done
+  printf '%s\n' "$path"
+}
+
+# Resolve through symlinks when the path exists, so the guard sees what a trailing
+# slash would have let `rm -rf` follow. CDPATH is cleared inside the subshell: with
+# it set, `cd <relative>` prints the directory it picked, and the captured target
+# would carry two lines and miss every comparison below. A path that does not exist
+# resolves to itself.
+resolve_delete_target() {
+  local path="$1"
+  if [ -n "$path" ] && [ -d "$path" ]; then
+    (unset CDPATH && cd -P -- "$path" 2>/dev/null && pwd -P) || printf '%s\n' "$path"
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
+# An override can name any folder (OMNIVOICE_DATA_DIR=$HOME is enough), so every
+# deletion target is checked first. These shapes are never a VoiceStudio folder:
+# the filesystem root, the home directory, and any parent of home — removing
+# /home, /Users or "$HOME/.." takes unrelated data with it.
+is_unsafe_delete_root() {
+  local target home
+  target=$(resolve_delete_target "$1")
+  [ -z "$target" ] && return 0
+  home=$(resolve_delete_target "${HOME:-}")
+  [ -z "$home" ] && return 1
+  [ "$target" = "$home" ] && return 0
+  case "$home/" in "$target"/*) return 0 ;; esac
+  return 1
+}
+
 deleted=0
 for t in "${app_targets[@]:-}"; do
   [ -z "$t" ] && continue
+  t=$(strip_trailing_slashes "$t")
+  if is_unsafe_delete_root "$t"; then
+    echo "Refusing to remove $t — that is the home directory, a parent of it, or the filesystem root, not a VoiceStudio folder." >&2
+    continue
+  fi
   echo "Removing $t"
   rm -rf -- "$t" && deleted=$((deleted + 1))
 done
 if [ "$INCLUDE_MODELS" -eq 1 ] && [ "$models_present" -eq 1 ]; then
-  echo "Removing $MODELS_DIR"
-  rm -rf -- "$MODELS_DIR" && deleted=$((deleted + 1))
+  MODELS_DIR=$(strip_trailing_slashes "$MODELS_DIR")
+  if is_unsafe_delete_root "$MODELS_DIR"; then
+    echo "Refusing to remove $MODELS_DIR — that is the home directory, a parent of it, or the filesystem root, not a model cache." >&2
+  else
+    echo "Removing $MODELS_DIR"
+    rm -rf -- "$MODELS_DIR" && deleted=$((deleted + 1))
+  fi
 elif [ "$models_present" -eq 1 ]; then
   echo "Kept model cache ($MODELS_DIR) — re-run with --models to remove it."
 fi
