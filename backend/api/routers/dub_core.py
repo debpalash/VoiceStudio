@@ -2896,6 +2896,12 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
     # multi-GB weights from HF on first load). Same gate as the SSE preflight:
     # a preloaded `_asr_pipe` only substitutes for the *pytorch-whisper*
     # backend (its sole consumer), so it only skips the preflight there.
+    # A job with no source audio (e.g. a subtitle-only job from /dub/from-srt)
+    # has nothing to transcribe: refuse it plainly, as the SSE route does,
+    # instead of handing None to the ASR backend (a 500).
+    _audio = [job.get("vocals_path"), job.get("audio_path")]
+    if not any(p and os.path.exists(p) for p in _audio):
+        raise HTTPException(status_code=409, detail="No audio available for transcription.")
     from services.asr_backend import (
         active_backend_id,
         asr_model_missing_detail,

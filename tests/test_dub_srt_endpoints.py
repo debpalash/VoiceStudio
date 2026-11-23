@@ -127,10 +127,14 @@ def test_exporting_before_any_dub_exists_is_a_clean_400(api, path):
     assert api.admin.get(path.format(id=job_id)).status_code == 400
 
 
-def test_transcribing_a_subtitle_only_job_fails_clearly_not_with_a_crash(api):
+def test_transcribing_a_subtitle_only_job_fails_clearly_not_with_a_crash(api, asr_model_installed):
+    # The ASR preflight is neutralized so the job-level "no audio" refusal is
+    # what this asserts, on CI (no ASR weights) as on a dev machine.
+
     job_id = _create(api).json()["job_id"]
     response = api.admin.post(f"/dub/transcribe/{job_id}")
-    assert response.status_code < 500, response.text
+    assert response.status_code == 409, response.text
+    assert "No audio available" in response.text
 
 
 def test_generate_then_export_is_speech_only_end_to_end(api, monkeypatch):
