@@ -398,3 +398,15 @@ def test_nonfinite_word_times_use_even_karaoke_timing(bad_time, field):
     ]
     words[0][field] = bad_time
     assert build_ass([{**cue, "words": words}]) == build_ass([cue])
+
+
+def test_karaoke_highlights_unspaced_words_without_inserting_spaces():
+    cue = {
+        "start": 0.0, "end": 2.0, "text": "東京へ Go",
+        "words": [
+            {"text": "東京", "start": 0.0, "end": 0.5},
+            {"text": "へ", "start": 0.5, "end": 1.5},
+            {"text": "Go", "start": 1.5, "end": 2.0},
+        ],
+    }
+    assert r"{\kf50}東京{\kf100}へ {\kf50}Go" in build_ass([cue])

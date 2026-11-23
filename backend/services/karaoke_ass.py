@@ -136,12 +136,13 @@ def scale_words(
     return out
 
 
-def _usable_words(cue: dict, text: str) -> Optional[list[tuple[str, float, float]]]:
-    """Persisted words, iff well-formed AND they spell the cue's display text."""
+def _usable_words(cue: dict, text: str) -> Optional[list[tuple[str, float]]]:
+    """Timed display pieces, including the cue's original word separators."""
     words = cue.get("words")
     if not isinstance(words, list) or not words:
         return None
-    clean: list[tuple[str, float, float]] = []
+    clean: list[tuple[str, float]] = []
+    cursor = 0
     for w in words:
         if not isinstance(w, dict):
             return None
@@ -153,13 +154,16 @@ def _usable_words(cue: dict, text: str) -> Optional[list[tuple[str, float, float
             return None
         if not math.isfinite(ws) or not math.isfinite(we):
             return None
-        if wtext:
-            clean.append((wtext, ws, we))
-    if not clean:
-        return None
-    if _norm(" ".join(t for t, _, _ in clean)) != text:
-        return None
-    return clean
+        if not wtext:
+            continue
+        if not text.startswith(wtext, cursor):
+            return None
+        next_cursor = cursor + len(wtext)
+        if text[next_cursor:next_cursor + 1] == " ":
+            next_cursor += 1
+        clean.append((text[cursor:next_cursor], ws))
+        cursor = next_cursor
+    return clean if cursor == len(text) else None
 
 
 def _karaoke_text(cue: dict, text: str, start: float, end: float) -> str:
@@ -169,14 +173,18 @@ def _karaoke_text(cue: dict, text: str, start: float, end: float) -> str:
     layout — inter-word gaps finish the previous word's fill), and the last
     word sweeps out to the cue end.
     """
-    words = _usable_words(cue, text) or [
-        (w["text"], w["start"], w["end"]) for w in even_split_words(text, start, end)
-    ]
+    words = _usable_words(cue, text)
+    if words is None:
+        fallback = even_split_words(text, start, end)
+        words = [
+            (word["text"] + (" " if i < len(fallback) - 1 else ""), word["start"])
+            for i, word in enumerate(fallback)
+        ]
     # Clamp into the cue span and enforce monotonic starts so malformed
     # persisted data can only mistime the sweep, never corrupt the script.
     clamped: list[tuple[str, float]] = []
     prev = start
-    for wtext, ws, _ in words:
+    for wtext, ws in words:
         ws = min(max(ws, prev), end)
         clamped.append((wtext, ws))
         prev = ws
@@ -195,8 +203,7 @@ def _karaoke_text(cue: dict, text: str, start: float, end: float) -> str:
     for i, (wtext, _) in enumerate(clamped):
         nxt = _cs_at(clamped[i + 1][1] if i + 1 < len(clamped) else end)
         nxt = max(nxt, at + 1)
-        sep = " " if i + 1 < len(clamped) else ""
-        parts.append(f"{{\\kf{nxt - at}}}{_ass_escape(wtext)}{sep}")
+        parts.append(f"{{\\kf{nxt - at}}}{_ass_escape(wtext)}")
         at = nxt
     return "".join(parts)
 
