@@ -25,6 +25,7 @@ interface PasteTranslationProps {
 export function PasteTranslation({ segments, disabled, onApply, onClose }: PasteTranslationProps) {
   const { t } = useTranslation();
   const fileInput = useRef<HTMLInputElement>(null);
+  const fileReadVersion = useRef(0);
   const [text, setText] = useState('');
   const [cues, setCues] = useState<PasteTranslationCue[] | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -73,10 +74,15 @@ export function PasteTranslation({ segments, disabled, onApply, onClose }: Paste
 
   const readFile = (file?: File) => {
     if (!file) return;
+    const version = ++fileReadVersion.current;
     setReadFailed(false);
     void readTextFile(file)
-      .then(setText)
-      .catch(() => setReadFailed(true));
+      .then((value) => {
+        if (version === fileReadVersion.current) setText(value);
+      })
+      .catch(() => {
+        if (version === fileReadVersion.current) setReadFailed(true);
+      });
   };
 
   return (
@@ -104,7 +110,11 @@ export function PasteTranslation({ segments, disabled, onApply, onClose }: Paste
           className="min-h-32 resize-y bg-background/50 leading-6"
           aria-label={t('dub.paste_translation_title')}
           placeholder={t('dub.paste_translation_placeholder')}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            fileReadVersion.current++;
+            setReadFailed(false);
+            setText(event.target.value);
+          }}
           onDrop={(event) => {
             const file = event.dataTransfer.files[0];
             if (!file) return;
