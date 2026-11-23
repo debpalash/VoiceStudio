@@ -21,6 +21,12 @@ describe('parseScript — screenplay', () => {
       { speaker: 'Owl', text: 'Somewhere safe.' },
     ]);
   });
+  it('recognizes Unicode speaker names and fullwidth screenplay colons', () => {
+    expect(parseScript('\u5c0f\u6797\uff1a\u4f60\u597d\n\u00c9LODIE: Bonjour.')).toEqual([
+      { speaker: '\u5c0f\u6797', text: '\u4f60\u597d' },
+      { speaker: '\u00c9lodie', text: 'Bonjour.' },
+    ]);
+  });
   it('does not treat a URL as a speaker', () => {
     const r = parseScript('See https://example.com for details.');
     expect(r).toEqual([{ speaker: 'Narrator', text: 'See https://example.com for details.' }]);
