@@ -53,6 +53,7 @@ it.each(['transport', 'too-large'] as const)('does not report local cookie %s va
 import {
   applyDubTranslationRows,
   replaceDubSegmentTexts,
+  restoreDubSegments,
   uploadDub,
   setDubProduction,
   setDubFitOptions,
@@ -1160,6 +1161,12 @@ it('echoes an imported cue only while no paste or edit has replaced its words (#
   setDubTarget('Spanish', 'es');
   expect(dubSession.state.segments[0].cue_source_id).toBeUndefined();
   setDubTarget('English', 'en');
+  expect(dubSession.state.segments[0].text).toBe('Hello');
+  expect(await generatedCueId()).toBe('imp:0');
+
+  reset();
+  editDubSegment('0', { text: 'Bye' });
+  restoreDubSegments();
   expect(dubSession.state.segments[0].text).toBe('Hello');
   expect(await generatedCueId()).toBe('imp:0');
 });

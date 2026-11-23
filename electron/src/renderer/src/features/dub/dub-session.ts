@@ -787,12 +787,14 @@ export function restoreDubSegments() {
     )
       return segment;
     changed = true;
-    return patchSegment(segment, {
-      text,
-      translate_error: undefined,
-      translate_degraded: undefined,
-      translation_skipped: undefined,
-    });
+    return withOriginalCueSource(
+      patchSegment(segment, {
+        text,
+        translate_error: undefined,
+        translate_degraded: undefined,
+        translation_skipped: undefined,
+      }),
+    );
   });
   if (changed) commitSegmentEdit(next);
 }
