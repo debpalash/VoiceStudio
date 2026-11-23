@@ -80,13 +80,13 @@ def usage_summary() -> dict:
 
         by_mode = _distribution(
             conn,
-            "SELECT COALESCE(NULLIF(TRIM(mode), ''), 'unknown') AS name, COUNT(*) "
+            "SELECT COALESCE(NULLIF(TRIM(mode, ' ' || char(9) || char(10) || char(13)), ''), 'unknown') AS name, COUNT(*) "
             "FROM generation_history "
             "GROUP BY name ORDER BY COUNT(*) DESC, name",
         )
         by_language = _distribution(
             conn,
-            "SELECT COALESCE(NULLIF(TRIM(language), ''), 'unknown') AS name, COUNT(*) "
+            "SELECT COALESCE(NULLIF(TRIM(language, ' ' || char(9) || char(10) || char(13)), ''), 'unknown') AS name, COUNT(*) "
             "FROM generation_history "
             "GROUP BY name ORDER BY COUNT(*) DESC, name LIMIT 12",
         )
