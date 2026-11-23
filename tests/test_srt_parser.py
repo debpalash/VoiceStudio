@@ -425,3 +425,12 @@ def test_skips_overlong_milliseconds_without_losing_next_cue(
     assert len(result.segments) == 1
     assert result.segments[0]["text"] == "Keep this cue."
     assert result.segments[0]["start"] == 3.0
+
+
+def test_webvtt_timing_shaped_dialogue_stays_in_its_cue():
+    cue = "The schedule says:\n00:10.000 --> 00:11.000\nWrite that down."
+    text = f"WEBVTT\n\nintro\n00:01.000 --> 00:03.000\n{cue}\n\n00:05.000 --> 00:06.000\nNext."
+    result = parse_srt(text)
+    assert [(s["start"], s["end"], s["text"]) for s in result.segments] == [
+        (1.0, 3.0, cue), (5.0, 6.0, "Next."),
+    ]

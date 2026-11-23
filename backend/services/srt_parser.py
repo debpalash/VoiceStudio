@@ -99,6 +99,21 @@ def webvtt_content_blocks(text: str, *, strict_blank: bool = False) -> list[str]
     return blocks
 
 
+def _webvtt_cues(text: str) -> list[tuple[re.Match[str], str]]:
+    # Only the first line, or the second after an identifier, can be timing.
+    # Everything after it belongs to the cue, including timing-shaped text.
+    cues = []
+    for block in webvtt_content_blocks(text.lstrip())[1:]:
+        line, _, body = block.lstrip().partition("\n")
+        match = _TIMING_RE.match(line)
+        if match is None:
+            line, _, body = body.partition("\n")
+            match = _TIMING_RE.match(line)
+        if match is not None:
+            cues.append((match, body))
+    return cues
+
+
 def parse_srt(content: str) -> SrtParseResult:
     """Parse SRT text and return cleaned, non-overlapping segments.
 
@@ -117,10 +132,6 @@ def parse_srt(content: str) -> SrtParseResult:
     text = content.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
 
     is_webvtt = bool(re.match(r"WEBVTT(?:[ \t]|\n|$)", text.lstrip()))
-    if is_webvtt:
-        # Metadata is block-scoped. Filter it BEFORE scanning timings so an
-        # example timestamp inside a NOTE/STYLE/REGION cannot become speech.
-        text = "\n\n".join(webvtt_content_blocks(text))
     raw: list[dict] = []
     skipped = 0
     # Each cue source gets an id unique to this import. A later generate keeps
@@ -129,21 +140,22 @@ def parse_srt(content: str) -> SrtParseResult:
     # Find every timing line, slice the cue text from there to the next
     # timing line (or end of file). This is robust to missing index
     # numbers and to spec deviations in the blank-line separator.
-    matches = list(_TIMING_RE.finditer(text))
+    matches = [] if is_webvtt else list(_TIMING_RE.finditer(text))
+    if is_webvtt:
+        cues = _webvtt_cues(text)
+    else:
+        cues = (
+            (m, text[m.end():matches[i + 1].start() if i + 1 < len(matches) else len(text)])
+            for i, m in enumerate(matches)
+        )
     # Running cue number, when the file numbers its cues: seeded from the line
     # right before the first timing line.
     head = text[:matches[0].start()].strip() if matches else ""
     first_marker = head.split("\n")[-1].strip() if head else ""
     cue_index = int(first_marker) if _is_index_line(first_marker) and len(first_marker) <= 12 else None
-    for i, m in enumerate(matches):
-        has_next = i + 1 < len(matches)
-        body = text[m.end():matches[i + 1].start() if has_next else len(text)]
+    for i, (m, body) in enumerate(cues):
         next_index = None
-        if is_webvtt:
-            # Whatever follows the first blank separator (identifiers, NOTE and
-            # STYLE blocks) is not dialogue, numeric or not.
-            body = re.split(r"\n[^\S\n]*\n", body, maxsplit=1)[0]
-        elif has_next:
+        if not is_webvtt and i + 1 < len(matches):
             # The last line of this body is the NEXT cue's number when the file
             # numbers its cues. Plain line inspection (no backtracking regex)
             # because the text is user-uploaded.
