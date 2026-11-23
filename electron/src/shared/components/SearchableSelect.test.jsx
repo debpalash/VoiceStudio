@@ -131,7 +131,7 @@ describe('SearchableSelect menu', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'Beta' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Beta' }));
     expect(JSON.parse(window.localStorage.getItem('test.recents.write'))).toEqual(['Beta', 'Alpha']);
   });
 
@@ -145,7 +145,7 @@ describe('SearchableSelect menu', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'Beta' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Beta' }));
     expect(JSON.parse(window.localStorage.getItem('test.recents.bare'))).toEqual(['Beta']);
   });
 
@@ -161,5 +161,21 @@ describe('SearchableSelect menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
     expect(screen.queryByRole('option', { name: 'Ghost' })).toBeNull();
     expect(screen.getAllByRole('option')).toHaveLength(2);
+  });
+
+  it('press keeps the menu and search focus; click commits', () => {
+    const onChange = vi.fn();
+    render(<SearchableSelect options={['Alpha', 'Beta']} onChange={onChange} ariaLabel="Voice" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Voice' }));
+    const input = screen.getByRole('combobox');
+    input.focus();
+    const option = screen.getByRole('option', { name: 'Beta' });
+    // preventDefault on mousedown is what keeps focus in the search input.
+    expect(fireEvent.mouseDown(option)).toBe(false);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('option', { name: 'Beta' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(input);
+    fireEvent.click(option);
+    expect(onChange).toHaveBeenCalledWith('Beta');
   });
 });

@@ -218,7 +218,7 @@ jobs:
         with:
           workspaces: native/desktop-bridge -> target
           key: electron-${{ matrix.target }}
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: '0.12.13'
           enable-cache: false
@@ -339,7 +339,7 @@ jobs:
       - name: Sign the Windows installer with SignPath
         if: env.SIGNPATH_ENABLED == 'true'
         timeout-minutes: 70
-        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}

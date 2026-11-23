@@ -247,6 +247,7 @@ POST /dictation/prefs
 POST /dub/abort/{job_id}
 POST /dub/agent-fit
 POST /dub/cleanup-segments/{job_id}
+POST /dub/from-srt
 POST /dub/generate/{job_id}
 POST /dub/import-srt/{job_id}
 POST /dub/ingest-url
@@ -259,6 +260,7 @@ POST /dub/transcribe/{job_id}
 POST /dub/translate
 POST /dub/upload
 POST /dub/use-downloaded-captions/{job_id}
+POST /dub/validate-srt
 POST /engines/audiocpp/runtime/install
 POST /engines/diarisation/select
 POST /engines/omnivoice-gguf/gpu-offer
