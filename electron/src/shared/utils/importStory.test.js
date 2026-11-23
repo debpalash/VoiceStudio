@@ -185,3 +185,12 @@ describe('importToText', () => {
     expect(importToText('captions.VTT', vtt)).toBe('hey everyone');
   });
 });
+
+
+it('keeps timing-shaped text inside an imported WebVTT cue', () => {
+  const input = 'WEBVTT\n\nintro\n00:01.000 --> 00:03.000\nThe schedule says\n' +
+    '00:10.000 --> 00:11.000\nWrite that down.\n\n00:05.000 --> 00:06.000\nNext.';
+  expect(importToText('schedule.vtt', input)).toBe(
+    'The schedule says 00:10.000 --> 00:11.000 Write that down.\nNext.',
+  );
+});

@@ -114,33 +114,29 @@ function spokenCueText(text, webvtt = false) {
   return spoken.replace(/[^\S\n]+/g, ' ').trim();
 }
 
-function captionBlocks(text, webvtt) {
-  const blocks = text.split(/\n\s*\n/);
-  if (!webvtt) return blocks;
-  return blocks.filter((b) => {
-    const lines = b
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (!lines.length) return false;
-    const first = lines[0];
-    if (/^WEBVTT(?:[ \t]|$)/.test(first)) return false;
-    if (/^NOTE(?:[ \t]|$)/.test(first)) return false;
-    // A cue starts with a timing line or an identifier immediately followed
-    // by one. This also permits STYLE and REGION as cue identifiers.
-    return isTimingLine(first) || (lines.length > 1 && isTimingLine(lines[1]));
-  });
+function webVttStoryLines(text) {
+  const cues = [];
+  for (const block of text.split(/\n[^\S\n]*\n/)) {
+    const lines = block.trim().split('\n').map((line) => line.trim());
+    if (/^WEBVTT(?:[ \t]|$)/.test(lines[0]) || /^NOTE(?:[ \t]|$)/.test(lines[0])) continue;
+    // Only the first line, or the second after an identifier, can be timing.
+    const timing = isTimingLine(lines[0]) ? 0 : 1;
+    if (timing === 1 && !(lines[1] && isTimingLine(lines[1]))) continue;
+    const spoken = spokenCueText(lines.slice(timing + 1).join('\n'), true).replace(/\n+/g, ' ');
+    if (spoken) cues.push(spoken);
+  }
+  return cues.join('\n');
 }
 
 /** Strip SRT/WebVTT indices, identifiers, timestamps; one cue's text per line. */
 export function parseSrt(content) {
   const normalized = String(content || '').replace(/\r\n?/g, '\n');
-  const webvtt = isWebVtt(normalized);
+  if (isWebVtt(normalized)) return webVttStoryLines(normalized);
   const out = [];
   // Cues seen so far, and the index the current cue carried (null if none).
   let cues = 0;
   let index = null;
-  for (const b of captionBlocks(normalized, webvtt)) {
+  for (const b of normalized.split(/\n\s*\n/)) {
     const lines = b
       .split('\n')
       .map((l) => l.trim())
@@ -148,7 +144,7 @@ export function parseSrt(content) {
     let kept = [];
     const cueTexts = [];
     const flushCue = () => {
-      const text = spokenCueText(kept.join('\n'), webvtt).replace(/\n+/g, ' ');
+      const text = spokenCueText(kept.join('\n')).replace(/\n+/g, ' ');
       if (text) cueTexts.push(text);
       kept = [];
     };
@@ -161,9 +157,6 @@ export function parseSrt(content) {
         pending = null;
         return;
       }
-      // WebVTT cue identifiers sit on the first line of a cue, immediately
-      // before its timestamp. They are never spoken (backend parse_srt).
-      if (webvtt && i === 0 && lines[i + 1] && isTimingLine(lines[i + 1])) return;
       // Digits right before a timestamp are its cue index when they open the
       // block. Inside a compact block they are only if they are the number the
       // sequence expects next; digits right under a timestamp are that cue's
