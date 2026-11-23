@@ -139,3 +139,11 @@ def test_a_missing_table_degrades_to_zero_rather_than_raising(tmp_path, monkeypa
     assert s["takes"] == 1
     assert s["voices"] == 0   # missing table → 0, not a crash
     assert s["dubs"] == 0
+
+
+def test_counts_legacy_missing_language_values_in_one_bucket(db):
+    with sqlite3.connect(str(db)) as conn:
+        conn.execute("UPDATE generation_history SET language = NULL WHERE id = 't1'")
+        conn.execute("UPDATE generation_history SET language = '  ' WHERE id = 't2'")
+        conn.execute("UPDATE generation_history SET language = 'unknown' WHERE id = 't3'")
+    assert local_stats.usage_summary()["by_language"] == [{"name": "unknown", "count": 3}]
