@@ -184,3 +184,9 @@ def test_single_word_rumble_accepted():
     segs = [{"start": 0.0, "end": 1.0, "text": "Antidisestablishmentarianism!"}]
     out = segment_for_subtitles(segs)
     assert len(out) == 1  # no natural cut available
+
+
+def test_oversized_first_word_still_leaves_room_for_a_second_line():
+    assert format_subtitle_lines("unbreakable two words", max_chars=6) == [
+        "unbreakable", "two words",
+    ]

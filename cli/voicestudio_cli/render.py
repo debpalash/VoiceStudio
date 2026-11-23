@@ -84,7 +84,7 @@ def value_text(key, value):
         return f'{len(value)} item' + ('' if len(value) == 1 else 's')
     if isinstance(value, dict):
         return f'{len(value)} field' + ('' if len(value) == 1 else 's')
-    return str(value).replace('\n', ' ')
+    return str(value).replace('\r\n', '\n').replace('\r', ' ').replace('\n', ' ')
 
 
 def _clip(text, limit):

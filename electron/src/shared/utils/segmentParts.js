@@ -211,9 +211,12 @@ export function visibleMergeAvailability(segments, visibleSegments, segment) {
  */
 export function insertionSlot(prev, next, { defaultDur = 2, minGap = MIN_INSERT_GAP_S } = {}) {
   const start = +(prev?.end ?? 0).toFixed(3);
-  if (next) {
-    const gap = next.start - start;
-    if (gap >= minGap) return { start, end: +next.start.toFixed(3) };
+  if (next && Number.isFinite(next.start)) {
+    const end = +next.start.toFixed(3);
+    // The slot is stored at millisecond precision. Compare integer ticks, the
+    // threshold included, so a gap exactly at it does not round below it.
+    const gapMs = Math.round(end * 1000) - Math.round(start * 1000);
+    if (gapMs >= Math.round(minGap * 1000)) return { start, end };
   }
   return { start, end: +(start + defaultDur).toFixed(3) };
 }

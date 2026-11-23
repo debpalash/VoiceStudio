@@ -205,10 +205,19 @@ export function loopWindow(startSec, endSec, durationSec) {
   return { loopStart, loopEnd, seg: loopEnd - loopStart };
 }
 
+// Preserve floor rounding for fractional frames, while handling decimal
+// timestamps whose product rounds just below an integer sample boundary.
+function floorSampleIndex(position) {
+  const nearest = Math.round(position);
+  return Math.abs(position - nearest) <= Number.EPSILON * Math.max(1, position)
+    ? nearest
+    : Math.floor(position);
+}
+
 export function sliceToMono(buffer, startSec, endSec) {
   const sr = buffer.sampleRate;
-  const s0 = Math.floor(startSec * sr);
-  const s1 = Math.floor(endSec * sr);
+  const s0 = floorSampleIndex(startSec * sr);
+  const s1 = floorSampleIndex(endSec * sr);
   const len = Math.max(0, s1 - s0);
   const chCount = buffer.numberOfChannels;
   const out = new Float32Array(len);

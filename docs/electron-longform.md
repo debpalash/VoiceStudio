@@ -77,11 +77,11 @@ Run `electron/tests/longform-live.mjs` with `VOICESTUDIO_LIVE_PROFILE` set to a 
 Stories now includes named characters with saved voice assignments, character selection per line, explicit per-line voice overrides, shared/global speed and per-line speed overrides. Voice resolution and chapter compilation reuse the Tauri helpers. Lines move up/down with keyboard-accessible buttons; chapter insertion uses the same heading grammar. A story with every spoken span assigned can render without an unnecessary default-voice selection. Removed profiles block rendering rather than silently changing the voice.
 The book-wide speed lives in the Stories setup card, under the voice list. When some lines carry their own speed, the card says how many and offers one click to clear those overrides so the whole book follows the slider.
 
-Stories Auto-cast accepts tagged dialogue, screenplay text and attributed prose. The shared local parser appends lines, reuses existing characters/voices, and assigns available profiles to new speakers. Distinct names that normalize to the same identifier remain separate characters. No network or LLM call is involved.
+Stories Auto-cast accepts tagged dialogue, screenplay text and attributed prose with LF, CRLF or lone-CR line endings. The shared local parser appends lines, reuses existing characters/voices, and assigns available profiles to new speakers. Distinct names that normalize to the same identifier remain separate characters. No network or LLM call is involved.
 
 A Stories script can also be built from a finished dub, which replaces the current script, cast and pending import with the dub's speakers and lines. The action lives in the Dub workspace; see `docs/electron-dubbing.md`.
 
-WebVTT (`.vtt`) captions also import locally; their cue metadata is dropped before the spoken lines enter Stories.
+WebVTT (`.vtt`) captions also import locally. Stories extracts dialogue from blocks that start with a valid timing line, optionally preceded by a cue identifier. It skips comments and blocks without a timing line in either position.
 
 Paste & Split offers three presets: **Sentences** (size-limited, with a max-characters field), **Paragraphs** (split at blank lines, the default) and **Chapters** (one line per chapter body). A `# Heading` line is always its own line, in every preset.
 

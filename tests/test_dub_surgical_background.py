@@ -124,3 +124,23 @@ def test_zero_length_plan_entry_does_not_block_the_export(tmp_path):
     ]
     out = asyncio.run(surgical_background(src, bg, str(tmp_path), segments, plan, 3))
     assert sf.info(out).duration == pytest.approx(3.5, abs=.01)
+
+
+def test_splice_does_not_copy_future_dialogue_intervals(tmp_path):
+    class IndexedIntervals(list):
+        def __getitem__(self, index):
+            assert not isinstance(index, slice)
+            return super().__getitem__(index)
+
+    sr = 48000
+    source = np.full(sr * 3, 0.25, dtype="float32")
+    bed = np.zeros_like(source)
+    src, bg, out = [str(tmp_path / filename) for filename in ("src.wav", "bg.wav", "out.wav")]
+    sf.write(src, source, sr, subtype="FLOAT")
+    sf.write(bg, bed, sr, subtype="FLOAT")
+    intervals = IndexedIntervals([(1, 2), (2.5, 2.75)])
+    splice_background(src, bg, out, intervals)
+    mixed, _ = sf.read(out, dtype="float32")
+    np.testing.assert_array_equal(mixed[:sr], source[:sr])
+    assert mixed[int(1.5 * sr)] == 0.0
+    assert mixed[int(2.6 * sr)] == 0.0

@@ -15,6 +15,8 @@ persisted ``video_stretch_plan`` list of
 
 from __future__ import annotations
 
+from bisect import bisect_left
+
 
 def map_time_to_fitted(t: float, plan: list[dict]) -> float:
     """Map a time on the original timeline to its position on the fitted one.
@@ -25,9 +27,14 @@ def map_time_to_fitted(t: float, plan: list[dict]) -> float:
     is carried at 1:1 (the planner runs gaps/tail at rate 1.0). Empty plan ⇒
     identity.
     """
+    return _map_time_from_chunk(t, plan, 0)
+
+
+def _map_time_from_chunk(t: float, plan: list[dict], first: int) -> float:
     if not plan:
         return t
-    for chunk in plan:
+    for index in range(first, len(plan)):
+        chunk = plan[index]
         o0 = float(chunk.get("orig_start", 0.0))
         o1 = float(chunk.get("orig_end", 0.0))
         n0 = float(chunk.get("new_start", o0))
@@ -57,16 +64,27 @@ def fitted_cues(segments: list[dict], plan: list[dict]) -> list[tuple[float, flo
     out: list[tuple[float, float]] = []
     sequential = False
     covered_until = float("-inf")
+    chunk_ends: list[float] = []
     for chunk in plan:
-        if float(chunk.get("orig_start", 0.0)) < covered_until:
+        start = float(chunk.get("orig_start", 0.0))
+        end = float(chunk.get("orig_end", 0.0))
+        if start < covered_until:
             sequential = True
             break
-        covered_until = max(covered_until, float(chunk.get("orig_end", 0.0)))
+        if start <= end:
+            chunk_ends.append(end)
+        covered_until = max(covered_until, end)
+
+    # On a shared timeline, chunks ending before the cue time cannot map it.
+    # Include an equal end so the earlier chunk still wins at a seam.
+    indexed = len(chunk_ends) == len(plan)
     prev_start = 0.0
     prev_end = 0.0
     for seg in segments:
-        s = map_time_to_fitted(float(seg.get("start", 0.0)), plan)
-        e = map_time_to_fitted(float(seg.get("end", 0.0)), plan)
+        start = float(seg.get("start", 0.0))
+        end = float(seg.get("end", 0.0))
+        s = _map_time_from_chunk(start, plan, bisect_left(chunk_ends, start) if indexed else 0)
+        e = _map_time_from_chunk(end, plan, bisect_left(chunk_ends, end) if indexed else 0)
         # Shared timelines allow simultaneous speakers; legacy sequential
         # plans must still wait for the previous speaker's end.
         s = max(s, prev_end if sequential else prev_start)
