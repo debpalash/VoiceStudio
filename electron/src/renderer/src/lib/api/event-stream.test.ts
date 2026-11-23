@@ -13,9 +13,9 @@ function stream(text: string) {
     }),
   );
 }
-it('preserves named events, UTF-8 and CRLF split across arbitrary chunks', async () => {
+it.each(['\r\n', '\r'])('preserves named events and UTF-8 across chunks with %j endings', async (eol) => {
   vi.mocked(apiFetch).mockResolvedValueOnce(
-    stream('event: final\r\ndata: {"text":"caf\u00e9"}\r\n\r\n'),
+    stream(['event: final', 'data: {"text":"caf\u00e9"}', '', ''].join(eol)),
   );
   const seen = vi.fn(() => true);
   await consumeTaskStream('/task', seen);

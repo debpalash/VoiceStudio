@@ -14,6 +14,13 @@ describe('splitSSEBuffer', () => {
     expect(rest).toBe('');
   });
 
+  it('splits mixed SSE line endings and retains a possible partial CRLF', () => {
+    const { lines, rest } = splitSSEBuffer('a\rb\r\nc\nd\r');
+    expect(lines).toEqual(['a', 'b', 'c']);
+    expect(rest).toBe('d\r');
+    expect(splitSSEBuffer(rest + '\ne\r\r')).toEqual({ lines: ['d', 'e'], rest: '\r' });
+  });
+
   it('handles an empty buffer', () => {
     expect(splitSSEBuffer('')).toEqual({ lines: [], rest: '' });
   });
