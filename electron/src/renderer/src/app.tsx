@@ -24,6 +24,7 @@ import { GenerateBudgetSync } from '@/hooks/use-generate-budget-sync';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { WebAuthGate } from '@/components/web-auth-gate';
 import { ModelLicenceGate } from '@/features/settings/model-licence-acceptance';
+import { captureTrayLabels } from '@/lib/capture-tray-labels';
 
 export function App() {
   const { t } = useTranslation();
@@ -53,15 +54,7 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
   useEffect(() => {
-    void window.voicestudio?.capture
-      ?.labels({
-        show: `${t('common.open')} ${t('app.name')}`,
-        start: t('transcriptions.capture'),
-        stop: t('clone.stop_recording'),
-        settings: t('nav.settings'),
-        exit: t('crash.field_exit'),
-      })
-      .catch(() => {});
+    void window.voicestudio?.capture?.labels(captureTrayLabels(t)).catch(() => {});
   }, [t]);
   useEffect(() => {
     const app = getBridge()?.app;
