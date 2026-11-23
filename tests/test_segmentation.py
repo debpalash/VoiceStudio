@@ -480,3 +480,16 @@ def test_fullwidth_letters_and_digits_are_not_unspaced_punctuation():
         assert not _UNSPACED.match(ch)
     for ch in ("\uff0c", "\uff01", "\uff1f", "\u3002", "\uff71"):
         assert _UNSPACED.match(ch)
+
+
+def test_scene_cut_chooses_nearby_word_boundary_that_keeps_both_cues_viable():
+    words = [
+        {"text": "Hi", "start": 0.0, "end": 1.49},
+        {"text": "everyone listening", "start": 1.53, "end": 1.70},
+        {"text": "this is the next scene", "start": 1.76, "end": 4.0},
+    ]
+    segment = Segment(0.0, 4.0, "Hi everyone listening this is the next scene", "S1",
+                      extra={"words": words})
+    left, right = _apply_scene_cuts([segment], [1.54])
+    assert (left.text, left.end, left.extra["words"]) == ("Hi everyone listening", 1.70, words[:2])
+    assert (right.text, right.start, right.extra["words"]) == ("this is the next scene", 1.76, words[2:])
