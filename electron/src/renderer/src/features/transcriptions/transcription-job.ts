@@ -78,6 +78,7 @@ export async function startTranscription(
       mode === 'accurate' ? '/dictation/readiness?purpose=transcribe' : '/dictation/readiness',
       { signal: ctl.signal },
     );
+    if (ctl.signal.aborted) return (outcome = 'cancelled');
     if (!ready.ready) {
       outcome = 'not-ready';
       return outcome;

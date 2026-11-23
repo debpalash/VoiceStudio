@@ -129,3 +129,18 @@ it('keeps speaker labels and warns when identification was unavailable', async (
   await job.startTranscription(audio, 'accurate', { diarize: true });
   expect(toast.warning).toHaveBeenCalledOnce();
 });
+
+it.each([true, false])('honors cancellation before a readiness result arrives (%s)', async (ready) => {
+  let finishReadiness!: (value: { ready: boolean }) => void;
+  apiJson.mockImplementationOnce(() => new Promise((resolve) => {
+    finishReadiness = resolve;
+  }));
+  const run = job.startTranscription(audio, 'accurate');
+  expect(apiJson).toHaveBeenCalledWith('/dictation/readiness?purpose=transcribe', expect.anything());
+  job.cancelTranscription();
+  finishReadiness({ ready });
+  expect(await run).toBe('cancelled');
+  expect(apiJson).toHaveBeenCalledTimes(1);
+  expect(loadTranscriptions()).toEqual([]);
+  expect(job.transcriptionJob.state.running).toBe(false);
+});
