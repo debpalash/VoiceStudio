@@ -15,6 +15,22 @@ from services import project_bundle as b
 FIXTURES = Path(__file__).resolve().parents[1]/'mobile/contract/project-fixtures'
 
 
+
+@pytest.mark.parametrize("marker", ["1..2", ".", "9" * 400], ids=["extra-dot", "dot", "non-finite"])
+def test_story_handoff_retains_invalid_speed_marker_as_text(marker):
+    from services.project_bundle import desktop_manuscript
+
+    line = f"[speed:{marker}] Opening paragraph."
+    restored = desktop_manuscript({
+        "kind": "stories",
+        "title": "Book",
+        "document": {"script": f"{line}\n[speed:.8] Next line."},
+    })
+    first, second = restored["draft"]["lines"]
+    assert first["text"] == line and first["speed"] is None
+    assert second["text"] == "Next line." and second["speed"] == 0.8
+
+
 def test_shared_desktop_book_roundtrip_keeps_settings_and_phone_edits_win(tmp_path):
     manifest, files = b.read_bundle(FIXTURES/'desktop-book.vsproject',tmp_path/'one')
     original = manifest['document']['desktop']['draft']

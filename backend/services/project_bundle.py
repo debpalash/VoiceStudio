@@ -348,8 +348,13 @@ def desktop_manuscript(manifest: dict) -> dict:
                 continue
             match = re.match(r'^\[voice:([^\]\r\n]+)\]\s*', text)
             if match: role = match[1]; text = text[match.end():]
-            speed = None; match = re.match(r'^\[speed:([0-9.]+)\]\s*', text)
-            if match: speed = float(match[1]); text = text[match.end():]
+            speed = None
+            match = re.match(r'^\[speed:([0-9]+(?:\.[0-9]*)?|\.[0-9]+)\]\s*', text)
+            if match:
+                candidate = float(match[1])
+                if math.isfinite(candidate) and candidate > 0:
+                    speed = candidate
+                    text = text[match.end():]
             if not text: continue
             origin = roles.get(role) or {}; character = origin.get('characterId') or role
             old = next((line for line in original if origin.get('lineId') and line.get('id') == origin['lineId']), None)
