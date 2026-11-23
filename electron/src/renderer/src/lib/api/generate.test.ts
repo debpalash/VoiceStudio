@@ -600,3 +600,18 @@ it('sends the saved profile and its reference text on the streaming route', asyn
   expect(form.get('profile_id')).toBe('saved-voice');
   expect(form.get('ref_text')).toBe('Reference words');
 });
+
+it('cancels an unfinished preview stream before reporting a malformed frame', async () => {
+  const cancel = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('not valid NDJSON\n'));
+    },
+    cancel,
+  });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(body)));
+
+  await expect(generateCloneStreaming(BASE_INPUT)).rejects.toBeInstanceOf(StreamingPreviewError);
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(body.locked).toBe(false);
+});

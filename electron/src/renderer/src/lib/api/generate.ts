@@ -314,6 +314,8 @@ export async function generateCloneStreaming(
   const form = toGenerateForm(input);
   form.append('stream', 'true');
   const finishActivity = beginAppActivity('synthesis');
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let streamEnded = false;
   let player: ReturnType<typeof createStreamingPreview> | null = null;
   let meta: StreamEvent | null = null;
   let dropped: GenerateResult['dropped'] = null;
@@ -325,7 +327,7 @@ export async function generateCloneStreaming(
     });
     const headers = parseGenerateHeaders(response.headers);
     if (!response.body) throw new StreamingPreviewError('TTS stream has no response body');
-    const reader = response.body.getReader();
+    reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffered = '';
     let received = 0;
@@ -367,7 +369,10 @@ export async function generateCloneStreaming(
     };
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        streamEnded = true;
+        break;
+      }
       buffered += decoder.decode(value, { stream: true });
       let newline = buffered.indexOf('\n');
       while (newline >= 0) {
@@ -412,6 +417,11 @@ export async function generateCloneStreaming(
       throw error;
     throw new StreamingPreviewError(error instanceof Error ? error.message : String(error));
   } finally {
+    if (reader) {
+      // A failed frame can leave the server synthesizing behind a locked body.
+      if (!streamEnded) await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
     finishActivity();
   }
 }
