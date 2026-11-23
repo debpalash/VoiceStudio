@@ -29,16 +29,21 @@ export function compactSourceLabel(source: string): string {
 /** Locale-aware file size ("12.4 MB"), or '' when unknown. */
 export function formatFileSize(bytes: number | undefined, locale: string): string {
   if (!bytes || !Number.isFinite(bytes) || bytes <= 0) return '';
-  const mb = bytes / 1_000_000;
-  const [value, unit] = mb >= 1000 ? [mb / 1000, 'gigabyte'] : [mb, 'megabyte'];
+  const [scale, unit, fallback] =
+    bytes >= 1_000_000_000 ? [1_000_000_000, 'gigabyte', 'GB'] as const
+    : bytes >= 1_000_000 ? [1_000_000, 'megabyte', 'MB'] as const
+    : bytes >= 1000 ? [1000, 'kilobyte', 'kB'] as const
+    : [1, 'byte', 'B'] as const;
+  const value = bytes / scale;
+  const decimals = scale > 1 && value < 10 ? 1 : 0;
   try {
     return new Intl.NumberFormat(locale, {
       style: 'unit',
       unit,
-      maximumFractionDigits: value < 10 ? 1 : 0,
+      maximumFractionDigits: decimals,
     }).format(value);
   } catch {
-    return `${value.toFixed(1)} ${unit === 'gigabyte' ? 'GB' : 'MB'}`;
+    return `${value.toFixed(decimals)} ${fallback}`;
   }
 }
 

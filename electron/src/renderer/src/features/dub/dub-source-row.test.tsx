@@ -60,6 +60,8 @@ it('opens the file actions menu', async () => {
 it('formats sizes for the locale and hides unknown sizes', () => {
   expect(formatFileSize(undefined, 'en')).toBe('');
   expect(formatFileSize(0, 'en')).toBe('');
+  expect(formatFileSize(512, 'en')).toBe(new Intl.NumberFormat('en', { style: 'unit', unit: 'byte' }).format(512));
+  expect(formatFileSize(2_400, 'en')).toBe('2.4 kB');
   expect(formatFileSize(2_500_000_000, 'en')).toBe('2.5 GB');
 });
 
