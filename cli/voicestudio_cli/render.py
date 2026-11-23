@@ -11,6 +11,7 @@ header or truncation, so ``voicestudio voices list | cut -f2`` works.
 """
 from datetime import datetime
 import shutil
+import unicodedata
 
 # Friendlier names for fields whose raw name reads like an implementation detail.
 LABELS = {'method': 'Installed as', 'executable': 'Location', 'arch': 'Architecture',
@@ -87,8 +88,25 @@ def value_text(key, value):
     return str(value).replace('\r\n', '\n').replace('\r', ' ').replace('\n', ' ')
 
 
+def _cell_width(char):
+    if unicodedata.category(char) in {'Mn', 'Me', 'Cf'}:
+        return 0
+    return 2 if unicodedata.east_asian_width(char) in {'F', 'W'} else 1
+
+
+def _display_width(text):
+    return sum(map(_cell_width, text))
+
+
 def _clip(text, limit):
-    return text if len(text) <= limit else text[:max(1, limit - 1)] + '…'
+    if _display_width(text) <= limit:
+        return text
+    remaining = limit - 1  # space for the ellipsis
+    for index, char in enumerate(text):
+        remaining -= _cell_width(char)
+        if remaining < 0:
+            return text[:index] + '…'
+    return text
 
 
 def _columns(rows):
@@ -121,7 +139,10 @@ def table(rows, *, tty, width):
         return '\n'.join('\t'.join(raw(key, row.get(key)).replace('\t', ' ').replace('\n', ' ')
                                     for key in columns) for row in rows)
     headers = [label(key).upper() for key in columns]
-    widths = [min(MAX_CELL, max(len(headers[i]), *(len(line[i]) for line in cells))) for i in range(len(columns))]
+    widths = [
+        min(MAX_CELL, max(_display_width(headers[i]), *(_display_width(line[i]) for line in cells)))
+        for i in range(len(columns))
+    ]
     # Keep the leading (most identifying) columns that fit the terminal.
     keep = len(columns)
     while keep > 1 and sum(widths[:keep]) + 2 * (keep - 1) > width:
@@ -129,7 +150,11 @@ def table(rows, *, tty, width):
     if keep == 1:
         widths[0] = max(4, min(widths[0], width))
     lines = [headers[:keep], *(line[:keep] for line in cells)]
-    return '\n'.join('  '.join(_clip(text, widths[i]).ljust(widths[i]) for i, text in enumerate(line)).rstrip()
+    def padded(cell, width):
+        clipped = _clip(cell, width)
+        return clipped + ' ' * (width - _display_width(clipped))
+
+    return '\n'.join('  '.join(padded(text, widths[i]) for i, text in enumerate(line)).rstrip()
                      for line in lines)
 
 
