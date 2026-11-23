@@ -16,6 +16,11 @@ it('splits locally with bounded chunks and stable text order', () => {
   expect(chunks.join(' ')).toBe(text);
   expect(splitIntoChunks('', 500)).toEqual([]);
 });
+it('keeps supplementary characters intact at the sentence splitter hard limit', () => {
+  const first = 'a'.repeat(39);
+  const second = '\u{20000}tail';
+  expect(splitStoryText(first + second, 'sentences', 40)).toEqual([first, second]);
+});
 it('splits by paragraph or chapter and keeps each heading as its own line', () => {
   const text =
     'Prologue words.\r\n\r\n# One\nFirst para\nstill first.\n\nSecond para.\n## Not a chapter\n# Two\nOnly body';

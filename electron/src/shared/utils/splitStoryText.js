@@ -33,7 +33,11 @@ export function splitIntoChunks(text, maxChars) {
         }
       }
     }
-    if (cut < 0) cut = max;
+    if (cut < 0) {
+      cut = max;
+      // Leave both UTF-16 units of a supplementary character in the next chunk.
+      if (clean.codePointAt(i + cut - 1) > 0xffff) cut--;
+    }
     out.push(clean.slice(i, i + cut).trim());
     i += cut;
   }
