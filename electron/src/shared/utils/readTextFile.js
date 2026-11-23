@@ -7,8 +7,24 @@
  * Windows-1252 code page. Same rule as the backend's decode_text_upload: a BOM
  * names the encoding, valid UTF-8 stays UTF-8, anything else is Windows-1252.
  */
+function decodeUtf32(bytes, littleEndian) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const characters = [];
+  let offset = 4; // Skip the BOM.
+  for (; offset + 4 <= view.byteLength; offset += 4) {
+    const codePoint = view.getUint32(offset, littleEndian);
+    const valid = codePoint <= 0x10ffff && (codePoint < 0xd800 || codePoint > 0xdfff);
+    characters.push(String.fromCodePoint(valid ? codePoint : 0xfffd));
+  }
+  if (offset < view.byteLength) characters.push(String.fromCodePoint(0xfffd));
+  return characters.join('');
+}
+
 export function decodeTextBytes(bytes) {
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  // UTF-32 LE begins with the UTF-16 LE BOM, so check four-byte BOMs first.
+  if (b[0] === 0xff && b[1] === 0xfe && b[2] === 0 && b[3] === 0) return decodeUtf32(b, true);
+  if (b[0] === 0 && b[1] === 0 && b[2] === 0xfe && b[3] === 0xff) return decodeUtf32(b, false);
   // TextDecoder drops the BOM of the encoding it was built for.
   if (b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) return new TextDecoder('utf-8').decode(b);
   if (b[0] === 0xff && b[1] === 0xfe) return new TextDecoder('utf-16le').decode(b);
