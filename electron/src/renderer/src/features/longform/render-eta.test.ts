@@ -102,9 +102,12 @@ it('formats long renders with hours', () => {
 
 it('uses live progress without reading every chapter status', () => {
   const statusRead = vi.fn(() => 'done');
-  const chapters = Array.from({ length: 500 }, () =>
-    Object.defineProperty({}, 'status', { get: statusRead }),
-  );
+  const chapters = Array.from({ length: 500 }, () => ({
+    title: '',
+    get status() {
+      return statusRead();
+    },
+  }));
   const result = renderStatus({
     stage: 'rendering',
     chapters,
