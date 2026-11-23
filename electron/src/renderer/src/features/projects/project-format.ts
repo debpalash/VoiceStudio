@@ -35,7 +35,6 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
       dialect: s.dubDialect,
       translationInstructions: s.translationInstructions,
       exportOptions: {
-        ...(typeof s.exportOptions === 'object' && s.exportOptions ? s.exportOptions : {}),
         preserveBg: s.preserveBg,
         track: s.defaultTrack,
         burn: s.burnSubs,
@@ -47,6 +46,7 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
                 .filter(([, on]) => on === false)
                 .map(([code]) => code)
             : undefined,
+        ...(typeof s.exportOptions === 'object' && s.exportOptions ? s.exportOptions : {}),
       },
       fitOptions: s.fitOptions,
       steps: s.steps,

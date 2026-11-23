@@ -69,3 +69,22 @@ it('discards malformed segments without inventing active tasks', () => {
   expect(session.segments).toEqual([]);
   expect(session.recovery).toBeNull();
 });
+
+
+it('opens projects that only store modern export preferences', () => {
+  const exportOptions = {
+    preserveBg: false,
+    track: 'fr',
+    excluded: ['original'],
+    burn: true,
+    dual: true,
+    karaoke: false,
+  };
+  const session = projectSession(
+    { id: 'saved', name: 'Export setup', state: { exportOptions } },
+    defaults,
+  );
+  expect(session.exportOptions).toMatchObject(exportOptions);
+  const saved = projectPayload(session, 'Updated');
+  expect(projectSession({ id: 'saved', ...saved }, defaults).exportOptions).toMatchObject(exportOptions);
+});
