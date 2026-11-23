@@ -332,7 +332,9 @@ async def dub_from_srt(file: UploadFile = File(...), source_lang: Optional[str] 
                 for i, seg in enumerate(result.segments)]
     job_id = str(uuid.uuid4())
     job = {
-        "filename": os.path.basename(file.filename or "subtitles.srt"),
+        # Either separator: os.path.basename keeps a Windows client path whole
+        # on POSIX, and a home path must never be persisted.
+        "filename": os.path.basename((file.filename or "").replace("\\", "/")) or "subtitles.srt",
         "duration": max(seg["end"] for seg in segments),
         "input_type": "audio", "subtitle_only": True,
         "source_lang": source, "source_lang_override": source,
@@ -2871,6 +2873,13 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
     job = _get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    # A job with no source audio (e.g. a subtitle-only job from /dub/from-srt)
+    # has nothing to transcribe: refuse it plainly, as the SSE route does,
+    # instead of handing None to the ASR backend (a 500),
+    # and before any optional model preload.
+    _audio = [job.get("vocals_path"), job.get("audio_path")]
+    if not any(p and os.path.exists(p) for p in _audio):
+        raise HTTPException(status_code=409, detail="No audio available for transcription.")
     # Subtitles imported or a dub published while this pass runs win over its
     # result.
     start_rev = segments_revision(job)
@@ -2896,12 +2905,6 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
     # multi-GB weights from HF on first load). Same gate as the SSE preflight:
     # a preloaded `_asr_pipe` only substitutes for the *pytorch-whisper*
     # backend (its sole consumer), so it only skips the preflight there.
-    # A job with no source audio (e.g. a subtitle-only job from /dub/from-srt)
-    # has nothing to transcribe: refuse it plainly, as the SSE route does,
-    # instead of handing None to the ASR backend (a 500).
-    _audio = [job.get("vocals_path"), job.get("audio_path")]
-    if not any(p and os.path.exists(p) for p in _audio):
-        raise HTTPException(status_code=409, detail="No audio available for transcription.")
     from services.asr_backend import (
         active_backend_id,
         asr_model_missing_detail,

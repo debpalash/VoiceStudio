@@ -203,3 +203,17 @@ def test_deleting_a_subtitle_only_job_removes_row_and_directory(api):
     assert api.admin.delete(f"/dub/history/{job_id}").status_code == 200
     assert not os.path.exists(os.path.join(DUB_DIR, job_id))
     assert all(row["id"] != job_id for row in api.admin.get("/dub/history").json())
+
+
+def test_a_windows_client_path_is_not_persisted_as_the_filename(api):
+    from api.routers import dub_core
+
+    response = api.admin.post(
+        "/dub/from-srt",
+        files={"file": ("C:\\Users\\Alice\\Videos\\talk.srt", SRT)},
+        data={"source_lang": "es"},
+    )
+    assert response.status_code == 200, response.text
+    job_id = response.json()["job_id"]
+    api.created.append(job_id)
+    assert dub_core._get_job(job_id)["filename"] == "talk.srt"
