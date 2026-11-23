@@ -304,15 +304,16 @@ def format_subtitle_lines(text: str, max_chars: int = MAX_CHARS_PER_LINE) -> lis
     rather than truncating.
     """
     words = text.split()
-    lines: list[str] = [""]
-    for w in words:
-        tentative = f"{lines[-1]} {w}".strip() if lines[-1] else w
-        if len(tentative) <= max_chars:
-            lines[-1] = tentative
-            continue
-        if len(lines) < MAX_LINES:
-            lines.append(w)
-        else:
-            # Last line — append with a space, accept the overflow.
-            lines[-1] = f"{lines[-1]} {w}".strip()
-    return [l for l in lines if l]
+    lines: list[str] = []
+    line: list[str] = []
+    length = 0
+    for word in words:
+        if line and len(lines) < MAX_LINES - 1 and length + 1 + len(word) > max_chars:
+            lines.append(" ".join(line))
+            line = []
+            length = 0
+        length += len(word) + bool(line)
+        line.append(word)
+    if line:
+        lines.append(" ".join(line))
+    return lines
