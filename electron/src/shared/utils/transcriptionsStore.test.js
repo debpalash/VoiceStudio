@@ -92,3 +92,14 @@ describe('transcription identities', () => {
     expect(loadTranscriptions().map((entry) => entry.text)).toEqual(['b', 'c']);
   });
 });
+
+it('keeps readable transcripts when another stored row is corrupt', () => {
+  const legacy = { id: 1, text: 'Still readable' };
+  localStorage.setItem(
+    TRANSCRIPTIONS_KEY,
+    JSON.stringify([null, legacy, 42, { id: 2, text: [] }]),
+  );
+  expect(loadTranscriptions()).toEqual([legacy]);
+  const saved = addTranscription({ text: 'New transcript' });
+  expect(loadTranscriptions()).toEqual([saved, legacy]);
+});
