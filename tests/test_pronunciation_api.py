@@ -357,3 +357,34 @@ def test_saved_entry_transforms_generate_text(client):
     from services.pronunciation import apply_pronunciation, load_entries_from_db
     rows = load_entries_from_db()
     assert apply_pronunciation("show me a GIF", rows, "en") == "show me a jiff"
+
+
+def test_pls_lexicons_import_and_export(client):
+    """A PLS lexicon from another speech service becomes dictionary entries,
+    and the dictionary exports back as PLS."""
+    lexicon = (
+        '<lexicon version="1.0" xmlns="http://www.w3.org/2005/01/pronunciation-lexicon" '
+        'alphabet="ipa" xml:lang="en-US">'
+        "<lexeme><grapheme>GIF</grapheme><phoneme alphabet=\"x-cmu\">JH IH1 F</phoneme></lexeme>"
+        "<lexeme><grapheme>bad</grapheme><phoneme>[bad]</phoneme></lexeme>"
+        "<lexeme><grapheme>UN</grapheme><alias>United Nations</alias></lexeme>"
+        "</lexicon>"
+    )
+    parsed = client.post("/pronunciation/parse-pls", json={"text": lexicon})
+    assert parsed.status_code == 200, parsed.text
+    body = parsed.json()
+    assert body["skipped"] == 1  # the bracketed IPA the dictionary would reject
+    assert [(e["term"], e["type"], e["language"]) for e in body["entries"]] == [
+        ("GIF", "cmu", "en"), ("UN", "respelling", "en"),
+    ]
+    assert client.post("/pronunciation/import", json={"entries": body["entries"]}).status_code == 200
+
+    exported = client.get("/pronunciation/export", params={"format": "pls"})
+    assert exported.status_code == 200
+    assert exported.headers["content-type"].startswith("application/pls+xml")
+    assert 'xml:lang="en"' in exported.text
+    assert "<alias>United Nations</alias>" in exported.text
+    assert '<phoneme alphabet="x-cmu">JH IH1 F</phoneme>' in exported.text
+
+    refused = client.post("/pronunciation/parse-pls", json={"text": "<!DOCTYPE x><lexicon/>"})
+    assert refused.status_code == 400

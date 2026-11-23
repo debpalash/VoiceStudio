@@ -39,6 +39,8 @@ interface TestResult {
 
 interface ImportPayload {
   entries: Omit<PronunciationEntry, 'id' | 'scope'>[];
+  /** Lexicon rows left out (unsupported phoneme alphabet or invalid). */
+  skipped?: number;
 }
 
 // An import belongs to the dictionary it was started for (#3873 review).
@@ -184,7 +186,12 @@ export function PronunciationSettings() {
         }),
       });
       setPendingImport(null);
-      setNotice(t('pronunciation.import_done', { count: result.imported }));
+      const done = t('pronunciation.import_done', { count: result.imported });
+      setNotice(
+        payload.skipped
+          ? `${done} ${t('pronunciation.import_skipped', { count: payload.skipped })}`
+          : done,
+      );
       await refresh();
     });
   const loadImport = async (file: File) => {
@@ -194,15 +201,29 @@ export function PronunciationSettings() {
     setError('');
     setNotice('');
     try {
-      const parsed = JSON.parse(await file.text()) as unknown;
-      const imported = Array.isArray(parsed)
-        ? parsed
-        : parsed && typeof parsed === 'object' && 'entries' in parsed
-          ? (parsed as { entries?: unknown }).entries
-          : null;
+      const text = await file.text();
+      let imported: unknown;
+      let skipped = 0;
+      if (/\.(pls|xml)$/i.test(file.name) || text.trimStart().startsWith('<')) {
+        // A W3C pronunciation lexicon (ElevenLabs, Azure, Google): the backend
+        // reads it into entries; nothing is saved until the import below.
+        const lexicon = await apiJson<{ entries: unknown[]; skipped: number }>(
+          '/pronunciation/parse-pls',
+          { method: 'POST', body: JSON.stringify({ text }) },
+        );
+        imported = lexicon.entries;
+        skipped = lexicon.skipped;
+      } else {
+        const parsed = JSON.parse(text) as unknown;
+        imported = Array.isArray(parsed)
+          ? parsed
+          : parsed && typeof parsed === 'object' && 'entries' in parsed
+            ? (parsed as { entries?: unknown }).entries
+            : null;
+      }
       if (!Array.isArray(imported)) throw new Error('Invalid pronunciation export');
       if (profileIdRef.current !== target) return;
-      const payload = { entries: imported } as ImportPayload;
+      const payload = { entries: imported, skipped } as ImportPayload;
       if (existing) setPendingImport({ ...payload, profileId: target, count: existing });
       else void importEntries(payload, target, false);
     } catch {
@@ -216,6 +237,16 @@ export function PronunciationSettings() {
       await saveLocalFile(
         new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
         profileId ? 'pronunciation-voice-dictionary.json' : 'pronunciation-dictionary.json',
+      );
+    });
+  const exportLexicon = () =>
+    act(async () => {
+      if (voiceScopeNeedsVoice) return;
+      const query = profileQuery ? `${profileQuery}&format=pls` : '?format=pls';
+      const response = await apiFetch('/pronunciation/export' + query);
+      await saveLocalFile(
+        new Blob([await response.text()], { type: 'application/pls+xml' }),
+        profileId ? 'pronunciation-voice-dictionary.pls' : 'pronunciation-dictionary.pls',
       );
     });
 
@@ -477,6 +508,14 @@ export function PronunciationSettings() {
         <Button
           variant="outline"
           disabled={busy || voiceScopeNeedsVoice}
+          onClick={() => void exportLexicon()}
+        >
+          <DownloadIcon />
+          {t('pronunciation.export_pls')}
+        </Button>
+        <Button
+          variant="outline"
+          disabled={busy || voiceScopeNeedsVoice}
           onClick={() => fileInput.current?.click()}
         >
           <UploadIcon />
@@ -486,7 +525,7 @@ export function PronunciationSettings() {
           ref={fileInput}
           hidden
           type="file"
-          accept="application/json,.json"
+          accept="application/json,.json,application/pls+xml,.pls,.xml"
           aria-label={t('pronunciation.import')}
           onChange={(event) => {
             const file = event.target.files?.[0];

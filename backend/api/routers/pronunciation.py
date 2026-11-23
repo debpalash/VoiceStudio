@@ -291,18 +291,68 @@ def test_substitution(req: PronTestRequest):
 
 
 @router.get("/pronunciation/export")
-def export_entries(profile_id: Optional[str] = Query(None)):
+def export_entries(
+    profile_id: Optional[str] = Query(None),
+    format: str = Query("json", pattern="^(json|pls)$"),
+):
     """The language dictionary (or one voice's, with ``profile_id``) as a
-    JSON-serializable list (round-trips ``/import`` with the same scope)."""
+    JSON-serializable list (round-trips ``/import`` with the same scope), or
+    with ``format=pls`` as a W3C pronunciation lexicon of its enabled entries."""
     # Entry order is precedence order; importing rows back in this order
     # reproduces it.
     pid = (profile_id or "").strip()
     rows = [r for r in load_entries_from_db() if (r.get("profile_id") or "") == pid]
+    if format == "pls":
+        from fastapi.responses import Response
+
+        from services.pronunciation_pls import to_pls
+
+        enabled = [r for r in rows if r["enabled"]]
+        languages = {r["language"] for r in enabled}
+        # A lexicon has one language; mixed or all-language rows say "und".
+        language = next(iter(languages)) if len(languages) == 1 and _ALL_LANG not in languages else "und"
+        return Response(
+            to_pls(enabled, language),
+            media_type="application/pls+xml",
+            headers={"Content-Disposition": 'attachment; filename="pronunciation.pls"'},
+        )
     return {"entries": [
         {"term": r["term"], "replacement": r["replacement"], "type": r["type"],
          "language": r["language"], "enabled": bool(r["enabled"])}
         for r in rows
     ]}
+
+
+class PlsParseRequest(BaseModel):
+    text: str
+
+
+@router.post("/pronunciation/parse-pls")
+def parse_pls_entries(req: PlsParseRequest):
+    """Read a PLS lexicon into entries for ``/pronunciation/import``.
+
+    Nothing is saved. Entries take the lexicon's language (``*`` when it has
+    none or says ``und``). Rows with an unsupported phoneme alphabet or a
+    phoneme string this dictionary would reject are left out and counted in
+    ``skipped``.
+    """
+    from services.pronunciation_pls import PlsError, parse_pls
+
+    try:
+        parsed = parse_pls(req.text)
+    except PlsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    raw_language = (parsed["language"] or "").strip()
+    language = _ALL_LANG if raw_language.lower() in ("", "und") else _norm_language(raw_language)
+    entries, skipped = [], parsed["skipped"]
+    for entry in parsed["entries"]:
+        try:
+            _validate_type_replacement(entry["type"], entry["replacement"])
+        except HTTPException:
+            skipped += 1
+            continue
+        entries.append({**entry, "language": language, "enabled": True})
+    return {"entries": entries, "skipped": skipped}
 
 
 @router.post("/pronunciation/import")

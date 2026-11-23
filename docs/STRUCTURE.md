@@ -38,7 +38,7 @@ VoiceStudio/
 │   │                            auth and CSRF, safe paths, model artifact fingerprints, analytics consent,
 │   │                            version and diagnostics
 │   │   └── asr_budget.py        duration-based transcription budget shared with MCP
-│   ├── services/                140 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
+│   ├── services/                141 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
 │   │                            engine selection and loaded-model ownership
 │   │   └── asr_timing.py        inherited ASR execution clocks without media dependencies
 │   ├── engines/                 per-engine adapters: audiocpp, confucius4, cosyvoice_gguf,

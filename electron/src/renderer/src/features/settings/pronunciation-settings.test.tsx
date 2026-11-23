@@ -51,8 +51,11 @@ afterEach(() => {
 
 const row = { id: 'e1', term: 'x', replacement: 'y', type: 'respelling', language: '*', enabled: true };
 
-function setup() {
+function setup(extra: Record<string, unknown> = {}) {
   mock.api.mockImplementation((path: string) => {
+    if (path in extra) return Promise.resolve(extra[path]);
+    // The language dictionary lists from `/pronunciation` with no voice query.
+    if (path === '/pronunciation') return Promise.resolve([row]);
     if (path === '/profiles')
       return Promise.resolve([
         { id: 'A', name: 'Voice A' },
@@ -98,4 +101,31 @@ it('does not save a voice entry for every voice when no voice is chosen', async 
   fireEvent.keyDown(screen.getByLabelText('pronunciation.lang_label'), { key: 'Enter' });
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(posts('/pronunciation')).toHaveLength(0);
+});
+
+it('imports a PLS lexicon through the same flow and says what was left out', async () => {
+  const entries = [{ term: 'GIF', replacement: 'JH IH1 F', type: 'cmu', language: 'en', enabled: true }];
+  const { container } = setup({ '/pronunciation/parse-pls': { entries, skipped: 2 } });
+  await screen.findByText('x → y');
+  const lexicon = '<lexicon xmlns="http://www.w3.org/2005/01/pronunciation-lexicon"/>';
+  const file = { name: 'azure.pls', text: async () => lexicon };
+  fireEvent.change(container.querySelector('input[type=file]')!, { target: { files: [file] } });
+  await screen.findByText('pronunciation.import_replace_prompt');
+  expect(JSON.parse(String(posts('/pronunciation/parse-pls')[0][1]!.body))).toEqual({ text: lexicon });
+
+  fireEvent.click(screen.getByRole('button', { name: 'common.no' }));
+  await screen.findByText('pronunciation.import_done pronunciation.import_skipped');
+  const sent = JSON.parse(String(posts('/pronunciation/import')[0][1]!.body));
+  expect(sent).toMatchObject({ entries, replace: false });
+});
+
+it('exports the dictionary as a PLS lexicon', async () => {
+  const { saveLocalFile } = await import('@/lib/local-export');
+  mock.fetch.mockResolvedValue({ text: async () => '<lexicon/>' });
+  setup();
+  await screen.findByText('x → y');
+  fireEvent.click(screen.getByRole('button', { name: 'pronunciation.export_pls' }));
+  await waitFor(() => expect(saveLocalFile).toHaveBeenCalled());
+  expect(mock.fetch).toHaveBeenCalledWith('/pronunciation/export?format=pls');
+  expect(vi.mocked(saveLocalFile).mock.calls[0][1]).toBe('pronunciation-dictionary.pls');
 });
