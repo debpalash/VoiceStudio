@@ -186,12 +186,13 @@ export function snapTime(t, candidates, thresholdS) {
 
 /**
  * snapCandidates — the candidate set for a drag, per the editor spec:
- * onsets + adjacent segment edges + playhead + (at low zoom) the
+ * nearest onset + adjacent segment edges + playhead + (at low zoom) the
  * integer-second grid around t.
  */
 export function snapCandidates({ onsets = [], prevEnd, nextStart, playhead, pxPerSec, t }) {
   const out = [];
-  for (const o of onsets) out.push(o);
+  const onset = nearestOnset(t, onsets);
+  if (onset !== null) out.push(onset);
   if (Number.isFinite(prevEnd)) out.push(prevEnd);
   if (Number.isFinite(nextStart)) out.push(nextStart);
   if (Number.isFinite(playhead)) out.push(playhead);
@@ -298,16 +299,19 @@ export function detectOverlaps(segments, epsilon = 1e-6) {
   return flagged;
 }
 
-/** nearestOnset — closest onset to t, or null when none exist. */
+/** Closest onset to t in the ascending list returned by useDubOnsets. */
 export function nearestOnset(t, onsets) {
-  let best = null;
-  let bestDist = Infinity;
-  for (const o of onsets) {
-    const d = Math.abs(o - t);
-    if (d < bestDist) {
-      best = o;
-      bestDist = d;
-    }
+  if (!Number.isFinite(t) || !onsets.length) return null;
+  let lo = 0;
+  let hi = onsets.length;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (onsets[mid] < t) lo = mid + 1;
+    else hi = mid;
   }
-  return best;
+  if (lo === 0) return onsets[0];
+  if (lo === onsets.length) return onsets[lo - 1];
+  const before = onsets[lo - 1];
+  const after = onsets[lo];
+  return t - before <= after - t ? before : after;
 }
