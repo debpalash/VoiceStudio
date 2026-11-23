@@ -22,13 +22,13 @@ export function queryPattern(query: string): RegExp | null {
 }
 
 function collectFieldMatches(
+  matches: TextMatch[],
   id: string,
   field: TextMatch['field'],
   value: string | undefined,
   re: RegExp,
-): TextMatch[] {
-  if (typeof value !== 'string' || !value) return [];
-  const matches: TextMatch[] = [];
+): void {
+  if (typeof value !== 'string' || !value) return;
   re.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = re.exec(value)) !== null) {
@@ -44,7 +44,6 @@ function collectFieldMatches(
     });
     if (re.lastIndex === match.index) re.lastIndex += 1;
   }
-  return matches;
 }
 
 export function collectMatches(
@@ -57,9 +56,9 @@ export function collectMatches(
   for (const segment of segments) {
     if (!segment || segment.id == null) continue;
     const id = String(segment.id);
-    matches.push(...collectFieldMatches(id, 'text', segment.text, re));
+    collectFieldMatches(matches, id, 'text', segment.text, re);
     if (segment.text_original && segment.text_original !== segment.text) {
-      matches.push(...collectFieldMatches(id, 'text_original', segment.text_original, re));
+      collectFieldMatches(matches, id, 'text_original', segment.text_original, re);
     }
   }
   return matches;
