@@ -87,7 +87,6 @@ export function StoryStems({
             return {
               name,
               blob,
-              url: URL.createObjectURL(blob),
               // Strip control characters forbidden in native filenames.
               // eslint-disable-next-line no-control-regex
               filename: `story-${index + 1}-${name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 80)}.${extension}`,
@@ -95,7 +94,7 @@ export function StoryStems({
           }),
         );
         if (!current.signal.aborted) {
-          setStems(outputs);
+          setStems(outputs.map((stem) => ({ ...stem, url: URL.createObjectURL(stem.blob) })));
           if (usedFallback) toast.warning(t('stories.mp3Fallback'));
         }
       }
