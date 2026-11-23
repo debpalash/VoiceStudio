@@ -14,6 +14,7 @@ it into the SSE renderer (write on start, clear on done) and exposes
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -91,6 +92,15 @@ def build_manifest(
         "params": params,
         "plan": plan_chapters,
     }
+
+
+def manifest_plan_key(manifest: dict) -> Optional[str]:
+    """Identify retries of the same render without exposing script contents."""
+    plan = manifest.get("plan")
+    if not isinstance(plan, list):
+        return None
+    payload = json.dumps([plan, manifest.get("params")], sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def write_manifest(manifest: dict) -> Optional[str]:
