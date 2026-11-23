@@ -251,6 +251,8 @@ metadata and the backend fallback mirror it.
 
 ### Bug reporters
 
+- @tng7576650-commits — translation provider and agent failure messages (#4356, #4357)
+- @Error404-page — speaker labels lost on M4A uploads (#4337)
 - @luanweslley77 — untranslated dubs, missing-background exports, ROCm dictation on 4 GB cards and licence notes edits (#4317, #4318, #4334, #4335, #4346, #4347)
 - @yuningceng518-cloud — MLX VoxCPM2 ignoring the saved voice profile (#4344)
 - @nklowns — OmniVoice keeping GPU memory after unload (#4355)
@@ -277,11 +279,11 @@ metadata and the backend fallback mirror it.
 
 **Highlights**
 
-- Optional automatic error reports stay off until separately allowed in Privacy
-- Android Stories and Audiobook keep long manuscripts scrollable and recover drafts through activity recreation
-- Stories can merge adjacent lines with compatible speaker and voice settings
-- Linux ROCm setup preserves its installed PyTorch stack, and GPU readiness reflects failed self-tests
-- Phone dub exports check available space and avoid false low-space errors on iOS
+- Fish Audio Drama 3 (GGUF) joins as an opt-in voice-cloning engine for 24 GB GPUs (#4361)
+- Dub straight from a subtitle file: validate an SRT and create a speech-only job, and skip background separation for voice-only recordings (#4219, #4218)
+- Delete saved dub projects from the Dub sidebar (#4217)
+- Rejected translation API keys and failing agent CLIs now say why, and M4A uploads keep their speaker labels (#4371)
+- 18 reliability fixes across Stories, dubbing, subtitles, the CLI and task streams (#4372–#4389)
 
 ### Changed
 
@@ -518,6 +520,8 @@ metadata and the backend fallback mirror it.
 
 ### Bug reporters
 
+- @tng7576650-commits — translation provider and agent failure messages (#4356, #4357)
+- @Error404-page — speaker labels lost on M4A uploads (#4337)
 - @luanweslley77 — untranslated dubs, missing-background exports, ROCm dictation on 4 GB cards and licence notes edits (#4317, #4318, #4334, #4335, #4346, #4347)
 - @yuningceng518-cloud — MLX VoxCPM2 ignoring the saved voice profile (#4344)
 - @nklowns — OmniVoice keeping GPU memory after unload (#4355)
