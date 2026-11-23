@@ -12,6 +12,7 @@ afterEach(cleanup);
 
 it('keeps a local filename with a colon while shortening web URLs to the host', () => {
   expect(compactSourceLabel('Interview:session.wav')).toBe('Interview:session.wav');
+  expect(compactSourceLabel('http:Report.wav')).toBe('http:Report.wav');
   expect(compactSourceLabel('https://www.example.com/session.wav')).toBe('example.com');
 });
 

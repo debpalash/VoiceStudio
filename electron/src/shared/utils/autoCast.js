@@ -12,7 +12,7 @@ export function buildAutoCast(text, cast = [], profiles = []) {
     let character = next.find(
       (c) =>
         (name.toLowerCase() === 'narrator' && c.id === 'narrator') ||
-        c.name.toLowerCase() === name.toLowerCase(),
+        c.name.normalize('NFC').toLowerCase() === name.toLowerCase(),
     );
     if (!character) {
       const base =

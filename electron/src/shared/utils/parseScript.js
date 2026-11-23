@@ -20,6 +20,7 @@ const TAG_VERBS =
 /** Normalise a raw captured name → Title Case, drop a leading "the"/punctuation. */
 export function normalizeSpeaker(raw) {
   let s = String(raw || '')
+    .normalize('NFC')
     .trim()
     .replace(/^the\s+/i, '')
     .replace(/[.,!?:;"'“”]+$/g, '')

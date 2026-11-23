@@ -27,6 +27,9 @@ describe('parseScript — screenplay', () => {
       { speaker: '\u00c9lodie', text: 'Bonjour.' },
     ]);
   });
+  it('normalizes decomposed speaker names to the precomposed form', () => {
+    expect(parseScript('E\u0301LODIE: Bonjour.')).toEqual([{ speaker: '\u00c9lodie', text: 'Bonjour.' }]);
+  });
   it('does not treat a URL as a speaker', () => {
     const r = parseScript('See https://example.com for details.');
     expect(r).toEqual([{ speaker: 'Narrator', text: 'See https://example.com for details.' }]);

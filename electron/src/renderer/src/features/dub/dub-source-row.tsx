@@ -19,6 +19,8 @@ import { DUB_INPUT_ISSUE_KEYS, type DubInputIssue } from './dub-input-issue';
 /** A URL source reads as its host; a file keeps its name. */
 export function compactSourceLabel(source: string): string {
   if (!source) return '';
+  // `http:Report.wav` is a legal local filename; only a real `scheme://` source is a URL.
+  if (!/^https?:\/\//i.test(source)) return source;
   try {
     const url = new URL(source);
     return url.protocol === 'http:' || url.protocol === 'https:'
