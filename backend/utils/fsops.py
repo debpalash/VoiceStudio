@@ -15,6 +15,7 @@ from __future__ import annotations
 import errno
 import os
 import shutil
+import tempfile
 
 
 def safe_replace(src: str, dst: str) -> None:
@@ -32,7 +33,8 @@ def safe_replace(src: str, dst: str) -> None:
     except OSError as e:
         if e.errno != errno.EXDEV:
             raise
-    tmp = f"{dst}.xdev-tmp-{os.getpid()}"
+    fd, tmp = tempfile.mkstemp(prefix=".xdev-", dir=os.path.dirname(dst) or ".")
+    os.close(fd)
     try:
         shutil.copyfile(src, tmp)
         with open(tmp, "rb+") as f:
@@ -41,8 +43,7 @@ def safe_replace(src: str, dst: str) -> None:
         os.replace(tmp, dst)
     finally:
         try:
-            if os.path.exists(tmp):
-                os.remove(tmp)
+            os.remove(tmp)
         except OSError:
             pass  # best-effort temp cleanup; the replace above already landed or raised
     try:
