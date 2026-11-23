@@ -22,7 +22,8 @@ export function trimmedAudio(buffer: AudioBuffer, start: number, end: number): B
     !Number.isFinite(end) ||
     start < 0 ||
     end > buffer.duration ||
-    end - start < 0.02 ||
+    // Subtracting decimal timestamps can round an exact 20 ms span down.
+    end - start < 0.02 - Number.EPSILON * Math.max(1, end) ||
     end - start > MAX_TRIM_SECONDS + 0.001
   )
     throw new Error('Invalid trim range');
