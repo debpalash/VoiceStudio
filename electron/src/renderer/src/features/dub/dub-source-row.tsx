@@ -20,7 +20,10 @@ import { DUB_INPUT_ISSUE_KEYS, type DubInputIssue } from './dub-input-issue';
 export function compactSourceLabel(source: string): string {
   if (!source) return '';
   try {
-    return new URL(source).hostname.replace(/^www\./, '');
+    const url = new URL(source);
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? url.hostname.replace(/^www\./, '')
+      : source;
   } catch {
     return source;
   }
