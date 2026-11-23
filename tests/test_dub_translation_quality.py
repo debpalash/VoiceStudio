@@ -162,7 +162,11 @@ def test_merge_glossary_user_wins():
 # ── Stage 1: injection into every per-segment translation prompt ────────────
 
 
-@pytest.mark.parametrize(("manual", "automatic"), [("Stra\u00dfe", "STRASSE"), ("Caf\u00e9", "Cafe\u0301")])
+@pytest.mark.parametrize(("manual", "automatic"), [
+    ("Stra\u00dfe", "STRASSE"),
+    ("Caf\u00e9", "Cafe\u0301"),
+    ("\u03b1\u0345\u0300", "\u03b1\u0300\u0345"),
+])
 def test_manual_glossary_wins_for_unicode_equivalent_spelling(manual, automatic):
     from services.translation_quality import merge_glossary
 

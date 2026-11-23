@@ -170,7 +170,9 @@ def extract_context_sync(
 
 
 def _glossary_key(source: str) -> str:
-    return unicodedata.normalize("NFC", source.casefold())
+    # Canonically order combining marks before casefold can turn one into a letter.
+    decomposed = unicodedata.normalize("NFD", source)
+    return unicodedata.normalize("NFC", decomposed.casefold())
 
 
 def merge_glossary(
