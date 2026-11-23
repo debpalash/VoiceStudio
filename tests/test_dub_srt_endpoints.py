@@ -227,3 +227,15 @@ def test_a_colon_in_the_upload_name_is_kept_on_every_os(api):
     job_id = response.json()["job_id"]
     api.created.append(job_id)
     assert dub_core._get_job(job_id)["filename"] == "a:b.srt"
+
+
+def test_a_cue_beyond_24_hours_is_refused_before_any_job_exists(api):
+    """CodeRabbit on #4367: the mix is sized from the timeline, so one absurd
+    cue would allocate a mix file tens of gigabytes long."""
+    absurd = b"1\n100:00:00,000 --> 100:00:01,000\nhola\n"
+    before = api.admin.get("/dub/history").json()
+    for route, data in (("/dub/from-srt", {"source_lang": "es"}), ("/dub/validate-srt", {})):
+        response = api.admin.post(route, files={"file": ("a.srt", absurd)}, data=data)
+        assert response.status_code == 400, response.text
+        assert "24 hours" in response.text
+    assert api.admin.get("/dub/history").json() == before

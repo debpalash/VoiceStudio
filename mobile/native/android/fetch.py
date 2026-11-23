@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fetch only pinned build inputs; no git mutations or model downloads."""
 import hashlib
+import http.client
 import json
 import pathlib
 import shutil
@@ -36,11 +37,15 @@ def fetch(name, url, digest, attempts=3):
             try:
                 with urllib.request.urlopen(url, timeout=120) as response, temporary.open('wb') as output:
                     shutil.copyfileobj(response, output)
-            except OSError as error:
+            except (OSError, http.client.HTTPException) as error:
+                # IncompleteRead (a truncated chunked body) is an HTTPException,
+                # not an OSError. The log names the error class only: an
+                # OSError's text can carry an absolute local path.
                 temporary.unlink(missing_ok=True)
                 if attempt == attempts:
                     raise
-                print(f'{name}: download failed ({error}); retrying ({attempt}/{attempts})', file=sys.stderr)
+                reason = type(error).__name__ + (f' errno {error.errno}' if getattr(error, 'errno', None) else '')
+                print(f'{name}: download failed ({reason}); retrying ({attempt}/{attempts})', file=sys.stderr)
                 time.sleep(5 * attempt)
                 continue
             temporary.replace(target)

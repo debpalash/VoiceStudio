@@ -171,6 +171,10 @@ def _safe_lang_or_400(lang: str | None) -> str | None:
 # and still cheap to regex — past that we refuse rather than let a stray
 # paste (or a mis-aimed binary) burn CPU in the parser.
 _MAX_SUBTITLE_PASTE_CHARS = 2_000_000
+# A subtitle-only job takes its whole timeline from the cues, and the dub mix
+# is sized from that duration: one cue at "100:00:00,000" would allocate a mix
+# file tens of gigabytes long. 24 hours covers any real subtitle file.
+_MAX_SUBTITLE_TIMELINE_S = 24 * 3600
 
 # The imported cue syntax belongs to the new cue. A prior segment's would
 # restore stale markup on an unchanged export; dropping the new one loses it.
@@ -306,6 +310,11 @@ async def _read_subtitle_upload(file: UploadFile):
     result = parse_srt(decode_text_upload(raw))
     if not result.segments:
         raise HTTPException(status_code=400, detail="No valid subtitle cues found.")
+    if max(seg["end"] for seg in result.segments) > _MAX_SUBTITLE_TIMELINE_S:
+        raise HTTPException(
+            status_code=400,
+            detail="A subtitle cue ends after 24 hours. Check the file's timestamps.",
+        )
     return result
 
 
