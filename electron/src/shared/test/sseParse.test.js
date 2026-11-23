@@ -14,15 +14,26 @@ describe('splitSSEBuffer', () => {
     expect(rest).toBe('');
   });
 
-  it('splits mixed SSE line endings and retains a possible partial CRLF', () => {
-    const { lines, rest } = splitSSEBuffer('a\rb\r\nc\nd\r');
-    expect(lines).toEqual(['a', 'b', 'c']);
-    expect(rest).toBe('d\r');
-    expect(splitSSEBuffer(rest + '\ne\r\r')).toEqual({ lines: ['d', 'e'], rest: '\r' });
+  it('splits mixed SSE line endings and ends a chunk-final CR at once', () => {
+    const first = splitSSEBuffer('a\rb\r\nc\nd\r');
+    expect(first).toEqual({ lines: ['a', 'b', 'c', 'd'], rest: '', endsWithCR: true });
+    // The LF opening the next chunk completes that CRLF: no extra blank line.
+    expect(splitSSEBuffer(first.rest + '\ne\r\r', first.endsWithCR)).toEqual({
+      lines: ['e', ''],
+      rest: '',
+      endsWithCR: true,
+    });
+    // Without a preceding CR, a leading LF is a real (blank) line ending.
+    expect(splitSSEBuffer('\nx\n').lines).toEqual(['', 'x']);
+  });
+
+  it('keeps a pending CR across an empty chunk', () => {
+    expect(splitSSEBuffer('', true).endsWithCR).toBe(true);
+    expect(splitSSEBuffer('\ny\n', true).lines).toEqual(['y']);
   });
 
   it('handles an empty buffer', () => {
-    expect(splitSSEBuffer('')).toEqual({ lines: [], rest: '' });
+    expect(splitSSEBuffer('')).toEqual({ lines: [], rest: '', endsWithCR: false });
   });
 });
 

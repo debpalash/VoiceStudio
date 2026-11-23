@@ -56,3 +56,37 @@ it('opens the licence dialog for a dub SSE error carrying model_licence_required
   expect(seen).toHaveBeenCalledTimes(1);
   expect(events).toHaveBeenCalledTimes(1);
 });
+it('dispatches a CR-terminated final event while the stream stays open', async () => {
+  // One chunk, then the server keeps the connection open: the terminal
+  // event must not wait for another byte or for end-of-stream.
+  const bytes = new TextEncoder().encode('data: {"type":"done"}\r\r');
+  vi.mocked(apiFetch).mockResolvedValueOnce(
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes);
+        },
+      }),
+    ),
+  );
+  const seen = vi.fn((event) => event.type === 'done');
+  await consumeTaskStream('/task', seen);
+  expect(seen).toHaveBeenCalledExactlyOnceWith({ type: 'done' });
+});
+it('treats a CRLF split across chunks as one line ending', async () => {
+  const encoder = new TextEncoder();
+  vi.mocked(apiFetch).mockResolvedValueOnce(
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: {"type":"done",\r'));
+          controller.enqueue(encoder.encode('\ndata: "ok":true}\r\n\r\n'));
+          controller.close();
+        },
+      }),
+    ),
+  );
+  const seen = vi.fn((event) => event.type === 'done');
+  await consumeTaskStream('/task', seen);
+  expect(seen).toHaveBeenCalledExactlyOnceWith({ type: 'done', ok: true });
+});
