@@ -34,6 +34,62 @@ def validate_amazon_configuration():
     return session
 
 
+_PROVIDER_NAMES = {"deepl": "DeepL", "microsoft": "Microsoft Translator", "google-cloud": "Google Cloud Translation"}
+_DETAIL_LIMIT = 300
+
+
+class TranslationProviderError(RuntimeError):
+    """A paid provider refused the request; the message is safe to show."""
+
+    def __init__(self, provider, status, detail=""):
+        name = _PROVIDER_NAMES.get(provider, provider)
+        if status in (401, 403):
+            hint = f"Check the {name} key in Settings \u2192 Translation: it must be a valid key for this provider."
+        elif status == 456:
+            hint = f"The {name} character quota is used up; wait for it to reset or raise the plan limit."
+        elif status == 429:
+            hint = f"{name} is rate-limiting requests; try again in a moment."
+        elif status >= 500:
+            hint = f"{name} had a server problem; try again later."
+        else:
+            hint = ""
+        parts = [f"{name} refused the translation (HTTP {status})."]
+        if detail:
+            parts.append(f"It said: {detail}")
+        if hint:
+            parts.append(hint)
+        super().__init__(" ".join(parts))
+        self.provider, self.status, self.detail = provider, status, detail
+
+
+def _provider_detail(response, secret=""):
+    """The provider's own explanation from an error body, short and key-free.
+
+    DeepL answers ``{"message": ...}``; Microsoft and Google nest it as
+    ``{"error": {"message": ...}}``. Anything else falls back to the text."""
+    try:
+        body = response.json()
+    except Exception:
+        body = None
+    text = ""
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            text = error.get("message") or ""
+        elif isinstance(error, str):
+            text = error
+        text = text or body.get("message") or body.get("detail") or ""
+    if not isinstance(text, str) or not text:
+        try:
+            text = response.text if body is None else ""
+        except Exception:
+            text = ""
+    text = " ".join(str(text).split())
+    if secret and len(secret) >= 4:
+        text = text.replace(secret, "[redacted]")
+    return text[:_DETAIL_LIMIT]
+
+
 class Translator:
     def __init__(self, provider, source, target, api_key=""):
         self.provider, self.source, self.target = provider, source, target
@@ -90,7 +146,10 @@ class Translator:
         # No redirects: provider keys must remain at the configured endpoint.
         with httpx.Client(timeout=httpx.Timeout(30, connect=5), follow_redirects=False) as client:
             response = client.post(url, headers=headers, params=params, json=payload)
-            response.raise_for_status()
+            if not response.is_success:
+                # raise_for_status() discards the body, which is the only place
+                # the provider says why (wrong-provider key, expired, quota).
+                raise TranslationProviderError(provider, response.status_code, _provider_detail(response, key))
             body = response.json()
         if provider == "deepl": return body["translations"][0]["text"]
         if provider == "microsoft": return body[0]["translations"][0]["text"]
