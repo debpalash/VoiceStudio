@@ -115,6 +115,23 @@ def test_need_just_past_boundary_goes_hybrid():
     assert p.total_duration == pytest.approx(1.1, abs=1e-3)
 
 
+@pytest.mark.parametrize(("need", "rate", "overflow"), [(1.6, 1.6 / 1.1, 0), (1.8, 1.5, .1)])
+def test_tight_video_cap_uses_remaining_audio_budget(need, rate, overflow):
+    fit = _single_seg_plan(need, params=FitParams(video_slow_cap=1.1)).segments[0]
+    assert fit.audio_rate == pytest.approx(rate, abs=1e-6)
+    assert fit.video_ratio == 1.1
+    assert fit.overflow_s == pytest.approx(overflow)
+    assert fit.status == ("hybrid" if not overflow else "overflow_trimmed")
+
+
+def test_unit_video_cap_reports_audio_only_even_when_audio_retime_exceeds_soft_limit():
+    fit = _single_seg_plan(1.4, params=FitParams(video_slow_cap=1.0)).segments[0]
+    assert fit.audio_rate == 1.4
+    assert fit.video_ratio == 1.0
+    assert fit.overflow_s == 0
+    assert fit.status == "audio_stretched"
+
+
 def test_need_four_saturates_both_caps_and_overflows():
     """need = 4.0: sqrt(4)=2 > audio cap 1.5 → audio=1.5; video=min(4/1.5, 2)=2.
     Combined 3.0× < 4.0× → residual overflow trimmed at mix time."""

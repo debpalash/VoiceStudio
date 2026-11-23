@@ -21,8 +21,8 @@ Algorithm per segment (defaults in :class:`FitParams`):
 3. ``1.0 < need <= max_audio_only_rate`` — audio-only speed-up at exactly
    ``need`` (imperceptible up to ~1.2×).
 4. ``need > max_audio_only_rate`` — geometric 50/50 split:
-   ``audio_rate = min(sqrt(need), audio_rate_cap)`` and
-   ``video_ratio = min(need / audio_rate, video_slow_cap)``. Whatever the
+   Start at the square-root split and use remaining audio capacity when the
+   video slowdown cap binds. Keep both rates within their caps. Whatever the
    caps can't absorb becomes ``overflow_s`` (trimmed at mix time).
 5. ``allow_video_retime=False`` — audio-only mode: rate capped at the
    legacy ``MAX_AUDIO_RATE_HARD`` (1.8, matching dub_generate's
@@ -128,10 +128,12 @@ def _fit_one(need: float, params: FitParams) -> tuple[float, float, str]:
         status = "audio_stretched" if audio_rate >= need - _EPS else "overflow_trimmed"
         return audio_rate, 1.0, status
     # Geometric 50/50 split: equal perceptual burden on audio and video.
-    audio_rate = min(math.sqrt(need), params.audio_rate_cap)
+    # If video reaches its cap first, spend the remaining audio budget before trimming.
+    audio_rate = min(max(math.sqrt(need), need / params.video_slow_cap), params.audio_rate_cap)
     video_ratio = min(need / audio_rate, params.video_slow_cap)
     if audio_rate * video_ratio >= need - _EPS:
-        return audio_rate, video_ratio, "hybrid"
+        status = "hybrid" if video_ratio > 1.0 + _EPS else "audio_stretched"
+        return audio_rate, video_ratio, status
     return audio_rate, video_ratio, "overflow_trimmed"
 
 
