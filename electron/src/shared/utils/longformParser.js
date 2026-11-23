@@ -44,10 +44,9 @@ export function roundHalfToEven(x) {
 function _pauseMs(num, unit) {
   if (num == null) return PAUSE_DEFAULT_MS;
   const value = parseFloat(num);
-  if (!Number.isFinite(value)) return PAUSE_DEFAULT_MS;
+  if (Number.isNaN(value)) return PAUSE_DEFAULT_MS;
   const ms = unit && unit.toLowerCase() === 's' ? value * 1000 : value;
-  const msInt = roundHalfToEven(ms);
-  return Math.max(0, Math.min(msInt, PAUSE_MAX_MS));
+  return roundHalfToEven(Math.min(ms, PAUSE_MAX_MS));
 }
 
 /** Mirror of text.py:parse_pause_markers → [[spanText, pauseMsAfter], …]. */
