@@ -4,7 +4,9 @@ import hashlib
 import json
 import pathlib
 import shutil
+import sys
 import tarfile
+import time
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -12,22 +14,43 @@ PINS = json.loads((ROOT.parent / 'pins.json').read_text())
 CHECKSUMS = json.loads((ROOT / 'source-checksums.json').read_text())
 BUILD = ROOT / 'build'
 
-def fetch(name, url, digest):
-    target = BUILD / 'downloads' / name
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if not target.exists():
-        temporary = target.with_suffix('.partial')
-        with urllib.request.urlopen(url, timeout=120) as response, temporary.open('wb') as output:
-            shutil.copyfileobj(response, output)
-        temporary.replace(target)
-    with target.open('rb') as source:
-        actual = hashlib.sha256()
+def _sha256(path):
+    actual = hashlib.sha256()
+    with path.open('rb') as source:
         for block in iter(lambda: source.read(1024 * 1024), b''):
             actual.update(block)
-    if actual.hexdigest() != digest:
+    return actual.hexdigest()
+
+
+def fetch(name, url, digest, attempts=3):
+    """Download ``url`` once into the build cache and verify its pinned digest.
+
+    A truncated or corrupted transfer (seen on CI runners) is discarded and
+    retried a bounded number of times; a digest that still differs after the
+    retries is a real mismatch and fails the build."""
+    target = BUILD / 'downloads' / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(1, attempts + 1):
+        if not target.exists():
+            temporary = target.with_suffix('.partial')
+            try:
+                with urllib.request.urlopen(url, timeout=120) as response, temporary.open('wb') as output:
+                    shutil.copyfileobj(response, output)
+            except OSError as error:
+                temporary.unlink(missing_ok=True)
+                if attempt == attempts:
+                    raise
+                print(f'{name}: download failed ({error}); retrying ({attempt}/{attempts})', file=sys.stderr)
+                time.sleep(5 * attempt)
+                continue
+            temporary.replace(target)
+        if _sha256(target) == digest:
+            return target
         target.unlink()
-        raise ValueError('SHA-256 mismatch: ' + name)
-    return target
+        if attempt < attempts:
+            print(f'{name}: SHA-256 mismatch after download; retrying ({attempt}/{attempts})', file=sys.stderr)
+            time.sleep(5 * attempt)
+    raise ValueError('SHA-256 mismatch: ' + name)
 
 def extract(archive, destination):
     if destination.exists():
