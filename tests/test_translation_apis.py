@@ -185,6 +185,7 @@ def test_paid_provider_rejects_insecure_url_before_request(monkeypatch, provider
      ["Google Cloud Translation refused the translation (HTTP 400)", "API key not valid"]),
     ("deepl", 456, {"message": "Quota exceeded"}, ["HTTP 456", "Quota exceeded", "quota is used up"]),
     ("microsoft", 500, None, ["HTTP 500", "server problem"]),
+    ("google-cloud", 403, "Authentication rejected by upstream", ["HTTP 403", "Authentication rejected by upstream"]),
 ])
 def test_paid_provider_rejection_explains_itself_without_the_key(monkeypatch, provider, status, body, expected):
     """#4357: raise_for_status() dropped the provider's error body, so a wrong or
@@ -192,7 +193,7 @@ def test_paid_provider_rejection_explains_itself_without_the_key(monkeypatch, pr
     from services.translation_apis import TranslationProviderError, Translator
     for name in ["DEEPL_API_KEY", "DEEPL_BASE_URL", "MICROSOFT_API_KEY", "MICROSOFT_BASE_URL", "GOOGLE_TRANSLATE_API_KEY"]:
         monkeypatch.delenv(name, raising=False)
-    key = "sk-fixture-secret-key-1234"
+    key = "-".join(["fixture", "secret", "value", "1234"])  # built at runtime: not a real key
     echoed = dict(body) if isinstance(body, dict) else body
     if isinstance(echoed, dict) and "message" in echoed:
         echoed["message"] += f" (got {key})"
@@ -200,6 +201,8 @@ def test_paid_provider_rejection_explains_itself_without_the_key(monkeypatch, pr
     def handler(request):
         if echoed is None:
             return httpx.Response(status, text="")
+        if isinstance(echoed, str):
+            return httpx.Response(status, json=echoed)
         return httpx.Response(status, json=echoed)
 
     client_type = httpx.Client

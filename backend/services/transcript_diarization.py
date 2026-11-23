@@ -98,6 +98,10 @@ def diarize_segments(
 
             scope = current_cancellation()
             with _diarizable_audio(audio_path) as source:
+                # Decoding can take a while; a request abandoned meanwhile must
+                # not start the native child at all.
+                if scope and scope.cancelled.is_set():
+                    return [None] * len(segments), "DIARIZATION_FAILED"
                 diarization = pipeline(
                     source, cancel_check=scope.cancelled.is_set if scope else None
                 )

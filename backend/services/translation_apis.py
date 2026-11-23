@@ -71,7 +71,7 @@ def _provider_detail(response, secret=""):
         body = response.json()
     except Exception:
         body = None
-    text = ""
+    text = body if isinstance(body, str) else ""
     if isinstance(body, dict):
         error = body.get("error")
         if isinstance(error, dict):

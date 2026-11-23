@@ -507,7 +507,8 @@ export function translationLaunchArgs(agent: RepairAgentId): string[] {
 // Plain-text provider failures some CLIs (Codex among them) print on stderr
 // instead of a JSON event. Only diagnostic-looking lines are considered, so
 // translated dialogue that happens to contain these words is not a match.
-const DIAGNOSTIC_LINE = /\b(error|fatal|failed|unauthori[sz]ed|forbidden|denied|status)\b/i;
+const DIAGNOSTIC_LINE =
+  /\b(error|fatal|failed|unauthori[sz]ed|forbidden|denied|status)\b|not logged in|log ?in (has )?expired|(usage|rate) limit (reached|exceeded)/i;
 const STDERR_FAILURES: ReadonlyArray<[RegExp, string, string]> = [
   [
     /\b40[13]\b|unauthori[sz]ed|invalid[ _-]?api[ _-]?key|not logged in|log ?in (has )?expired|token (has )?expired|authentication/i,
@@ -1080,7 +1081,9 @@ export async function registerRepairAgents(
         );
         translationChild.on('close', (code) =>
           finish(() => {
-            const providerFailure = agentProviderFailure(output, diagnostics);
+            // stderr is only evidence of a failure when the CLI failed: a CLI
+            // that logged a retried 429 and then answered must not be rejected.
+            const providerFailure = agentProviderFailure(output, code === 0 ? '' : diagnostics);
             if (providerFailure) {
               rejectPromise(providerFailure);
               return;
