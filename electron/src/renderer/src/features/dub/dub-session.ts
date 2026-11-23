@@ -784,8 +784,14 @@ export function restoreDubSegments() {
       !segment.translate_error &&
       !segment.translate_degraded &&
       !segment.translation_skipped
-    )
-      return segment;
+    ) {
+      // Already reads as the original (e.g. edited away and back): restoring
+      // still brings back its imported cue and formatting.
+      if (!segment.text_original) return segment;
+      const revived = withOriginalCueSource(segment);
+      if (revived !== segment) changed = true;
+      return revived;
+    }
     changed = true;
     return withOriginalCueSource(
       patchSegment(segment, {

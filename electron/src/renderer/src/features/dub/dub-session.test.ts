@@ -1169,6 +1169,13 @@ it('echoes an imported cue only while no paste or edit has replaced its words (#
   restoreDubSegments();
   expect(dubSession.state.segments[0].text).toBe('Hello');
   expect(await generatedCueId()).toBe('imp:0');
+  // Restore Original also revives a row already edited back to the original.
+  reset();
+  editDubSegment('0', { text: 'Bye' });
+  editDubSegment('0', { text: 'Hello' });
+  expect(await generatedCueId()).toBeUndefined();
+  restoreDubSegments();
+  expect(await generatedCueId()).toBe('imp:0');
 });
 
 it('resetDubSession drops the loaded source but keeps production preferences', () => {
