@@ -1,8 +1,16 @@
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { FilmIcon, FolderIcon, SearchIcon } from 'lucide-react';
+import { FilmIcon, FolderIcon, SearchIcon, Trash2Icon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { VirtualList } from '@/components/virtual-list';
 import { Button } from '@/components/ui/button';
@@ -11,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { formatRelative } from '../clone/format';
 import { longformSession, useLongformSession } from '../longform/longform-session';
 import type { DubProject } from '../projects/project-format';
-import { dubSession, openDubProject, useDubSession } from './dub-session';
+import { detachDubProject, dubSession, openDubProject, useDubSession } from './dub-session';
 import { DubSaveProject } from './dub-save-project';
 
 const SEARCH_ABOVE = 8;
@@ -29,6 +37,11 @@ interface Row {
 export function DubProjects({ active = true }: { active?: boolean }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const client = useQueryClient();
+  const [deleting, setDeleting] = useState<Row | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
+  const deletePending = useRef(false);
+  const cancelDelete = useRef<HTMLButtonElement>(null);
   const dub = useDubSession();
   const longform = useLongformSession();
   const [search, setSearch] = useState('');
@@ -36,12 +49,15 @@ export function DubProjects({ active = true }: { active?: boolean }) {
   const [opening, setOpening] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   useLayoutEffect(() => {
     if (!active) {
       request.current?.abort();
       request.current = null;
       setOpening(null);
       setConfirmation(null);
+      if (!deletePending.current) setDeleting(null);
     }
   }, [active]);
   useEffect(
@@ -71,6 +87,32 @@ export function DubProjects({ active = true }: { active?: boolean }) {
   // Opening replaces the working project, so it waits while a dub or render is running.
   const locked =
     !!longform.active || !!dub.recovery || !['idle', 'editing', 'done'].includes(dub.phase);
+
+  const remove = async () => {
+    if (!deleting || locked || opening || request.current || deletePending.current || !active)
+      return;
+    const row = deleting;
+    deletePending.current = true;
+    setDeletingBusy(true);
+    setError(null);
+    try {
+      await apiJson('/projects/' + encodeURIComponent(row.id), { method: 'DELETE' });
+      detachDubProject(row.id);
+      client.setQueryData<DubProject[]>(['projects'], (current) =>
+        (current || []).filter((project) => project.id !== row.id),
+      );
+      await client.invalidateQueries({ queryKey: ['projects'] });
+      setDeleting(null);
+    } catch (failure) {
+      setError(describeError(failure));
+    } finally {
+      deletePending.current = false;
+      setDeletingBusy(false);
+      // The pane went inactive mid-request: its effect left the dialog for
+      // this settlement to close (retry stays available on an active pane).
+      if (!activeRef.current) setDeleting(null);
+    }
+  };
 
   const open = async (id: string) => {
     if (!active || locked || request.current) return;
@@ -136,33 +178,48 @@ export function DubProjects({ active = true }: { active?: boolean }) {
             const when = formatRelative(row.updatedAt, i18n.language);
             return (
               <>
-                <button
-                  type="button"
-                  disabled={opening !== null || locked}
-                  aria-busy={opening === row.id}
-                  aria-current={active ? 'true' : undefined}
-                  onClick={() => setConfirmation(row.id)}
-                  className={cn(
-                    'flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-start outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
-                    active
-                      ? 'bg-accent/80 text-foreground'
-                      : 'text-foreground/85 hover:bg-accent/50 hover:text-foreground',
-                  )}
-                >
-                  <FilmIcon
-                    aria-hidden="true"
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={opening !== null || deletingBusy || locked}
+                    aria-busy={opening === row.id}
+                    aria-current={active ? 'true' : undefined}
+                    onClick={() => setConfirmation(row.id)}
                     className={cn(
-                      'size-4 shrink-0',
-                      active ? 'text-primary' : 'text-muted-foreground',
+                      'flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-start outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+                      active
+                        ? 'bg-accent/80 text-foreground'
+                        : 'text-foreground/85 hover:bg-accent/50 hover:text-foreground',
                     )}
-                  />
-                  <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                    <span className="truncate text-[13px] font-medium">{row.name}</span>
-                    {when && (
-                      <span className="truncate text-[11px] text-muted-foreground">{when}</span>
-                    )}
-                  </span>
-                </button>
+                  >
+                    <FilmIcon
+                      aria-hidden="true"
+                      className={cn(
+                        'size-4 shrink-0',
+                        active ? 'text-primary' : 'text-muted-foreground',
+                      )}
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                      <span className="truncate text-[13px] font-medium">{row.name}</span>
+                      {when && (
+                        <span className="truncate text-[11px] text-muted-foreground">{when}</span>
+                      )}
+                    </span>
+                  </button>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={t('common.delete') + ' ' + row.name}
+                    disabled={locked || opening !== null || deletingBusy}
+                    onClick={() => {
+                      setConfirmation(null);
+                      setError(null);
+                      setDeleting(row);
+                    }}
+                  >
+                    <Trash2Icon className="size-3.5" />
+                  </Button>
+                </div>
                 {confirmation === row.id && (
                   <div className="space-y-2 rounded-md bg-muted/40 p-2 text-xs">
                     <p>{t('projectActions.open', { name: row.name })}</p>
@@ -205,6 +262,41 @@ export function DubProjects({ active = true }: { active?: boolean }) {
           {error}
         </p>
       )}
+      <Dialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => {
+          if (!open && !deletePending.current) setDeleting(null);
+        }}
+      >
+        <DialogContent initialFocus={cancelDelete}>
+          <DialogHeader>
+            <DialogTitle>{t('common.delete') + ' ' + (deleting?.name || '')}</DialogTitle>
+            <DialogDescription>{t('projectActions.delete_hint')}</DialogDescription>
+          </DialogHeader>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              ref={cancelDelete}
+              variant="outline"
+              disabled={deletingBusy}
+              onClick={() => setDeleting(null)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={locked || deletingBusy}
+              onClick={() => void remove()}
+            >
+              {t(deletingBusy ? 'common.loading' : 'common.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Link
         to="/projects"
         className="flex h-9 shrink-0 items-center gap-2 border-t border-border/45 px-3 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"

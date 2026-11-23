@@ -1624,7 +1624,8 @@
     "open": "„{{name}}“ öffnen und den aktuellen Entwurf ersetzen? Speichere zuerst deine Arbeit.",
     "save_copy": "Kopie speichern",
     "new": "Neues Projekt",
-    "new_confirm": "Ein neues, leeres Projekt beginnen? Gespeicherte Projekte bleiben unverändert; ungespeicherte Änderungen am aktuellen Entwurf gehen verloren."
+    "new_confirm": "Ein neues, leeres Projekt beginnen? Gespeicherte Projekte bleiben unverändert; ungespeicherte Änderungen am aktuellen Entwurf gehen verloren.",
+    "delete_hint": "Nur das gespeicherte Projekt wird aus der Liste entfernt. Mediendateien und Stimmen bleiben erhalten."
   },
   "sidebar": {
     "save_project": "Dub-Projekt speichern",
