@@ -83,8 +83,10 @@ def complete(words):
     if skip and previous:
         return []  # a value the user supplies (URL, file, number): let the shell offer files
     if current.startswith('-'):
-        options = _options(_parser(path)) if is_command else {
-            '--help': 'Show help', '--json': 'Print machine-readable JSON', '--version': 'Show the installed version'}
+        options = _options(_parser(path if is_command else ())) if not path or is_command else {
+            flag: description for flag, description in _options(_parser(())).items()
+            if flag != '--version'
+        }
         return [f'{flag}\t{text}' for flag, text in sorted(options.items()) if flag.startswith(current)]
     if not is_command or joined in groups:
         children = _children(path, commands, groups)
