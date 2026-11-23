@@ -151,15 +151,10 @@ def multipart(fields: dict, files: dict):
         raise
 
 
-def _write_download(response, stream):
-    received = 0
-    while chunk := response.read(CHUNK):
-        stream.write(chunk)
-        received += len(chunk)
+def _validate_download_size(response, received):
     expected = response.headers.get('Content-Length')
     if expected is not None and received != int(expected):
         raise CLIError('incomplete_response', 'Download ended before all bytes arrived')
-    return received
 
 
 def download(response, destination: str, *, overwrite: bool = False) -> dict:
@@ -167,15 +162,23 @@ def download(response, destination: str, *, overwrite: bool = False) -> dict:
     if destination == '-':
         if is_terminal(sys.stdout):
             raise CLIError('usage_error', 'Refusing binary output to a terminal; use --output <file>', exit_code=2)
-        _write_download(response, sys.stdout.buffer)
+        received = 0
+        while chunk := response.read(CHUNK):
+            sys.stdout.buffer.write(chunk)
+            received += len(chunk)
+        _validate_download_size(response, received)
         return {'output': '-'}
     path = Path(destination).expanduser()
     if path.exists() and not overwrite:
         raise CLIError('output_exists', f'Output already exists: {path}. Use --overwrite to replace it.')
     fd, name = tempfile.mkstemp(prefix='.' + path.name + '-', suffix='.part', dir=path.parent)
+    received = 0
     try:
         with os.fdopen(fd, 'wb') as stream:
-            received = _write_download(response, stream)
+            while chunk := response.read(CHUNK):
+                stream.write(chunk)
+                received += len(chunk)
+        _validate_download_size(response, received)
         if overwrite:
             os.replace(name, path)
         else:
