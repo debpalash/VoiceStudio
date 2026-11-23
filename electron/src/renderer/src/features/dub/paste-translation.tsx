@@ -26,38 +26,31 @@ export function PasteTranslation({ segments, disabled, onApply, onClose }: Paste
   const { t } = useTranslation();
   const fileInput = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
-  const [cues, setCues] = useState<PasteTranslationCue[] | null>(null);
-  const [parsing, setParsing] = useState(false);
-  const [parseFailed, setParseFailed] = useState(false);
+  const [parsed, setParsed] = useState<{
+    text: string;
+    cues: PasteTranslationCue[];
+    failed: boolean;
+  } | null>(null);
   const [readFailed, setReadFailed] = useState(false);
   const mode = useMemo(() => detectPasteMode(text), [text]);
+  const currentParse = mode === 'timestamped' && parsed?.text === text ? parsed : null;
+  const parsing = mode === 'timestamped' && currentParse === null;
 
   useEffect(() => {
-    if (mode !== 'timestamped' || !text.trim()) {
-      setCues(null);
-      setParsing(false);
-      setParseFailed(false);
-      return;
-    }
+    if (mode !== 'timestamped') return;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      setCues(null);
-      setParsing(true);
-      setParseFailed(false);
       void apiJson<{ segments: PasteTranslationCue[] }>('/dub/parse-subtitle-text', {
         method: 'POST',
         signal: controller.signal,
         body: JSON.stringify({ text }),
       })
-        .then((result) => setCues(result.segments || []))
-        .catch(() => {
-          if (!controller.signal.aborted) {
-            setCues([]);
-            setParseFailed(true);
-          }
+        .then((result) => {
+          if (!controller.signal.aborted)
+            setParsed({ text, cues: result.segments || [], failed: false });
         })
-        .finally(() => {
-          if (!controller.signal.aborted) setParsing(false);
+        .catch(() => {
+          if (!controller.signal.aborted) setParsed({ text, cues: [], failed: true });
         });
     }, 300);
     return () => {
@@ -67,9 +60,9 @@ export function PasteTranslation({ segments, disabled, onApply, onClose }: Paste
   }, [mode, text]);
 
   const plan = useMemo(() => {
-    if (!text.trim() || (mode === 'timestamped' && cues === null)) return null;
-    return buildPastePlan(text, segments, { mode, cues: cues || [] });
-  }, [cues, mode, segments, text]);
+    if (!text.trim() || parsing) return null;
+    return buildPastePlan(text, segments, { mode, cues: currentParse?.cues || [] });
+  }, [currentParse, mode, parsing, segments, text]);
 
   const readFile = (file?: File) => {
     if (!file) return;
@@ -147,7 +140,7 @@ export function PasteTranslation({ segments, disabled, onApply, onClose }: Paste
             </span>
           )}
         </div>
-        {(parseFailed || (plan && plan.matchedCount === 0)) && (
+        {(currentParse?.failed || (plan && plan.matchedCount === 0)) && (
           <p role="alert" className="flex items-center gap-2 text-xs text-destructive">
             <AlertTriangleIcon className="size-3.5" />
             {t('dub.paste_translation_none_matched')}
