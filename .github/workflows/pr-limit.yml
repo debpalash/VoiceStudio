@@ -1,0 +1,43 @@
+# Keep each outside contributor to at most two open pull requests.
+#
+# A flood of micro pull requests from one author starves review and the
+# repository's shared runner slots. The owner, members, collaborators and bots
+# are exempt; for anyone else a pull request beyond their oldest two open ones
+# is closed with a comment (.github/scripts/enforce_pr_limit.py).
+#
+# Security: pull_request_target holds a write token, so this checks out only the
+# base commit and never runs pull-request code; tests/test_cla_workflow.py
+# enforces that for every privileged workflow.
+name: pr-limit
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pr-limit-${{ github.event.pull_request.user.login }}
+  cancel-in-progress: false
+
+jobs:
+  limit:
+    name: Open pull request limit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Close a pull request beyond the author's limit
+        run: python3 .github/scripts/enforce_pr_limit.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          ASSOCIATION: ${{ github.event.pull_request.author_association }}
