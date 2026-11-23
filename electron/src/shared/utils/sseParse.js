@@ -20,10 +20,15 @@
  */
 export function splitSSEBuffer(buffer, afterCR = false) {
   let text = buffer || '';
-  if (afterCR && text.startsWith('\n')) text = text.slice(1);
+  // The pending CR survives only an empty chunk; its LF (if it comes) clears it.
+  let pending = afterCR;
+  if (pending && text.startsWith('\n')) {
+    text = text.slice(1);
+    pending = false;
+  }
   const parts = text.split(/\r\n|\r|\n/);
   const rest = parts.pop() ?? ''; // last part has no line ending yet
-  return { lines: parts, rest, endsWithCR: text ? text.endsWith('\r') : afterCR };
+  return { lines: parts, rest, endsWithCR: text ? text.endsWith('\r') : pending };
 }
 
 /**
