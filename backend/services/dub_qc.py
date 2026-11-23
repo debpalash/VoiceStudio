@@ -71,7 +71,17 @@ def _tokens(text: str) -> list[str]:
 
 def _edit_distance(a: list[str], b: list[str]) -> int:
     """Levenshtein distance between two token lists (iterative, O(len(a)*len(b))
-    time, O(len(b)) space)."""
+    time, O(len(b)) space on the differing spans)."""
+    # Matching prefixes and suffixes add no edit cost. Remove them before
+    # allocating DP rows so a long cue with one correction stays cheap.
+    prefix = 0
+    a_end, b_end = len(a), len(b)
+    while prefix < min(a_end, b_end) and a[prefix] == b[prefix]:
+        prefix += 1
+    while a_end > prefix and b_end > prefix and a[a_end - 1] == b[b_end - 1]:
+        a_end -= 1
+        b_end -= 1
+    a, b = a[prefix:a_end], b[prefix:b_end]
     if not a:
         return len(b)
     if not b:
