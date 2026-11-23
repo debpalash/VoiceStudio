@@ -1418,3 +1418,20 @@ it('warns when a cached job has no background stem (#3751)', async () => {
   expect(warning.mock.calls.map((call) => call[0])).toEqual(['dub.bg_separation_failed']);
   warning.mockRestore();
 });
+
+
+it('keeps the full timeline span when merging a nested cue', () => {
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    segments: [
+      { id: 'a', start: 1, end: 6, text: 'First line' },
+      { id: 'b', start: 3, end: 4, text: 'Interjection' },
+    ],
+  }));
+  mergeDubSegment('a');
+  expect(dubSession.state.segments).toMatchObject([
+    { id: 'a', start: 1, end: 6, text: 'First line Interjection' },
+  ]);
+});

@@ -896,7 +896,8 @@ export function mergeDubSegment(id: string, direction: 'prev' | 'next' = 'next')
     text: `${first.text || ''} ${second.text || ''}`.trim(),
     text_original:
       `${first.text_original || first.text || ''} ${second.text_original || second.text || ''}`.trim(),
-    end: second.end,
+    start: Math.min(first.start, second.start),
+    end: Math.max(first.end, second.end),
     translations: Object.keys(translations).length ? translations : undefined,
     agent_generated_lang: undefined,
     agent_generated_langs: undefined,
