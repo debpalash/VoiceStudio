@@ -137,6 +137,7 @@ describe('buildLyricsTimeline — proportional fallback (reload case)', () => {
     expect(buildLyricsTimeline(SCRIPT, {})).toEqual({ chapters: [], words: [] });
     expect(buildLyricsTimeline(SCRIPT, { duration: 0 })).toEqual({ chapters: [], words: [] });
     expect(buildLyricsTimeline(SCRIPT, { duration: NaN })).toEqual({ chapters: [], words: [] });
+    expect(buildLyricsTimeline(SCRIPT, { duration: Infinity })).toEqual({ chapters: [], words: [] });
   });
 
   it('yields nothing for a blank script', () => {

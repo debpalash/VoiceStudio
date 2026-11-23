@@ -90,8 +90,8 @@ export function buildLyricsTimeline(script, { chapters = null, duration = 0 } = 
     return { chapters: outChapters, words };
   }
 
-  const total = Number(duration) || 0;
-  if (total <= 0) return empty;
+  const total = Number(duration);
+  if (!Number.isFinite(total) || total <= 0) return empty;
   const totalTokens = parsed.reduce((n, c) => n + c.tokens.length, 0);
   if (!totalTokens) return empty;
   // Proportional even split: every word owns the same slice of the file, so
