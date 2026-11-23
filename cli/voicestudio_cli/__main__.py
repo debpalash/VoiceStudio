@@ -1,5 +1,6 @@
 """Command tree and shared terminal contracts."""
 import argparse
+from codecs import BOM_UTF8
 import difflib
 import io
 import json
@@ -417,7 +418,16 @@ def assignments(items):
 
 
 def read_text(path):
-    return sys.stdin.read() if path == '-' else Path(path).expanduser().read_text(encoding='utf-8')
+    if path == '-':
+        stdin = sys.stdin
+        if not is_terminal(stdin) and (stream := getattr(stdin, 'buffer', None)) is not None:
+            data = stream.read()
+            if data.startswith(BOM_UTF8):
+                return data.decode('utf-8-sig')
+            # Keep the configured encoding for pipes that do not declare one.
+            return data.decode(stdin.encoding or 'utf-8', errors=stdin.errors or 'strict')
+        return stdin.read().removeprefix('\ufeff')
+    return Path(path).expanduser().read_text(encoding='utf-8-sig')
 
 
 def document(path):
