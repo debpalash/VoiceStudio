@@ -18,18 +18,29 @@ def _pr(number, login):
     return {"number": number, "user": {"login": login}}
 
 
-def test_the_oldest_two_stay_open_and_a_third_is_over_the_limit():
+def test_a_third_pull_request_is_closed_and_two_stay_open():
     limit = _script()
     prs = [_pr(10, "a"), _pr(12, "a"), _pr(11, "b"), _pr(15, "a")]
-    assert limit.over_limit(10, "a", prs) == []
-    assert limit.over_limit(12, "a", prs) == []
-    assert limit.over_limit(15, "a", prs) == [10, 12]
-    assert limit.over_limit(11, "b", prs) == []
+    assert limit.plan(15, "a", prs) == ([10, 12], [15])
+    assert limit.plan(11, "b", prs) == ([11], [])
+    assert limit.plan(12, "a", [_pr(10, "a"), _pr(12, "a")]) == ([10, 12], [])
 
 
 def test_a_pull_request_missing_from_the_listing_still_counts():
     limit = _script()
-    assert limit.over_limit(20, "a", [_pr(10, "a"), _pr(12, "a")]) == [10, 12]
+    assert limit.plan(20, "a", [_pr(10, "a"), _pr(12, "a")]) == ([10, 12], [20])
+
+
+def test_reopening_an_older_pull_request_closes_that_one():
+    limit = _script()
+    prs = [_pr(3, "a"), _pr(10, "a"), _pr(12, "a")]
+    assert limit.plan(3, "a", prs) == ([10, 12], [3])
+
+
+def test_a_pull_request_a_skipped_run_missed_is_closed_too():
+    limit = _script()
+    prs = [_pr(1, "a"), _pr(2, "a"), _pr(4, "a"), _pr(5, "a")]
+    assert limit.plan(5, "a", prs) == ([1, 2], [4, 5])
 
 
 def test_maintainers_and_bots_are_exempt():
@@ -49,3 +60,4 @@ def test_the_workflow_runs_on_open_and_reopen_and_passes_event_data_via_env():
     step = workflow["jobs"]["limit"]["steps"][1]
     assert "${{" not in step["run"]
     assert step["env"]["ASSOCIATION"] == "${{ github.event.pull_request.author_association }}"
+    assert workflow["permissions"] == {"contents": "read", "pull-requests": "write"}

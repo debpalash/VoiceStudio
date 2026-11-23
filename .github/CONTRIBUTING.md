@@ -222,7 +222,7 @@ Open an [issue](https://github.com/debpalash/VoiceStudio/issues/new) with:
 
 **At most two open pull requests per contributor.** Unless you are the owner, a
 member or a collaborator, keep no more than two pull requests open at once. A
-newer one is closed automatically with a comment (`.github/workflows/pr-limit.yml`);
+third one, including one you reopen, is closed automatically with a comment (`.github/workflows/pr-limit.yml`);
 reopen or resubmit it once one of your open pull requests is merged or closed.
 Batch related small fixes into one pull request rather than opening many.
 

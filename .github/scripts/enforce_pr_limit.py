@@ -3,8 +3,8 @@
 
 Run from the base branch on ``pull_request_target`` (opened / reopened). The
 repository owner, organisation members, collaborators and bots are exempt. For
-anyone else, their oldest ``LIMIT`` open pull requests stay open; a newer one is
-closed with a comment explaining the limit, so review and CI capacity go to
+anyone else, their oldest ``LIMIT`` other open pull requests stay open; the
+opened or reopened one, and any other beyond the limit, is closed with a comment explaining the limit, so review and CI capacity go to
 pull requests that can be reviewed.
 
 Security: no pull-request code is checked out or executed. The script only
@@ -33,13 +33,20 @@ def is_exempt(association: str, user_type: str) -> bool:
     return association.upper() in EXEMPT_ASSOCIATIONS or user_type == "Bot"
 
 
-def over_limit(number: int, author: str, open_prs: list[dict], limit: int = LIMIT) -> list[int]:
-    """The author's open PRs ahead of ``number`` when ``number`` exceeds the limit, else []."""
-    mine = sorted(pr["number"] for pr in open_prs if (pr.get("user") or {}).get("login") == author)
-    if number not in mine:
-        mine = sorted({*mine, number})
-    kept = mine[:limit]
-    return [] if number in kept else kept
+def plan(number: int, author: str, open_prs: list[dict], limit: int = LIMIT) -> tuple[list[int], list[int]]:
+    """``(kept, to_close)`` for ``author``'s open pull requests.
+
+    The author's other open pull requests are kept oldest first, and the
+    triggering one ``number`` comes last, so a newly opened or reopened pull
+    request is the first to close. Every run reconciles the whole set, so a pull
+    request that a skipped or superseded run never checked is closed too.
+    """
+    others = sorted(
+        pr["number"] for pr in open_prs
+        if (pr.get("user") or {}).get("login") == author and pr["number"] != number
+    )
+    ordered = [*others, number]
+    return ordered[:limit], ordered[limit:]
 
 
 def _api(method: str, path: str, token: str, body: dict | None = None):
@@ -76,15 +83,16 @@ def main() -> int:
     if is_exempt(os.environ.get("ASSOCIATION", ""), os.environ.get("AUTHOR_TYPE", "")):
         print(f"#{number}: {author} is exempt")
         return 0
-    ahead = over_limit(number, author, open_pulls(repo, token))
-    if not ahead:
+    kept, to_close = plan(number, author, open_pulls(repo, token))
+    if not to_close:
         print(f"#{number}: within the limit")
         return 0
-    others = ", ".join(f"#{n}" for n in ahead)
-    _api("POST", f"/repos/{repo}/issues/{number}/comments", token,
-         {"body": MESSAGE.format(open_count=len(ahead), others=others)})
-    _api("PATCH", f"/repos/{repo}/pulls/{number}", token, {"state": "closed"})
-    print(f"#{number}: closed ({author} already has {others} open)")
+    others = ", ".join(f"#{n}" for n in kept)
+    for closing in to_close:
+        _api("POST", f"/repos/{repo}/issues/{closing}/comments", token,
+             {"body": MESSAGE.format(open_count=len(kept), others=others)})
+        _api("PATCH", f"/repos/{repo}/pulls/{closing}", token, {"state": "closed"})
+        print(f"#{closing}: closed ({author} keeps {others} open)")
     return 0
 
 
