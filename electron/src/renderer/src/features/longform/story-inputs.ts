@@ -6,7 +6,7 @@ export function storyVoicesReady(draft: Draft, profiles: { id: string }[]) {
   if (
     draft.lines.some((line) => {
       // A `# Title` chapter marker is never spoken, and its row hides the voice chip.
-      if (isChapterLine(line.text)) return false;
+      if (!line.text.trim() || isChapterLine(line.text)) return false;
       const id = line.profileId || draft.cast.find((c) => c.id === line.character)?.profileId;
       return id && !profiles.some((p) => p.id === id);
     })
