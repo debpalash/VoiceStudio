@@ -60,7 +60,16 @@ def _make_pread_safe_open(original):
         # transformers, but positionally legal (`safe_open(f, "pt", "cpu")`).
         device = kwargs.get("device", args[0] if args else None)
         if device is None or str(device) in ("cpu", "mps"):
-            kwargs["backend"] = "pread"
+            chosen = kwargs.pop("backend", None)
+            try:
+                return original(filename, framework, *args, backend="pread", **kwargs)
+            except TypeError as exc:
+                # A safetensors older than the lock has no ``backend``
+                # parameter: read the way it always did rather than fail.
+                if "backend" not in str(exc):
+                    raise
+            if chosen is not None:
+                kwargs["backend"] = chosen
         return original(filename, framework, *args, **kwargs)
 
     safe_open.__name__ = getattr(original, "__name__", "safe_open")

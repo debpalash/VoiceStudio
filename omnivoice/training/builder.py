@@ -98,6 +98,10 @@ def build_model_and_tokenizer(
         original_level = hf_logging.get_verbosity()
         hf_logging.set_verbosity_error()  # suppress expected lm_head.weight warnings
 
+        # Windows: read the base LLM's weights with pread too (#4142).
+        from omnivoice.utils.safetensors_pread import install_pread_backend
+
+        install_pread_backend()
         llm = AutoModel.from_pretrained(
             config.llm_name_or_path,
             attn_implementation="flex_attention",

@@ -25,12 +25,6 @@ from pathlib import Path
 
 import pytest
 
-from omnivoice.utils.safetensors_pread import (
-    ENV_OPT_OUT,
-    _make_pread_safe_open,
-    install_pread_backend,
-)
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -42,6 +36,9 @@ def _restore_safe_open_bindings():
     teardown, so the wrapper installed by one test can never leak into
     another — the suite must keep exercising stock safetensors.
     """
+    import safetensors
+
+    stock = safetensors.safe_open
     snapshot = {
         name: mod.safe_open
         for name, mod in list(sys.modules.items())
@@ -52,6 +49,27 @@ def _restore_safe_open_bindings():
         mod = sys.modules.get(name)
         if isinstance(mod, types.ModuleType) and "safe_open" in vars(mod):
             mod.safe_open = original
+    # Modules first imported during a test are not in the snapshot.
+    for mod in list(sys.modules.values()):
+        if isinstance(mod, types.ModuleType) and getattr(
+            vars(mod).get("safe_open"), "_voicestudio_pread", False
+        ):
+            mod.safe_open = stock
+
+
+def _pread():
+    """The module under test, resolved at run time (sys.modules can be swapped)."""
+    import importlib
+
+    return importlib.import_module("omnivoice.utils.safetensors_pread")
+
+
+def _make_pread_safe_open(original):
+    return _pread()._make_pread_safe_open(original)
+
+
+def install_pread_backend():
+    return _pread().install_pread_backend()
 
 
 def _spy():
@@ -115,7 +133,7 @@ def test_install_honors_the_opt_out(monkeypatch):
 
     original = safetensors.safe_open
     monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setenv(ENV_OPT_OUT, "0")
+    monkeypatch.setenv(_pread().ENV_OPT_OUT, "0")
     assert install_pread_backend() is False
     assert safetensors.safe_open is original
 
@@ -124,7 +142,7 @@ def test_install_wraps_rebinds_and_never_double_wraps(monkeypatch):
     import safetensors
 
     monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.delenv(ENV_OPT_OUT, raising=False)
+    monkeypatch.delenv(_pread().ENV_OPT_OUT, raising=False)
     original = safetensors.safe_open
 
     # A module that bound safe_open BEFORE the patch — transformers.modeling_utils
@@ -156,7 +174,7 @@ def test_patched_open_reads_real_bytes(tmp_path, monkeypatch):
     st_np.save_file({"w": np.array([1.5, -2.5], dtype=np.float32)}, str(path))
 
     monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.delenv(ENV_OPT_OUT, raising=False)
+    monkeypatch.delenv(_pread().ENV_OPT_OUT, raising=False)
     assert install_pread_backend() is True
 
     with safetensors.safe_open(str(path), "numpy") as f:
@@ -180,3 +198,23 @@ def test_from_pretrained_installs_the_guard_before_the_load():
     install = src.index("install_pread_backend()")
     load = src.index("model = super().from_pretrained(")
     assert install < load
+
+
+def test_an_older_safetensors_without_backend_still_reads():
+    """Sidecar venvs may hold a safetensors that predates ``backend``: the
+    wrapper falls back to the caller's own arguments instead of failing."""
+    calls = []
+
+    def old_safe_open(filename, framework, device=None):
+        calls.append(device)
+        return "opened"
+
+    wrapped = _make_pread_safe_open(old_safe_open)
+    assert wrapped("w.safetensors", "pt", device="cpu") == "opened"
+    assert calls == ["cpu"]
+
+    def broken(filename, framework, **kwargs):
+        raise TypeError("unrelated failure")
+
+    with pytest.raises(TypeError, match="unrelated"):
+        _make_pread_safe_open(broken)("w.safetensors", "pt", device="cpu")
