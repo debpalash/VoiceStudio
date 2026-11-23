@@ -137,7 +137,8 @@ export function parseScript(text) {
 
   for (const para of paras) {
     // 1. Screenplay "NAME: dialogue" (avoid matching URLs like http://…)
-    const sp = para.match(/^([A-Za-z][A-Za-z0-9 ._'-]{0,30}):\s+(.+)$/);
+    // Fullwidth colons conventionally have no following space in CJK text.
+    const sp = para.match(/^(\p{L}[\p{L}\p{M}\p{N} ._'\u2019\u3000-]{0,30})(?::\s+|\uff1a\s*)(.+)$/u);
     if (sp && !/^https?$/i.test(sp[1].trim())) {
       out.push({ speaker: normalizeSpeaker(sp[1]), text: sp[2].trim() });
       continue;
