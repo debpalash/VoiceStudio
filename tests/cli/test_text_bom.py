@@ -29,3 +29,16 @@ def test_cli_reads_utf8_bom_in_json_and_script_input(stdin, tmp_path, monkeypatc
     else:
         path.write_text(script, encoding="utf-8")
     assert read_text(source) == "Hello\ufeff there"
+
+
+def test_piped_utf8_bom_takes_precedence_over_the_console_code_page(monkeypatch):
+    from voicestudio_cli.__main__ import document, read_text
+
+    data = '\ufeff{"text": "Caf\u00e9"}'.encode("utf-8")
+    with io.TextIOWrapper(io.BytesIO(data), encoding="cp1252") as pipe:
+        monkeypatch.setattr(sys, "stdin", pipe)
+        assert document("-") == {"text": "Caf\u00e9"}
+
+    with io.TextIOWrapper(io.BytesIO(b"Caf\xe9"), encoding="cp1252") as pipe:
+        monkeypatch.setattr(sys, "stdin", pipe)
+        assert read_text("-") == "Caf\u00e9"
