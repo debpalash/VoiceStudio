@@ -42,3 +42,11 @@ def test_piped_utf8_bom_takes_precedence_over_the_console_code_page(monkeypatch)
     with io.TextIOWrapper(io.BytesIO(b"Caf\xe9"), encoding="cp1252") as pipe:
         monkeypatch.setattr(sys, "stdin", pipe)
         assert read_text("-") == "Caf\u00e9"
+
+
+def test_piped_script_keeps_universal_newlines(monkeypatch):
+    from voicestudio_cli.__main__ import read_text
+
+    with io.TextIOWrapper(io.BytesIO(b"Hello\r\nWorld\r"), encoding="utf-8") as pipe:
+        monkeypatch.setattr(sys, "stdin", pipe)
+        assert read_text("-") == "Hello\nWorld\n"

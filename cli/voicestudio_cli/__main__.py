@@ -423,9 +423,12 @@ def read_text(path):
         if not is_terminal(stdin) and (stream := getattr(stdin, 'buffer', None)) is not None:
             data = stream.read()
             if data.startswith(BOM_UTF8):
-                return data.decode('utf-8-sig')
-            # Keep the configured encoding for pipes that do not declare one.
-            return data.decode(stdin.encoding or 'utf-8', errors=stdin.errors or 'strict')
+                text = data.decode('utf-8-sig')
+            else:
+                # Keep the configured encoding for pipes that do not declare one.
+                text = data.decode(stdin.encoding or 'utf-8', errors=stdin.errors or 'strict')
+            # Reading the buffer bypasses TextIOWrapper's universal newlines.
+            return text.replace('\r\n', '\n').replace('\r', '\n')
         return stdin.read().removeprefix('\ufeff')
     return Path(path).expanduser().read_text(encoding='utf-8-sig')
 
