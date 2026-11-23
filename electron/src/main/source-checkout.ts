@@ -71,7 +71,6 @@ export function inspectSourceCheckout(picked: string): SourceCheckoutResult {
   // The nearest enclosing clone wins, even past a nested repository such as
   // a git dependency inside node_modules.
   let root = chain.find((dir) => isGitRoot(dir) && hasMarkers(dir));
-  const gitRoot = chain.find(isGitRoot);
   if (!root) {
     // The folder `git clone` ran in (it may itself sit inside another repo,
     // such as a dotfiles home): accept it only when the choice is unambiguous.
@@ -80,7 +79,6 @@ export function inspectSourceCheckout(picked: string): SourceCheckoutResult {
   }
   if (!root) {
     if (chain.some(isInstalledApp)) return { ok: false, reason: 'installed_app' };
-    if (gitRoot) return { ok: false, reason: 'not_voicestudio' };
     return { ok: false, reason: hasMarkers(start) ? 'not_git' : 'not_voicestudio' };
   }
   if (!writable(root)) return { ok: false, reason: 'read_only' };
