@@ -214,3 +214,15 @@ def test_paid_provider_rejection_explains_itself_without_the_key(monkeypatch, pr
         assert part in message
     assert key not in message
     assert caught.value.status == status
+
+
+def test_a_short_echoed_key_is_still_redacted(monkeypatch):
+    from services.translation_apis import TranslationProviderError, Translator
+    for name in ["DEEPL_API_KEY", "DEEPL_BASE_URL"]:
+        monkeypatch.delenv(name, raising=False)
+    client_type = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: client_type(
+        transport=httpx.MockTransport(lambda r: httpx.Response(403, json="key abc rejected")), **kw))
+    with pytest.raises(TranslationProviderError) as caught:
+        Translator("deepl", "auto", "de", api_key="abc").translate("hello")
+    assert "abc" not in str(caught.value)

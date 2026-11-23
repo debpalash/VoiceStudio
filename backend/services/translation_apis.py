@@ -85,7 +85,7 @@ def _provider_detail(response, secret=""):
         except Exception:
             text = ""
     text = " ".join(str(text).split())
-    if secret and len(secret) >= 4:
+    if secret:
         text = text.replace(secret, "[redacted]")
     return text[:_DETAIL_LIMIT]
 
