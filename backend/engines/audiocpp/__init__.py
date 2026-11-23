@@ -82,9 +82,9 @@ def _cpu_thread_count() -> int:
     return min(16, max(1, cores or os.cpu_count() or 1))
 
 
-def _device_min_vram_gb(device) -> float:
+def _device_min_vram_gb(device, floor_gb: float = 6.0) -> float:
     """Dedicated-memory comfort floor for one discovered native device."""
-    return 6.0 if (
+    return floor_gb if (
         device
         and device.kind == "GPU"
         and (
@@ -265,7 +265,7 @@ class AudioCPPBackend(TTSBackend):
             }
         selected = selection.device
         accelerated = selected.target != "cpu"
-        min_vram_gb = _device_min_vram_gb(selected)
+        min_vram_gb = _device_min_vram_gb(selected, floor_gb=cls._package().min_vram_gb)
         dedicated = min_vram_gb > 0
         reason = selection.fallback_reason
         if accelerated and dedicated and reason is None:
@@ -539,7 +539,7 @@ class AudioCPPBackend(TTSBackend):
         with self._lock:
             self._ensure_loaded()
             selected = self._selection.device if self._selection else None
-            min_vram_gb = _device_min_vram_gb(selected)
+            min_vram_gb = _device_min_vram_gb(selected, floor_gb=self._package().min_vram_gb)
             request_budget = generate_timeout_s(
                 text,
                 execution_device=selected.target if selected else "cpu",
@@ -648,11 +648,82 @@ class AudioCPPDotsBackend(AudioCPPBackend):
         return None, self._DEFAULT_GUIDANCE_SCALE
 
 
+
+
+#: Engine id of the Fish Audio Drama 3 package (#3129).
+DRAMA3_ENGINE_ID = "audiocpp-drama3"
+
+
+class AudioCPPDrama3Backend(AudioCPPBackend):
+    """Fish Audio Drama 3 (35B-A3B MoE) through the managed ``audiocpp_server``.
+
+    Requires audio.cpp v0.9.4 (``fish_drama3`` family) and a 24 GB+ GPU for the
+    pinned Q3_K_S GGUF (~18.93 GiB, self-contained with tokenizer and 44.1 kHz
+    Fish DAC codec). Direction and emotion control rides inline/scoped tags in
+    ``text`` (e.g. ``[laughs]``, ``<whisper>...</whisper>``), not a separate
+    voice-design ``description`` field. Built with Fish Audio (Fish Audio
+    Community License v1.0).
+    """
+
+    id = DRAMA3_ENGINE_ID
+    display_name = (
+        "audio.cpp · Drama 3 (native GGUF, 35B MoE multilingual; "
+        "Fish Audio Community License)"
+    )
+    supports_voice_design = False
+    _package_name = "DRAMA3"
+    _DEFAULT_SAMPLE_RATE = 44100
+    supports_num_step = False
+    supports_guidance_scale = False
+
+    @classmethod
+    def is_available(cls) -> tuple[bool, str]:
+        ok, reason = super().is_available()
+        if not ok:
+            return ok, reason
+        from engines.audiocpp import bootstrap
+
+        binary = bootstrap.resolve_server_binary()
+        legacy = bootstrap.legacy_runtime_version(binary)
+        if legacy is not None:
+            return False, (
+                f"{cls._package().label} requires audio.cpp {bootstrap.VERSION} "
+                f"(found legacy {legacy}) — install {bootstrap.VERSION} in Settings."
+            )
+        return ok, reason
+
+    def _ensure_loaded(self) -> None:
+        from engines.audiocpp import bootstrap
+
+        binary = bootstrap.resolve_server_binary()
+        legacy = bootstrap.legacy_runtime_version(binary)
+        if legacy is not None:
+            raise RuntimeError(
+                f"{self._package().label} requires audio.cpp {bootstrap.VERSION} "
+                f"(found legacy {legacy}) — install {bootstrap.VERSION} in Settings."
+            )
+        super()._ensure_loaded()
+
+    @property
+    def supported_languages(self) -> list[str]:
+        return ["multi"]
+
+    def _request_options(self, kw: dict, ref_audio) -> tuple[str | None, float]:
+        if kw.get("instruct") or kw.get("description"):
+            logger.info(
+                "audio.cpp Drama 3: use inline/scoped tags in text for direction; "
+                "ignoring separate instructions/description."
+            )
+        return None, 1.0
+
+
 __all__ = [
     "DOTS_ENGINE_ID",
+    "DRAMA3_ENGINE_ID",
     "ENGINE_ID",
     "AudioCPPBackend",
     "AudioCPPDotsBackend",
+    "AudioCPPDrama3Backend",
     "build_server_config",
     "build_speech_payload",
     "decode_speech_json",

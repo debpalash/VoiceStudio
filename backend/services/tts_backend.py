@@ -4204,6 +4204,7 @@ _LAZY_REGISTRY: dict[str, tuple[str, str]] = {
     # dots.tts SOAR on the same managed audio.cpp runtime (#2665): native on
     # Windows too, unlike the venv `dots-tts` engine. Gated like `audiocpp`.
     "audiocpp-dots": ("engines.audiocpp", "AudioCPPDotsBackend"),
+    "audiocpp-drama3": ("engines.audiocpp", "AudioCPPDrama3Backend"),
     # Community CosyVoice.cpp GGUF server, explicitly installed and isolated.
     "cosyvoice-gguf": ("engines.cosyvoice_gguf", "CosyVoiceGGUFBackend"),
 }
@@ -4314,6 +4315,7 @@ _INSTALL_HINTS: dict[str, str] = {
     "ming-tts":      "git clone inclusionAI/Ming-3.0-tts + set OMNIVOICE_MING_TTS_DIR  (own Python 3.10 venv, transformers==4.46.3; 0.5B, ~3 GB weights auto-download; 7 langs zero-shot clone; NVIDIA CUDA only; MIT)",
     "audiocpp":     "download the matching audio.cpp v0.9.4 prebuilt + set OMNIVOICE_AUDIOCPP_BIN, then explicitly install Breeze-TTS-2 in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF server, no Python; en+zh clone+design; ~4.73 GiB; weights research/non-commercial only)",
     "audiocpp-dots": "download the matching audio.cpp v0.9.4 prebuilt (Model Catalogue installs it) + explicitly install dots.tts SOAR in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF on Windows, macOS and Linux; multilingual voice cloning; ~3 GB; Apache-2.0)",
+    "audiocpp-drama3": "install audio.cpp v0.9.4 (Model Catalogue installs it) + Drama 3 Q3_K_S GGUF in Model Catalogue → Models  (native Vulkan/CUDA/Metal GGUF; 35B MoE multilingual clone + inline/scoped tags; ~18.93 GiB, 24 GB+ GPU recommended; Built with Fish Audio — Fish Audio Community License v1.0)",
     "cosyvoice-gguf": "Build Lourdle/cosyvoice.cpp at the documented pinned revision with Vulkan enabled; set OMNIVOICE_COSYVOICE_GGUF_DIR and install its GGUF/ONNX model assets from Model Catalogue (native Vulkan/CPU; no automatic runtime download).",
 }
 
@@ -4365,6 +4367,7 @@ _ENGINE_DOCS: dict[str, str] = {
     "pockettts":            "docs/engines/pockettts.md",
     "audiocpp":             "docs/engines/audio-cpp.md",
     "audiocpp-dots":        "docs/engines/audio-cpp.md",
+    "audiocpp-drama3":      "docs/engines/audio-cpp.md",
     "cosyvoice-gguf":       "docs/engines/cosyvoice-gguf.md",
     "qwen3-tts":            "docs/engines/mlx-audio.md",
 }

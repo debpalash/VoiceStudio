@@ -93,6 +93,17 @@ models:
       - "DotTTS-SOAR-GGUF/dots-tts-soar-q8_0.gguf"
     note: "dots.tts on the native audio.cpp runtime, including Windows. Apache-2.0 weights."
 
+  - repo_id: "Jmica/Drama-3-GGUF"
+    label: "audio.cpp Fish Audio Drama 3 (Q3_K_S, 35B MoE multilingual, 24 GB+ GPU)"
+    role: TTS
+    engines: [audiocpp-drama3]
+    size_gb: 18.93
+    required_files:
+      - "drama-3-backbone-8bit-experts-Q3_K_S.gguf"
+    allow_patterns:
+      - "drama-3-backbone-8bit-experts-Q3_K_S.gguf"
+    note: "Built with Fish Audio. Fish Audio Drama 3 (35B-A3B MoE) Q3_K_S GGUF on the native audio.cpp v0.9.4 runtime; 24 GB+ GPU recommended. Fish Audio Community License v1.0 — review terms before commercial use."
+
   # ── ASR (optional — curated per platform) ─────────────────────────────
   # No ASR model is required to boot: TTS-only installs work. Dubbing,
   # dictation, and clone-reference transcription prompt for the curated

@@ -8,7 +8,7 @@ import { queryKeys } from '@/lib/query';
 import { SettingsActionError } from './settings-action-error';
 
 /** TTS engines served by the managed audio.cpp runtime. */
-export const AUDIOCPP_TTS_ENGINES: ReadonlySet<string> = new Set(['audiocpp', 'audiocpp-dots']);
+export const AUDIOCPP_TTS_ENGINES: ReadonlySet<string> = new Set(['audiocpp', 'audiocpp-dots', 'audiocpp-drama3']);
 
 interface RuntimeStatus {
   installed: boolean;

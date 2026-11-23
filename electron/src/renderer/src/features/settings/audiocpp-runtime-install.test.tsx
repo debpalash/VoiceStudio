@@ -29,8 +29,12 @@ function renderInstall() {
   );
 }
 
-it('covers both audio.cpp TTS engines (#2665)', () => {
-  expect([...AUDIOCPP_TTS_ENGINES].sort()).toEqual(['audiocpp', 'audiocpp-dots']);
+it('covers all audio.cpp TTS engines (#2665, #3129)', () => {
+  expect([...AUDIOCPP_TTS_ENGINES].sort()).toEqual([
+    'audiocpp',
+    'audiocpp-dots',
+    'audiocpp-drama3',
+  ]);
 });
 
 it('installs the shared runtime from a TTS engine row', async () => {

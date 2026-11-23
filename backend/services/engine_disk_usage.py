@@ -51,6 +51,15 @@ _ESTIMATES: dict[str, dict] = {
         "destination": "hf_model_cache",
         "deduplication": None,
     },
+    "audiocpp-drama3": {
+        "package_download_bytes": None,
+        "unique_installed_bytes": None,
+        "potentially_shared_bytes": None,
+        "temporary_free_bytes": None,
+        "confidence": "estimated",
+        "destination": "hf_model_cache",
+        "deduplication": None,
+    },
 }
 _MODEL_REPOS = {
     "omnivoice": "k2-fsa/OmniVoice",
@@ -58,6 +67,7 @@ _MODEL_REPOS = {
     "audiocpp": "audio-cpp/audio.cpp-gguf",
     # Catalogue identity of a package in the shared audio.cpp repo (#2665).
     "audiocpp-dots": "audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0",
+    "audiocpp-drama3": "Jmica/Drama-3-GGUF",
 }
 
 

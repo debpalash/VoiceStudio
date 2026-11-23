@@ -1,18 +1,21 @@
-# VoiceStudio — audio.cpp Engines (Breeze-TTS-2, dots.tts)
+# VoiceStudio — audio.cpp Engines (Breeze-TTS-2, dots.tts, Fish Audio Drama 3)
 
 [audio.cpp](https://github.com/0xShug0/audio.cpp) is a pure-C++ ggml audio
 inference framework with prebuilt binaries for Windows, macOS, and Linux and
 no Python dependency. VoiceStudio discovers the compute providers compiled
 into the installed binary and selects the best available device. VoiceStudio drives its
-`audiocpp_server` over loopback HTTP. Two engines share one runtime:
+`audiocpp_server` over loopback HTTP. Three engines share one runtime:
 
 - **`audiocpp`** — the **`breeze_tts`** family: **Breeze-TTS-2** (BreezeBlue,
   3B params, English + Chinese, voice clone + voice design + voice direction,
   24 kHz). Research/non-commercial weights.
 - **`audiocpp-dots`** — the **`dots_tts`** family: **dots.tts SOAR**
   (multilingual zero-shot voice cloning, Apache-2.0). See [dots.tts](#dotstts).
+- **`audiocpp-drama3`** — the **`fish_drama3`** family: **Fish Audio Drama 3**
+  (35B-A3B MoE, multilingual voice cloning, 44.1 kHz). Built with Fish Audio.
+  See [Fish Audio Drama 3](#fish-audio-drama-3).
 
-> **Opt-in, and never a default.** Select `audiocpp` or `audiocpp-dots`
+> **Opt-in, and never a default.** Select `audiocpp`, `audiocpp-dots` or `audiocpp-drama3`
 > explicitly in **Model Catalogue → Engines** (or `OMNIVOICE_TTS_BACKEND`).
 
 ## License — read before enabling
@@ -24,6 +27,16 @@ into the installed binary and selects the best available device. VoiceStudio dri
   https://huggingface.co/BreezeBlue/Breeze-TTS-2/blob/main/LICENSE).
   Self-hosted outputs inherit the restriction; a BreezeBlue paid
   subscription covers hosted-platform outputs only, not this engine.
+- **Fish Audio Drama 3 weights** (upstream `fishaudio/drama-3` and the
+  `Jmica/Drama-3-GGUF` repack): the [Fish Audio Community License v1.0](
+  https://huggingface.co/fishaudio/drama-3/blob/78e5ab79e49aa9a25abe8799eff2c4d73a1c3216/LICENSE).
+  Free for research and non-commercial use; commercial use only while your
+  annual revenue is under USD 500,000; never as a hosted API, model-hosting or
+  text-to-speech service. You may not imitate an identifiable person's voice
+  without their consent, impersonate anyone, remove its watermark, or use its
+  output to train other speech models. VoiceStudio asks you to accept these
+  terms before the first Drama 3 generation. **Built with Fish Audio.** It is
+  available in the free app only, not in VoiceStudio Pro.
 
 ## Platform support
 
@@ -132,6 +145,23 @@ which has no Windows install path ([#2665](https://github.com/debpalash/VoiceStu
 
 It runs its own server on port `17861` with `server.json` and `server.log`
 under the app data `audiocpp-dots/` directory.
+
+## Fish Audio Drama 3
+
+`audiocpp-drama3` runs Fish Audio Drama 3 on the same runtime. It needs the
+audio.cpp v0.9.4 runtime (an older app-managed runtime reports that it must be
+reinstalled) and a GPU with about 24 GB of memory; its VRAM floor is 20 GB.
+
+1. Install the runtime as above.
+2. In **Model Catalogue**, install **audio.cpp Fish Audio Drama 3 (Q3_K_S)**
+   (~18.9 GB from the pinned `Jmica/Drama-3-GGUF` revision). It is a separate
+   package and never touches Breeze-TTS-2, dots.tts or Sortformer.
+3. Pick `audiocpp-drama3`, accept its licence when asked, and clone a voice
+   from a reference clip. It has no voice design mode, and it does not use the
+   step or guidance sliders.
+
+It runs its own server on port `17862` (`OMNIVOICE_AUDIOCPP_DRAMA3_PORT`
+overrides it), with its files under the app data `audiocpp-drama3/` directory.
 
 ## Voice modes
 
