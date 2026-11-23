@@ -418,6 +418,9 @@ class ProductionTests(unittest.TestCase):
         # ROCm 4 GB dictation checkpoint (#4335).
         self.assertEqual(expected.pop("openai/whisper-large-v3-turbo"),
                          "41f01f3fe87f28c78e2fbf8b568835947dd65ed9")
+        # Fish Audio Drama 3 GGUF (#3129, #4361): owner-approved, free app only.
+        self.assertEqual(expected.pop("Jmica/Drama-3-GGUF"),
+                         "060acc8e5d9e5d16baf647c775dfe1a1438f5f35")
         # Preserve ALL 42 pre-existing pins from base 06c6e077 unchanged.
         self.assertEqual(ml.digest(expected), "1f4811c855d9f70882aa325ad5cd44f2036cd9fc2e676bac9c1ff23008695816")
         self.assertEqual(expected["openbmb/VoxCPM2"], "bffb3df5a29440629464e5e839f4d214c8714c3d")
