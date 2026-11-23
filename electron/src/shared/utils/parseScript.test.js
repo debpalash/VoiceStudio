@@ -27,6 +27,18 @@ describe('parseScript — screenplay', () => {
   });
 });
 
+it('auto-casts tagged and screenplay dialogue with lone CR line endings', () => {
+  const expected = [
+    { speaker: 'Alice', text: 'Hello.' },
+    { speaker: 'Bob', text: 'Hi!' },
+  ];
+  const tagged = '[Alice] Hello.\r[Bob] Hi!';
+  expect(hasSpeakerTags(tagged)).toBe(true);
+  expect(parseTaggedScript(tagged)).toEqual(expected);
+  expect(parseScript(tagged)).toEqual(expected);
+  expect(parseScript('ALICE: Hello.\rBOB: Hi!')).toEqual(expected);
+});
+
 describe('parseScript — prose', () => {
   it('attributes a quote from a leading dialogue tag', () => {
     const r = parseScript('The fox asked, "Where are we going?"');
