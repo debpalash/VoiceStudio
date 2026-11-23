@@ -164,6 +164,10 @@ describe('nextSegmentId', () => {
 });
 
 describe('insertionSlot', () => {
+  it('uses a gap of exactly 300 ms despite floating-point subtraction', () => {
+    expect(insertionSlot({ end: 1.1 }, { start: 1.4 })).toEqual({ start: 1.1, end: 1.4 });
+  });
+
   it('fills the silent gap before the next line', () => {
     expect(insertionSlot({ end: 2 }, { start: 5 })).toEqual({ start: 2, end: 5 });
   });
