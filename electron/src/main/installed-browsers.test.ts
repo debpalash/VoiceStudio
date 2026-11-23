@@ -114,8 +114,15 @@ it('waits for successful macOS launcher completion', async () => {
   expect(completed).toBe(true);
 });
 
-it.each(['win32', 'linux'] as const)('resolves a direct %s browser launch before exit', async (host) => {
+// A faked Linux host needs a POSIX PATH: on a Windows runner the real one
+// splits on ':' into no absolute directories, so no browser is found.
+const fakeHost = (host: NodeJS.Platform) => {
   Object.defineProperty(process, 'platform', { value: host });
+  if (host === 'linux') vi.stubEnv('PATH', '/usr/bin');
+};
+
+it.each(['win32', 'linux'] as const)('resolves a direct %s browser launch before exit', async (host) => {
+  fakeHost(host);
   mocks.access.mockResolvedValue(undefined);
   const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
   mocks.spawn.mockImplementation(() => {
@@ -127,7 +134,7 @@ it.each(['win32', 'linux'] as const)('resolves a direct %s browser launch before
 });
 
 it.each(['darwin', 'win32', 'linux'] as const)('reports %s spawn errors', async (host) => {
-  Object.defineProperty(process, 'platform', { value: host });
+  fakeHost(host);
   mocks.access.mockResolvedValue(undefined);
   mocks.spawn.mockImplementation(() => {
     const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
