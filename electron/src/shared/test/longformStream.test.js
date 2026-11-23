@@ -183,3 +183,14 @@ describe('consumeLongformStream', () => {
     expect(cancelled).toBe(0);
   });
 });
+
+it('stops dispatching buffered chapter events as soon as the render is cancelled', async () => {
+  const controller = new AbortController();
+  const res = streamResponse([sse({ type: 'started' }) + sse({ type: 'chapter' })]);
+  const events = [];
+  await consumeLongformStream(res, (event) => {
+    events.push(event.type);
+    controller.abort();
+  }, { signal: controller.signal });
+  expect(events).toEqual(['started']);
+});
