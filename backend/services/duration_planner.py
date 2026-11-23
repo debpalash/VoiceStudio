@@ -39,6 +39,8 @@ No I/O, no torch; the only side-effectful function is ``condense_for_slot``
 """
 from __future__ import annotations
 
+import math
+
 import logging
 from dataclasses import dataclass
 from typing import Iterable, Optional
@@ -98,7 +100,9 @@ def calibrate_cps(samples: Iterable[tuple[float, float]]) -> Optional[Calibratio
         try:
             chars = float(chars)
             dur = float(dur)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if not math.isfinite(chars) or not math.isfinite(dur):
             continue
         if dur >= MIN_SAMPLE_DUR_S and chars >= MIN_SAMPLE_CHARS:
             rates.append(chars / dur)
