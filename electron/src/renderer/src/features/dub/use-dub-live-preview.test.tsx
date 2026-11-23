@@ -131,3 +131,27 @@ it('cancels an obsolete stream immediately and stays silent while disabled', asy
   await act(async () => vi.advanceTimersByTimeAsync(LIVE_DUB_PREVIEW_DELAY_MS));
   expect(Socket.instances).toHaveLength(1);
 });
+
+
+it('discards pending previews for the previous target language', async () => {
+  const { result, rerender } = renderHook(
+    ({ language }) => useDubLivePreview({ enabled: true, language }),
+    { initialProps: { language: 'Spanish' } },
+  );
+  act(() => result.current.onEdit(segment, 'Hola'));
+  rerender({ language: 'French' });
+
+  await act(async () => vi.advanceTimersByTimeAsync(LIVE_DUB_PREVIEW_DELAY_MS));
+  expect(Socket.instances).toHaveLength(0);
+
+  act(() => result.current.onEdit(segment, 'Bonjour'));
+  await act(async () => vi.advanceTimersByTimeAsync(LIVE_DUB_PREVIEW_DELAY_MS));
+  expect(Socket.instances).toHaveLength(1);
+  act(() => Socket.instances[0].open());
+  expect(Socket.instances[0].send).toHaveBeenCalledWith(
+    JSON.stringify({ text: 'Bonjour', speed: 1, voice: 'voice-1', language: 'French' }),
+  );
+  rerender({ language: 'German' });
+  expect(Socket.instances[0].close).toHaveBeenCalledOnce();
+  expect(result.current.liveSegmentId).toBeNull();
+});

@@ -204,12 +204,13 @@ export function useDubLivePreview({ enabled, language }: { enabled: boolean; lan
       stop();
     }
   }, [enabled, stop]);
+  // The active socket or pending debounce may still use the old language.
   useEffect(
     () => () => {
       intent.current += 1;
       stop();
     },
-    [stop],
+    [language, stop],
   );
 
   return { liveSegmentId, onEdit, onToggle, stop };
