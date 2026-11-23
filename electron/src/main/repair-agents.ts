@@ -21,6 +21,7 @@ import { envWithToolPath } from './tool-path';
 import { sendToLiveWindow } from './window-safety';
 import { inspectSourceCheckout, isVoiceStudioCheckout } from './source-checkout';
 import { startLlmAgentBridge } from './llm-agent-bridge';
+import { scrubText } from '../shared/utils/scrub';
 import type {
   RepairAgentEvent,
   RepairAgentId,
@@ -503,7 +504,51 @@ export function translationLaunchArgs(agent: RepairAgentId): string[] {
   ];
 }
 
-export function agentProviderFailure(output: string): Error | null {
+// Plain-text provider failures some CLIs (Codex among them) print on stderr
+// instead of a JSON event. Only diagnostic-looking lines are considered, so
+// translated dialogue that happens to contain these words is not a match.
+const DIAGNOSTIC_LINE = /\b(error|fatal|failed|unauthori[sz]ed|forbidden|denied|status)\b/i;
+const STDERR_FAILURES: ReadonlyArray<[RegExp, string, string]> = [
+  [
+    /\b40[13]\b|unauthori[sz]ed|invalid[ _-]?api[ _-]?key|not logged in|log ?in (has )?expired|token (has )?expired|authentication/i,
+    'AgentAuthenticationError',
+    'The agent CLI is not signed in or its login has expired. Sign in to it again in a terminal, then retry.',
+  ],
+  [
+    /\b429\b|rate[ _-]?limit|too many requests|usage limit|quota/i,
+    'AgentRateLimitError',
+    "The agent's provider is rate-limiting this account. Wait a little, then retry.",
+  ],
+  [
+    /model[_ ]not[_ ]found|unsupported model|model .{0,40}(not (found|supported|available)|does not exist)/i,
+    'AgentModelError',
+    "The agent's provider does not offer the selected model for this account. Pick another model, then retry.",
+  ],
+];
+
+/** The last diagnostic line of a CLI's stderr, scrubbed and short, or ''. */
+export function agentDiagnosticTail(stderr: string): string {
+  const lines = stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const pick = [...lines].reverse().find((line) => DIAGNOSTIC_LINE.test(line)) ?? lines.at(-1) ?? '';
+  const clean = scrubText(pick).replace(/\s+/g, ' ').trim();
+  return clean.length > 240 ? `${clean.slice(0, 239)}\u2026` : clean;
+}
+
+export function agentProviderFailure(output: string, stderr = ''): Error | null {
+  const fromJson = agentJsonProviderFailure(output);
+  if (fromJson) return fromJson;
+  for (const line of stderr.split(/\r?\n/)) {
+    if (!DIAGNOSTIC_LINE.test(line)) continue;
+    for (const [pattern, name, message] of STDERR_FAILURES)
+      if (pattern.test(line)) return Object.assign(new Error(message), { name });
+  }
+  return null;
+}
+
+function agentJsonProviderFailure(output: string): Error | null {
   for (const line of output.split(/\r?\n/)) {
     try {
       const event = JSON.parse(line);
@@ -778,9 +823,12 @@ export async function registerRepairAgents(
   ipcMain.handle(REPAIR_CHANNELS.start, async (event, request: RepairAgentRunRequest) => {
     trusted(event, getMainWindow());
     if (busy())
-      throw Object.assign(new Error('An agent is already running'), {
-        name: 'AgentRateLimitError',
-      });
+      throw Object.assign(
+        new Error(
+          'Another agent is already running (Translation or VoiceStudio Agent). Wait for it to finish or stop it, then try again.',
+        ),
+        { name: 'AgentBusyError' },
+      );
     if (workspaceRoot && !isVoiceStudioCheckout(workspaceRoot)) {
       workspaceRoot = null;
       state = { ...state, workspaceAvailable: false, workspacePath: undefined };
@@ -926,9 +974,12 @@ export async function registerRepairAgents(
   ): Promise<DubAgentTranslationResult> => {
     validateDubTranslationRequest(request);
     if (busy())
-      throw Object.assign(new Error('An agent is already running'), {
-        name: 'AgentRateLimitError',
-      });
+      throw Object.assign(
+        new Error(
+          'Another agent is already running (Translation or VoiceStudio Agent). Wait for it to finish or stop it, then try again.',
+        ),
+        { name: 'AgentBusyError' },
+      );
     const definition = DEFINITIONS.find((item) => item.id === request.agent)!;
     // Pending before the await, so a concurrent run is refused and a stop or
     // disposal while the CLI is located prevents the spawn.
@@ -967,6 +1018,7 @@ export async function registerRepairAgents(
       );
     }
     let output = '';
+    let diagnostics = '';
     const stdoutDecoder = new StringDecoder('utf8');
     const stderrDecoder = new StringDecoder('utf8');
     let pendingLog = '';
@@ -983,6 +1035,7 @@ export async function registerRepairAgents(
     };
     const append = (text: string, stdout = true) => {
       if (stdout) output = (output + text).slice(-MAX_TRANSLATION_OUTPUT);
+      else diagnostics = (diagnostics + text).slice(-16_000);
       pendingLog = (pendingLog + text).slice(-250_000);
       if (!logTimer) logTimer = setTimeout(flushLog, 100);
     };
@@ -1027,13 +1080,18 @@ export async function registerRepairAgents(
         );
         translationChild.on('close', (code) =>
           finish(() => {
-            const providerFailure = agentProviderFailure(output);
+            const providerFailure = agentProviderFailure(output, diagnostics);
             if (providerFailure) {
               rejectPromise(providerFailure);
               return;
             }
             if (code !== 0) {
-              rejectPromise(new Error(`Agent translation failed (exit code ${code ?? 'unknown'})`));
+              const tail = agentDiagnosticTail(diagnostics);
+              rejectPromise(
+                new Error(
+                  `Agent translation failed (exit code ${code ?? 'unknown'})${tail ? `: ${tail}` : ''}`,
+                ),
+              );
               return;
             }
             try {
