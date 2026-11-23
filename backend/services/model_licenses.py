@@ -159,7 +159,7 @@ _CONDITIONS_LICENSES = frozenset({
     "gpl-3.0", "agpl-3.0", "lgpl-3.0",
 })
 # Deliberately unknown: no assertion, or bespoke terms nobody has categorised.
-_UNKNOWN_LICENSES = frozenset({"noassertion", "other", "unknown", "higgs audio 2"})
+_UNKNOWN_LICENSES = frozenset({"noassertion", "other", "unknown", "higgs audio 2", "fish-audio-community-license-v1.0"})
 _LLAMA = re.compile(r"(meta[ -])?llama[ -]?\d+(\.\d+)?\Z")
 _NONCOMMERCIAL = re.compile(r"(^|-)nc(-|\b)|non-?commercial")
 _LICENSE_SPLIT = re.compile(r"\s+(?:and|or|with)\s+|[;,+]")
