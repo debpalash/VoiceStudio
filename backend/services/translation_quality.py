@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import unicodedata
 from typing import Iterable, Optional
 
 logger = logging.getLogger("omnivoice.translation_quality")
@@ -168,12 +169,18 @@ def extract_context_sync(
     return {"theme": theme, "terms": terms}
 
 
+def _glossary_key(source: str) -> str:
+    # Canonically order combining marks before casefold can turn one into a letter.
+    decomposed = unicodedata.normalize("NFD", source)
+    return unicodedata.normalize("NFC", decomposed.casefold())
+
+
 def merge_glossary(
     user_terms: Optional[Iterable[dict]],
     auto_terms: Optional[Iterable[dict]],
 ) -> list[dict]:
     """Merge manual + auto glossaries. User entries ALWAYS win: an auto term
-    whose source matches a user source (case-insensitive) is dropped."""
+    whose source matches a user source (Unicode case-insensitive) is dropped."""
     merged: list[dict] = []
     seen: set[str] = set()
     for entry in user_terms or []:
@@ -182,14 +189,15 @@ def merge_glossary(
         if not src or not tgt:
             continue
         merged.append(entry)
-        seen.add(src.lower())
+        seen.add(_glossary_key(src))
     for entry in auto_terms or []:
         src = (entry.get("source") or "").strip()
         tgt = (entry.get("target") or "").strip()
-        if not src or not tgt or src.lower() in seen:
+        key = _glossary_key(src)
+        if not src or not tgt or key in seen:
             continue
         merged.append({"source": src, "target": tgt})
-        seen.add(src.lower())
+        seen.add(key)
     return merged
 
 
