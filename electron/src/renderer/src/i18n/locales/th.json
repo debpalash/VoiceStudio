@@ -3009,6 +3009,7 @@
       "speechCurl": "แปลงข้อความเป็นเสียง (curl)",
       "transcriptionCurl": "ถอดความ (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "รันคอนเทนเนอร์",
       "dockerCompose": "Docker Compose",
       "workflow": "เวิร์กโฟลว์ n8n",

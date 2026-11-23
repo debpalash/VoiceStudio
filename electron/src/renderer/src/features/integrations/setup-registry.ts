@@ -318,6 +318,32 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
             '',
           ].join('\n'),
         },
+        {
+          // Apps built for ElevenLabs point their base URL at /elevenlabs.
+          id: 'elevenlabs',
+          titleKey: 'integrationCatalog.block.elevenlabsPython',
+          language: 'python',
+          text: [
+            ...(policy === 'bearer' ? ['import os', ''] : []),
+            'from elevenlabs.client import ElevenLabs',
+            '',
+            'client = ElevenLabs(',
+            `    base_url="${base}/elevenlabs",`,
+            policy === 'bearer'
+              ? '    api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed"),'
+              : '    api_key="voicestudio",',
+            ')',
+            '',
+            'audio = client.text_to_speech.convert(',
+            '    voice_id="default", text="Hello from VoiceStudio.",',
+            '    output_format="mp3_44100_128",',
+            ')',
+            'with open("speech.mp3", "wb") as f:',
+            '    for chunk in audio:',
+            '        f.write(chunk)',
+            '',
+          ].join('\n'),
+        },
       ];
     },
   },

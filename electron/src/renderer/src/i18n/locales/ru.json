@@ -3035,6 +3035,7 @@
       "speechCurl": "Синтез речи (curl)",
       "transcriptionCurl": "Транскрибация (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Запуск контейнера",
       "dockerCompose": "Docker Compose",
       "workflow": "Сценарий n8n",

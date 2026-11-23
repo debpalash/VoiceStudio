@@ -3009,6 +3009,7 @@
       "speechCurl": "Tekst naar spraak (curl)",
       "transcriptionCurl": "Transcriptie (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Container starten",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n-workflow",
