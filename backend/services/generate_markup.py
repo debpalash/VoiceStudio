@@ -30,8 +30,10 @@ GAP_MAX_MS = 5000
 #: Most silence the gaps may add to one take, matching Audiobook's chapter cap.
 MAX_JOIN_SILENCE_MS = 15 * 60 * 1000
 
-# A blank line: two newlines with only spaces/tabs/CR between (same as longform).
-_BLANK_LINE_RE = re.compile(r"\n[ \t\r]*\n")
+# Treat CRLF as one line ending even when a following blank line is absent.
+# Consume a whole run of blank lines so one paragraph boundary adds one gap.
+_LINE_END = r"(?:\r\n|\r(?!\n)|\n)"
+_BLANK_LINE_RE = re.compile(rf"{_LINE_END}(?:[ \t]*{_LINE_END})+")
 
 
 class Span(NamedTuple):
@@ -67,7 +69,7 @@ def _split_at_gaps(text: str, opts: JoinOptions) -> list[tuple[str, int]]:
     last = 0
     for m in _BLANK_LINE_RE.finditer(text):
         start = m.start()
-        while start > last and text[start - 1] in " \t\r":
+        while start > last and text[start - 1] in " \t":
             start -= 1
         if start <= last or start >= len(text):
             continue
