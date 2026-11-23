@@ -288,14 +288,16 @@ export function detectOverlaps(segments, epsilon = 1e-6) {
   const flagged = new Set();
   if (segments.length < 2) return flagged;
   const sorted = [...segments].sort((x, y) => x.start - y.start || x.end - y.end);
-  let active = [];
-  for (const cur of sorted) {
-    active = active.filter((previous) => previous.end > cur.start + epsilon);
-    for (const previous of active) {
-      flagged.add(String(previous.id));
-      flagged.add(String(cur.id));
+  let furthestEnd = -Infinity;
+  for (const [index, current] of sorted.entries()) {
+    // A prior cue overlaps if any prior end reaches here. If this cue
+    // overlaps a later one, it necessarily reaches the very next start.
+    const end = current.end;
+    const next = sorted[index + 1];
+    if (furthestEnd > current.start + epsilon || (next && end > next.start + epsilon)) {
+      flagged.add(String(current.id));
     }
-    active.push(cur);
+    if (end > furthestEnd) furthestEnd = end;
   }
   return flagged;
 }

@@ -382,6 +382,20 @@ describe('REGION_COLORS — opaque JS-pre-blended paint guard (#373, #963)', () 
   });
 });
 
+it('flags dense overlaps without reading each overlapping pair', () => {
+  let endReads = 0;
+  const nested = Array.from({ length: 500 }, (_, start) => ({
+    id: start,
+    start,
+    get end() {
+      endReads += 1;
+      return 1000 - start;
+    },
+  }));
+  expect(detectOverlaps(nested).size).toBe(nested.length);
+  expect(endReads).toBeLessThanOrEqual(nested.length * 2);
+});
+
 it('flags every nested overlap, not just consecutive intervals', () => {
   expect(
     [
