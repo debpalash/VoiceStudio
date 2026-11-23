@@ -980,22 +980,23 @@ def deduplicate_chunk_segments(segments: list[dict]) -> list[dict]:
     result = []
     for segment in segments:
         words = timed_words(segment)
-        matches = []
+        prefix_matches = 0
         if words and segment.get("speaker_id"):
             prior_words = [w for previous in result
                            if previous.get('speaker_id') == segment.get('speaker_id')
                            for w in timed_words(previous)
                            if w['end'] >= words[0]['start'] - .35 and w['start'] <= words[-1]['end'] + .35]
-            for index, word in enumerate(words):
-                if token(word) and any(token(word) == token(prior)
-                                      and abs((word['start'] + word['end']) / 2 - (prior['start'] + prior['end']) / 2) <= .35
-                                      for prior in prior_words):
-                    matches.append(index)
-        # Require a substantial matching prefix; isolated common words cannot
-        # authorize deleting speech. No timing-only truncation is performed.
-        if len(matches) >= 3 and len(matches) / (matches[-1] + 1) >= .6:
-            cutoff = max((w['end'] for w in prior_words), default=0)
-            remaining = [w for w in words[matches[-1] + 1:] if w['start'] >= cutoff - .05]
+            for word in words:
+                spelling = token(word)
+                if not spelling or not any(spelling == token(prior)
+                                           and abs((word['start'] + word['end']) / 2 - (prior['start'] + prior['end']) / 2) <= .35
+                                           for prior in prior_words):
+                    break
+                prefix_matches += 1
+        # Remove only confirmed context from the start of a cue. An unmatched
+        # word may be genuine speech even when it overlaps the earlier cue.
+        if prefix_matches >= 3:
+            remaining = words[prefix_matches:]
             if not remaining:
                 continue
             text = _clean(' '.join(str(w.get('text', w.get('word', ''))) for w in remaining))

@@ -52,3 +52,18 @@ def test_out_of_order_stitched_word_cannot_invert_or_delete_a_line():
     assert len(result)==2
     assert result[0]['start']==10
     assert result[0]['end']==11.6
+
+
+def test_chunk_dedup_preserves_unique_words_between_matching_context():
+    earlier = segment('a', words('I think it works', 10))
+    later = segment('b', words('I think this works now', 10))
+    result = deduplicate_chunk_segments([earlier, later])
+    assert result[1]['text'] == 'I think this works now'
+
+
+def test_chunk_dedup_does_not_discard_unmatched_tail_after_a_confirmed_prefix():
+    earlier = segment('a', words('I think it might work', 10))
+    later = segment('b', words('I think it works now', 10))
+    result = deduplicate_chunk_segments([earlier, later])
+    assert result[1]['text'] == 'works now'
+    assert result[1]['start'] == later['words'][3]['start']
