@@ -20,7 +20,6 @@ key as ``xi-api-key`` (what ElevenLabs SDKs send) or as a Bearer token.
 """
 from __future__ import annotations
 
-import io
 import json
 import logging
 import math
@@ -28,7 +27,7 @@ import re
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
