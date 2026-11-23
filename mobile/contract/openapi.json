@@ -1693,6 +1693,73 @@
     "title": "Body_set_preview_gallery_archetypes_previews_put",
     "type": "object"
    },
+   "Body_speech_to_speech_elevenlabs_v1_speech_to_speech__voice_id__post": {
+    "properties": {
+     "audio": {
+      "contentMediaType": "application/octet-stream",
+      "title": "Audio",
+      "type": "string"
+     },
+     "file_format": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "File Format"
+     },
+     "model_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted; the app picks its voice-conversion engine.",
+      "title": "Model Id"
+     },
+     "remove_background_noise": {
+      "default": false,
+      "description": "Accepted without effect.",
+      "title": "Remove Background Noise",
+      "type": "boolean"
+     },
+     "seed": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted without effect.",
+      "title": "Seed"
+     },
+     "voice_settings": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted without effect.",
+      "title": "Voice Settings"
+     }
+    },
+    "required": [
+     "audio"
+    ],
+    "title": "Body_speech_to_speech_elevenlabs_v1_speech_to_speech__voice_id__post",
+    "type": "object"
+   },
    "Body_speech_to_text_elevenlabs_v1_speech_to_text_post": {
     "properties": {
      "diarize": {
@@ -4245,6 +4312,69 @@
      "prompt"
     ],
     "title": "SfxRequest",
+    "type": "object"
+   },
+   "SoundGenerationRequest": {
+    "additionalProperties": true,
+    "description": "``prompt_influence``, ``loop`` and ``model_id`` have no equivalent in\nthe app's sound-effect engine and are accepted without effect.",
+    "properties": {
+     "duration_seconds": {
+      "anyOf": [
+       {
+        "exclusiveMinimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Duration Seconds"
+     },
+     "loop": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loop"
+     },
+     "model_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model Id"
+     },
+     "prompt_influence": {
+      "anyOf": [
+       {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Prompt Influence"
+     },
+     "text": {
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "text"
+    ],
+    "title": "SoundGenerationRequest",
     "type": "object"
    },
    "SpeechAuthCapabilities": {
@@ -14282,6 +14412,119 @@
      }
     },
     "summary": "List Models",
+    "tags": [
+     "ElevenLabs-Compatible API"
+    ]
+   }
+  },
+  "/elevenlabs/v1/sound-generation": {
+   "post": {
+    "description": "A sound effect from a description, on the app's Sound effects engine\n(Tools \u2192 Sound effects must be installed).",
+    "operationId": "sound_generation_elevenlabs_v1_sound_generation_post",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "output_format",
+      "required": false,
+      "schema": {
+       "default": "mp3_44100_128",
+       "title": "Output Format",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SoundGenerationRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Sound Generation",
+    "tags": [
+     "ElevenLabs-Compatible API"
+    ]
+   }
+  },
+  "/elevenlabs/v1/speech-to-speech/{voice_id}": {
+   "post": {
+    "description": "Say the uploaded speech in a voice profile's voice, keeping its timing\nand intonation (the app's Convert \u2192 Keep my delivery). Without a\nvoice-conversion engine it falls back to transcribing and re-speaking the\nclip, and says so in ``X-OmniVoice-Fallback``.",
+    "operationId": "speech_to_speech_elevenlabs_v1_speech_to_speech__voice_id__post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "voice_id",
+      "required": true,
+      "schema": {
+       "title": "Voice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "output_format",
+      "required": false,
+      "schema": {
+       "default": "mp3_44100_128",
+       "title": "Output Format",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_speech_to_speech_elevenlabs_v1_speech_to_speech__voice_id__post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Speech To Speech",
     "tags": [
      "ElevenLabs-Compatible API"
     ]

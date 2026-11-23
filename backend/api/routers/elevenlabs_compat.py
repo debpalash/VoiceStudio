@@ -9,7 +9,8 @@ exactly as they do on ``/v1/audio/speech``.
 
 Supported: text to speech (``/v1/text-to-speech/{voice_id}`` and ``/stream``,
 every ``output_format`` family), speech to text (``/v1/speech-to-text``), the
-voice list (``/v1/voices``, ``/v2/voices``, ``/v1/voices/{voice_id}``), default
+voice changer (``/v1/speech-to-speech/{voice_id}``), sound effects
+(``/v1/sound-generation``), the voice list (``/v1/voices``, ``/v2/voices``, ``/v1/voices/{voice_id}``), default
 voice settings and the model list. ElevenLabs model ids (``eleven_*``) use the
 active VoiceStudio engine; a VoiceStudio engine id picks that engine.
 
@@ -580,3 +581,121 @@ async def speech_to_text(
         "text": result.get("text", ""),
         "words": words,
     }
+
+
+# ── Files produced by the app's own handlers ────────────────────────────────
+
+
+async def _audio_url_response(result: dict, output_format: str, headers: Optional[dict] = None):
+    """Return the take an app handler saved (``{"audio_url": "/audio/<name>"}``)
+    in ``output_format``."""
+    import asyncio
+
+    import soundfile as sf
+    import torch
+
+    from api.routers.openai_compat import _encode_audio, _pcm24k
+    from core.config import OUTPUTS_DIR
+    from core.path_security import contained_join
+
+    family, rate = parse_output_format(output_format)
+    name = str(result.get("audio_url") or "").rsplit("/", 1)[-1]
+    path = contained_join(OUTPUTS_DIR, name)
+    data, sr = await asyncio.to_thread(sf.read, path, dtype="float32", always_2d=True)
+    wav = torch.from_numpy(data.T.copy())
+    if family in ("pcm", "ulaw", "alaw"):
+        pcm = await asyncio.to_thread(_pcm24k, wav, sr)
+        body = await asyncio.to_thread(convert_pcm24k, pcm, family, rate)
+    else:
+        body, _, _ = await _encode_audio(wav, sr, family)
+    return Response(body, media_type=_MEDIA[family], headers=headers)
+
+
+async def _ffmpeg_ready(output_format: str) -> None:
+    """Fail before any model work when the format needs a missing ffmpeg."""
+    import asyncio
+
+    from api.routers.openai_compat import _ffmpeg_or_error
+
+    family, _ = parse_output_format(output_format)
+    if family in ("mp3", "opus"):
+        await asyncio.to_thread(_ffmpeg_or_error, family)
+
+
+# ── Voice changer ───────────────────────────────────────────────────────────
+
+
+@router.post("/v1/speech-to-speech/{voice_id}")
+async def speech_to_speech(
+    voice_id: str,
+    audio: UploadFile = File(...),
+    model_id: Optional[str] = Form(default=None, description="Accepted; the app picks its voice-conversion engine."),
+    voice_settings: Optional[str] = Form(default=None, description="Accepted without effect."),
+    seed: Optional[int] = Form(default=None, description="Accepted without effect."),
+    remove_background_noise: bool = Form(default=False, description="Accepted without effect."),
+    file_format: Optional[str] = Form(default=None),
+    output_format: str = Query(default="mp3_44100_128"),
+):
+    """Say the uploaded speech in a voice profile's voice, keeping its timing
+    and intonation (the app's Convert → Keep my delivery). Without a
+    voice-conversion engine it falls back to transcribing and re-speaking the
+    clip, and says so in ``X-OmniVoice-Fallback``."""
+    from api.routers.voice_convert import convert_speech
+
+    await _ffmpeg_ready(output_format)
+    if not _profile_exists(voice_id):
+        raise _error(
+            404, "voice_not_found",
+            f"Voice '{voice_id}' is not a VoiceStudio voice profile. List them with "
+            f"GET {ELEVENLABS_PREFIX}/v1/voices.",
+        )
+    from api.routers.openai_compat import _resolve_voice_profile
+
+    profile_id = _resolve_voice_profile(voice_id)["id"]
+    headers = None
+    try:
+        result = await convert_speech(audio=audio, profile_id=profile_id, match_duration=True,
+                                      language="", keep_delivery=True)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        if detail.get("error") != "voice_conversion_engine_missing":
+            raise
+        logger.info("No voice-conversion engine; re-speaking the clip for the ElevenLabs voice changer")
+        await audio.seek(0)
+        result = await convert_speech(audio=audio, profile_id=profile_id, match_duration=True,
+                                      language="", keep_delivery=False)
+        headers = {"X-OmniVoice-Fallback": "respoken"}
+    return await _audio_url_response(result, output_format, headers)
+
+
+# ── Sound effects ───────────────────────────────────────────────────────────
+
+
+class SoundGenerationRequest(BaseModel):
+    """``prompt_influence``, ``loop`` and ``model_id`` have no equivalent in
+    the app's sound-effect engine and are accepted without effect."""
+
+    text: str = Field(..., min_length=1)
+    duration_seconds: Optional[float] = Field(default=None, gt=0)
+    prompt_influence: Optional[float] = Field(default=None, ge=0, le=1)
+    loop: Optional[bool] = None
+    model_id: Optional[str] = None
+
+    model_config = {"extra": "allow"}
+
+
+@router.post("/v1/sound-generation")
+async def sound_generation(
+    body: SoundGenerationRequest,
+    output_format: str = Query(default="mp3_44100_128"),
+):
+    """A sound effect from a description, on the app's Sound effects engine
+    (Tools → Sound effects must be installed)."""
+    from api.routers.sfx import SfxRequest, _limits, sfx_generate
+
+    await _ffmpeg_ready(output_format)
+    seconds = body.duration_seconds
+    if seconds is None:
+        seconds = _limits()["default_seconds"]
+    result = await sfx_generate(SfxRequest(prompt=body.text, duration=seconds))
+    return await _audio_url_response(result, output_format)

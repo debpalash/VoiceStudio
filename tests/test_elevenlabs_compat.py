@@ -210,3 +210,73 @@ def test_alaw_matches_reference_codec():
     audioop = pytest.importorskip("audioop")
     pcm = np.arange(-32768, 32768, dtype=np.int16)
     assert _el().lin2alaw(pcm) == audioop.lin2alaw(pcm.astype("<i2").tobytes(), 2)
+
+
+@pytest.fixture()
+def saved_take():
+    """A 1 s 24 kHz take in OUTPUTS_DIR, as the app's handlers leave one."""
+    import soundfile as sf
+    from core.config import OUTPUTS_DIR
+
+    os.makedirs(OUTPUTS_DIR, exist_ok=True)
+    name = f"el-take-{uuid.uuid4().hex[:8]}.wav"
+    path = os.path.join(OUTPUTS_DIR, name)
+    sf.write(path, np.zeros(24000, dtype=np.float32), 24000)
+    yield {"audio_url": f"/audio/{name}", "id": "x"}
+    os.unlink(path)
+
+
+def test_speech_to_speech_keeps_delivery_then_falls_back(client, monkeypatch, profile, saved_take):
+    from fastapi import HTTPException
+
+    vc = importlib.import_module("api.routers.voice_convert")
+    calls = []
+
+    async def fake(*, audio, profile_id, match_duration, language, keep_delivery):
+        calls.append((profile_id, keep_delivery, await audio.read()))
+        if keep_delivery:
+            raise HTTPException(409, {"error": "voice_conversion_engine_missing", "message": "none"})
+        return saved_take
+
+    monkeypatch.setattr(vc, "convert_speech", fake)
+    pid, name = profile
+    res = client.post(f"/elevenlabs/v1/speech-to-speech/{name}",
+                      params={"output_format": "pcm_16000"},
+                      files={"audio": ("in.wav", b"source-bytes", "audio/wav")})
+    assert res.status_code == 200, res.text
+    assert len(res.content) == 16000 * 2
+    assert res.headers["x-omnivoice-fallback"] == "respoken"
+    # The profile is resolved by name; the upload is re-read for the fallback.
+    assert calls == [(pid, True, b"source-bytes"), (pid, False, b"source-bytes")]
+
+    missing = client.post("/elevenlabs/v1/speech-to-speech/default",
+                          files={"audio": ("in.wav", b"x", "audio/wav")})
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["status"] == "voice_not_found"
+
+
+def test_sound_generation_returns_the_saved_effect(client, monkeypatch, saved_take):
+    from fastapi import HTTPException
+
+    sfx = importlib.import_module("api.routers.sfx")
+    seen = []
+
+    async def fake(req):
+        seen.append(req)
+        if req.prompt == "missing":
+            raise HTTPException(409, {"code": "sfx_not_installed", "message": "Install it."})
+        return saved_take
+
+    monkeypatch.setattr(sfx, "sfx_generate", fake)
+    monkeypatch.setattr(sfx, "_limits", lambda: {"default_seconds": 10.0})
+    res = client.post("/elevenlabs/v1/sound-generation", params={"output_format": "wav_44100"},
+                      json={"text": "door creak", "prompt_influence": 0.3})
+    assert res.status_code == 200, res.text
+    assert res.content[:4] == b"RIFF"
+    assert seen[-1].prompt == "door creak" and seen[-1].duration == 10.0
+
+    err = client.post("/elevenlabs/v1/sound-generation", params={"output_format": "pcm_24000"},
+                      json={"text": "missing", "duration_seconds": 2})
+    assert err.status_code == 409
+    detail = err.json()["detail"]
+    assert detail["status"] == "sfx_not_installed" and detail["message"] == "Install it."
