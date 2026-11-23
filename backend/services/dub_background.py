@@ -99,7 +99,8 @@ def splice_background(original: str, separated: str, output: str, intervals: lis
                 mask = np.zeros(len(wave), dtype='float32')
                 while active < len(intervals) and intervals[active][1] < times[0]:
                     active += 1
-                for a, b in intervals[active:]:
+                for index in range(active, len(intervals)):
+                    a, b = intervals[index]
                     if a > times[-1]:
                         break
                     fade = min(FADE_S, (b-a)/2)
