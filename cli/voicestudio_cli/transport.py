@@ -162,7 +162,7 @@ def download(response, destination: str, *, overwrite: bool = False) -> dict:
     path = Path(destination).expanduser()
     if path.exists() and not overwrite:
         raise CLIError('output_exists', f'Output already exists: {path}. Use --overwrite to replace it.')
-    fd, name = tempfile.mkstemp(prefix='.' + path.name + '-', suffix='.part', dir=path.parent)
+    fd, name = tempfile.mkstemp(prefix='.voicestudio-', suffix='.part', dir=path.parent)
     received = 0
     try:
         with os.fdopen(fd, 'wb') as stream:
