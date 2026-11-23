@@ -428,6 +428,13 @@ def test_loudnorm_report_survives_unmatched_brace_in_input_filename(padding):
     assert parse_loudnorm_measure(stderr) == _MEASURED
 
 
+def test_loudnorm_report_survives_colored_header_after_unmatched_brace():
+    header = "[Parsed_loudnorm_0 @ 0x55]"
+    report = _MEASURE_JSON.replace(header, f"\x1b[0;32m{header}\x1b[0m ")
+    stderr = "Input #0, concat, from '/music/Book {draft/chapters.txt':\n" + report
+    assert parse_loudnorm_measure(stderr) == _MEASURED
+
+
 @pytest.mark.parametrize("bad", [
     None, "", "   ", "no braces here", '{ "input_i": "-1"',          # no/unbalanced
     '{ "input_i": "-1", }', '{ input_i: -1 }',                       # malformed json
