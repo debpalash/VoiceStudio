@@ -678,6 +678,12 @@ def parse_loudnorm_measure(stderr_text: Optional[str]) -> Optional[MeasuredLoudn
     the five required keys to finite floats."""
     if not stderr_text:
         return None
+    # FFmpeg can mention arbitrary filenames before the measurement. A brace
+    # in a path is not the opening of the JSON report.
+    report_start = 0
+    for report in re.finditer(r"(?m)^\[Parsed_loudnorm_\d+ @ [^\r\n]*\][ \t]*\r?\n[ \t]*(?=\{)", stderr_text):
+        report_start = report.end()
+    stderr_text = stderr_text[report_start:]
     # Find the last balanced top-level {...} block via a single linear scan.
     start = -1
     depth = 0
