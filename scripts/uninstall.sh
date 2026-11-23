@@ -291,6 +291,9 @@ is_unsafe_delete_root() {
   local target home="$RESOLVED_HOME"
   target=$(resolve_delete_target "$1")
   [ -z "$target" ] && return 0
+  # The filesystem root under any alias ("/usr/..", "/.") — its pattern below
+  # would be "//*", which matches nothing.
+  [ "$target" = "/" ] && return 0
   [ -z "$home" ] && return 1
   [ "$target" = "$home" ] && return 0
   case "$home/" in "$target"/*) return 0 ;; esac

@@ -250,6 +250,39 @@ def test_sh_refuses_a_newline_suffixed_parent_of_home(tmp_path, branch):
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="bash script is macOS/Linux-only")
+@pytest.mark.parametrize("branch", ["data", "models"])
+@pytest.mark.parametrize("alias", ["/usr/..", "/."])
+def test_sh_refuses_an_alias_of_the_filesystem_root(tmp_path, branch, alias):
+    """A path that resolves to "/" is refused by the guard itself.
+
+    ``rm`` and ``du`` are shadowed on PATH, so even a regressed guard deletes
+    nothing; the test reads what would have been removed.
+    """
+    home, _, _, _ = _layout(tmp_path)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log = tmp_path / "rm.log"
+    rm = fake_bin / "rm"
+    rm.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" >> "{log}"\n', encoding="utf-8")
+    rm.chmod(0o755)
+    # The size preview runs before the guard; keep it from scanning the disk.
+    du = fake_bin / "du"
+    du.write_text('#!/bin/sh\nfor last; do :; done\nprintf "0\\t%s\\n" "$last"\n', encoding="utf-8")
+    du.chmod(0o755)
+    extra = {"extra_env": {"PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}}
+
+    if branch == "data":
+        applied = _run(tmp_path, home, "--yes", data_dir=alias, **extra)
+    else:
+        applied = _run(tmp_path, home, "--yes", "--models", cache_dir=alias, **extra)
+
+    assert applied.returncode == 0, applied.stderr
+    assert "Refusing to remove" in applied.stderr
+    removed = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    assert alias not in removed, f"the {branch} branch would have run rm -rf on {alias}"
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="bash script is macOS/Linux-only")
 def test_sh_resolves_home_before_the_first_deletion(tmp_path):
     """A deleted app folder can hold the symlink that names home.
 
