@@ -1311,6 +1311,16 @@
       "version": "1.0",
       "repo_id": 1206390571,
       "body_sha256": "21a9406dda85f3c9e1f8b4b331ffff5234c7dfe9f978747e8058edd5e05f8145"
+    },
+    {
+      "login": "rome-xi",
+      "id": 49893941,
+      "issue": 2586,
+      "comment_id": 7091145869,
+      "signed_at": "2026-11-23T03:56:31Z",
+      "version": "1.0",
+      "repo_id": 1206390571,
+      "body_sha256": "21a9406dda85f3c9e1f8b4b331ffff5234c7dfe9f978747e8058edd5e05f8145"
     }
   ]
 }
