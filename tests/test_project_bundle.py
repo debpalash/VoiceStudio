@@ -182,3 +182,27 @@ def test_extracted_manifest_stays_utf8_when_the_locale_cannot_encode_the_title(t
     assert imported['title'] == _UNENCODABLE_TITLE
     extracted = json.loads((tmp_path/'imported'/'manifest.json').read_text(encoding='utf-8'))
     assert extracted['title'] == _UNENCODABLE_TITLE
+
+
+def test_story_handoff_keeps_cast_and_per_line_override_roles_distinct():
+    from services.project_bundle import manuscript_document
+
+    project = {
+        "mode": "stories",
+        "draft": {
+            "script": "",
+            "voice": "default",
+            "cast": [{"id": "line-1", "name": "Narrator", "profileId": "voice-a"}],
+            "lines": [
+                {"id": "a", "character": "line-1", "text": "First"},
+                {"id": "b", "character": "line-1", "text": "Second", "profileId": "voice-b"},
+                {"id": "c", "character": "line-1", "text": "Third"},
+            ],
+        },
+    }
+    document = manuscript_document(project)
+    roles = [line.split("]", 1)[0].removeprefix("[voice:") for line in document["script"].splitlines()]
+    assert roles[0] == roles[2]
+    assert roles[0] != roles[1]
+    assert [document["cast"][role] for role in roles] == ["voice-a", "voice-b", "voice-a"]
+    assert document["roles"][roles[1]]["lineId"] == "b"

@@ -281,6 +281,7 @@ def manuscript_document(project: dict) -> dict:
     draft = project.get('draft', {})
     _validate_desktop_draft(draft)
     mode = project.get('mode', 'stories'); cast = {}; lines = []; roles = {}
+    role_ids: dict[tuple[str, str | int], str] = {}
     characters = {c['id']: c for c in draft.get('cast', []) if isinstance(c,dict) and isinstance(c.get('id'),str)}
     for index, line in enumerate(draft.get('lines', [])):
         if not isinstance(line,dict) or not isinstance(line.get('text'),str): continue
@@ -288,8 +289,19 @@ def manuscript_document(project: dict) -> dict:
         if heading is not None:
             lines.append(heading)
             continue
-        role = 'line-'+str(index) if line.get('profileId') else str(line.get('character') or 'narrator')
-        role = re.sub(r'[^A-Za-z0-9_-]', '_', role)[:100] or 'narrator'
+        character = str(line.get('character') or 'narrator')
+        origin = ('line', index) if line.get('profileId') else ('cast', character)
+        role = role_ids.get(origin)
+        if role is None:
+            label = f'line-{index}' if origin[0] == 'line' else character
+            base = re.sub(r'[^A-Za-z0-9_-]', '_', label)[:100] or 'narrator'
+            role = base
+            count = 2
+            while role in roles:
+                suffix = f'-{count}'
+                role = base[:100 - len(suffix)] + suffix
+                count += 1
+            role_ids[origin] = role
         voice = line.get('profileId') or characters.get(line.get('character'), {}).get('profileId') or draft.get('voice')
         if voice: cast[role] = voice
         roles[role] = {'characterId':line.get('character') or 'narrator','name':characters.get(line.get('character'),{}).get('name') or role,**({'lineId':line.get('id'),'lineIndex':index} if line.get('profileId') else {})}
