@@ -23,7 +23,7 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
   const restored = restoreDubDraft(
     JSON.stringify({
       jobId: s.dubJobId,
-      filename: s.dubFilename || project.video_path,
+      filename: s.dubFilename || project.video_path || project.audio_path,
       duration: project.duration,
       segments,
       target: s.dubLang,
@@ -62,7 +62,7 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
       sourceLang: s.dubSourceLangCode,
       tracks: s.dubTracks,
       phase: s.dubStep,
-      inputType: s.inputType,
+      inputType: s.inputType ?? (!project.video_path && project.audio_path ? 'audio' : 'video'),
     }),
     defaults,
   );

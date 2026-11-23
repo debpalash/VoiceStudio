@@ -69,3 +69,21 @@ it('discards malformed segments without inventing active tasks', () => {
   expect(session.segments).toEqual([]);
   expect(session.recovery).toBeNull();
 });
+
+
+it('reopens audio-only legacy projects without a saved input type or filename', () => {
+  const project = {
+    id: 'audio',
+    name: 'Audio dub',
+    audio_path: '/media/interview.wav',
+    state: { dubJobId: 'audio-job' },
+  };
+  expect(projectSession(project, defaults)).toMatchObject({
+    inputType: 'audio',
+    filename: '/media/interview.wav',
+  });
+  expect(projectSession({ ...project, video_path: '/media/interview.mp4' }, defaults)).toMatchObject({
+    inputType: 'video',
+    filename: '/media/interview.mp4',
+  });
+});
