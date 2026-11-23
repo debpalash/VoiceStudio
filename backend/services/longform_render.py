@@ -385,21 +385,31 @@ def wav_is_complete(path: str) -> bool:
     no sample decode — so it is cheap on hour-long chapters.
     """
     try:
-        size = os.path.getsize(path)
         with open(path, "rb") as f:
+            size = os.fstat(f.fileno()).st_size
             head = f.read(12)
             if len(head) < 12 or head[:4] != b"RIFF" or head[8:12] != b"WAVE":
                 return False
+            riff_end = 8 + int.from_bytes(head[4:8], "little")
+            if riff_end > size:
+                return False
+            block_align = 0
             pos = 12
-            while pos + 8 <= size:
+            while pos + 8 <= riff_end:
                 f.seek(pos)
                 hdr = f.read(8)
                 if len(hdr) < 8:
                     return False
                 chunk_len = int.from_bytes(hdr[4:8], "little")
+                chunk_end = pos + 8 + chunk_len + (chunk_len & 1)
+                if chunk_end > riff_end:
+                    return False
+                if hdr[:4] == b"fmt " and chunk_len >= 16:
+                    fmt = f.read(16)
+                    block_align = int.from_bytes(fmt[12:14], "little")
                 if hdr[:4] == b"data":
-                    return chunk_len > 0 and pos + 8 + chunk_len <= size
-                pos += 8 + chunk_len + (chunk_len & 1)
+                    return block_align > 0 and chunk_len > 0 and chunk_len % block_align == 0
+                pos = chunk_end
     except OSError:
         return False
     return False

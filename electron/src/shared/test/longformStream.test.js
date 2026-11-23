@@ -194,3 +194,20 @@ it('stops dispatching buffered chapter events as soon as the render is cancelled
   }, { signal: controller.signal });
   expect(events).toEqual(['started']);
 });
+
+
+it('cancels a pending read when a render is stopped during silence', async () => {
+  const controller = new AbortController();
+  let cancelled = 0;
+  const body = new ReadableStream({
+    cancel() {
+      cancelled += 1;
+    },
+  });
+  const running = consumeLongformStream({ body }, () => {}, { signal: controller.signal });
+  controller.abort();
+  expect(cancelled).toBe(1);
+  await running;
+  expect(cancelled).toBe(1);
+  expect(body.locked).toBe(false);
+});
