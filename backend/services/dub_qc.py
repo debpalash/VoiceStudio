@@ -18,6 +18,7 @@ pipeline stage that runs the ASR pass lives in the dub router.
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -133,15 +134,35 @@ def score_dub(
     hypothesis and scored against the dub segment's ``text``. The recognized
     span's bounds become the measured start/end (subtitle-timing truth).
     """
+    # Sort by start for the search, retaining the recognizer's input order
+    # when several cues contribute to the hypothesis.
+    cues = sorted(
+        (float(row.get("start", 0.0)), index, float(row.get("end", 0.0)), row)
+        for index, row in enumerate(recognized)
+    )
+    starts: list[float] = []
+    furthest_ends: list[float] = []
+    furthest = float("-inf")
+    for start, _, end, _ in cues:
+        starts.append(start)
+        furthest = max(furthest, end)
+        furthest_ends.append(furthest)
+
     results: list[SegmentQC] = []
     for i, seg in enumerate(dub_segments):
         sid = str(seg_ids[i]) if (seg_ids and i < len(seg_ids)) else str(seg.get("id", i))
         s0, s1 = float(seg.get("start", 0.0)), float(seg.get("end", 0.0))
-        hits = [r for r in recognized if _overlap(s0, s1, float(r.get("start", 0.0)), float(r.get("end", 0.0))) > 0]
-        hyp = " ".join((r.get("text") or "").strip() for r in hits).strip()
+        first = bisect_right(furthest_ends, s0)
+        stop = bisect_left(starts, s1, lo=first)
+        hits = sorted(
+            (index, start, end, row)
+            for start, index, end, row in cues[first:stop]
+            if _overlap(s0, s1, start, end) > 0
+        )
+        hyp = " ".join((row.get("text") or "").strip() for _, _, _, row in hits).strip()
         drift = word_error_rate(seg.get("text", ""), hyp)
-        new_start = min((float(r.get("start", 0.0)) for r in hits), default=None)
-        new_end = max((float(r.get("end", 0.0)) for r in hits), default=None)
+        new_start = min((start for _, start, _, _ in hits), default=None)
+        new_end = max((end for _, _, end, _ in hits), default=None)
         results.append(SegmentQC(
             seg_id=sid,
             target_text=(seg.get("text") or "").strip(),
