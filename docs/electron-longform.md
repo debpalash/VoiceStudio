@@ -81,7 +81,7 @@ Stories Auto-cast accepts tagged dialogue, screenplay text and attributed prose.
 
 A Stories script can also be built from a finished dub, which replaces the current script, cast and pending import with the dub's speakers and lines. The action lives in the Dub workspace; see `docs/electron-dubbing.md`.
 
-WebVTT (`.vtt`) captions also import locally; their cue metadata is dropped before the spoken lines enter Stories.
+WebVTT (`.vtt`) captions also import locally. Stories extracts dialogue from blocks that start with a valid timing line, optionally preceded by a cue identifier. It skips comments and blocks without a timing line in either position.
 
 Paste & Split offers three presets: **Sentences** (size-limited, with a max-characters field), **Paragraphs** (split at blank lines, the default) and **Chapters** (one line per chapter body). A `# Heading` line is always its own line, in every preset.
 
