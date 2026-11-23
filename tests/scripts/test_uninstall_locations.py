@@ -39,7 +39,7 @@ def _layout(tmp_path):
     return home, user_data, logs, legacy
 
 
-def _run(tmp_path, home, *args):
+def _run(tmp_path, home, *args, data_dir=None, cache_dir=None, cwd=None, extra_env=None):
     env = {
         key: value
         for key, value in os.environ.items()
@@ -48,12 +48,13 @@ def _run(tmp_path, home, *args):
     env.update(
         {
             "HOME": str(home),
-            "OMNIVOICE_DATA_DIR": str(tmp_path / "data-nonexistent"),
-            "OMNIVOICE_CACHE_DIR": str(tmp_path / "models-nonexistent"),
+            "OMNIVOICE_DATA_DIR": str(data_dir or (tmp_path / "data-nonexistent")),
+            "OMNIVOICE_CACHE_DIR": str(cache_dir or (tmp_path / "models-nonexistent")),
         }
     )
+    env.update(extra_env or {})
     return subprocess.run(
-        ["bash", SH, *args], capture_output=True, text=True, env=env, timeout=60
+        ["bash", SH, *args], capture_output=True, text=True, env=env, timeout=60, cwd=cwd
     )
 
 
@@ -123,6 +124,83 @@ def test_scripts_no_longer_cite_the_removed_tauri_backend():
     for path in (SH, PS1):
         with open(path, encoding="utf-8-sig") as handle:
             assert "src-tauri" not in handle.read()
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="bash script is macOS/Linux-only")
+@pytest.mark.parametrize("target", ["home", "parent-of-home"])
+def test_sh_refuses_a_deletion_target_it_did_not_create(tmp_path, target):
+    """An override can name the home directory or a parent of it (#4436).
+
+    OMNIVOICE_DATA_DIR is honoured verbatim, so without the guard `--yes` turns
+    "uninstall VoiceStudio" into "delete my home folder".
+    """
+    home, user_data, _, _ = _layout(tmp_path)
+    named = home if target == "home" else home.parent
+
+    applied = _run(tmp_path, home, "--yes", data_dir=named)
+    assert applied.returncode == 0, applied.stderr
+    assert "Refusing to remove" in applied.stderr
+    assert home.exists(), f"{target} was deleted"
+    # The app's own folders are still found and removed.
+    assert not user_data.exists()
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="bash script is macOS/Linux-only")
+def test_sh_refuses_to_delete_the_home_directory_as_a_model_cache(tmp_path):
+    home, _, _, _ = _layout(tmp_path)
+    applied = _run(tmp_path, home, "--yes", "--models", cache_dir=home)
+    assert applied.returncode == 0, applied.stderr
+    assert "Refusing to remove" in applied.stderr
+    assert home.exists()
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="bash script is macOS/Linux-only")
+@pytest.mark.parametrize("branch", ["data", "models"])
+def test_sh_resolves_a_relative_target_even_when_cdpath_is_set(tmp_path, branch):
+    """An exported CDPATH makes `cd` echo the directory it picked.
+
+    The captured target then held two lines, missed the home comparison, and `--yes`
+    deleted the home directory. Both deletion branches resolve a target, so both are
+    covered.
+    """
+    home, _, _, _ = _layout(tmp_path)
+    extra = {"cwd": tmp_path, "extra_env": {"CDPATH": "."}}
+    if branch == "data":
+        applied = _run(tmp_path, home, "--yes", data_dir="home", **extra)
+    else:
+        applied = _run(tmp_path, home, "--yes", "--models", cache_dir="home", **extra)
+
+    assert applied.returncode == 0, applied.stderr
+    assert "Refusing to remove" in applied.stderr
+    assert home.exists(), f"the {branch} branch deleted the home directory"
+
+
+def test_both_scripts_check_a_target_before_removing_it():
+    with open(SH, encoding="utf-8") as handle:
+        sh = handle.read()
+    with open(PS1, encoding="utf-8-sig") as handle:
+        ps1 = handle.read()
+
+    assert "is_unsafe_delete_root() {" in sh
+    assert "strip_trailing_slashes() {" in sh
+    assert "resolve_delete_target() {" in sh
+    # With CDPATH exported, `cd` prints the directory it picked and the captured
+    # target carries two lines, which would miss every comparison.
+    assert "unset CDPATH" in sh
+    assert sh.index('t=$(strip_trailing_slashes "$t")') < sh.index('rm -rf -- "$t"')
+    assert sh.index('is_unsafe_delete_root "$t"') < sh.index('rm -rf -- "$t"')
+    assert sh.index('is_unsafe_delete_root "$MODELS_DIR"') < sh.index('rm -rf -- "$MODELS_DIR"')
+
+    assert "function Resolve-DeleteTarget" in ps1
+    assert "function Test-UnsafeDeleteRoot" in ps1
+    # The path that is validated is the path that is removed, resolved once through
+    # PowerShell's provider location.
+    assert "$target = Resolve-DeleteTarget $t" in ps1
+    assert "Test-UnsafeDeleteRoot $target" in ps1
+    assert "$modelsTarget = Resolve-DeleteTarget $modelsDir" in ps1
+    assert "Test-UnsafeDeleteRoot $modelsTarget" in ps1
+    assert ps1.index("Test-UnsafeDeleteRoot $target") < ps1.index("Remove-Item -LiteralPath $target")
+    assert ps1.index("Test-UnsafeDeleteRoot $modelsTarget") < ps1.index("Remove-Item -LiteralPath $modelsTarget")
 
 
 def test_ps1_targets_electron_folders_and_its_uninstaller():
