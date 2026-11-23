@@ -45,6 +45,16 @@ def test_lists_become_tables_led_by_identifying_columns_that_fit():
     assert 'x' * 50 not in text
 
 
+def test_wide_voice_names_keep_terminal_columns_aligned_and_within_width():
+    rows = [{'id': 'a', 'name': '\u97f3\u58f0', 'language': 'ja'},
+            {'id': 'b', 'name': 'AB', 'language': 'en'}]
+    header, japanese, english = render(rows, tty=True, width=18).splitlines()
+    assert header == 'ID  NAME  LANGUAGE'
+    assert japanese == 'a   \u97f3\u58f0  ja'
+    assert english == 'b   AB    en'
+    assert render([{'name': '\u97f3' * 8}], tty=True, width=7).splitlines()[1] == '\u97f3' * 3 + '\u2026'
+
+
 def test_wrapped_list_prints_its_table_then_its_summary():
     text = render(SHAPES['wrapped list'], tty=True, width=100)
     assert text.splitlines()[0].split() == ['REPO', 'ID', 'INSTALLED', 'SIZE']
