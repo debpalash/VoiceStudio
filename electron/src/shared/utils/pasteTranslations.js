@@ -30,7 +30,8 @@ const TIMING_RE =
   /^[^\S\n]*(?:\d+:)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}[^\S\n]*-->[^\S\n]*(?:\d+:)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}/m;
 
 // `1. text` / `2) text` / `[3] text` / `4 - text` / `5: text`.
-const NUMBERED_RE = /^\s*(?:\[\s*(\d{1,5})\s*\]|\(\s*(\d{1,5})\s*\)|(\d{1,5}))\s*[.):\-—]?\s+(.*)$/;
+const NUMBERED_RE = /^\s*(?:(?:\[\s*(\d{1,5})\s*\]|\(\s*(\d{1,5})\s*\))\s*[.):\-—]?|(\d{1,5})\s*[.):\-—])\s+(.*)$/;
+const BARE_NUMBERED_RE = /^(\d{1,5})\s+(.*)$/;
 
 /** Lines that carry content. Blank lines are separators, never translations. */
 const nonBlank = (text) =>
@@ -54,8 +55,18 @@ export function detectPasteMode(text) {
     // A majority rules: LLM output often carries a stray preamble line
     // ("Here are the translations:") that must not veto the detection.
     if (numbered >= 2 && numbered / lines.length >= 0.6) return 'numbered';
+    if (numbered === 0 && hasBareNumbering(lines)) return 'numbered';
   }
   return 'plain';
+}
+
+function hasBareNumbering(lines) {
+  // Bare prefixes also appear in ordinary dialogue ("2024 was...").
+  // Require a 1-based sequence before treating them as row numbers.
+  return lines.length >= 2 && lines.every((line, index) => {
+    const match = BARE_NUMBERED_RE.exec(line);
+    return match !== null && Number(match[1]) === index + 1;
+  });
 }
 
 /**
@@ -66,11 +77,13 @@ export function detectPasteMode(text) {
  */
 export function parseNumberedLines(text) {
   const entries = [];
-  for (const line of nonBlank(text)) {
-    const m = NUMBERED_RE.exec(line);
+  const lines = nonBlank(text);
+  const bare = hasBareNumbering(lines);
+  for (const line of lines) {
+    const m = (bare ? BARE_NUMBERED_RE : NUMBERED_RE).exec(line);
     if (m) {
-      const num = parseInt(m[1] ?? m[2] ?? m[3], 10);
-      entries.push({ num: Number.isFinite(num) ? num : null, text: (m[4] || '').trim() });
+      const num = Number(bare ? m[1] : (m[1] ?? m[2] ?? m[3]));
+      entries.push({ num, text: (bare ? m[2] : m[4]).trim() });
     } else if (entries.length) {
       entries[entries.length - 1].text = `${entries[entries.length - 1].text} ${line}`.trim();
     }

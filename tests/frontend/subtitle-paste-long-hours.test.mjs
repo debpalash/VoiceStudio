@@ -14,3 +14,22 @@ for (const separator of [',', '.']) {
     assert.equal(plan.matchedCount, 1);
   });
 }
+
+
+test('plain translations that begin with years keep those years', () => {
+  const text = '2024 was a good year\n2025 was better';
+  const segments = [
+    { id: 'a', start: 0, end: 1, text: 'Original A' },
+    { id: 'b', start: 1, end: 2, text: 'Original B' },
+  ];
+  const plan = buildPastePlan(text, segments);
+  assert.equal(plan.mode, 'plain');
+  assert.deepEqual(plan.rows.map(({ after }) => after), ['2024 was a good year', '2025 was better']);
+  for (const numbered of ['1 First\n2 Second', '1. First\n2. Second', '[1] - First\n[2] - Second']) {
+    const plan = buildPastePlan(numbered, segments);
+    assert.equal(plan.mode, 'numbered');
+    assert.deepEqual(plan.rows.map(({ after }) => after), ['First', 'Second']);
+  }
+  const mixed = buildPastePlan('1. First\n2024 was a good year\n2. Second', segments);
+  assert.deepEqual(mixed.rows.map(({ after }) => after), ['First 2024 was a good year', 'Second']);
+});
