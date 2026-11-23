@@ -162,6 +162,16 @@ def test_merge_glossary_user_wins():
 # ── Stage 1: injection into every per-segment translation prompt ────────────
 
 
+@pytest.mark.parametrize(("manual", "automatic"), [("Stra\u00dfe", "STRASSE"), ("Caf\u00e9", "Cafe\u0301")])
+def test_manual_glossary_wins_for_unicode_equivalent_spelling(manual, automatic):
+    from services.translation_quality import merge_glossary
+
+    preferred = {"source": manual, "target": "Preferred"}
+    generated = {"source": automatic, "target": "Conflicting"}
+    assert merge_glossary([preferred], [generated]) == [preferred]
+    assert merge_glossary([], [preferred, generated]) == [preferred]
+
+
 @pytest.mark.asyncio
 async def test_auto_glossary_injected_into_every_segment_prompt(monkeypatch):
     """One context call up front; every direct-translate prompt then carries
