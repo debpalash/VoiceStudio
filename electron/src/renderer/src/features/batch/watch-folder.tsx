@@ -88,21 +88,16 @@ export function WatchFolder({
     if (!source || !bridge?.watch) return;
     let ticking = false;
     const live = () => mounted.current && current.current === source;
+    const canEnqueue = () =>
+      live() && !pausedRef.current && !settings.current.disabled && settings.current.langs.length > 0;
     const tick = async () => {
-      if (
-        ticking ||
-        !live() ||
-        pausedRef.current ||
-        settings.current.disabled ||
-        !settings.current.langs.length
-      )
-        return;
+      if (ticking || !canEnqueue()) return;
       ticking = true;
       const ingest = tracker.current;
       try {
         const entries = ingest.next(await bridge.watch.scan(source.token));
         for (const entry of entries) {
-          if (!live() || pausedRef.current || !settings.current.langs.length) {
+          if (!canEnqueue()) {
             ingest.unsee(entry);
             continue;
           }

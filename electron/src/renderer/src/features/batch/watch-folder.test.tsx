@@ -125,3 +125,25 @@ it('retries a failed enqueue after settling again and stops on inaccessible fold
   expect(screen.getByRole('alert').textContent).toContain('moved');
   expect(mocks.watch.stop).toHaveBeenCalledWith('selected');
 });
+
+it('defers a settled file if synthesis becomes unavailable during its confirming scan', async () => {
+  const onAdded = vi.fn();
+  const view = render(<WatchFolder langs={['es']} voiceId="" preserveBg onAdded={onAdded} />);
+  await start();
+  mocks.watch.scan.mockResolvedValue([old, next]);
+  await tick();
+
+  let finishScan!: (entries: (typeof next)[]) => void;
+  mocks.watch.scan.mockImplementationOnce(
+    () => new Promise((resolve) => { finishScan = resolve; }),
+  );
+  await tick();
+  view.rerender(<WatchFolder langs={['es']} voiceId="" preserveBg disabled onAdded={onAdded} />);
+  await act(async () => { finishScan([old, next]); });
+  expect(mocks.watch.enqueue).not.toHaveBeenCalled();
+
+  view.rerender(<WatchFolder langs={['es']} voiceId="" preserveBg onAdded={onAdded} />);
+  await tick();
+  expect(mocks.watch.enqueue).toHaveBeenCalledTimes(1);
+  expect(onAdded).toHaveBeenCalledTimes(1);
+});
