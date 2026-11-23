@@ -12,6 +12,7 @@ Rules (in priority order):
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -854,6 +855,10 @@ def _resplit_core(
     if not turns or not words:
         return segments
     ordered = sorted(words, key=lambda w: (w.start, w.end))
+    midpoints = [(word.start + word.end) / 2 for word in ordered]
+    # Malformed/overlapping word spans can have midpoints out of start order.
+    # Preserve the original ordering for those inputs.
+    indexed = all(a <= b for a, b in zip(midpoints, midpoints[1:]))
     out: List[dict] = []
     for seg in segments:
         s0, s1 = seg["start"], seg["end"]
@@ -861,7 +866,12 @@ def _resplit_core(
         # times are not, so a neighbouring segment's boundary word can overlap
         # this span by up to 5ms. Such a word's midpoint lies outside this
         # span; a tiny word fully inside it is still this segment's word.
-        seg_words = [w for w in ordered if s0 < (w.start + w.end) / 2 < s1]
+        if indexed:
+            left = bisect_right(midpoints, s0)
+            right = bisect_left(midpoints, s1, lo=left)
+            seg_words = ordered[left:right]
+        else:
+            seg_words = [word for word, mid in zip(ordered, midpoints) if s0 < mid < s1]
         if len(seg_words) < 2:
             out.append(seg)
             continue
