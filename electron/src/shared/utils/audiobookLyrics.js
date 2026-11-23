@@ -71,9 +71,9 @@ export function buildLyricsTimeline(script, { chapters = null, duration = 0 } = 
   const empty = { chapters: [], words: [] };
   if (!parsed.length) return empty;
 
+  const aligned = Array.isArray(chapters) && chapters.length === parsed.length;
   const timed =
-    Array.isArray(chapters) &&
-    chapters.length === parsed.length &&
+    aligned &&
     chapters.every((c) => c?.status === 'failed' || Number.isFinite(c?.duration_s));
 
   const outChapters = [];
@@ -92,14 +92,15 @@ export function buildLyricsTimeline(script, { chapters = null, duration = 0 } = 
 
   const total = Number(duration) || 0;
   if (total <= 0) return empty;
-  const totalTokens = parsed.reduce((n, c) => n + c.tokens.length, 0);
+  const audible = aligned ? parsed.filter((_, i) => chapters[i]?.status !== 'failed') : parsed;
+  const totalTokens = audible.reduce((n, c) => n + c.tokens.length, 0);
   if (!totalTokens) return empty;
   // Proportional even split: every word owns the same slice of the file, so
   // chapter spans fall out of their word counts. Wordless (pause-only)
   // chapters get a zero-width span — nothing to highlight there anyway.
   const per = total / totalTokens;
   let at = 0;
-  for (const chapter of parsed) {
+  for (const chapter of audible) {
     const end = at + chapter.tokens.length * per;
     pushChapter(outChapters, words, chapter, '', at, end);
     at = end;

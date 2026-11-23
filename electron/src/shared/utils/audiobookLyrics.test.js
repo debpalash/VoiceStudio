@@ -125,6 +125,18 @@ describe('buildLyricsTimeline — stream chapter durations', () => {
 });
 
 describe('buildLyricsTimeline — proportional fallback (reload case)', () => {
+  it('omits failed chapters when the remaining chapter has no timing metadata', () => {
+    const { chapters, words } = buildLyricsTimeline(SCRIPT, {
+      chapters: [{ title: 'One', status: 'failed' }, { title: 'Two', status: 'done' }],
+      duration: 4,
+    });
+    expect(chapters.map((chapter) => chapter.title)).toEqual(['Two']);
+    expect(words.map((word) => [word.text, word.start, word.end])).toEqual([
+      ['Epsilon', 0, 2],
+      ['zeta.', 2, 4],
+    ]);
+  });
+
   it('splits the file duration across all words, chapters proportional to word count', () => {
     const { chapters, words } = buildLyricsTimeline(SCRIPT, { duration: 12 });
     // 6 words over 12s = 2s each: chapter One (4 words) 0–8, Two (2 words) 8–12.
