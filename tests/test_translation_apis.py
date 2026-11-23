@@ -226,3 +226,17 @@ def test_a_short_echoed_key_is_still_redacted(monkeypatch):
     with pytest.raises(TranslationProviderError) as caught:
         Translator("deepl", "auto", "de", api_key="abc").translate("hello")
     assert "abc" not in str(caught.value)
+
+
+def test_a_key_with_stray_whitespace_is_redacted_before_normalising(monkeypatch):
+    from services.translation_apis import TranslationProviderError, Translator
+    for name in ["DEEPL_API_KEY", "DEEPL_BASE_URL"]:
+        monkeypatch.delenv(name, raising=False)
+    key = " ".join(["pasted", "", "key", "value"])  # "pasted  key value": doubled space
+    client_type = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: client_type(
+        transport=httpx.MockTransport(lambda r: httpx.Response(403, json={"message": f"bad key {key}"})), **kw))
+    with pytest.raises(TranslationProviderError) as caught:
+        Translator("deepl", "auto", "de", api_key=key).translate("hello")
+    message = str(caught.value)
+    assert "pasted" not in message and "key value" not in message

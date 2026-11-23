@@ -84,9 +84,13 @@ def _provider_detail(response, secret=""):
             text = response.text if body is None else ""
         except Exception:
             text = ""
-    text = " ".join(str(text).split())
-    if secret:
-        text = text.replace(secret, "[redacted]")
+    text = str(text)
+    # Redact before collapsing whitespace: a pasted key with stray spaces is
+    # echoed with them, and would no longer match once they are collapsed.
+    for form in {secret, secret.strip(), " ".join(secret.split())} if secret else ():
+        if form:
+            text = text.replace(form, "[redacted]")
+    text = " ".join(text.split())
     return text[:_DETAIL_LIMIT]
 
 
