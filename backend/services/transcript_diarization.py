@@ -6,8 +6,11 @@ speakers the same way ("Speaker 1", "Speaker 2", …).
 """
 from __future__ import annotations
 
+import contextlib
 import logging
-from typing import Optional
+import os
+import tempfile
+from typing import Iterator, Optional
 
 logger = logging.getLogger("omnivoice.transcribe")
 
@@ -21,6 +24,38 @@ def parse_speaker_hint(value: Optional[str]) -> Optional[int]:
     except ValueError:
         return None
     return count if 1 <= count <= MAX_SPEAKER_HINT else None
+
+
+@contextlib.contextmanager
+def _diarizable_audio(audio_path: str) -> Iterator[str]:
+    """A path both diarization backends can open.
+
+    pyannote reads through soundfile/torchaudio and the native Sortformer reads
+    WAV, so an upload libsndfile cannot open (M4A/AAC, some MP3/WebM builds) is
+    decoded once with the shared decoder (torchaudio, soundfile, then the
+    ffmpeg CLI) into a temporary WAV that is removed afterwards. A file
+    libsndfile already reads is passed through untouched.
+    """
+    import soundfile as sf
+
+    try:
+        readable = not os.path.isfile(audio_path) or bool(sf.info(audio_path))
+    except Exception:
+        readable = False
+    if readable:
+        yield audio_path
+        return
+    from services.audio_io import load_audio
+
+    waveform, sample_rate = load_audio(audio_path)
+    handle, wav_path = tempfile.mkstemp(prefix="diarize-", suffix=".wav")
+    os.close(handle)
+    try:
+        sf.write(wav_path, waveform.numpy().T, sample_rate, subtype="PCM_16")
+        yield wav_path
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(wav_path)
 
 
 def diarize_segments(
@@ -62,11 +97,13 @@ def diarize_segments(
             from services.inference_cancellation import current_cancellation
 
             scope = current_cancellation()
-            diarization = pipeline(
-                audio_path, cancel_check=scope.cancelled.is_set if scope else None
-            )
+            with _diarizable_audio(audio_path) as source:
+                diarization = pipeline(
+                    source, cancel_check=scope.cancelled.is_set if scope else None
+                )
         else:
-            diarization = pipeline(audio_path, num_speakers=hint) if hint else pipeline(audio_path)
+            with _diarizable_audio(audio_path) as source:
+                diarization = pipeline(source, num_speakers=hint) if hint else pipeline(source)
         assigned = assign_speakers_from_diarization([d for _, d in timed], diarization)
         for (index, _), item in zip(timed, assigned):
             labels[index] = item.get("speaker_id")
