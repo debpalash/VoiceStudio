@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { trimmedAudio } from './trim-audio';
+import { trimWaveform, trimmedAudio } from './trim-audio';
 const buffer = {
   sampleRate: 100,
   duration: 2,
@@ -28,4 +28,18 @@ it('rejects invalid, empty and out-of-bounds selections', () => {
     [0, 3],
   ])
     expect(() => trimmedAudio(buffer, start, end)).toThrow('Invalid trim');
+});
+
+
+it('draws the same downmix that the saved voice clip uses', async () => {
+  const stereo = {
+    ...buffer,
+    getChannelData: (channel: number) =>
+      new Float32Array(200).fill(channel === 0 ? 0 : 1),
+  } as AudioBuffer;
+  const peaks = trimWaveform(stereo);
+  const view = new DataView(await trimmedAudio(stereo, 0, 2).arrayBuffer());
+  expect(peaks).toHaveLength(200);
+  expect(peaks[0]).toBe(0.5);
+  expect(view.getInt16(44, true)).toBe(Math.trunc(peaks[0] * 0x7fff));
 });

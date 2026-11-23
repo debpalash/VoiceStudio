@@ -16,6 +16,12 @@ import {
 
 const MAX_TRIM_SECONDS = 60;
 
+export function trimWaveform(buffer: AudioBuffer) {
+  return buffer.numberOfChannels === 1
+    ? buffer.getChannelData(0)
+    : sliceToMono(buffer, 0, buffer.duration);
+}
+
 export function trimmedAudio(buffer: AudioBuffer, start: number, end: number): Blob {
   if (
     !Number.isFinite(start) ||
@@ -72,7 +78,7 @@ export function TrimAudio({
         const regions = Regions.create();
         const wave = WaveSurfer.create({
           container: container.current,
-          peaks: [decoded.getChannelData(0)],
+          peaks: [trimWaveform(decoded)],
           duration: decoded.duration,
           height: 130,
           waveColor: getComputedStyle(container.current).color,
