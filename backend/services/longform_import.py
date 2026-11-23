@@ -151,6 +151,7 @@ class _TextExtractor(HTMLParser):
         self._title_tag = ""
         self._title_parts: list[str] = []
         self.title = ""
+        self.document_title = ""
         self.epub_types: set[str] = set()
         self._elements: list[tuple[str, dict[str, str], bool, bool]] = []
 
@@ -209,7 +210,7 @@ class _TextExtractor(HTMLParser):
 
         if (
             tag in ("h1", "h2", "title")
-            and not self.title
+            and not (self.document_title if tag == "title" else self.title)
             and not self._in_title
             and not self._pagebreak_depth
             and not any(frame[0] in {"script", "style"} for frame in self._elements)
@@ -237,7 +238,10 @@ class _TextExtractor(HTMLParser):
             self._in_title = False
             candidate = " ".join("".join(self._title_parts).split())
             if candidate:
-                self.title = candidate
+                if tag == "title":
+                    self.document_title = candidate
+                else:
+                    self.title = candidate
             self._title_tag = ""
             self._title_parts = []
         if was_in_pagebreak and not self._pagebreak_depth:
@@ -295,13 +299,7 @@ def _html_extract(xhtml: str) -> tuple[set[str], str, str]:
             "EPUB entry: HTML parsing failed part-way; importing the text read before the error",
             exc_info=True,
         )
-    body = extractor.text()
-    title = extractor.title
-    if title:
-        first, newline, rest = body.partition("\n")
-        if first == title:
-            body = rest.lstrip("\n") if newline else ""
-    return extractor.epub_types, title, body
+    return extractor.epub_types, extractor.title or extractor.document_title, extractor.text()
 
 
 _OPF_NS = {"opf": "http://www.idpf.org/2007/opf", "c": "urn:oasis:names:tc:opendocument:xmlns:container"}
