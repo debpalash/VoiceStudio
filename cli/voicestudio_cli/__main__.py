@@ -417,7 +417,9 @@ def assignments(items):
 
 
 def read_text(path):
-    return sys.stdin.read() if path == '-' else Path(path).expanduser().read_text(encoding='utf-8')
+    if path == '-':
+        return sys.stdin.read().removeprefix('\ufeff')
+    return Path(path).expanduser().read_text(encoding='utf-8-sig')
 
 
 def document(path):
