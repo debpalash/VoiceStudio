@@ -41,3 +41,15 @@ it('ignores a removed voice on a chapter heading, which is never spoken', () => 
     ),
   ).toBe(false);
 });
+
+
+it('ignores an unavailable voice on a blank line that emits no speech', () => {
+  const draft = {
+    ...blankLongformDraft(),
+    lines: [
+      { id: 'blank', text: '  ', profileId: 'removed' },
+      { id: 'spoken', text: 'Hello', profileId: 'actor' },
+    ],
+  };
+  expect(storyVoicesReady(draft, [{ id: 'actor' }])).toBe(true);
+});
