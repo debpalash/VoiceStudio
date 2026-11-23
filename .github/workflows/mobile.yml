@@ -123,15 +123,17 @@ jobs:
       # rate-limits (HTTP 429) shared runner IPs. setup-gradle's cache is read-only
       # off the default branch and only saved after a green job, so a 429 on main
       # leaves nothing to restore. Cache the resolved jars on their own, keyed on
-      # the two catalog versions, and retry the resolution with backoff.
+      # the two catalog versions, save them as soon as they resolve, and retry the
+      # resolution with backoff.
       - name: Robolectric SDK cache key
         id: robolectric
         if: steps.pass.outputs.hit != 'true'
         run: echo "key=robolectric-sdk-$(grep 'android-all-instrumented' gradle/libs.versions.toml | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache Robolectric SDK jars
+      - name: Restore Robolectric SDK jars
+        id: robolectric-cache
         if: steps.pass.outputs.hit != 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: mobile/android/app/build/robolectric-sdk
           key: ${{ steps.robolectric.outputs.key }}
@@ -145,6 +147,15 @@ jobs:
             echo "::warning::Robolectric SDK download failed; retrying"
           done
           exit 1
+
+      # Saved as soon as the jars resolve, not after a green job: a later test
+      # failure must not throw away a download that succeeded.
+      - name: Save Robolectric SDK jars
+        if: steps.pass.outputs.hit != 'true' && steps.robolectric-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/android/app/build/robolectric-sdk
+          key: ${{ steps.robolectric.outputs.key }}
 
       - name: Build, unit tests, lint
         if: steps.pass.outputs.hit != 'true'
