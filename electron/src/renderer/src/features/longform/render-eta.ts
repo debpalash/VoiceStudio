@@ -87,8 +87,6 @@ export function renderStatus({
   now,
 }: RenderStatusInput): RenderStatus {
   const elapsedS = startedAt == null ? 0 : Math.max(0, (now - startedAt) / 1000);
-  const total = chapters.length;
-  const finished = chapters.filter((chapter) => FINISHED.has(chapter.status)).length;
   let percent: number;
   let etaS: number | null = null;
   if (progress) {
@@ -98,6 +96,8 @@ export function renderStatus({
   } else {
     // Older backend: chapter count only. Chapters served from cache took no
     // time, so they must not make the remaining ones look instant.
+    const total = chapters.length;
+    const finished = chapters.filter((chapter) => FINISHED.has(chapter.status)).length;
     percent = total ? (finished / total) * 100 : 0;
     const timed = chapters.filter((chapter) => chapter.status === 'done').length;
     const left = total - finished;

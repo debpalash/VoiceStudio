@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { vi, expect, it } from 'vitest';
 import {
   STALL_COLD_S,
   STALL_FLOOR_S,
@@ -98,4 +98,25 @@ it('rejects malformed progress events and clamps values', () => {
 it('formats long renders with hours', () => {
   expect(formatDuration(75)).toBe('1:15');
   expect(formatDuration(8 * 3600 + 5 * 60 + 7)).toBe('8:05:07');
+});
+
+it('uses live progress without reading every chapter status', () => {
+  const statusRead = vi.fn(() => 'done');
+  const chapters = Array.from({ length: 500 }, () => ({
+    title: '',
+    get status() {
+      return statusRead();
+    },
+  }));
+  const result = renderStatus({
+    stage: 'rendering',
+    chapters,
+    progress: { fraction: 0.5, etaS: 10, rtf: 2, chunkS: 1, receivedAt: 0 },
+    startedAt: 0,
+    lastActivityAt: 0,
+    now: 1000,
+  });
+  expect(result.percent).toBe(50);
+  expect(result.etaS).toBe(9);
+  expect(statusRead).not.toHaveBeenCalled();
 });
