@@ -31,7 +31,11 @@ import {
 import { parseSSELine } from '@shared/utils/sseParse';
 import diagnosticPolicy from '../../../../../../config/diagnostics.json';
 import { dialectWasIgnored } from '@shared/api/dialects';
-import { consumeTaskStream, type TaskEvent } from '@/lib/api/event-stream';
+import {
+  consumeTaskStream,
+  IncompleteTaskStreamError,
+  type TaskEvent,
+} from '@/lib/api/event-stream';
 import { publicFailureFromEvent, type PublicFailure } from '@/lib/api/failure';
 import {
   assignSpeakerProfile,
@@ -2416,13 +2420,48 @@ export async function resumeDub() {
       throw error;
     }
     const proof = resumedTaskDiagnosticProof(taskId, signal);
-    if (recovery === 'generating') {
-      observeRequest();
-      await watchGeneration(taskId, signal, undefined, proof);
-      patch({ phase: 'done' });
-    } else await finishPreparation(jobId, taskId, signal, proof, observeRequest);
+    try {
+      if (recovery === 'generating') {
+        observeRequest();
+        await watchGeneration(taskId, signal, undefined, proof);
+        patch({ phase: 'done' });
+      } else await finishPreparation(jobId, taskId, signal, proof, observeRequest);
+    } catch (error) {
+      if (error instanceof IncompleteTaskStreamError && !signal.aborted)
+        await settleFromJobRecord(taskId, signal, proof, observeRequest);
+      throw error;
+    }
     patch({ recovery: null });
   });
+}
+
+/** End a resumed task its replay could not end (#4463). A backend restarted
+ * after the process running the task died marks the job failed, but no event
+ * says so, and an older backend replays the stream without one. A failed or
+ * cancelled record settles the task as its event would; any other status, or
+ * a record that cannot be read, may still be running, so the caller keeps it
+ * resumable. A record that is gone counts as cancelled, as it does above. */
+async function settleFromJobRecord(
+  taskId: string,
+  signal: AbortSignal,
+  proof: TaskDiagnosticProof | null,
+  observeRequest: ObserveDiagnosticRequest,
+) {
+  let record: { status?: unknown; error?: unknown };
+  try {
+    observeRequest();
+    record = await apiJson('/jobs/' + encodeURIComponent(taskId), { signal });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) patch({ recovery: null, taskId: null });
+    return;
+  }
+  if (record.status === 'cancelled') taskEvent({ type: 'cancelled' }, 'done', { proof });
+  if (record.status === 'failed')
+    taskEvent(
+      { type: 'error', ...(typeof record.error === 'string' && { reason: record.error }) },
+      'done',
+      { proof },
+    );
 }
 
 export async function importDubSubtitles(file: File) {

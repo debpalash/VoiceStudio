@@ -20,7 +20,7 @@ from core.config import DUB_DIR
 from core.http_headers import content_disposition
 from core.logging_utils import log_safe
 from core.path_security import UnsafePath, portable_filename, resolve_within
-from core.tasks import task_manager
+from core.tasks import closing_event, task_manager
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, Depends
 from pydantic import BaseModel
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
@@ -308,7 +308,9 @@ async def stream_task(task_id: str, after_seq: int = 0):
     persisted events with seq > N, then (if the job is still live) attaches
     to the in-memory listener for live updates. After a server restart the
     in-memory task is gone but the persisted tail + final `jobs.status` are
-    still readable, so a mid-stream reload still sees the final state.
+    still readable, so a mid-stream reload still sees the final state. A job
+    whose process died before it wrote a terminal event gets one built from
+    that status, so the stream never just stops (#4463).
     """
     from core import job_store
     job_row = job_store.get(task_id)
@@ -331,6 +333,9 @@ async def stream_task(task_id: str, after_seq: int = 0):
 
         # 2) If the job has finished (whether in-memory or persisted-only), done.
         if not live:
+            closing = closing_event(job_row)
+            if closing is not None:
+                yield closing
             return
         if live["status"] in ("done", "failed", "cancelled"):
             return
