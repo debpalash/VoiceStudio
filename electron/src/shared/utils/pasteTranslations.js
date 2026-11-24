@@ -55,18 +55,19 @@ export function detectPasteMode(text) {
     // A majority rules: LLM output often carries a stray preamble line
     // ("Here are the translations:") that must not veto the detection.
     if (numbered >= 2 && numbered / lines.length >= 0.6) return 'numbered';
-    if (numbered === 0 && hasBareNumbering(lines)) return 'numbered';
+    if (numbered === 0 && bareNumberedLines(lines)) return 'numbered';
   }
   return 'plain';
 }
 
-function hasBareNumbering(lines) {
-  // Bare prefixes also appear in ordinary dialogue ("2024 was...").
-  // Require a 1-based sequence before treating them as row numbers.
-  return lines.length >= 2 && lines.every((line, index) => {
+function bareNumberedLines(lines) {
+  // Allow a leading preamble, but require at least two sequential entries
+  // beginning at 1 so years and other spoken numbers remain ordinary text.
+  const entries = BARE_NUMBERED_RE.test(lines[0] || '') ? lines : lines.slice(1);
+  return entries.length >= 2 && entries.every((line, index) => {
     const match = BARE_NUMBERED_RE.exec(line);
     return match !== null && Number(match[1]) === index + 1;
-  });
+  }) ? entries : null;
 }
 
 /**
@@ -78,12 +79,14 @@ function hasBareNumbering(lines) {
 export function parseNumberedLines(text) {
   const entries = [];
   const lines = nonBlank(text);
-  const bare = hasBareNumbering(lines);
-  for (const line of lines) {
-    const m = (bare ? BARE_NUMBERED_RE : NUMBERED_RE).exec(line);
-    if (m) {
-      const num = Number(bare ? m[1] : (m[1] ?? m[2] ?? m[3]));
-      entries.push({ num, text: (bare ? m[2] : m[4]).trim() });
+  const bareLines = bareNumberedLines(lines);
+  for (const line of bareLines ?? lines) {
+    const marked = NUMBERED_RE.exec(line);
+    const bare = !marked && BARE_NUMBERED_RE.exec(line);
+    if (marked) {
+      entries.push({ num: Number(marked[1] ?? marked[2] ?? marked[3]), text: marked[4].trim() });
+    } else if (bare && (bareLines || (entries.length && Number(bare[1]) === entries.at(-1).num + 1))) {
+      entries.push({ num: Number(bare[1]), text: bare[2].trim() });
     } else if (entries.length) {
       entries[entries.length - 1].text = `${entries[entries.length - 1].text} ${line}`.trim();
     }

@@ -972,10 +972,11 @@ def deduplicate_chunk_segments(segments: list[dict]) -> list[dict]:
         words = timed_words(segment)
         prefix_matches = 0
         if words and segment.get("speaker_id"):
-            prior_words = [w for previous in result
+            prior_words = (w for previous in result
                            if previous.get('speaker_id') == segment.get('speaker_id')
                            for w in timed_words(previous)
-                           if w['end'] >= words[0]['start'] - .35 and w['start'] <= words[-1]['end'] + .35]
+                           if w['end'] >= words[0]['start'] - .35 and w['start'] <= words[-1]['end'] + .35)
+            # Consume earlier context in order so a prior word is matched at most once.
             for word in words:
                 spelling = token(word)
                 if not spelling or not any(spelling == token(prior)

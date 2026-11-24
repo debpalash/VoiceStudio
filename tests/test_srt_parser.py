@@ -434,3 +434,8 @@ def test_webvtt_timing_shaped_dialogue_stays_in_its_cue():
     assert [(s["start"], s["end"], s["text"]) for s in result.segments] == [
         (1.0, 3.0, cue), (5.0, 6.0, "Next."),
     ]
+
+
+def test_webvtt_accepts_a_first_cue_without_a_blank_after_the_header():
+    result = parse_srt("WEBVTT\n00:01.000 --> 00:02.000\nHello\n")
+    assert [segment["text"] for segment in result.segments] == ["Hello"]

@@ -67,3 +67,11 @@ def test_chunk_dedup_does_not_discard_unmatched_tail_after_a_confirmed_prefix():
     result = deduplicate_chunk_segments([earlier, later])
     assert result[1]['text'] == 'works now'
     assert result[1]['start'] == later['words'][3]['start']
+
+
+def test_previous_word_cannot_match_multiple_incoming_words():
+    old = segment("old", words("we are here", 0))
+    incoming = words("we are here here welcome", 0)
+    incoming[3].update(start=0.95, end=1.35)
+    result = deduplicate_chunk_segments([old, segment("new", incoming)])
+    assert result[-1]["text"] == "here welcome"

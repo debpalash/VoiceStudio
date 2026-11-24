@@ -121,7 +121,10 @@ def _webvtt_cues(text: str) -> list[tuple[re.Match[str], str]]:
     # Only the first line, or the second after an identifier, can be timing.
     # Everything after it belongs to the cue, including timing-shaped text.
     cues = []
-    for block in webvtt_content_blocks(text.lstrip())[1:]:
+    for index, block in enumerate(webvtt_content_blocks(text.lstrip())):
+        if index == 0:
+            # Some exports omit the blank line between WEBVTT and the first cue.
+            _, _, block = block.partition("\n")
         line, _, body = block.lstrip().partition("\n")
         match = _TIMING_RE.match(line)
         if match is None:
