@@ -12,11 +12,9 @@ import time
 
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 
-import pytest
+from types import SimpleNamespace
 
-from api.routers import dub_export as export_router
-from core import job_store
-from core.db import init_db
+import pytest
 
 
 class _RestartedManager:
@@ -26,12 +24,18 @@ class _RestartedManager:
 
 
 @pytest.fixture(autouse=True)
-def restarted(monkeypatch):
+def app(monkeypatch):
+    # Resolved per test: the suite purges and re-imports app modules.
+    from api.routers import dub_export
+    from core import job_store
+    from core.db import init_db
+
     init_db()
-    monkeypatch.setattr(export_router, "task_manager", _RestartedManager())
+    monkeypatch.setattr(dub_export, "task_manager", _RestartedManager())
+    return SimpleNamespace(router=dub_export, job_store=job_store)
 
 
-def _job(prefix: str) -> str:
+def _job(job_store, prefix: str) -> str:
     job_id = f"{prefix}_{time.time_ns()}_{os.getpid()}"
     job_store.create(job_id, type="dub_prep")
     job_store.mark_running(job_id)
@@ -42,9 +46,9 @@ def _frame(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
-def _replay(job_id: str, after_seq: int = 0) -> list[str]:
+def _replay(router, job_id: str, after_seq: int = 0) -> list[str]:
     async def run():
-        response = await export_router.stream_task(job_id, after_seq=after_seq)
+        response = await router.stream_task(job_id, after_seq=after_seq)
         return [frame async for frame in response.body_iterator]
 
     return asyncio.run(asyncio.wait_for(run(), 5))
@@ -55,58 +59,58 @@ def _payload(frame: str) -> dict:
     return json.loads(frame[len("data: "):])
 
 
-def test_a_job_swept_after_a_crash_replays_its_failure():
-    job_id = _job("orphan")
+def test_a_job_swept_after_a_crash_replays_its_failure(app):
+    job_id = _job(app.job_store, "orphan")
     progress = _frame({"type": "demucs_retry", "attempt": "cpu"})
-    job_store.append_event(job_id, progress)
-    job_store.sweep_orphans_on_startup()
+    app.job_store.append_event(job_id, progress)
+    app.job_store.sweep_orphans_on_startup()
 
-    frames = _replay(job_id)
+    frames = _replay(app.router, job_id)
 
     assert frames[0] == progress
     assert len(frames) == 2
     closing = _payload(frames[1])
     assert closing["type"] == "error"
-    assert closing["reason"] == job_store.INTERRUPTED_BY_RESTART
+    assert closing["reason"] == app.job_store.INTERRUPTED_BY_RESTART
     assert closing["stage"] == "task"
 
 
-def test_a_reconnect_past_the_last_event_still_gets_the_outcome():
-    job_id = _job("caught_up")
-    seq = job_store.append_event(job_id, _frame({"type": "extract_done"}))
-    job_store.sweep_orphans_on_startup()
+def test_a_reconnect_past_the_last_event_still_gets_the_outcome(app):
+    job_id = _job(app.job_store, "caught_up")
+    seq = app.job_store.append_event(job_id, _frame({"type": "extract_done"}))
+    app.job_store.sweep_orphans_on_startup()
 
-    [closing] = _replay(job_id, after_seq=seq)
+    [closing] = _replay(app.router, job_id, after_seq=seq)
 
     assert _payload(closing)["type"] == "error"
 
 
-def test_a_job_that_died_before_any_event_still_ends():
-    job_id = _job("silent")
-    job_store.sweep_orphans_on_startup()
+def test_a_job_that_died_before_any_event_still_ends(app):
+    job_id = _job(app.job_store, "silent")
+    app.job_store.sweep_orphans_on_startup()
 
-    [closing] = _replay(job_id)
+    [closing] = _replay(app.router, job_id)
 
-    assert _payload(closing)["reason"] == job_store.INTERRUPTED_BY_RESTART
+    assert _payload(closing)["reason"] == app.job_store.INTERRUPTED_BY_RESTART
 
 
-def test_the_recorded_error_is_kept_when_the_failure_event_was_lost():
-    job_id = _job("unpersisted")
-    job_store.append_event(job_id, _frame({"type": "progress"}))
-    job_store.mark_failed(job_id, "Separation failed: out of memory")
+def test_the_recorded_error_is_kept_when_the_failure_event_was_lost(app):
+    job_id = _job(app.job_store, "unpersisted")
+    app.job_store.append_event(job_id, _frame({"type": "progress"}))
+    app.job_store.mark_failed(job_id, "Separation failed: out of memory")
 
-    closing = _payload(_replay(job_id)[-1])
+    closing = _payload(_replay(app.router, job_id)[-1])
 
     assert closing["type"] == "error"
     assert "out of memory" in closing["reason"]
 
 
-def test_a_cancelled_job_without_its_event_replays_cancelled():
-    job_id = _job("cancelled")
-    job_store.append_event(job_id, _frame({"type": "progress"}))
-    job_store.mark_cancelled(job_id)
+def test_a_cancelled_job_without_its_event_replays_cancelled(app):
+    job_id = _job(app.job_store, "cancelled")
+    app.job_store.append_event(job_id, _frame({"type": "progress"}))
+    app.job_store.mark_cancelled(job_id)
 
-    assert _payload(_replay(job_id)[-1]) == {"type": "cancelled"}
+    assert _payload(_replay(app.router, job_id)[-1]) == {"type": "cancelled"}
 
 
 @pytest.mark.parametrize(
@@ -117,30 +121,30 @@ def test_a_cancelled_job_without_its_event_replays_cancelled():
         _frame({"type": "cancelled"}),
     ],
 )
-def test_a_tail_that_already_ends_is_replayed_unchanged(terminal):
-    job_id = _job("ended")
-    job_store.append_event(job_id, _frame({"type": "progress"}))
-    job_store.append_event(job_id, terminal)
-    job_store.mark_failed(job_id, "fixture failure")
+def test_a_tail_that_already_ends_is_replayed_unchanged(terminal, app):
+    job_id = _job(app.job_store, "ended")
+    app.job_store.append_event(job_id, _frame({"type": "progress"}))
+    app.job_store.append_event(job_id, terminal)
+    app.job_store.mark_failed(job_id, "fixture failure")
 
-    assert _replay(job_id)[-1] == terminal
-    assert len(_replay(job_id)) == 2
+    assert _replay(app.router, job_id)[-1] == terminal
+    assert len(_replay(app.router, job_id)) == 2
 
 
-def test_a_finished_job_gets_no_invented_event():
+def test_a_finished_job_gets_no_invented_event(app):
     # Prep ends with ``ready``, not ``done``: a completed job must not get an
     # error appended, and a ``done`` event's results cannot be rebuilt.
-    job_id = _job("finished")
+    job_id = _job(app.job_store, "finished")
     ready = _frame({"type": "ready", "job_id": "fixture"})
-    job_store.append_event(job_id, ready)
-    job_store.mark_done(job_id)
+    app.job_store.append_event(job_id, ready)
+    app.job_store.mark_done(job_id)
 
-    assert _replay(job_id) == [ready]
+    assert _replay(app.router, job_id) == [ready]
 
 
-def test_an_unknown_task_is_still_not_found():
+def test_an_unknown_task_is_still_not_found(app):
     from fastapi import HTTPException
 
     with pytest.raises(HTTPException) as caught:
-        asyncio.run(export_router.stream_task(f"missing_{time.time_ns()}"))
+        asyncio.run(app.router.stream_task(f"missing_{time.time_ns()}"))
     assert caught.value.status_code == 404
