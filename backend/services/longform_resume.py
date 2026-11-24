@@ -22,6 +22,7 @@ import tempfile
 from typing import Optional
 
 from core.durable_io import flush_dir, flush_fd
+from services.pronunciation import lexicon_signature
 
 MANIFEST_VERSION = 1
 _MANIFEST_NAME = "resume.json"
@@ -99,7 +100,10 @@ def manifest_plan_key(manifest: dict) -> Optional[str]:
     plan = manifest.get("plan")
     if not isinstance(plan, list):
         return None
-    payload = json.dumps([plan, manifest.get("params")], sort_keys=True, separators=(",", ":"))
+    params = manifest.get("params")
+    if isinstance(params, dict) and isinstance(params.get("lexicon"), dict):
+        params = {**params, "lexicon": lexicon_signature(params["lexicon"])}
+    payload = json.dumps([plan, params], sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
