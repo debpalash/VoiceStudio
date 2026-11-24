@@ -86,10 +86,18 @@ async def _auto_transcribe_reference(audio_path: str) -> str:
     timeout = _reference_transcribe_timeout()
     try:
         from services.asr_backend import transcribe_reference
+        from services.model_manager import offload_tts_for_asr, restore_tts_after_asr
 
-        return (await asyncio.wait_for(
-            asyncio.to_thread(transcribe_reference, audio_path), timeout,
-        ) or "").strip()
+        # Clone uploads auto-transcribe a reference while the TTS model is
+        # resident. Let the ASR model load against a released/relocated TTS
+        # model, then restore it only after the transcription attempt ends.
+        await asyncio.to_thread(offload_tts_for_asr)
+        try:
+            return (await asyncio.wait_for(
+                asyncio.to_thread(transcribe_reference, audio_path), timeout,
+            ) or "").strip()
+        finally:
+            await asyncio.to_thread(restore_tts_after_asr)
     except asyncio.TimeoutError:
         logger.warning(
             "reference transcription during profile save exceeded %.0fs; "

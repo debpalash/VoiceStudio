@@ -4027,13 +4027,52 @@ def unload_shared_model() -> bool:
     return True
 
 
+# Intel integrated Xe/Arc GPUs (e.g. Lunar Lake 130V/140V) advertise a tiny
+# dedicated local-memory window — kilobytes, not GiBs — because model weights
+# live in system RAM. Discrete Arc cards report GiBs of local memory. Detect
+# that unified case first; the rest of the stack stays unchanged.
+_XPU_INTEGRATED_LOCAL_MEMORY_MAX = 1 << 30  # 1 GiB
+
+
+def _xpu_is_unified_memory() -> bool:
+    """True only for a single integrated Intel Arc XPU with tiny local memory.
+
+    Integrated Arc parts report a local_mem_size in the kilobytes while
+    allocating weights in system RAM (Lunar Lake 130V/140V). A discrete Arc
+    card reports GiBs of dedicated local memory, and a multi-XPU box is not
+    "only GPU" territory; both keep the dedicated path. Never raises: an
+    unreadable device property falls back to dedicated, preserving behaviour
+    on non-Intel XPU hosts.
+    """
+    torch = _lazy_torch()
+    if not (hasattr(torch, "xpu") and torch.xpu.is_available()):
+        return False
+    try:
+        if torch.xpu.device_count() != 1:
+            return False
+        props = torch.xpu.get_device_properties(0)
+        local_mem_size = getattr(props, "local_mem_size", None)
+        name = str(getattr(props, "name", "")).lower()
+    except Exception:  # noqa: BLE001 — a probe must never break the caller
+        return False
+    if local_mem_size is None:
+        return False
+    if "intel" not in name or "arc" not in name:
+        return False
+    try:
+        local_mem_bytes = int(local_mem_size)
+    except (TypeError, ValueError):
+        return False
+    return local_mem_bytes <= _XPU_INTEGRATED_LOCAL_MEMORY_MAX
+
+
 def _has_dedicated_vram():
     """Check if the current device has limited dedicated VRAM that needs offloading."""
     torch = _lazy_torch()
     if torch.cuda.is_available():
         return True
     if hasattr(torch, "xpu") and torch.xpu.is_available():
-        return True
+        return not _xpu_is_unified_memory()
     if hasattr(torch, "npu") and torch.npu.is_available():
         return True
     return False
