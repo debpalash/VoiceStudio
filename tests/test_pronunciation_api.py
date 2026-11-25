@@ -399,3 +399,10 @@ def test_pls_export_refuses_to_merge_languages(client):
     refused = client.get("/pronunciation/export", params={"format": "pls"})
     assert refused.status_code == 400
     assert "JSON" in refused.json()["detail"]
+
+
+def test_pls_export_explains_a_character_xml_cannot_hold(client):
+    client.post("/pronunciation", json={"term": "beep", "replacement": "be\x01ep", "language": "en"})
+    refused = client.get("/pronunciation/export", params={"format": "pls"})
+    assert refused.status_code == 400
+    assert "JSON" in refused.json()["detail"]

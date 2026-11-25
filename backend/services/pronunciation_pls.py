@@ -71,9 +71,11 @@ def _alphabet_type(alphabet: str) -> Optional[str]:
 def _reading(element, default_alphabet: str):
     """``(type, replacement)`` for one ``<alias>``/``<phoneme>``, or None if
     the dictionary could not use it (so the next reading gets its turn)."""
-    text = _text(element)
     if _local(element.tag) == "alias":
-        return "respelling", text
+        # A respelling is kept as written, inner line breaks included; only the
+        # indentation around it goes, and a blank alias is a deletion override.
+        return "respelling", (element.text or "").strip()
+    text = _text(element)
     kind = _alphabet_type(element.get("alphabet") or default_alphabet)
     return (kind, text) if kind and phonemes_ok(kind, text) else None
 
@@ -124,13 +126,26 @@ def parse_pls(text: str) -> dict:
     return {"entries": entries, "language": root.get(XML_LANG), "skipped": skipped}
 
 
+# Characters XML 1.0 can carry; escaping cannot represent the rest (U+0001, …).
+_XML_UNREPRESENTABLE = re.compile("[^\t\n\r\u0020-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]")
+
+
 def to_pls(entries: Iterable[dict], language: str) -> str:
-    """A PLS document for dictionary entries (``term``/``replacement``/``type``)."""
+    """A PLS document for dictionary entries (``term``/``replacement``/``type``).
+
+    Raises :class:`PlsError` when an entry holds a character XML cannot carry.
+    """
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<lexicon version="1.0" xmlns="{PLS_NS}" alphabet="ipa" xml:lang={quoteattr(language)}>',
     ]
     for entry in entries:
+        for value in (entry["term"], entry["replacement"]):
+            if _XML_UNREPRESENTABLE.search(value):
+                raise PlsError(
+                    f"The entry {entry['term']!r} contains a control character a PLS lexicon "
+                    "cannot hold. Export the dictionary as JSON instead."
+                )
         term, replacement = escape(entry["term"]), escape(entry["replacement"])
         if entry["type"] == "respelling":
             body = f"<alias>{replacement}</alias>"

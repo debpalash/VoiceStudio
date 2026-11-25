@@ -94,3 +94,21 @@ def test_a_deletion_override_survives_the_round_trip():
     """An empty replacement removes the word; PLS carries it as an empty alias."""
     entries = [{"term": "um", "replacement": "", "type": "respelling"}]
     assert _pls().parse_pls(_pls().to_pls(entries, "en"))["entries"] == entries
+
+
+def test_a_respelling_keeps_its_line_breaks_through_the_round_trip():
+    entries = [{"term": "poem", "replacement": "first\n\nsecond", "type": "respelling"}]
+    assert _pls().parse_pls(_pls().to_pls(entries, "en"))["entries"] == entries
+    indented = _pls().parse_pls(
+        '<lexicon xmlns="http://www.w3.org/2005/01/pronunciation-lexicon" xml:lang="en">'
+        "<lexeme><grapheme>UN</grapheme><alias>\n    United Nations\n  </alias></lexeme>"
+        "<lexeme><grapheme>um</grapheme><alias>  \n </alias></lexeme></lexicon>"
+    )
+    assert [e["replacement"] for e in indented["entries"]] == ["United Nations", ""]
+
+
+def test_export_refuses_characters_xml_cannot_hold():
+    with pytest.raises(_pls().PlsError, match="JSON"):
+        _pls().to_pls([{"term": "beep", "replacement": "be\x01ep", "type": "respelling"}], "en")
+    ok = [{"term": "café ☕ 𝄞", "replacement": "ka\tfay", "type": "respelling"}]
+    assert _pls().parse_pls(_pls().to_pls(ok, "en"))["entries"] == ok

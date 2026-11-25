@@ -304,7 +304,7 @@ def export_entries(
     if format == "pls":
         from fastapi.responses import Response
 
-        from services.pronunciation_pls import to_pls
+        from services.pronunciation_pls import PlsError, to_pls
 
         enabled = [r for r in rows if r["enabled"]]
         languages = {r["language"] for r in enabled}
@@ -319,8 +319,12 @@ def export_entries(
             )
         language = next(iter(languages), _ALL_LANG)
         language = "und" if language == _ALL_LANG else language
+        try:
+            lexicon = to_pls(enabled, language)
+        except PlsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
         return Response(
-            to_pls(enabled, language),
+            lexicon,
             media_type="application/pls+xml",
             headers={"Content-Disposition": 'attachment; filename="pronunciation.pls"'},
         )
