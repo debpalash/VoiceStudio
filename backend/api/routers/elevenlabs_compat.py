@@ -20,7 +20,6 @@ key as ``xi-api-key`` (what ElevenLabs SDKs send) or as a Bearer token.
 """
 from __future__ import annotations
 
-import contextlib
 import io
 import json
 import logging
@@ -47,7 +46,7 @@ _SOURCE_RATE = 24000  # the OpenAI handler's raw PCM rate
 #: output_format → (family, sample rate). Families: mp3/opus/wav go through
 #: the OpenAI encoder; pcm/ulaw/alaw are built here from its 24 kHz PCM.
 _OUTPUT_FORMAT_RE = re.compile(r"^(mp3|pcm|ulaw|alaw|opus|wav)_(\d{4,5})(?:_(\d{2,3}))?$")
-_PCM_RATES = {8000, 16000, 22050, 24000, 44100, 48000}
+_PCM_RATES = {8000, 16000, 22050, 24000, 32000, 44100, 48000}
 _MEDIA = {
     "mp3": "audio/mpeg",
     "opus": "audio/ogg",
@@ -468,18 +467,33 @@ async def _save_upload(upload: UploadFile, suffix_default: str = ".wav") -> str:
     from core.path_security import upload_suffix
 
     fd, path = tempfile.mkstemp(suffix=upload_suffix(upload.filename, suffix_default) or suffix_default)
+    dest = os.fdopen(fd, "wb")
     total = 0
     try:
-        with os.fdopen(fd, "wb") as dest:
-            while chunk := await upload.read(_UPLOAD_CHUNK):
-                total += len(chunk)
-                if total > _MAX_UPLOAD_BYTES:
-                    raise _error(413, "file_too_large", "The file is larger than 2 GB.")
-                await asyncio.to_thread(dest.write, chunk)
-    except BaseException:
-        _unlink(path)
+        while chunk := await upload.read(_UPLOAD_CHUNK):
+            total += len(chunk)
+            if total > _MAX_UPLOAD_BYTES:
+                raise _error(413, "file_too_large", "The file is larger than 2 GB.")
+            await asyncio.to_thread(dest.write, chunk)
+    except asyncio.CancelledError:
+        # The interrupted write may still be running on its worker thread, and
+        # closing the file waits for it: do that off the event loop.
+        asyncio.get_running_loop().run_in_executor(None, _close_and_unlink, dest, path)
         raise
+    except BaseException:
+        _close_and_unlink(dest, path)
+        raise
+    dest.close()
     return path
+
+
+def _close_and_unlink(dest, path: str) -> None:
+    try:
+        dest.close()
+    except OSError:
+        pass  # the partial file is discarded either way
+    finally:
+        _unlink(path)
 
 
 def _unlink(path: str) -> None:
@@ -665,7 +679,14 @@ def _speaker_ids(labels: list[Optional[str]]) -> list[Optional[str]]:
 
 
 async def _diarize_words(path: str, words: list[dict], num_speakers: Optional[int]):
-    """Per-word speaker ids, or ``(None, error)`` when identification can't run."""
+    """Per-word speaker ids, or ``(None, error)`` when identification can't run.
+
+    Deletes ``path`` when done. If the request stops waiting first (timeout or
+    cancellation), the worker may still be reading it, so the pool deletes it
+    once that worker lets go (``on_abandon``).
+    """
+    import asyncio
+
     from services.model_manager import run_on_gpu_pool_guarded
     from services.transcript_diarization import diarize_segments
 
@@ -675,9 +696,16 @@ async def _diarize_words(path: str, words: list[dict], num_speakers: Optional[in
             lambda: diarize_segments(path, spans, num_speakers),
             what="Speaker identification",
             timeout=max(300.0, 2.0 * (spans[-1]["end"] if spans else 0.0)),
+            on_abandon=lambda: _unlink(path),
         )
     except TimeoutError:
-        return None, "DIARIZATION_TIMEOUT"
+        return None, "DIARIZATION_TIMEOUT"  # abandoned: on_abandon deletes path
+    except asyncio.CancelledError:
+        raise  # abandoned: on_abandon deletes path
+    except BaseException:
+        _unlink(path)
+        raise
+    _unlink(path)
     if error:
         return None, error
     return _speaker_ids(labels), None
@@ -707,26 +735,35 @@ async def speech_to_text(
         raise _error(422, "invalid_timestamps_granularity",
                      "timestamps_granularity must be 'none', 'word' or 'character'.")
     want_words = timestamps_granularity != "none" or diarize
-    kept = None
-    upload = file
-    with contextlib.ExitStack() as cleanup:
-        if diarize:
-            # Transcription deletes its own copy; speaker identification needs one too.
-            kept = await _save_upload(file)
-            cleanup.callback(_unlink, kept)
-            upload = StarletteUpload(
-                cleanup.enter_context(open(kept, "rb")), filename=file.filename,
-                headers=Headers({"content-type": file.content_type or "application/octet-stream"}),
-            )
-        result = await _transcribe_request(
+
+    async def transcribe(upload):
+        return await _transcribe_request(
             task="transcribe", file=upload, model=None, language=language_code, prompt=None,
             response_format="verbose_json", temperature=None,
             timestamp_granularities=["word", "segment"] if want_words else ["segment"],
         )
+
+    speakers, error = (None, None)
+    if not diarize:
+        result = await transcribe(file)
         raw_words = result.get("words") or []
-        speakers, error = (None, None)
-        if diarize and raw_words:
-            speakers, error = await _diarize_words(kept, raw_words, num_speakers)
+    else:
+        # Transcription deletes its own copy; speaker identification needs one too.
+        kept = await _save_upload(file)
+        handed_off = False
+        try:
+            with open(kept, "rb") as staged:
+                result = await transcribe(StarletteUpload(
+                    staged, filename=file.filename,
+                    headers=Headers({"content-type": file.content_type or "application/octet-stream"}),
+                ))
+            raw_words = result.get("words") or []
+            if raw_words:
+                handed_off = True  # _diarize_words deletes it
+                speakers, error = await _diarize_words(kept, raw_words, num_speakers)
+        finally:
+            if not handed_off:
+                _unlink(kept)
     words = _scribe_words(raw_words, speakers) if want_words else []
     if timestamps_granularity == "none":
         words = []
@@ -804,13 +841,15 @@ async def _ffmpeg_encode(wav, sr: int, family: str, rate: int, bitrate: int) -> 
 
     ffmpeg = await asyncio.to_thread(_ffmpeg_or_error, family)
     codec, container = ("libmp3lame", "mp3") if family == "mp3" else ("libopus", "ogg")
+    # libopus defaults to VBR, where -b:a is only a target; the format names a bitrate.
+    constant = ["-vbr", "off"] if family == "opus" else []
     fd, src = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
     try:
         await asyncio.to_thread(_write_wav, src, wav, sr)
         rc, out, err = await run_ffmpeg(
             [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-i", src,
-             "-ar", str(rate), "-c:a", codec, "-b:a", f"{bitrate}k", "-f", container, "pipe:1"],
+             "-ar", str(rate), "-c:a", codec, "-b:a", f"{bitrate}k", *constant, "-f", container, "pipe:1"],
             timeout=300.0,
         )
     finally:
@@ -841,6 +880,11 @@ async def _ffmpeg_ready(output_format: str) -> None:
 # ── Voice changer ───────────────────────────────────────────────────────────
 
 
+# The SDK posts to /v1/voice-changer/{voice_id}; /v1/speech-to-speech is the
+# API's documented name. Both, and their /stream forms, answer the same way.
+@router.post("/v1/voice-changer/{voice_id}", response_class=Response, responses=AUDIO_RESPONSES)
+@router.post("/v1/voice-changer/{voice_id}/stream", response_class=Response, responses=AUDIO_RESPONSES)
+@router.post("/v1/speech-to-speech/{voice_id}/stream", response_class=Response, responses=AUDIO_RESPONSES)
 @router.post("/v1/speech-to-speech/{voice_id}", response_class=Response, responses=AUDIO_RESPONSES)
 async def speech_to_speech(
     voice_id: str,
@@ -856,18 +900,24 @@ async def speech_to_speech(
     and intonation (the app's Convert → Keep my delivery). Without a
     voice-conversion engine it falls back to transcribing and re-speaking the
     clip, and says so in ``X-OmniVoice-Fallback``."""
+    from api.routers.openai_compat import _resolve_voice_profile
     from api.routers.voice_convert import convert_speech
+    from services.video_voice_swap import video_kind
 
     await _ffmpeg_ready(output_format)
-    if not _profile_exists(voice_id):
+    if video_kind(audio.filename) is not None:
+        # The app's video voice swap separates the soundtrack, which can fetch
+        # its separation model; this audio endpoint never starts a download.
+        raise _error(415, "unsupported_file_type",
+                     "The voice changer takes audio. Send the video's soundtrack as an audio file.")
+    profile = _resolve_voice_profile(voice_id)
+    if profile is None:
         raise _error(
             404, "voice_not_found",
             f"Voice '{voice_id}' is not a VoiceStudio voice profile. List them with "
             f"GET {ELEVENLABS_PREFIX}/v1/voices.",
         )
-    from api.routers.openai_compat import _resolve_voice_profile
-
-    profile_id = _resolve_voice_profile(voice_id)["id"]
+    profile_id = profile["id"]
     headers = None
     try:
         result = await convert_speech(audio=audio, profile_id=profile_id, match_duration=True,
@@ -920,17 +970,46 @@ async def sound_generation(
 # ── Voice isolation ─────────────────────────────────────────────────────────
 
 
-#: The htdemucs checkpoint Demucs fetches into the torch hub cache on first use
-#: (demucs/remote/htdemucs.yaml → files.txt).
+#: The htdemucs checkpoint Demucs before 4.1 fetches into the torch hub cache
+#: on first use (demucs/remote/htdemucs.yaml → files.txt).
 HTDEMUCS_CHECKPOINT = "955717e8-8726e21a.th"
+#: Demucs 4.1 loads htdemucs from this Hugging Face repository first.
+HTDEMUCS_HF_REPO = "adefossez/HTDemucs"
+
+
+def _hf_htdemucs_cached() -> bool:
+    """Whether the Hugging Face cache holds htdemucs' bag file and every model
+    it lists, as Demucs 4.1's loader fetches them."""
+    try:
+        import yaml
+        from huggingface_hub import try_to_load_from_cache
+    except ImportError:
+        return False
+    bag_path = try_to_load_from_cache(HTDEMUCS_HF_REPO, "htdemucs.yaml")
+    if not isinstance(bag_path, str):
+        return False
+    try:
+        with open(bag_path, encoding="utf-8") as fh:
+            models = (yaml.safe_load(fh) or {}).get("models") or []
+    except (OSError, yaml.YAMLError, AttributeError):
+        return False
+    return bool(models) and all(
+        isinstance(try_to_load_from_cache(HTDEMUCS_HF_REPO, f"{sig}.safetensors"), str)
+        for sig in models
+    )
 
 
 def isolation_weights_cached() -> bool:
+    """Whether Demucs can load htdemucs without a download: from the Hugging
+    Face cache (Demucs 4.1) or the legacy torch hub checkpoint (either version;
+    4.1 falls back to it when the Hugging Face cache cannot serve the model)."""
     import os
 
     import torch
 
-    return os.path.isfile(os.path.join(torch.hub.get_dir(), "checkpoints", HTDEMUCS_CHECKPOINT))
+    if os.path.isfile(os.path.join(torch.hub.get_dir(), "checkpoints", HTDEMUCS_CHECKPOINT)):
+        return True
+    return _hf_htdemucs_cached()
 
 
 @router.post("/v1/audio-isolation", response_class=Response, responses=AUDIO_RESPONSES)
@@ -967,7 +1046,7 @@ async def audio_isolation(
     workdir = None
     try:
         workdir = tempfile.mkdtemp(prefix="el-isolate-")
-        stems = await separate_vocals(source, workdir)
+        stems = await separate_vocals(source, workdir, offline=True)
         if stems is None:
             raise _error(
                 500, "audio_isolation_failed",

@@ -2260,6 +2260,10 @@ class _SelectiveGZipMiddleware:
 # the two probe paths until the deferred startup completes (and is a no-op
 # forever after).
 app.add_middleware(_SelectiveGZipMiddleware, minimum_size=1024, compresslevel=5)
+# Refuses an oversized audio upload while it arrives, before multipart parsing
+# spools it to the temporary volume (the handlers' own caps act only after).
+from core.upload_limit import UploadSizeLimitMiddleware
+app.add_middleware(UploadSizeLimitMiddleware)
 from core.activity import ActivityMiddleware
 # Innermost: only requests that passed every gate count as use of the backend.
 app.add_middleware(ActivityMiddleware)

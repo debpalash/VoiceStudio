@@ -1786,6 +1786,207 @@
     "title": "Body_speech_to_speech_elevenlabs_v1_speech_to_speech__voice_id__post",
     "type": "object"
    },
+   "Body_speech_to_speech_elevenlabs_v1_speech_to_speech__voice_id__stream_post": {
+    "properties": {
+     "audio": {
+      "contentMediaType": "application/octet-stream",
+      "title": "Audio",
+      "type": "string"
+     },
+     "file_format": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "File Format"
+     },
+     "model_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted; the app picks its voice-conversion engine.",
+      "title": "Model Id"
+     },
+     "remove_background_noise": {
+      "default": false,
+      "description": "Accepted without effect.",
+      "title": "Remove Background Noise",
+      "type": "boolean"
+     },
+     "seed": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted without effect.",
+      "title": "Seed"
+     },
+     "voice_settings": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted without effect.",
+      "title": "Voice Settings"
+     }
+    },
+    "required": [
+     "audio"
+    ],
+    "title": "Body_speech_to_speech_elevenlabs_v1_speech_to_speech__voice_id__stream_post",
+    "type": "object"
+   },
+   "Body_speech_to_speech_elevenlabs_v1_voice_changer__voice_id__post": {
+    "properties": {
+     "audio": {
+      "contentMediaType": "application/octet-stream",
+      "title": "Audio",
+      "type": "string"
+     },
+     "file_format": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "File Format"
+     },
+     "model_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted; the app picks its voice-conversion engine.",
+      "title": "Model Id"
+     },
+     "remove_background_noise": {
+      "default": false,
+      "description": "Accepted without effect.",
+      "title": "Remove Background Noise",
+      "type": "boolean"
+     },
+     "seed": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted without effect.",
+      "title": "Seed"
+     },
+     "voice_settings": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted without effect.",
+      "title": "Voice Settings"
+     }
+    },
+    "required": [
+     "audio"
+    ],
+    "title": "Body_speech_to_speech_elevenlabs_v1_voice_changer__voice_id__post",
+    "type": "object"
+   },
+   "Body_speech_to_speech_elevenlabs_v1_voice_changer__voice_id__stream_post": {
+    "properties": {
+     "audio": {
+      "contentMediaType": "application/octet-stream",
+      "title": "Audio",
+      "type": "string"
+     },
+     "file_format": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "File Format"
+     },
+     "model_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted; the app picks its voice-conversion engine.",
+      "title": "Model Id"
+     },
+     "remove_background_noise": {
+      "default": false,
+      "description": "Accepted without effect.",
+      "title": "Remove Background Noise",
+      "type": "boolean"
+     },
+     "seed": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted without effect.",
+      "title": "Seed"
+     },
+     "voice_settings": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Accepted without effect.",
+      "title": "Voice Settings"
+     }
+    },
+    "required": [
+     "audio"
+    ],
+    "title": "Body_speech_to_speech_elevenlabs_v1_voice_changer__voice_id__stream_post",
+    "type": "object"
+   },
    "Body_speech_to_text_elevenlabs_v1_speech_to_text_post": {
     "properties": {
      "diarize": {
@@ -14709,6 +14910,100 @@
     ]
    }
   },
+  "/elevenlabs/v1/speech-to-speech/{voice_id}/stream": {
+   "post": {
+    "description": "Say the uploaded speech in a voice profile's voice, keeping its timing\nand intonation (the app's Convert \u2192 Keep my delivery). Without a\nvoice-conversion engine it falls back to transcribing and re-speaking the\nclip, and says so in ``X-OmniVoice-Fallback``.",
+    "operationId": "speech_to_speech_elevenlabs_v1_speech_to_speech__voice_id__stream_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "voice_id",
+      "required": true,
+      "schema": {
+       "title": "Voice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "output_format",
+      "required": false,
+      "schema": {
+       "default": "mp3_44100_128",
+       "title": "Output Format",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_speech_to_speech_elevenlabs_v1_speech_to_speech__voice_id__stream_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "audio/basic": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/mpeg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/ogg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/pcm": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/wav": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/x-alaw-basic": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      },
+      "description": "Audio in the requested output_format."
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Speech To Speech",
+    "tags": [
+     "ElevenLabs-Compatible API"
+    ]
+   }
+  },
   "/elevenlabs/v1/speech-to-text": {
    "post": {
     "description": "Transcription in ElevenLabs' response shape, from the active ASR\nengine. ``timestamps_granularity=character`` returns word timings.\n``diarize=true`` labels each word's speaker; when speaker identification\ncan't run, the transcript comes back unlabelled with the reason in\n``X-OmniVoice-Diarization-Error``.",
@@ -15000,6 +15295,194 @@
      }
     },
     "summary": "Text To Speech Stream",
+    "tags": [
+     "ElevenLabs-Compatible API"
+    ]
+   }
+  },
+  "/elevenlabs/v1/voice-changer/{voice_id}": {
+   "post": {
+    "description": "Say the uploaded speech in a voice profile's voice, keeping its timing\nand intonation (the app's Convert \u2192 Keep my delivery). Without a\nvoice-conversion engine it falls back to transcribing and re-speaking the\nclip, and says so in ``X-OmniVoice-Fallback``.",
+    "operationId": "speech_to_speech_elevenlabs_v1_voice_changer__voice_id__post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "voice_id",
+      "required": true,
+      "schema": {
+       "title": "Voice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "output_format",
+      "required": false,
+      "schema": {
+       "default": "mp3_44100_128",
+       "title": "Output Format",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_speech_to_speech_elevenlabs_v1_voice_changer__voice_id__post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "audio/basic": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/mpeg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/ogg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/pcm": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/wav": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/x-alaw-basic": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      },
+      "description": "Audio in the requested output_format."
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Speech To Speech",
+    "tags": [
+     "ElevenLabs-Compatible API"
+    ]
+   }
+  },
+  "/elevenlabs/v1/voice-changer/{voice_id}/stream": {
+   "post": {
+    "description": "Say the uploaded speech in a voice profile's voice, keeping its timing\nand intonation (the app's Convert \u2192 Keep my delivery). Without a\nvoice-conversion engine it falls back to transcribing and re-speaking the\nclip, and says so in ``X-OmniVoice-Fallback``.",
+    "operationId": "speech_to_speech_elevenlabs_v1_voice_changer__voice_id__stream_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "voice_id",
+      "required": true,
+      "schema": {
+       "title": "Voice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "output_format",
+      "required": false,
+      "schema": {
+       "default": "mp3_44100_128",
+       "title": "Output Format",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_speech_to_speech_elevenlabs_v1_voice_changer__voice_id__stream_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "audio/basic": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/mpeg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/ogg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/pcm": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/wav": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "audio/x-alaw-basic": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      },
+      "description": "Audio in the requested output_format."
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Speech To Speech",
     "tags": [
      "ElevenLabs-Compatible API"
     ]
