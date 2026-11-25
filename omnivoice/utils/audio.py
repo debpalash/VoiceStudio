@@ -202,12 +202,10 @@ def load_audio(audio_path: str, sampling_rate: int):
     except (ImportError, RuntimeError, OSError):
         # torchaudio >= 2.9 sends load() through TorchCodec, which raises
         # ImportError when the FFmpeg shared libraries are absent (and ignores
-        # backend="soundfile"). pydub decodes through the ffmpeg binary instead.
-        from pydub import AudioSegment
-
-        aseg = AudioSegment.from_file(audio_path)
-        waveform = audiosegment_to_tensor(aseg)
-        prompt_sampling_rate = aseg.frame_rate
+        # backend="soundfile"). read_audio decodes WAV/FLAC/OGG (including
+        # 32-bit float WAV) with soundfile, so those need no FFmpeg at all;
+        # only other containers go through pydub and the ffmpeg binary.
+        waveform, prompt_sampling_rate = read_audio(audio_path)
 
     if prompt_sampling_rate != sampling_rate:
         waveform = torchaudio.functional.resample(
