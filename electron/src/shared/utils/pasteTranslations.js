@@ -30,7 +30,8 @@ const TIMING_RE =
   /^[^\S\n]*(?:\d+:)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}[^\S\n]*-->[^\S\n]*(?:\d+:)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}/m;
 
 // `1. text` / `2) text` / `[3] text` / `4 - text` / `5: text`.
-const NUMBERED_RE = /^\s*(?:(?:\[\s*(\d{1,5})\s*\]|\(\s*(\d{1,5})\s*\))\s*[.):\-—]?|(\d{1,5})\s*[.):\-—])\s+(.*)$/;
+const NUMBERED_RE =
+  /^\s*(?:(?:\[\s*(\d{1,5})\s*\]|\(\s*(\d{1,5})\s*\))\s*[.):\-—]?|(\d{1,5})\s*[.):\-—])\s+(.*)$/;
 const BARE_NUMBERED_RE = /^(\d{1,5})\s+(.*)$/;
 
 /** Lines that carry content. Blank lines are separators, never translations. */
@@ -55,19 +56,32 @@ export function detectPasteMode(text) {
     // A majority rules: LLM output often carries a stray preamble line
     // ("Here are the translations:") that must not veto the detection.
     if (numbered >= 2 && numbered / lines.length >= 0.6) return 'numbered';
-    if (numbered === 0 && bareNumberedLines(lines)) return 'numbered';
+    if (numbered === 0 && bareNumberedEntries(lines)) return 'numbered';
   }
   return 'plain';
 }
 
-function bareNumberedLines(lines) {
-  // Allow a leading preamble, but require at least two sequential entries
-  // beginning at 1 so years and other spoken numbers remain ordinary text.
-  const entries = BARE_NUMBERED_RE.test(lines[0] || '') ? lines : lines.slice(1);
-  return entries.length >= 2 && entries.every((line, index) => {
+/**
+ * `1 First` / `2 Second` with no punctuation after the number. After an
+ * optional preamble line the list must start at 1 and count up, so years and
+ * other spoken numbers stay ordinary text; unnumbered lines (and numbers out
+ * of sequence) continue the entry above them.
+ *
+ * @returns {Array<{num: number, text: string}>|null}
+ */
+function bareNumberedEntries(lines) {
+  const entries = [];
+  for (const line of BARE_NUMBERED_RE.test(lines[0] || '') ? lines : lines.slice(1)) {
     const match = BARE_NUMBERED_RE.exec(line);
-    return match !== null && Number(match[1]) === index + 1;
-  }) ? entries : null;
+    if (match && Number(match[1]) === entries.length + 1) {
+      entries.push({ num: entries.length + 1, text: match[2].trim() });
+    } else if (entries.length) {
+      entries[entries.length - 1].text = `${entries[entries.length - 1].text} ${line}`.trim();
+    } else {
+      return null;
+    }
+  }
+  return entries.length >= 2 ? entries : null;
 }
 
 /**
@@ -79,13 +93,16 @@ function bareNumberedLines(lines) {
 export function parseNumberedLines(text) {
   const entries = [];
   const lines = nonBlank(text);
-  const bareLines = bareNumberedLines(lines);
-  for (const line of bareLines ?? lines) {
+  if (!lines.some((line) => NUMBERED_RE.test(line))) {
+    const bare = bareNumberedEntries(lines);
+    if (bare) return bare.filter((e) => e.text);
+  }
+  for (const line of lines) {
     const marked = NUMBERED_RE.exec(line);
     const bare = !marked && BARE_NUMBERED_RE.exec(line);
     if (marked) {
       entries.push({ num: Number(marked[1] ?? marked[2] ?? marked[3]), text: marked[4].trim() });
-    } else if (bare && (bareLines || (entries.length && Number(bare[1]) === entries.at(-1).num + 1))) {
+    } else if (bare && entries.length && Number(bare[1]) === entries.at(-1).num + 1) {
       entries.push({ num: Number(bare[1]), text: bare[2].trim() });
     } else if (entries.length) {
       entries[entries.length - 1].text = `${entries[entries.length - 1].text} ${line}`.trim();

@@ -118,20 +118,27 @@ def webvtt_content_blocks(text: str, *, strict_blank: bool = False) -> list[str]
 
 
 def _webvtt_cues(text: str) -> list[tuple[re.Match[str], str]]:
-    # Only the first line, or the second after an identifier, can be timing.
-    # Everything after it belongs to the cue, including timing-shaped text.
+    # As in the WebVTT parser, any timing line starts a new cue, even without a
+    # blank line before it; lines before a block's first timing line (a cue
+    # identifier) are not dialogue.
     cues = []
     for index, block in enumerate(webvtt_content_blocks(text.lstrip())):
+        lines = block.lstrip().split("\n")
         if index == 0:
             # Some exports omit the blank line between WEBVTT and the first cue.
-            _, _, block = block.partition("\n")
-        line, _, body = block.lstrip().partition("\n")
-        match = _TIMING_RE.match(line)
-        if match is None:
-            line, _, body = body.partition("\n")
-            match = _TIMING_RE.match(line)
+            lines = lines[1:]
+        match, body = None, []
+        for line in lines:
+            timing = _TIMING_RE.match(line)
+            if timing is None:
+                if match is not None:
+                    body.append(line)
+                continue
+            if match is not None:
+                cues.append((match, "\n".join(body)))
+            match, body = timing, []
         if match is not None:
-            cues.append((match, body))
+            cues.append((match, "\n".join(body)))
     return cues
 
 
