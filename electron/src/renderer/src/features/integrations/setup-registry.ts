@@ -297,14 +297,16 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           titleKey: 'integrationCatalog.block.openaiPython',
           language: 'python',
           text: [
-            ...(policy === 'bearer' ? ['import os', ''] : []),
+            ...(policy === 'insecure' ? [] : ['import os', '']),
             'from openai import OpenAI',
             '',
             'client = OpenAI(',
             `    base_url="${base}/v1",`,
-            policy === 'bearer'
-              ? '    api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed"),'
-              : '    api_key="voicestudio",',
+            // A local Docker backend sees a non-loopback peer and needs the key;
+            // the SDK requires one, so a native backend gets a harmless placeholder.
+            policy === 'insecure'
+              ? '    api_key="voicestudio",'
+              : '    api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed"),',
             ')',
             '',
             'with client.audio.speech.with_streaming_response.create(',

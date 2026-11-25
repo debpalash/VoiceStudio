@@ -1186,7 +1186,7 @@ def _discard(path: str) -> None:
     try:
         os.unlink(path)
     except OSError:
-        pass
+        pass  # already gone, or still held open; staging cleanup is best-effort
 
 
 class _TaskUnsupported(Exception):
@@ -1355,6 +1355,10 @@ async def _transcribe_request(
     except Exception as e:
         _discard(tmp_path)
         raise OpenAIError(400, f"Could not read audio file: {e}", param="file")
+    except BaseException:
+        # Cancellation mid-upload: drop the partial file, keep the cancellation.
+        _discard(tmp_path)
+        raise
 
     options = {
         "language": language or None,

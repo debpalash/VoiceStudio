@@ -58,10 +58,13 @@ curl http://127.0.0.1:3900/elevenlabs/v1/text-to-speech/default?output_format=pc
   `eleven_flash_v2_5`, `eleven_v3`, …) use the engine that is active in the app.
   A VoiceStudio engine id, such as `voxcpm2`, uses that engine.
 - **Output formats:** `mp3_<rate>_<kbps>` (for example `mp3_44100_128` or
-  `mp3_22050_32`), `opus_48000_<kbps>`, `wav_<rate>`, `pcm_8000` to
-  `pcm_48000`, `ulaw_8000` and `alaw_8000`, each delivered at exactly the rate
-  and bitrate it names; other combinations return 422. PCM and WAV are 16-bit;
-  PCM is little-endian mono.
+  `mp3_22050_32`), `opus_48000_<kbps>`, `wav_<rate>`, `pcm_8000`, `pcm_16000`,
+  `pcm_22050`, `pcm_24000`, `pcm_44100`, `pcm_48000`, `ulaw_8000` and
+  `alaw_8000`, each delivered at exactly the rate and bitrate it names; other
+  combinations return 422. MP3 takes the standard bitrates for its rate: 32–320
+  kbps (32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320) at 32 kHz
+  and above, 32–160 kbps (32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160) below.
+  PCM and WAV are 16-bit; PCM is little-endian mono.
 - **Voice settings:** `speed` is applied. `stability`, `similarity_boost`,
   `style` and `use_speaker_boost` have no VoiceStudio equivalent and are
   accepted without effect.

@@ -183,6 +183,9 @@ it('gives the API and container cards runnable snippets for the right endpoints 
   expect(api.find((block) => block.id === 'elevenlabs')!.text).toContain(
     'api_key=os.environ.get("OMNIVOICE_API_KEY"),',
   );
+  // A local Docker backend needs the key too; the OpenAI SDK requires one.
+  expect(text).toContain('api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed")');
+  expect(text).not.toContain('api_key="voicestudio"');
   expect(INTEGRATION_SETUPS['voicestudio-api'].blocks('https://u:p@host')).toBeNull();
   const docker = INTEGRATION_SETUPS.docker
     .blocks('')!

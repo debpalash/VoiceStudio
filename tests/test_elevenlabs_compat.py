@@ -363,13 +363,22 @@ def test_the_isolation_checkpoint_matches_the_installed_demucs():
 
 
 @pytest.mark.parametrize("fmt", ["mp3_44100", "mp3_44100_8", "opus_24000_64", "wav_44100_128",
-                                 "pcm_44100_128", "ulaw_16000", "flac_44100"])
+                                 "pcm_44100_128", "ulaw_16000", "flac_44100",
+                                 # MP3 bitrates libmp3lame would round, and PCM rates it lacks.
+                                 "mp3_44100_127", "mp3_22050_320", "mp3_44100_144", "pcm_32000"])
 def test_combinations_the_encoders_cannot_honour_are_rejected(fmt):
     from fastapi import HTTPException
 
     with pytest.raises(HTTPException) as exc:
         _el().output_spec(fmt)
     assert exc.value.status_code == 422
+
+
+@pytest.mark.parametrize("fmt", ["mp3_22050_32", "mp3_24000_48", "mp3_44100_32", "mp3_44100_64",
+                                 "mp3_44100_96", "mp3_44100_128", "mp3_44100_192", "mp3_22050_144"])
+def test_standard_mp3_formats_are_accepted(fmt):
+    family, rate, kbps = _el().output_spec(fmt)
+    assert (family, rate, kbps) == ("mp3", int(fmt.split("_")[1]), int(fmt.split("_")[2]))
 
 
 def test_mp3_and_wav_use_the_requested_rate_and_bitrate(client, engine):

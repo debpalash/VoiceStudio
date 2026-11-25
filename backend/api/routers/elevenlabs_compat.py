@@ -20,6 +20,7 @@ key as ``xi-api-key`` (what ElevenLabs SDKs send) or as a Bearer token.
 """
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import logging
@@ -141,6 +142,14 @@ router = APIRouter(
 
 
 _MP3_RATES = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000}
+# Bitrates libmp3lame encodes exactly (anything else is rounded): MPEG-1 for
+# 32/44.1/48 kHz, MPEG-2 and 2.5 below that. The API floor is 32 kbps.
+_MP3_KBPS_MPEG1 = {32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320}
+_MP3_KBPS_MPEG2 = {32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160}
+
+
+def _mp3_kbps(rate: int) -> set[int]:
+    return _MP3_KBPS_MPEG1 if rate >= 32000 else _MP3_KBPS_MPEG2
 _WAV_RATES = {8000, 16000, 22050, 24000, 32000, 44100, 48000}
 
 
@@ -156,7 +165,7 @@ def output_spec(value: str) -> tuple[str, int, Optional[int]]:
             "alaw": rate == 8000 and bitrate is None,
             "pcm": rate in _PCM_RATES and bitrate is None,
             "wav": rate in _WAV_RATES and bitrate is None,
-            "mp3": rate in _MP3_RATES and bitrate is not None and 32 <= bitrate <= 320,
+            "mp3": rate in _MP3_RATES and bitrate in _mp3_kbps(rate),
             "opus": rate == 48000 and bitrate is not None and 32 <= bitrate <= 256,
         }[family]
         if ok:
@@ -164,7 +173,7 @@ def output_spec(value: str) -> tuple[str, int, Optional[int]]:
     raise _error(
         422, "invalid_output_format",
         f"Unsupported output_format '{value}'. Use mp3_44100_128 (default) or another "
-        "mp3_<rate>_<kbps>, pcm_8000/16000/22050/24000/44100/48000, ulaw_8000, "
+        "mp3_<rate>_<kbps> at a bitrate MP3 supports for that rate, pcm_8000/16000/22050/24000/44100/48000, ulaw_8000, "
         "alaw_8000, opus_48000_<kbps> or wav_<rate>.",
     )
 
@@ -479,7 +488,7 @@ def _unlink(path: str) -> None:
     try:
         os.unlink(path)
     except OSError:
-        pass
+        pass  # already gone, or the OS still holds it; a temp file is best-effort cleanup
 
 
 # ── Voices and models ───────────────────────────────────────────────────────
@@ -700,12 +709,13 @@ async def speech_to_text(
     want_words = timestamps_granularity != "none" or diarize
     kept = None
     upload = file
-    try:
+    with contextlib.ExitStack() as cleanup:
         if diarize:
             # Transcription deletes its own copy; speaker identification needs one too.
             kept = await _save_upload(file)
+            cleanup.callback(_unlink, kept)
             upload = StarletteUpload(
-                open(kept, "rb"), filename=file.filename,
+                cleanup.enter_context(open(kept, "rb")), filename=file.filename,
                 headers=Headers({"content-type": file.content_type or "application/octet-stream"}),
             )
         result = await _transcribe_request(
@@ -717,11 +727,6 @@ async def speech_to_text(
         speakers, error = (None, None)
         if diarize and raw_words:
             speakers, error = await _diarize_words(kept, raw_words, num_speakers)
-    finally:
-        if upload is not file:
-            upload.file.close()
-        if kept is not None:
-            _unlink(kept)
     words = _scribe_words(raw_words, speakers) if want_words else []
     if timestamps_granularity == "none":
         words = []
@@ -778,13 +783,14 @@ async def _tensor_response(data, sr: int, output_format: str, headers: Optional[
 
 
 def _wav_bytes(wav, sr: int, rate: int) -> bytes:
-    import soundfile as sf
     import torchaudio.functional as AF
+
+    from services.audio_io import _safe_soundfile_write
 
     if sr != rate:
         wav = AF.resample(wav, sr, rate)
     buf = io.BytesIO()
-    sf.write(buf, wav.clamp(-1.0, 1.0).T.numpy(), rate, format="WAV", subtype="PCM_16")
+    _safe_soundfile_write(buf, wav.clamp(-1.0, 1.0).T.numpy(), rate, format="WAV", subtype="PCM_16")
     return buf.getvalue()
 
 
@@ -816,9 +822,9 @@ async def _ffmpeg_encode(wav, sr: int, family: str, rate: int, bitrate: int) -> 
 
 
 def _write_wav(path: str, wav, sr: int) -> None:
-    import soundfile as sf
+    from services.audio_io import _safe_soundfile_write
 
-    sf.write(path, wav.clamp(-1.0, 1.0).T.numpy(), sr, format="WAV", subtype="FLOAT")
+    _safe_soundfile_write(path, wav.clamp(-1.0, 1.0).T.numpy(), sr, format="WAV", subtype="FLOAT")
 
 
 async def _ffmpeg_ready(output_format: str) -> None:
