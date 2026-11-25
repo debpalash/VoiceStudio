@@ -3333,6 +3333,19 @@
     "title": "PersistedJobEvents",
     "type": "object"
    },
+   "PlsParseRequest": {
+    "properties": {
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "text"
+    ],
+    "title": "PlsParseRequest",
+    "type": "object"
+   },
    "PreflightCheck": {
     "additionalProperties": true,
     "description": "One check in the preflight report.",
@@ -18961,7 +18974,7 @@
   },
   "/pronunciation/export": {
    "get": {
-    "description": "The language dictionary (or one voice's, with ``profile_id``) as a\nJSON-serializable list (round-trips ``/import`` with the same scope).",
+    "description": "The language dictionary (or one voice's, with ``profile_id``) as a\nJSON-serializable list (round-trips ``/import`` with the same scope), or\nwith ``format=pls`` as a W3C pronunciation lexicon of its enabled entries.",
     "operationId": "export_entries_pronunciation_export_get",
     "parameters": [
      {
@@ -18978,6 +18991,17 @@
         }
        ],
        "title": "Profile Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "format",
+      "required": false,
+      "schema": {
+       "default": "json",
+       "pattern": "^(json|pls)$",
+       "title": "Format",
+       "type": "string"
       }
      }
     ],
@@ -19039,6 +19063,43 @@
      }
     },
     "summary": "Import Entries"
+   }
+  },
+  "/pronunciation/parse-pls": {
+   "post": {
+    "description": "Read a PLS lexicon into entries for ``/pronunciation/import``.\n\nNothing is saved. Entries take the lexicon's language (``*`` when it has\nnone or says ``und``). Rows with an unsupported phoneme alphabet or a\nphoneme string this dictionary would reject are left out and counted in\n``skipped``.",
+    "operationId": "parse_pls_entries_pronunciation_parse_pls_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PlsParseRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Parse Pls Entries"
    }
   },
   "/pronunciation/test": {

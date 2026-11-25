@@ -322,6 +322,7 @@ POST /project-bundles/import
 POST /projects
 POST /pronunciation
 POST /pronunciation/import
+POST /pronunciation/parse-pls
 POST /pronunciation/test
 POST /setup/warmup
 POST /stories/encode
