@@ -1716,6 +1716,7 @@ def list_resumable_jobs() -> dict:
             "type": e["job_type"],
             "status": job.get("status", "interrupted"),
             "title": manifest.get("title", ""),
+            "plan_key": longform_resume.manifest_plan_key(manifest),
             "total_chapters": manifest.get("total_chapters", 0),
             "chapters_done": _chapters_done(jid),
             "created_at": job.get("created_at"),

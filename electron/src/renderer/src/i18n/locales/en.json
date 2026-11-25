@@ -2571,7 +2571,7 @@
   },
   "crash": {
     "view": "View crash details",
-    "field_exit": "Exit",
+    "field_exit": "Exit status",
     "field_when": "When",
     "field_uptime": "Uptime before crash",
     "field_version": "Backend version",
@@ -4350,5 +4350,12 @@
     "unavailable": "Automatic reports are unavailable or disabled for this app.",
     "managed": "Manage this choice in the desktop app connected to this browser.",
     "save_failed": "Could not save this choice. Please try again."
+  },
+  "tray": {
+    "open": "Open {{app}}",
+    "start_dictation": "Start dictation",
+    "stop_dictation": "Stop dictation",
+    "settings": "Settings",
+    "quit": "Quit"
   }
 }

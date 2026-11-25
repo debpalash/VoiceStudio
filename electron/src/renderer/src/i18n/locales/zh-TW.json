@@ -2485,7 +2485,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "查看崩潰詳細信息",
-    "field_exit": "出口",
+    "field_exit": "結束狀態",
     "field_when": "什麼時候",
     "field_uptime": "崩潰前的正常運作時間",
     "field_version": "後端版本",
@@ -4350,5 +4350,12 @@
     "unavailable": "此應用程式的自動回報無法使用或已停用。",
     "managed": "請在與此瀏覽器連線的桌面應用程式中管理此選項。",
     "save_failed": "無法儲存此選擇，請再試一次。"
+  },
+  "tray": {
+    "open": "開啟 {{app}}",
+    "start_dictation": "開始聽寫",
+    "stop_dictation": "停止聽寫",
+    "settings": "設定",
+    "quit": "結束"
   }
 }

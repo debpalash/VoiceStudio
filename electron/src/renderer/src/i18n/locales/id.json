@@ -2484,7 +2484,7 @@
   },
   "crash": {
     "uptime_value": "{{count}} s",
-    "field_exit": "KELUAR",
+    "field_exit": "Status keluar",
     "field_when": "Kapan",
     "field_uptime": "Waktu aktif sebelum crash",
     "no_stderr": "Tidak ada keluaran kesalahan yang ditangkap.",
@@ -4350,5 +4350,12 @@
     "unavailable": "Laporan otomatis tidak tersedia atau dinonaktifkan untuk aplikasi ini.",
     "managed": "Kelola pilihan ini di aplikasi desktop yang terhubung ke browser ini.",
     "save_failed": "Pilihan ini tidak dapat disimpan. Silakan coba lagi."
+  },
+  "tray": {
+    "open": "Buka {{app}}",
+    "start_dictation": "Mulai dikte",
+    "stop_dictation": "Hentikan dikte",
+    "settings": "Pengaturan",
+    "quit": "Keluar"
   }
 }

@@ -2571,7 +2571,7 @@
   },
   "crash": {
     "view": "Ver detalles do accidente",
-    "field_exit": "Saír",
+    "field_exit": "Estado de saída",
     "field_when": "Cando",
     "field_uptime": "Tempo de actividade antes do accidente",
     "field_version": "Versión de backend",
@@ -4350,5 +4350,12 @@
     "unavailable": "Os informes automáticos non están dispoñibles ou están desactivados nesta aplicación.",
     "managed": "Xestiona esta opción na aplicación de escritorio conectada a este navegador.",
     "save_failed": "Non se puido gardar esta opción. Téntao de novo."
+  },
+  "tray": {
+    "open": "Abrir {{app}}",
+    "start_dictation": "Comeza o ditado",
+    "stop_dictation": "Deter o ditado",
+    "settings": "Configuración",
+    "quit": "Saír"
   }
 }

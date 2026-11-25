@@ -2511,7 +2511,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Wyświetl szczegóły awarii",
-    "field_exit": "Wyjście",
+    "field_exit": "Status zakończenia",
     "field_when": "Gdy",
     "field_version": "Wersja backendowa",
     "no_stderr": "Nie przechwycono żadnych danych wyjściowych błędu.",
@@ -4382,5 +4382,12 @@
     "unavailable": "Automatyczne raporty są niedostępne lub wyłączone dla tej aplikacji.",
     "managed": "Zarządzaj tym wyborem w aplikacji komputerowej połączonej z tą przeglądarką.",
     "save_failed": "Nie udało się zapisać wyboru. Spróbuj ponownie."
+  },
+  "tray": {
+    "open": "Otwórz {{app}}",
+    "start_dictation": "Rozpocznij dyktowanie",
+    "stop_dictation": "Zatrzymaj dyktowanie",
+    "settings": "Ustawienia",
+    "quit": "Zakończ"
   }
 }

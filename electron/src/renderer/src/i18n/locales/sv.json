@@ -2484,7 +2484,7 @@
   },
   "crash": {
     "uptime_value": "{{count}} s",
-    "field_exit": "Utgång",
+    "field_exit": "Avslutningsstatus",
     "field_when": "När",
     "field_uptime": "Drifttid före krasch",
     "field_version": "Backend-version",
@@ -4350,5 +4350,12 @@
     "unavailable": "Automatiska rapporter är inte tillgängliga eller är avstängda för den här appen.",
     "managed": "Hantera det här valet i datorappen som är ansluten till den här webbläsaren.",
     "save_failed": "Det gick inte att spara valet. Försök igen."
+  },
+  "tray": {
+    "open": "Öppna {{app}}",
+    "start_dictation": "Starta diktering",
+    "stop_dictation": "Stoppa diktering",
+    "settings": "Inställningar",
+    "quit": "Avsluta"
   }
 }

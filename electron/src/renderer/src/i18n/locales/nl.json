@@ -2485,7 +2485,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Bekijk crashdetails",
-    "field_exit": "Uitgang",
+    "field_exit": "Afsluitstatus",
     "field_when": "Wanneer",
     "field_uptime": "Uptime vóór crash",
     "field_version": "Backend-versie",
@@ -4350,5 +4350,12 @@
     "unavailable": "Automatische rapporten zijn niet beschikbaar of uitgeschakeld voor deze app.",
     "managed": "Beheer deze keuze in de desktopapp die met deze browser is verbonden.",
     "save_failed": "Deze keuze kon niet worden opgeslagen. Probeer het opnieuw."
+  },
+  "tray": {
+    "open": "{{app}} openen",
+    "start_dictation": "Dicteren starten",
+    "stop_dictation": "Dicteren stoppen",
+    "settings": "Instellingen",
+    "quit": "Afsluiten"
   }
 }

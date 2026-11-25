@@ -2487,7 +2487,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Visualizza i dettagli dell'incidente",
-    "field_exit": "Uscita",
+    "field_exit": "Stato di uscita",
     "field_when": "Quando",
     "field_uptime": "Tempo di attività prima dell'arresto anomalo",
     "field_version": "Versione back-end",
@@ -4352,5 +4352,12 @@
     "unavailable": "Le segnalazioni automatiche non sono disponibili o sono disattivate per questa app.",
     "managed": "Gestisci questa scelta nell’app desktop collegata a questo browser.",
     "save_failed": "Impossibile salvare questa scelta. Riprova."
+  },
+  "tray": {
+    "open": "Apri {{app}}",
+    "start_dictation": "Avvia dettatura",
+    "stop_dictation": "Interrompi dettatura",
+    "settings": "Impostazioni",
+    "quit": "Esci"
   }
 }
