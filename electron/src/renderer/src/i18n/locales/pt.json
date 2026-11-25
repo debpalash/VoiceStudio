@@ -2494,7 +2494,7 @@
     "field_uptime": "Tempo de atividade antes da falha",
     "field_version": "Versão de back-end",
     "no_stderr": "Nenhuma saída de erro foi capturada.",
-    "field_exit": "Saída"
+    "field_exit": "Status de saída"
   },
   "errors": {
     "title": "Esta guia encontrou um obstáculo.",
@@ -4354,5 +4354,12 @@
     "unavailable": "Os relatórios automáticos estão indisponíveis ou desativados neste aplicativo.",
     "managed": "Gerencie esta opção no aplicativo de computador conectado a este navegador.",
     "save_failed": "Não foi possível salvar esta opção. Tente novamente."
+  },
+  "tray": {
+    "open": "Abrir {{app}}",
+    "start_dictation": "Iniciar ditado",
+    "stop_dictation": "Parar ditado",
+    "settings": "Configurações",
+    "quit": "Sair"
   }
 }

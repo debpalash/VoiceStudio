@@ -2488,7 +2488,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Absturzdetails anzeigen",
-    "field_exit": "Ausfahrt",
+    "field_exit": "Exit-Status",
     "field_when": "Wann",
     "field_uptime": "Betriebszeit vor dem Absturz",
     "field_version": "Backend-Version",
@@ -4352,5 +4352,12 @@
     "unavailable": "Automatische Berichte sind für diese App nicht verfügbar oder deaktiviert.",
     "managed": "Verwalte diese Auswahl in der Desktop-App, die mit diesem Browser verbunden ist.",
     "save_failed": "Diese Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut."
+  },
+  "tray": {
+    "open": "{{app}} öffnen",
+    "start_dictation": "Diktat starten",
+    "stop_dictation": "Diktat beenden",
+    "settings": "Einstellungen",
+    "quit": "Beenden"
   }
 }

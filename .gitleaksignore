@@ -14,7 +14,3 @@ f6d634e19902c0fd0e64947e635359d5bc1f85de:electron/tests/fake-health-backend.test
 
 # The Crockford base32 alphabet that generates the report idempotency key, not a credential.
 4dab817e78d54b055967860581687eeb5bb77472:mobile/android/core/network/src/main/kotlin/com/voicestudio/mobile/network/ContentReports.kt:generic-api-key:38
-#
-# Synthetic test fixture value in a #4371 translation-error test (not a credential;
-# later commits build it at runtime).
-481aa43be57ec256349e659063c2f0d7751b8008:tests/test_translation_apis.py:generic-api-key:195

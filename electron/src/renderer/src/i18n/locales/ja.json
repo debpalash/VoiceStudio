@@ -2491,7 +2491,7 @@
     "field_when": "いつ",
     "field_uptime": "クラッシュ前の稼働時間",
     "no_stderr": "エラー出力はキャプチャされませんでした。",
-    "field_exit": "出口",
+    "field_exit": "終了ステータス",
     "field_version": "バックエンドのバージョン"
   },
   "errors": {
@@ -4352,5 +4352,12 @@
     "unavailable": "このアプリでは自動報告を利用できないか、無効になっています。",
     "managed": "このブラウザに接続されたデスクトップアプリで設定してください。",
     "save_failed": "この選択を保存できませんでした。もう一度お試しください。"
+  },
+  "tray": {
+    "open": "{{app}} を開く",
+    "start_dictation": "音声入力を開始",
+    "stop_dictation": "音声入力を停止",
+    "settings": "設定",
+    "quit": "終了"
   }
 }
