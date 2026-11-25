@@ -2484,7 +2484,7 @@
   },
   "crash": {
     "uptime_value": "{{count}} s",
-    "field_exit": "Çıkış",
+    "field_exit": "Çıkış durumu",
     "field_when": "Ne zaman",
     "field_uptime": "Çökmeden önce çalışma süresi",
     "field_version": "Arka uç sürümü",
@@ -4349,5 +4349,12 @@
     "unavailable": "Otomatik raporlar bu uygulama için kullanılamıyor veya devre dışı.",
     "managed": "Bu seçimi tarayıcıya bağlı masaüstü uygulamasından yönetin.",
     "save_failed": "Bu seçim kaydedilemedi. Lütfen tekrar deneyin."
+  },
+  "tray": {
+    "open": "{{app}} uygulamasını aç",
+    "start_dictation": "Dikteyi başlat",
+    "stop_dictation": "Dikteyi durdur",
+    "settings": "Ayarlar",
+    "quit": "Çık"
   }
 }

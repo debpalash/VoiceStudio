@@ -2487,7 +2487,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Ver detalles del accidente",
-    "field_exit": "Salida",
+    "field_exit": "Estado de salida",
     "field_when": "Cuando",
     "field_uptime": "Tiempo de actividad antes del accidente",
     "no_stderr": "No se capturó ningún resultado de error.",
@@ -4351,5 +4351,12 @@
     "unavailable": "Los informes automáticos no están disponibles o están desactivados en esta aplicación.",
     "managed": "Gestiona esta opción en la aplicación de escritorio conectada a este navegador.",
     "save_failed": "No se pudo guardar esta opción. Inténtalo de nuevo."
+  },
+  "tray": {
+    "open": "Abrir {{app}}",
+    "start_dictation": "Iniciar dictado",
+    "stop_dictation": "Detener dictado",
+    "settings": "Ajustes",
+    "quit": "Salir"
   }
 }
