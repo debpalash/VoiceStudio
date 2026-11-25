@@ -168,6 +168,7 @@ it('shows one card per interrupted project, explains a disabled Resume and can b
   const jobs = [
     {
       job_id: 'old',
+      plan_key: 'plan-one',
       type: 'audiobook',
       title: 'Book',
       chapters_done: 0,
@@ -176,6 +177,7 @@ it('shows one card per interrupted project, explains a disabled Resume and can b
     },
     {
       job_id: 'new',
+      plan_key: 'plan-one',
       type: 'audiobook',
       title: 'Book',
       chapters_done: 0,
@@ -312,5 +314,20 @@ it('restores chapter results lost with done, so cue timings stay complete (#4090
   expect(longformSession.state.drafts.stories.outputChapters.map((c) => c.title)).toEqual([
     'One',
     'Two',
+  ]);
+});
+
+it('shows distinct interrupted renders with the same title and chapter count', () => {
+  const common = { type: 'audiobook', title: 'Untitled', chapters_done: 1, total_chapters: 2 };
+  const jobs = [
+    { ...common, job_id: 'earlier', plan_key: 'one', created_at: 1 },
+    { ...common, job_id: 'latest-retry', plan_key: 'one', created_at: 2 },
+    { ...common, job_id: 'separate', plan_key: 'two', created_at: 3 },
+    { ...common, job_id: 'legacy', created_at: 4 },
+  ];
+  expect(recoveriesFor('audiobook', jobs).map((job) => job.job_id)).toEqual([
+    'legacy',
+    'separate',
+    'latest-retry',
   ]);
 });
