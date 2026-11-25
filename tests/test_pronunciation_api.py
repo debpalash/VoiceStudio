@@ -388,3 +388,14 @@ def test_pls_lexicons_import_and_export(client):
 
     refused = client.post("/pronunciation/parse-pls", json={"text": "<!DOCTYPE x><lexicon/>"})
     assert refused.status_code == 400
+
+
+def test_pls_export_refuses_to_merge_languages(client):
+    """One lexicon has one xml:lang: entries for several languages would all
+    come back under one scope, so the export says to use JSON instead."""
+    client.post("/pronunciation", json={"term": "GIF", "replacement": "jiff", "language": "en"})
+    assert client.get("/pronunciation/export", params={"format": "pls"}).status_code == 200
+    client.post("/pronunciation", json={"term": "NASA", "replacement": "nasa", "language": "*"})
+    refused = client.get("/pronunciation/export", params={"format": "pls"})
+    assert refused.status_code == 400
+    assert "JSON" in refused.json()["detail"]

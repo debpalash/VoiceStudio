@@ -73,3 +73,24 @@ def test_preference_spans_aliases_and_phonemes():
         # An unusable preferred reading falls back to the first usable one.
         {"term": "tear", "replacement": "tare", "type": "respelling"},
     ]
+
+
+def test_a_rejected_phoneme_string_yields_to_the_next_reading():
+    lexicon = """<lexicon version="1.0" xmlns="http://www.w3.org/2005/01/pronunciation-lexicon"
+             alphabet="ipa" xml:lang="en">
+      <lexeme><grapheme>GIF</grapheme><phoneme alphabet="x-cmu">NOT_A_CMU_PHONE</phoneme><alias>jiff</alias></lexeme>
+      <lexeme><grapheme>SQL</grapheme><phoneme alphabet="x-cmu" prefer="true">S-K-L</phoneme><alias>sequel</alias></lexeme>
+      <lexeme><grapheme>bad</grapheme><phoneme>[bad]</phoneme></lexeme>
+    </lexicon>"""
+    parsed = _pls().parse_pls(lexicon)
+    assert parsed["entries"] == [
+        {"term": "GIF", "replacement": "jiff", "type": "respelling"},
+        {"term": "SQL", "replacement": "sequel", "type": "respelling"},
+    ]
+    assert parsed["skipped"] == 1
+
+
+def test_a_deletion_override_survives_the_round_trip():
+    """An empty replacement removes the word; PLS carries it as an empty alias."""
+    entries = [{"term": "um", "replacement": "", "type": "respelling"}]
+    assert _pls().parse_pls(_pls().to_pls(entries, "en"))["entries"] == entries

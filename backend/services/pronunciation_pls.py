@@ -4,7 +4,8 @@ PLS is what ElevenLabs, Azure and Google speech use for pronunciation
 dictionaries, so a lexicon made for them imports here and an export works
 there. Mapping to dictionary entry types:
 
-- ``<alias>`` → ``respelling``
+- ``<alias>`` → ``respelling`` (an empty ``<alias/>`` is a deletion override:
+  the word is not spoken)
 - ``<phoneme>`` in IPA → ``ipa``
 - ``<phoneme>`` in CMU ARPABET (``x-cmu``, ``cmu-arpabet``, ``arpabet``) → ``cmu``
 
@@ -14,6 +15,7 @@ needs neither, and refusing them rules out entity-expansion attacks.
 """
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 
 import defusedxml.ElementTree as SafeET
@@ -25,6 +27,20 @@ PLS_NS = "http://www.w3.org/2005/01/pronunciation-lexicon"
 XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 _CMU_ALPHABETS = {"x-cmu", "cmu", "cmu-arpabet", "arpabet", "x-arpabet"}
 MAX_PLS_BYTES = 5 * 1024 * 1024
+# Phoneme rules shared with the dictionary's save validation: IPA is a charset
+# gate, CMU/ARPABET is space-separated letters with an optional stress digit.
+IPA_BAD = re.compile(r"[\[\]\|\x00-\x1f]")
+CMU_TOKEN = re.compile(r"^[A-Za-z]{1,3}[0-2]?$")
+
+
+def phonemes_ok(kind: str, text: str) -> bool:
+    """Whether ``text`` is a phoneme string the dictionary accepts for ``kind``."""
+    text = (text or "").strip()
+    if not text:
+        return False
+    if kind == "cmu":
+        return all(CMU_TOKEN.match(token) for token in text.split())
+    return not IPA_BAD.search(text)
 
 
 class PlsError(ValueError):
@@ -53,14 +69,13 @@ def _alphabet_type(alphabet: str) -> Optional[str]:
 
 
 def _reading(element, default_alphabet: str):
-    """``(type, replacement)`` for one ``<alias>``/``<phoneme>``, or None if unusable."""
+    """``(type, replacement)`` for one ``<alias>``/``<phoneme>``, or None if
+    the dictionary could not use it (so the next reading gets its turn)."""
     text = _text(element)
-    if not text:
-        return None
     if _local(element.tag) == "alias":
         return "respelling", text
     kind = _alphabet_type(element.get("alphabet") or default_alphabet)
-    return (kind, text) if kind else None
+    return (kind, text) if kind and phonemes_ok(kind, text) else None
 
 
 def _preferred_reading(lexeme, default_alphabet: str):

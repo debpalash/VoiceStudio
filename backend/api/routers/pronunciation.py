@@ -30,7 +30,6 @@ applies only when the request language resolves to the same id.
 from __future__ import annotations
 
 import logging
-import re
 import time
 import uuid
 from typing import List, Optional
@@ -40,6 +39,7 @@ from pydantic import BaseModel
 
 from api.dependencies import require_admin
 from core.db import db_conn
+from services.pronunciation_pls import CMU_TOKEN as _CMU_TOKEN, IPA_BAD as _IPA_BAD
 from services.pronunciation import (
     apply_pronunciation,
     entries_for_language,
@@ -58,10 +58,9 @@ _ALL_LANG = "*"
 # extension codepoints + the usual suprasegmental marks; we reject ASCII control
 # and the bracket/pipe chars that would collide with the inline grammar. This is
 # a charset gate (catches obvious garbage early), not a full IPA grammar.
-_IPA_BAD = re.compile(r"[\[\]\|\x00-\x1f]")
 # CMU / ARPABET: space-separated phoneme tokens (letters + an optional 0-2 stress
-# digit), e.g. "N AH0 V AE1 D AH0". Reject anything else.
-_CMU_TOKEN = re.compile(r"^[A-Za-z]{1,3}[0-2]?$")
+# digit), e.g. "N AH0 V AE1 D AH0". The rules live with the PLS reader, which
+# applies them when choosing among a lexeme's readings.
 
 
 def _validate_type_replacement(etype: str, replacement: str) -> None:
@@ -309,8 +308,17 @@ def export_entries(
 
         enabled = [r for r in rows if r["enabled"]]
         languages = {r["language"] for r in enabled}
-        # A lexicon has one language; mixed or all-language rows say "und".
-        language = next(iter(languages)) if len(languages) == 1 and _ALL_LANG not in languages else "und"
+        # A lexicon has one language. Rows for every language say "und", which
+        # imports back as every language; rows for several languages cannot
+        # share one lexicon without widening some of them on reimport.
+        if len(languages) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail="A PLS lexicon holds one language, and this dictionary has entries "
+                       "for several. Export it as JSON to keep each entry's language.",
+            )
+        language = next(iter(languages), _ALL_LANG)
+        language = "und" if language == _ALL_LANG else language
         return Response(
             to_pls(enabled, language),
             media_type="application/pls+xml",
