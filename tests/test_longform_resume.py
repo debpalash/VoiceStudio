@@ -79,3 +79,22 @@ def test_atomic_write_leaves_no_tmp():
     lr.write_manifest(lr.build_manifest(job_id="atom", job_type="story",
                                         plan_chapters=_PLAN, params=_PARAMS))
     assert not any(n.endswith(".tmp") for n in os.listdir(lr.work_dir("story", "atom")))
+
+
+def test_failed_manifest_update_keeps_previous_plan_and_removes_staging_file(monkeypatch):
+    manifest = lr.build_manifest(job_id="retry", job_type="story", plan_chapters=_PLAN,
+                                 params=_PARAMS, title="Original")
+    assert lr.write_manifest(manifest)
+
+    def reject_replace(source, target):
+        raise PermissionError("manifest is temporarily locked")
+
+    with monkeypatch.context() as locked:
+        locked.setattr(lr.os, "replace", reject_replace)
+        assert lr.write_manifest({**manifest, "title": "Updated"}) is None
+    assert lr.read_manifest("story", "retry") == manifest
+    assert os.listdir(lr.work_dir("story", "retry")) == ["resume.json"]
+
+    updated = {**manifest, "title": "Updated"}
+    assert lr.write_manifest(updated)
+    assert lr.read_manifest("story", "retry") == updated
