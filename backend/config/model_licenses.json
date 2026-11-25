@@ -3810,6 +3810,29 @@
       "artifacts": [],
       "required_components": [],
       "upstream_access": "unknown"
+    },
+    {
+      "id": "adefossez/HTDemucs",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Demucs htdemucs (Alexandre Défossez, Meta AI)",
+      "source_url": "https://huggingface.co/adefossez/HTDemucs",
+      "evidence_url": "https://huggingface.co/adefossez/HTDemucs/blob/cbc8a9b1a87023b7fd74e7b3412e6321c0eab003/README.md",
+      "revision": "cbc8a9b1a87023b7fd74e7b3412e6321c0eab003",
+      "engines": [
+        "demucs"
+      ],
+      "configured_at": "backend/api/routers/elevenlabs_compat.py (HTDEMUCS_HF_REPO)",
+      "notes": "The htdemucs weights Demucs 4.1 loads from Hugging Face before its legacy checkpoint (see the htdemucs dynamic asset). VoiceStudio only checks whether they are cached; Demucs selects and downloads them, unpinned. The repository declares no licence metadata; terms require review.",
+      "runtime_pin_scope": "external",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown"
     }
   ],
   "dynamic_assets": [

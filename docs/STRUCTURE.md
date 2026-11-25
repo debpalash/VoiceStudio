@@ -32,7 +32,7 @@ VoiceStudio/
 │
 ├── backend/                     ⟵ FastAPI server
 │   ├── main.py                  sole process entry; its annotated startup sequence must retain its order
-│   ├── api/routers/             46 routers, auto-included; HTTP/WS adaptation stays thin here
+│   ├── api/routers/             47 routers, auto-included; HTTP/WS adaptation stays thin here
 │   │   └── setup/               setup-wizard endpoints and model acquisition
 │   ├── core/                    shared infrastructure: configuration, persistence, job/event plumbing,
 │   │                            auth and CSRF, safe paths, model artifact fingerprints, analytics consent,

@@ -3012,6 +3012,7 @@
       "speechCurl": "文字轉語音（curl）",
       "transcriptionCurl": "轉錄（curl）",
       "openaiPython": "Python（OpenAI SDK）",
+      "elevenlabsPython": "Python（ElevenLabs SDK）",
       "dockerRun": "執行容器",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n 工作流程",

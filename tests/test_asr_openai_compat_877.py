@@ -465,3 +465,39 @@ def test_route_probes_the_persisted_config(settings_mod, asr_mod, ss, monkeypatc
     assert captured["url"] == "http://localhost:9999/v1/models"
     assert captured["headers"]["Authorization"] == "Bearer sk-live-1"
     assert "sk-live-1" not in str(out)
+
+
+def test_cancelled_upload_leaves_no_partial_file(monkeypatch, tmp_path):
+    """Cancellation mid-upload removes the staged audio and stays a cancellation."""
+    import asyncio
+    import importlib
+    import tempfile
+
+    openai = importlib.import_module("api.routers.openai_compat")
+    asr = importlib.import_module("services.asr_backend")
+    monkeypatch.setattr(asr, "asr_model_missing_error", lambda: None)
+    staged = []
+    real_mkstemp = tempfile.mkstemp
+
+    def mkstemp(*args, **kwargs):
+        fd, path = real_mkstemp(*args, dir=tmp_path, **{k: v for k, v in kwargs.items() if k != "dir"})
+        staged.append(path)
+        return fd, path
+
+    monkeypatch.setattr(tempfile, "mkstemp", mkstemp)
+
+    class Upload:
+        filename = "clip.wav"
+        calls = 0
+
+        async def read(self, size=-1):
+            self.calls += 1
+            if self.calls == 1:
+                return b"RIFF" + b"\0" * 1024
+            raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(openai._transcribe_request(
+            task="transcribe", file=Upload(), language=None, prompt=None,
+            response_format="json", temperature=None))
+    assert staged and not any(os.path.exists(p) for p in staged)

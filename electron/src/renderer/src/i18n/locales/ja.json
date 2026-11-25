@@ -3012,6 +3012,7 @@
       "speechCurl": "音声合成 (curl)",
       "transcriptionCurl": "文字起こし (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "コンテナを実行",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n ワークフロー",

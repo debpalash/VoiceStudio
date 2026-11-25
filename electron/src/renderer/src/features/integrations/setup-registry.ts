@@ -297,14 +297,16 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           titleKey: 'integrationCatalog.block.openaiPython',
           language: 'python',
           text: [
-            ...(policy === 'bearer' ? ['import os', ''] : []),
+            ...(policy === 'insecure' ? [] : ['import os', '']),
             'from openai import OpenAI',
             '',
             'client = OpenAI(',
             `    base_url="${base}/v1",`,
-            policy === 'bearer'
-              ? '    api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed"),'
-              : '    api_key="voicestudio",',
+            // A local Docker backend sees a non-loopback peer and needs the key;
+            // the SDK requires one, so a native backend gets a harmless placeholder.
+            policy === 'insecure'
+              ? '    api_key="voicestudio",'
+              : '    api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed"),',
             ')',
             '',
             'with client.audio.speech.with_streaming_response.create(',
@@ -315,6 +317,35 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
             '',
             'with open("speech.wav", "rb") as audio:',
             '    print(client.audio.transcriptions.create(model="whisper-1", file=audio).text)',
+            '',
+          ].join('\n'),
+        },
+        {
+          // Apps built for ElevenLabs point their base URL at /elevenlabs.
+          id: 'elevenlabs',
+          titleKey: 'integrationCatalog.block.elevenlabsPython',
+          language: 'python',
+          // No placeholder key: an explicit wrong xi-api-key is refused even
+          // where no key is needed (a Docker host, a trusted network). Unset
+          // means None, and the SDK then sends no key.
+          text: [
+            ...(policy === 'insecure' ? [] : ['import os', '']),
+            'from elevenlabs.client import ElevenLabs',
+            '',
+            'client = ElevenLabs(',
+            `    base_url="${base}/elevenlabs",`,
+            policy === 'insecure'
+              ? '    api_key=None,'
+              : '    api_key=os.environ.get("OMNIVOICE_API_KEY"),',
+            ')',
+            '',
+            'audio = client.text_to_speech.convert(',
+            '    voice_id="default", text="Hello from VoiceStudio.",',
+            '    output_format="mp3_44100_128",',
+            ')',
+            'with open("speech.mp3", "wb") as f:',
+            '    for chunk in audio:',
+            '        f.write(chunk)',
             '',
           ].join('\n'),
         },
