@@ -126,8 +126,11 @@ def parse_pls(text: str) -> dict:
     return {"entries": entries, "language": root.get(XML_LANG), "skipped": skipped}
 
 
-# Characters XML 1.0 can carry; escaping cannot represent the rest (U+0001, …).
-_XML_UNREPRESENTABLE = re.compile("[^\t\n\r\u0020-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]")
+def _xml_char(char: str) -> bool:
+    """Whether XML 1.0 can carry ``char``; escaping cannot represent the rest (U+0001, …)."""
+    code = ord(char)
+    return (code in (0x9, 0xA, 0xD) or 0x20 <= code <= 0xD7FF
+            or 0xE000 <= code <= 0xFFFD or 0x10000 <= code <= 0x10FFFF)
 
 
 def to_pls(entries: Iterable[dict], language: str) -> str:
@@ -141,7 +144,7 @@ def to_pls(entries: Iterable[dict], language: str) -> str:
     ]
     for entry in entries:
         for value in (entry["term"], entry["replacement"]):
-            if _XML_UNREPRESENTABLE.search(value):
+            if not all(map(_xml_char, value)):
                 raise PlsError(
                     f"The entry {entry['term']!r} contains a control character a PLS lexicon "
                     "cannot hold. Export the dictionary as JSON instead."
