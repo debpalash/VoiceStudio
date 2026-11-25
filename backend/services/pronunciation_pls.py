@@ -15,6 +15,9 @@ needs neither, and refusing them rules out entity-expansion attacks.
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+
+import defusedxml.ElementTree as SafeET
+from defusedxml import DefusedXmlException
 from typing import Iterable, Optional
 from xml.sax.saxutils import escape, quoteattr
 
@@ -49,11 +52,31 @@ def _alphabet_type(alphabet: str) -> Optional[str]:
     return None
 
 
-def _preferred(elements):
-    for element in elements:
-        if (element.get("prefer") or "").strip().lower() == "true":
-            return element
-    return elements[0] if elements else None
+def _reading(element, default_alphabet: str):
+    """``(type, replacement)`` for one ``<alias>``/``<phoneme>``, or None if unusable."""
+    text = _text(element)
+    if not text:
+        return None
+    if _local(element.tag) == "alias":
+        return "respelling", text
+    kind = _alphabet_type(element.get("alphabet") or default_alphabet)
+    return (kind, text) if kind else None
+
+
+def _preferred_reading(lexeme, default_alphabet: str):
+    """PLS picks across aliases and phonemes together: the first usable one
+    marked ``prefer="true"``, else the first usable one in document order."""
+    readings = []
+    for child in lexeme:
+        if _local(child.tag) not in ("alias", "phoneme"):
+            continue
+        reading = _reading(child, default_alphabet)
+        if reading is None:
+            continue
+        if (child.get("prefer") or "").strip().lower() == "true":
+            return reading
+        readings.append(reading)
+    return readings[0] if readings else None
 
 
 def parse_pls(text: str) -> dict:
@@ -63,12 +86,12 @@ def parse_pls(text: str) -> dict:
     """
     if len(text.encode("utf-8")) > MAX_PLS_BYTES:
         raise PlsError("The lexicon is larger than 5 MB.")
-    head = text[:4096].upper()
-    if "<!DOCTYPE" in head or "<!ENTITY" in text.upper():
+    upper = text.upper()
+    if "<!DOCTYPE" in upper or "<!ENTITY" in upper:
         raise PlsError("Lexicons with a DOCTYPE or entity declarations are not accepted.")
     try:
-        root = ET.fromstring(text)
-    except ET.ParseError as exc:
+        root = SafeET.fromstring(text, forbid_dtd=True)
+    except (ET.ParseError, DefusedXmlException) as exc:
         raise PlsError(f"The file is not valid XML ({exc}).") from None
     if _local(root.tag) != "lexicon":
         raise PlsError("The file is not a pronunciation lexicon (no <lexicon> root).")
@@ -77,19 +100,11 @@ def parse_pls(text: str) -> dict:
     skipped = 0
     for lexeme in _children(root, "lexeme"):
         graphemes = [_text(g) for g in _children(lexeme, "grapheme") if _text(g)]
-        alias = _preferred(_children(lexeme, "alias"))
-        phoneme = _preferred(_children(lexeme, "phoneme"))
-        if alias is not None and _text(alias):
-            kind, replacement = "respelling", _text(alias)
-        elif phoneme is not None and _text(phoneme):
-            kind = _alphabet_type(phoneme.get("alphabet") or default_alphabet)
-            replacement = _text(phoneme)
-            if kind is None:
-                skipped += len(graphemes) or 1
-                continue
-        else:
+        reading = _preferred_reading(lexeme, default_alphabet)
+        if reading is None:
             skipped += len(graphemes) or 1
             continue
+        kind, replacement = reading
         entries.extend({"term": g, "replacement": replacement, "type": kind} for g in graphemes)
     return {"entries": entries, "language": root.get(XML_LANG), "skipped": skipped}
 

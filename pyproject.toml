@@ -40,6 +40,8 @@ dependencies = [
     "transformers>=5.10.0",
     "accelerate",
     "pydub",
+    # Untrusted XML (PLS lexicon import) is parsed with defusedxml.
+    "defusedxml>=0.7.1",
     # pydub imports the stdlib `audioop`, which Python 3.13 removed; gradio
     # used to pull this backport in, so declare it now that gradio is in `ui`.
     "audioop-lts ; python_version >= '3.13'",

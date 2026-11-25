@@ -52,7 +52,24 @@ def test_escaping_survives_the_round_trip():
     '<lexicon><lexeme><grapheme>&a;</grapheme></lexeme></lexicon><!ENTITY a "x">',
     "not xml",
     "<speak/>",
+    " " * 5000 + '<!DOCTYPE lexicon><lexicon/>',  # a declaration past any leading-window check
 ])
 def test_unsafe_or_foreign_documents_are_refused(text):
     with pytest.raises(_pls().PlsError):
         _pls().parse_pls(text)
+
+
+def test_preference_spans_aliases_and_phonemes():
+    """PLS applies ``prefer`` across <alias> and <phoneme> together."""
+    lexicon = """<lexicon version="1.0" xmlns="http://www.w3.org/2005/01/pronunciation-lexicon"
+             alphabet="ipa" xml:lang="en">
+      <lexeme><grapheme>lead</grapheme><alias>led</alias><phoneme prefer="true">liːd</phoneme></lexeme>
+      <lexeme><grapheme>wind</grapheme><phoneme>wɪnd</phoneme><alias>wined</alias></lexeme>
+      <lexeme><grapheme>tear</grapheme><phoneme alphabet="x-sampa" prefer="true">t{r</phoneme><alias>tare</alias></lexeme>
+    </lexicon>"""
+    assert _pls().parse_pls(lexicon)["entries"] == [
+        {"term": "lead", "replacement": "liːd", "type": "ipa"},
+        {"term": "wind", "replacement": "wɪnd", "type": "ipa"},
+        # An unusable preferred reading falls back to the first usable one.
+        {"term": "tear", "replacement": "tare", "type": "respelling"},
+    ]
