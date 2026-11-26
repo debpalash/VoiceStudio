@@ -1,9 +1,10 @@
 // Dependency-free startup evidence. Imported first by index.ts so even a failure
 // while loading the remaining modules, or an exit before userData exists, leaves a
 // line somewhere a user can find (see docs/install/macos.md).
-import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs';
+import { appendFileSync, mkdirSync, statSync } from 'node:fs';
 import { homedir, release, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
+import { renameSyncWithRetry } from './rename-retry';
 
 const MAX_BYTES = 256 * 1024;
 const FILE_NAME = 'VoiceStudio-startup.log';
@@ -23,7 +24,7 @@ export function startupLogDirs(
   temp: string = tmpdir(),
 ): string[] {
   const dirs: string[] = [];
-  if (platform === 'darwin' && home) dirs.push(join(home, 'Library', 'Logs', 'VoiceStudio'));
+  if (platform === 'darwin' && home) dirs.push(posix.join(home, 'Library', 'Logs', 'VoiceStudio'));
   dirs.push(temp);
   return dirs;
 }
@@ -48,7 +49,7 @@ export function logStartup(message: string, file?: string): void {
   try {
     const target = file ?? (defaultFile ??= startupLogPath());
     try {
-      if (statSync(target).size > MAX_BYTES) renameSync(target, `${target}.1`);
+      if (statSync(target).size > MAX_BYTES) renameSyncWithRetry(target, `${target}.1`);
     } catch {
       /* no file yet */
     }

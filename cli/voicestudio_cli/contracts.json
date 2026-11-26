@@ -1024,7 +1024,9 @@
     "body_required": false,
     "encoding": "",
     "fields": [],
-    "query": [],
+    "query": [
+      "text_limit"
+    ],
     "required": [],
     "required_query": []
   },

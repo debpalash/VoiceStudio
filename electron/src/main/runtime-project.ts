@@ -1506,12 +1506,14 @@ export async function recoverMinorVersionLink(
       /* leave anything we cannot inspect alone */
     }
   }
-  const windows = /^[a-z]:[\\/]|^\\\\/i.test(patchDir);
-  const candidate = windows ? win32.join(patchDir, 'python.exe') : join(patchDir, 'bin', 'python3');
-  const python = await stat(candidate).then(
-    () => candidate,
-    () => null,
-  );
+  // Windows interpreters sit at the patch root, POSIX ones under bin/.
+  let python: string | null = null;
+  for (const candidate of [join(patchDir, 'python.exe'), join(patchDir, 'bin', 'python3')]) {
+    if (await stat(candidate).then(() => true, () => false)) {
+      python = candidate;
+      break;
+    }
+  }
   log(
     `uv could not validate its Python minor-version link (uv#19622); removed ${removed} stale link(s)` +
       (python ? ', using the interpreter path directly if uv still refuses.' : '.'),
