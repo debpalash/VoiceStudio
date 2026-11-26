@@ -54,9 +54,12 @@ _TOKEN_PATTERNS = (
 # are already caught above and named env vars by the sweep below. `pin` is the
 # share PIN: the backend accepts it as `?pin=` and it authenticates paired
 # clients, so a crash-logged request URL must not carry it into a bundle.
+# `ws_ticket` authorizes one WebSocket handshake and travels in the query string
+# too (`core/auth.py` `_credential_candidate`), so it belongs to the same set.
 _URL_SECRET_NAMES = frozenset((
     "access_token", "access-token", "accesstoken", "api_key", "api-key", "apikey",
     "auth_token", "auth-token", "authtoken", "token", "secret", "password", "passwd", "pwd", "pin",
+    "ws_ticket", "ws-ticket", "wsticket",
 ))
 _URL_SECRET_NAME = "(?:" + "|".join(sorted(_URL_SECRET_NAMES)) + ")"
 _URL_SECRET_RE = re.compile(
