@@ -291,8 +291,7 @@ If the engine stops with a Windows exit code, the failure screen names it:
 - **`0xC0000005`, `0xC000001D`, `0xC0000374` and other native faults**: a library crashed below Python. The in-app report names the library from the Windows event log. When it is the graphics driver, update the driver or press **Restart on CPU** on the failure screen; switch back later in Settings → Performance & Device. See [`NATIVE_ACCESS_VIOLATION`](troubleshooting.md#native_access_violation).
 - **`0xC0000006`**: Windows could not read part of a file mapped into memory, usually a model file. A disk or paging-file read error is the most common cause: keep models on an internal drive and check it for errors. See [`NATIVE_IN_PAGE_ERROR`](troubleshooting.md#native_in_page_error).
 - **`4294967295` (`-1`)**: the engine exited with `-1`. With no traceback, the likely cause is something outside the app ending it, often security software, but the engine can also exit with `-1` itself.
-
-- **`Missing expected target directory for Python minor version link`** during runtime setup: uv could not validate its `cpython-3.11-…` junction ([uv#19622](https://github.com/astral-sh/uv/issues/19622)). Setup now removes the stale junction and, if uv still refuses, uses the installed interpreter by its full path; just press Retry. No administrator rights are needed.
+- **`Missing expected target directory for Python minor version link`** during runtime setup: uv could not validate its `cpython-3.11-…` junction ([uv#19622](https://github.com/astral-sh/uv/issues/19622)). Setup now removes the stale junction and, if uv still refuses, uses the installed interpreter by its full path. Press **Retry**. No administrator rights are needed.
 
 Migration configuration is kept ASCII so Alembic can read it under Windows locale code pages as well as UTF-8. This applies to source installs and direct Alembic commands.
 
