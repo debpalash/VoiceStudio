@@ -329,6 +329,37 @@ def test_git_absent_falls_back_to_tarball(monkeypatch):
     assert step["detail"] == "source tarball"
 
 
+def test_failed_clone_with_read_only_git_still_unpacks_tarball_at_root(monkeypatch):
+    """A failed clone leaves read-only ``.git`` pack files (Windows). They must
+    not survive and make the tarball land one level too deep (no manifest)."""
+    import stat
+
+    spec = _mk_spec()
+    checkout = si.managed_checkout(spec)
+    monkeypatch.setattr(si.shutil, "which", lambda n: "git")
+
+    def fake_clone(job, argv, timeout=None):
+        pack = checkout / ".git" / "objects" / "pack" / "pack-1.pack"
+        pack.parent.mkdir(parents=True, exist_ok=True)
+        pack.write_bytes(b"x")
+        os.chmod(pack, stat.S_IREAD)
+        return 128
+
+    monkeypatch.setattr(si, "_run_logged", fake_clone)
+    import httpx
+    monkeypatch.setattr(
+        httpx, "stream", lambda m, u, **kw: _FakeStream(_tarball_bytes("fake-side-main")),
+    )
+
+    job = si._new_job(spec.engine_id)
+    si._job_step(job, "fetch_source")["state"] = "running"
+    si._step_fetch_source(spec, job)
+
+    assert (checkout / "pyproject.toml").is_file()
+    assert not (checkout / ".git").exists()
+    assert not (checkout / "fake-side-main").exists()
+
+
 def test_git_failure_falls_back_to_tarball(monkeypatch):
     """A present-but-failing git (proxy block, DNS, …) must not dead-end."""
     spec = _mk_spec()

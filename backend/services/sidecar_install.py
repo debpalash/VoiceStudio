@@ -1526,7 +1526,7 @@ def uninstall(engine_id: str) -> dict:
         }
     root = managed_root(spec)
     removed = root.is_dir()
-    shutil.rmtree(root, ignore_errors=True)
+    _force_rmtree(root)
     if env_dir:  # only ever the managed checkout at this point
         os.environ.pop(spec.env_var, None)
     from core import prefs
@@ -1671,7 +1671,7 @@ def _fetch_main_source(spec: SidecarSpec, job: dict) -> None:
         # generations live at a different path and remain usable until this
         # replacement has completed successfully.
         _log(job, f"Removing incomplete or outdated checkout at {checkout} …")
-        shutil.rmtree(checkout, ignore_errors=True)
+        _force_rmtree(checkout)
 
     git = shutil.which("git")
     if git:
@@ -1692,7 +1692,7 @@ def _fetch_main_source(spec: SidecarSpec, job: dict) -> None:
             step["detail"] = "git clone"
             return
         _log(job, f"git clone failed (exit {rc}) — falling back to source tarball.")
-        shutil.rmtree(checkout, ignore_errors=True)
+        _force_rmtree(checkout)
     else:
         _log(job, "git not found — using the source-tarball fallback.")
 
@@ -1713,6 +1713,31 @@ _SOURCE_REVISION_MARKER = ".voicestudio_source_revision"
 # download, the venv interpreter existing proves nothing: a dependency
 # install that died halfway leaves one behind.
 _INSTALL_COMPLETE_MARKER = ".voicestudio_install_complete"
+
+
+def _force_rmtree(path: Path) -> None:
+    """Remove *path* even when it holds read-only files.
+
+    A failed ``git clone`` leaves ``.git`` pack files read-only on Windows;
+    ``rmtree(ignore_errors=True)`` silently keeps them, and a later
+    ``shutil.move`` into the surviving directory nests the tarball one level
+    too deep (no manifest at the checkout root).
+    """
+    import stat
+
+    def _writable(func: Callable, target: str, _exc) -> None:
+        try:
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        except OSError:
+            pass  # reported by the existence check below
+
+    if not path.exists():
+        return
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_writable)
+    else:
+        shutil.rmtree(path, onerror=_writable)
 
 
 def _source_layout_ok(spec: SidecarSpec, checkout: Path) -> bool:
@@ -1778,6 +1803,16 @@ def _download_and_extract(job: dict, url: str, dest: Path, work_root: Path, env_
                     "Re-run the install; if it keeps failing, clone the repository "
                     f"manually and set {env_var} (see the engine docs).",
                 )
+            # Never move into a surviving directory: shutil.move would nest the
+            # source one level down and the manifest check would fail opaquely.
+            _force_rmtree(dest)
+            if dest.exists():
+                raise _StepError(
+                    f"Could not clear {dest} before unpacking the source "
+                    "(a file inside it is locked or read-only).",
+                    "Close any program using that folder (editor, terminal, "
+                    "antivirus scan), then re-run the install.",
+                )
             # os.replace-style move keeps this atomic-ish on the same volume.
             shutil.move(str(entries[0]), str(dest))
     finally:
@@ -1807,7 +1842,7 @@ def _ensure_extra_sources(spec: SidecarSpec, job: dict, checkout: Path) -> None:
         dest = checkout / extra.path
         if _extra_source_present(extra, dest):
             continue
-        shutil.rmtree(dest, ignore_errors=True)
+        _force_rmtree(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         _log(job, f"Fetching {extra.path} at {extra.revision[:8]} …")
         _download_and_extract(job, extra.tarball_url, dest, managed_root(spec), spec.env_var)
