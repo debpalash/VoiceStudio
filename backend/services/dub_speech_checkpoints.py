@@ -24,6 +24,14 @@ logger = logging.getLogger("omnivoice.dub")
 MAX_BYTES = 1 << 30
 
 
+def _discard(path: Path) -> None:
+    """Best-effort removal; a leftover file is only a cache miss later."""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as error:
+        logger.debug("speech checkpoint file kept: %s", type(error).__name__)
+
+
 class SpeechCheckpoints:
     def __init__(self, job_dir: str, engine: str, sample_rate: int, context: dict):
         self.root = Path(job_dir) / '.speech-checkpoints'
@@ -86,10 +94,7 @@ class SpeechCheckpoints:
             if total <= max_bytes:
                 break
             for stale in (path.with_suffix('.sha256'), path):
-                try:
-                    stale.unlink()
-                except OSError:
-                    pass
+                _discard(stale)
             total -= size
             removed += 1
         return removed
@@ -152,8 +157,6 @@ class SpeechCheckpoints:
             logger.warning("speech checkpoint unavailable, keeping rendered audio: %s", type(error).__name__)
         finally:
             if temporary:
-                try:
-                    os.unlink(temporary)
-                except OSError:
-                    pass
+                # Already gone once it replaced the checksum file.
+                _discard(Path(temporary))
         return audio
