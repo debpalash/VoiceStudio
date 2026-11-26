@@ -47,6 +47,24 @@ def _ts_to_seconds(h: str, m: str, s: str, ms: str) -> float:
     return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
 
 
+def parse_webvtt_timing_line(line: str) -> tuple[float, float] | None:
+    """Read a complete subtitle timing line, ignoring trailing cue settings."""
+    match = _TIMING_RE.fullmatch(line)
+    if match is None:
+        return None
+    suffix = line[match.end(8):]
+    if suffix and not suffix[0].isspace():
+        return None
+    h1, m1, s1, frac1, h2, m2, s2, frac2 = match.groups()
+    try:
+        # Downloaded WebVTT uses decimal seconds, even for short fractions.
+        start = _ts_to_seconds(h1, m1, s1, frac1.ljust(3, "0"))
+        end = _ts_to_seconds(h2, m2, s2, frac2.ljust(3, "0"))
+    except (ValueError, OverflowError):
+        return None
+    return (start, end) if end > start else None
+
+
 def _is_valid_timing_line(line: str) -> bool:
     """A timing line whose millisecond fields fit the three-digit format."""
     match = _TIMING_RE.match(line)
@@ -99,6 +117,31 @@ def webvtt_content_blocks(text: str, *, strict_blank: bool = False) -> list[str]
     return blocks
 
 
+def _webvtt_cues(text: str) -> list[tuple[re.Match[str], str]]:
+    # As in the WebVTT parser, any timing line starts a new cue, even without a
+    # blank line before it; lines before a block's first timing line (a cue
+    # identifier) are not dialogue.
+    cues = []
+    for index, block in enumerate(webvtt_content_blocks(text.lstrip())):
+        lines = block.lstrip().split("\n")
+        if index == 0:
+            # Some exports omit the blank line between WEBVTT and the first cue.
+            lines = lines[1:]
+        match, body = None, []
+        for line in lines:
+            timing = _TIMING_RE.match(line)
+            if timing is None:
+                if match is not None:
+                    body.append(line)
+                continue
+            if match is not None:
+                cues.append((match, "\n".join(body)))
+            match, body = timing, []
+        if match is not None:
+            cues.append((match, "\n".join(body)))
+    return cues
+
+
 def parse_srt(content: str) -> SrtParseResult:
     """Parse SRT text and return cleaned, non-overlapping segments.
 
@@ -117,10 +160,6 @@ def parse_srt(content: str) -> SrtParseResult:
     text = content.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
 
     is_webvtt = bool(re.match(r"WEBVTT(?:[ \t]|\n|$)", text.lstrip()))
-    if is_webvtt:
-        # Metadata is block-scoped. Filter it BEFORE scanning timings so an
-        # example timestamp inside a NOTE/STYLE/REGION cannot become speech.
-        text = "\n\n".join(webvtt_content_blocks(text))
     raw: list[dict] = []
     skipped = 0
     # Each cue source gets an id unique to this import. A later generate keeps
@@ -129,21 +168,22 @@ def parse_srt(content: str) -> SrtParseResult:
     # Find every timing line, slice the cue text from there to the next
     # timing line (or end of file). This is robust to missing index
     # numbers and to spec deviations in the blank-line separator.
-    matches = list(_TIMING_RE.finditer(text))
+    matches = [] if is_webvtt else list(_TIMING_RE.finditer(text))
+    if is_webvtt:
+        cues = _webvtt_cues(text)
+    else:
+        cues = (
+            (m, text[m.end():matches[i + 1].start() if i + 1 < len(matches) else len(text)])
+            for i, m in enumerate(matches)
+        )
     # Running cue number, when the file numbers its cues: seeded from the line
     # right before the first timing line.
     head = text[:matches[0].start()].strip() if matches else ""
     first_marker = head.split("\n")[-1].strip() if head else ""
     cue_index = int(first_marker) if _is_index_line(first_marker) and len(first_marker) <= 12 else None
-    for i, m in enumerate(matches):
-        has_next = i + 1 < len(matches)
-        body = text[m.end():matches[i + 1].start() if has_next else len(text)]
+    for i, (m, body) in enumerate(cues):
         next_index = None
-        if is_webvtt:
-            # Whatever follows the first blank separator (identifiers, NOTE and
-            # STYLE blocks) is not dialogue, numeric or not.
-            body = re.split(r"\n[^\S\n]*\n", body, maxsplit=1)[0]
-        elif has_next:
+        if not is_webvtt and i + 1 < len(matches):
             # The last line of this body is the NEXT cue's number when the file
             # numbers its cues. Plain line inspection (no backtracking regex)
             # because the text is user-uploaded.

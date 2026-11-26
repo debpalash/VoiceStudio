@@ -14,3 +14,43 @@ for (const separator of [',', '.']) {
     assert.equal(plan.matchedCount, 1);
   });
 }
+
+
+test('plain translations that begin with years keep those years', () => {
+  const text = '2024 was a good year\n2025 was better';
+  const segments = [
+    { id: 'a', start: 0, end: 1, text: 'Original A' },
+    { id: 'b', start: 1, end: 2, text: 'Original B' },
+  ];
+  const plan = buildPastePlan(text, segments);
+  assert.equal(plan.mode, 'plain');
+  assert.deepEqual(plan.rows.map(({ after }) => after), ['2024 was a good year', '2025 was better']);
+  for (const numbered of ['1 First\n2 Second', 'Here are the translations:\n1 First\n2 Second', '1. First\n2. Second', '[1] - First\n[2] - Second']) {
+    const plan = buildPastePlan(numbered, segments);
+    assert.equal(plan.mode, 'numbered');
+    assert.deepEqual(plan.rows.map(({ after }) => after), ['First', 'Second']);
+  }
+  const mixedNumbered = buildPastePlan('1. First\n2 Second\n3. Third', [
+    ...segments, { id: 'c', start: 2, end: 3, text: 'Original C' },
+  ]);
+  assert.deepEqual(mixedNumbered.rows.map(({ after }) => after), ['First', 'Second', 'Third']);
+  const mixed = buildPastePlan('1. First\n2024 was a good year\n2. Second', segments);
+  assert.deepEqual(mixed.rows.map(({ after }) => after), ['First 2024 was a good year', 'Second']);
+});
+
+test('bare-numbered translations keep wrapped continuation lines', () => {
+  const segments = [
+    { id: 'a', start: 0, end: 1, text: 'Original A' },
+    { id: 'b', start: 1, end: 2, text: 'Original B' },
+  ];
+  for (const text of [
+    '1 First\ncontinued\n2 Second',
+    'Here are the translations:\n1 First\ncontinued\n2 Second',
+    '1 First\n2024 was a good year\n2 Second',
+  ]) {
+    const plan = buildPastePlan(text, segments);
+    assert.equal(detectPasteMode(text), 'numbered', text);
+    assert.equal(plan.rows[1].after, 'Second', text);
+    assert.match(plan.rows[0].after, /^First /, text);
+  }
+});
