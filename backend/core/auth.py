@@ -294,6 +294,18 @@ def _credential_candidate(connection) -> _CredentialCandidate | None:
             transport=CredentialTransport.HEADER,
         )
 
+    xi_key = elevenlabs_key_header(connection)
+    if xi_key:
+        # ElevenLabs SDKs send the key as ``xi-api-key``. An explicit header
+        # like Bearer (no cookie, so no CSRF exposure), honoured only on the
+        # ElevenLabs-compatible routes.
+        return _CredentialCandidate(
+            value=xi_key,
+            transport=CredentialTransport.HEADER,
+            allow_master=True,
+            allow_session=True,
+        )
+
     if _scope_type(connection) == "websocket":
         ticket = _mapping_get(query, "ws_ticket").strip()
         if ticket:
@@ -335,6 +347,18 @@ def presented_api_key(connection) -> str:
     if candidate is None or not candidate.allow_master:
         return ""
     return candidate.value
+
+
+#: Routes where ``xi-api-key`` counts as a credential (api.routers.elevenlabs_compat).
+ELEVENLABS_PATH_PREFIX = "/elevenlabs/"
+
+
+def elevenlabs_key_header(connection) -> str:
+    """The ``xi-api-key`` value on an ElevenLabs-compatible route, else ``""``."""
+    if not _path(connection).startswith(ELEVENLABS_PATH_PREFIX):
+        return ""
+    headers = getattr(connection, "headers", None) or {}
+    return _mapping_get(headers, "xi-api-key").strip()
 
 
 def authorization_header(connection) -> str:

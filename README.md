@@ -6,6 +6,7 @@
   <h2>AI voice studio. On your device.</h2>
   <h3>Clone, design, dub, dictate, transcribe and narrate in 646 languages.</h3>
   <p>Runs on your laptop, desktop, servers, phone, tablets and more</p>
+  <p>🎉 <strong>Black Friday:</strong> 50% off VoiceStudio Pro (1 year) and Lifetime with code <code>BLACKFRIDAY50</code>, until 1 Dec, 23:59 UTC. <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=black-friday-2026">See Pro →</a></p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Website</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Download</a> ·

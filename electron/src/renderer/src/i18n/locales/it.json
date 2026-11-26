@@ -319,14 +319,17 @@
     "test_global_hint": "Anteprima solo con le voci globali — scegli una lingua per includere le voci specifiche per lingua.",
     "test_error": "Anteprima non disponibile — impossibile raggiungere il backend.",
     "backup_title": "Backup e ripristino",
-    "backup_hint": "Scarica il dizionario come file JSON oppure importa voci da un'esportazione precedente.",
+    "backup_hint": "Scarica il dizionario come JSON o come lessico PLS, oppure importa uno dei due. Funzionano anche i lessici PLS di altri servizi vocali.",
     "export": "Esporta JSON",
+    "export_pls": "Esporta PLS",
     "import": "Importa JSON",
-    "import_error": "Impossibile importare il file — è atteso il JSON di un'esportazione della pronuncia.",
+    "import_error": "Impossibile importare il file — è attesa un'esportazione della pronuncia (JSON) o un lessico PLS.",
     "import_replace_prompt_one": "Sostituire {{count}} voce esistente con il file importato? Scegli No per aggiungere le voci importate accanto.",
     "import_replace_prompt_other": "Sostituire le {{count}} voci esistenti con il file importato? Scegli No per aggiungere le voci importate accanto.",
     "import_done_one": "{{count}} voce importata.",
     "import_done_other": "{{count}} voci importate.",
+    "import_skipped_one": "{{count}} voce esclusa: la sua trascrizione fonetica non è supportata.",
+    "import_skipped_other": "{{count}} voci escluse: la loro trascrizione fonetica non è supportata.",
     "entries_count_one": "{{count}} voce",
     "entries_count_other": "{{count}} voci",
     "scope_language": "Lingua",
@@ -2487,7 +2490,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Visualizza i dettagli dell'incidente",
-    "field_exit": "Uscita",
+    "field_exit": "Stato di uscita",
     "field_when": "Quando",
     "field_uptime": "Tempo di attività prima dell'arresto anomalo",
     "field_version": "Versione back-end",
@@ -3011,6 +3014,7 @@
       "speechCurl": "Sintesi vocale (curl)",
       "transcriptionCurl": "Trascrizione (curl)",
       "openaiPython": "Python (SDK OpenAI)",
+      "elevenlabsPython": "Python (SDK ElevenLabs)",
       "dockerRun": "Avvia il container",
       "dockerCompose": "Docker Compose",
       "workflow": "Workflow n8n",
@@ -4351,5 +4355,12 @@
     "unavailable": "Le segnalazioni automatiche non sono disponibili o sono disattivate per questa app.",
     "managed": "Gestisci questa scelta nell’app desktop collegata a questo browser.",
     "save_failed": "Impossibile salvare questa scelta. Riprova."
+  },
+  "tray": {
+    "open": "Apri {{app}}",
+    "start_dictation": "Avvia dettatura",
+    "stop_dictation": "Interrompi dettatura",
+    "settings": "Impostazioni",
+    "quit": "Esci"
   }
 }

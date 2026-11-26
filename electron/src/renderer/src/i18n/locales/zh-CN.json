@@ -312,14 +312,17 @@
     "test_language": "预览语言",
     "test_error": "预览不可用 — 无法连接后端。",
     "backup_title": "备份与恢复",
-    "backup_hint": "将词典下载为 JSON 文件，或从之前的导出中导入条目。",
+    "backup_hint": "将词典下载为 JSON 或 PLS 词典，或导入其中任意一种。其他语音服务的 PLS 词典同样可用。",
     "export": "导出 JSON",
+    "export_pls": "导出 PLS",
     "import": "导入 JSON",
-    "import_error": "无法导入该文件 — 需要发音导出的 JSON。",
+    "import_error": "无法导入该文件 — 需要发音导出（JSON）或 PLS 词典。",
     "import_replace_prompt_one": "要用导入的文件替换现有的 {{count}} 个条目吗？选择“否”可将导入的条目一并添加。",
     "import_replace_prompt_other": "要用导入的文件替换现有的 {{count}} 个条目吗？选择“否”可将导入的条目一并添加。",
     "import_done_one": "已导入 {{count}} 个条目。",
     "import_done_other": "已导入 {{count}} 个条目。",
+    "import_skipped_one": "已跳过 {{count}} 个条目：不支持其音标。",
+    "import_skipped_other": "已跳过 {{count}} 个条目：不支持其音标。",
     "entries_count_one": "{{count}} 个条目",
     "entries_count_other": "{{count}} 个条目",
     "help": "教引擎读准难词。每个条目会在合成前用注音拼写替换词语，因此适用于所有引擎。可将条目限定为一种语言，或保留为全局。内联写法 [[word|respelling]] 可单次覆盖词典。",
@@ -2480,7 +2483,7 @@
   },
   "crash": {
     "view": "查看崩溃详情",
-    "field_exit": "退出码",
+    "field_exit": "退出状态",
     "field_when": "发生时间",
     "field_uptime": "崩溃前运行时长",
     "field_version": "后端版本",
@@ -3005,6 +3008,7 @@
       "speechCurl": "文本转语音（curl）",
       "transcriptionCurl": "转写（curl）",
       "openaiPython": "Python（OpenAI SDK）",
+      "elevenlabsPython": "Python（ElevenLabs SDK）",
       "dockerRun": "运行容器",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n 工作流",
@@ -4349,5 +4353,12 @@
     "unavailable": "此应用的自动报告不可用或已被禁用。",
     "managed": "请在与此浏览器连接的桌面应用中管理此选项。",
     "save_failed": "无法保存此选择，请重试。"
+  },
+  "tray": {
+    "open": "打开 {{app}}",
+    "start_dictation": "开始听写",
+    "stop_dictation": "停止听写",
+    "settings": "设置",
+    "quit": "退出"
   }
 }

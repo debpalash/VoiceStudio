@@ -5,6 +5,8 @@ shared libraries. These tests force that failure and check that the pydub
 fallback returns the same kind of tensor: mono, (1, T), float, correctly scaled
 for every WAV sample width.
 """
+import shutil
+
 import numpy as np
 import pytest
 import soundfile as sf
@@ -61,7 +63,12 @@ def test_fallback_scale_follows_sample_width(tmp_path, no_torchcodec, subtype):
     assert float(wave.abs().max()) == pytest.approx(PEAK, abs=0.02)
 
 
-@pytest.mark.parametrize("subtype", ["PCM_U8", "PCM_16", "PCM_24", "PCM_32", "FLOAT"])
+# pydub reads integer PCM WAV itself but hands float WAV to ffprobe/ffmpeg.
+_FLOAT_VIA_FFMPEG = pytest.param(
+    "FLOAT", marks=pytest.mark.skipif(shutil.which("ffprobe") is None, reason="pydub needs ffprobe for float WAV"))
+
+
+@pytest.mark.parametrize("subtype", ["PCM_U8", "PCM_16", "PCM_24", "PCM_32", _FLOAT_VIA_FFMPEG])
 def test_audiosegment_to_tensor_keeps_amplitude_for_stereo(tmp_path, subtype):
     from pydub import AudioSegment
 

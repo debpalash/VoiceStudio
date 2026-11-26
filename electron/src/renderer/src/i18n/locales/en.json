@@ -308,14 +308,17 @@
     "test_global_hint": "Previewing Global entries only — pick a language to include language-scoped entries.",
     "test_error": "Preview unavailable — couldn't reach the backend.",
     "backup_title": "Backup & restore",
-    "backup_hint": "Download the dictionary as a JSON file, or import entries from a previous export.",
+    "backup_hint": "Download the dictionary as JSON or as a PLS lexicon, or import either. PLS lexicons from other speech services work too.",
     "export": "Export JSON",
+    "export_pls": "Export PLS",
     "import": "Import JSON",
-    "import_error": "Couldn't import that file — expected JSON from a pronunciation export.",
+    "import_error": "Couldn't import that file — expected a pronunciation export (JSON) or a PLS lexicon.",
     "import_replace_prompt_one": "Replace the {{count}} existing entry with the imported file? Choose No to add the imported entries alongside it.",
     "import_replace_prompt_other": "Replace the {{count}} existing entries with the imported file? Choose No to add the imported entries alongside them.",
     "import_done_one": "Imported {{count}} entry.",
     "import_done_other": "Imported {{count}} entries.",
+    "import_skipped_one": "{{count}} entry was left out: its phonemes aren't supported.",
+    "import_skipped_other": "{{count}} entries were left out: their phonemes aren't supported.",
     "entries_count_one": "{{count}} entry",
     "entries_count_other": "{{count}} entries",
     "scope_language": "Language",
@@ -2571,7 +2574,7 @@
   },
   "crash": {
     "view": "View crash details",
-    "field_exit": "Exit",
+    "field_exit": "Exit status",
     "field_when": "When",
     "field_uptime": "Uptime before crash",
     "field_version": "Backend version",
@@ -3009,6 +3012,7 @@
       "speechCurl": "Text to speech (curl)",
       "transcriptionCurl": "Transcription (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Run the container",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n workflow",
@@ -4349,5 +4353,12 @@
     "unavailable": "Automatic reports are unavailable or disabled for this app.",
     "managed": "Manage this choice in the desktop app connected to this browser.",
     "save_failed": "Could not save this choice. Please try again."
+  },
+  "tray": {
+    "open": "Open {{app}}",
+    "start_dictation": "Start dictation",
+    "stop_dictation": "Stop dictation",
+    "settings": "Settings",
+    "quit": "Quit"
   }
 }
