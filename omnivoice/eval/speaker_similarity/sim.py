@@ -131,7 +131,7 @@ def worker_init(
             ssl_model_path=ssl_model_path,
         )
         state_dict = torch.load(
-            sv_model_path, map_location=lambda storage, loc: storage
+            sv_model_path, map_location=lambda storage, loc: storage, weights_only=True
         )
         worker_model.load_state_dict(state_dict["model"], strict=False)
         worker_model.to(worker_device)
@@ -225,7 +225,9 @@ def main():
 
     fout = None
     if args.decode_path:
-        os.makedirs(os.path.dirname(args.decode_path), exist_ok=True)
+        parent = os.path.dirname(args.decode_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         fout = open(args.decode_path, "w", encoding="utf8")
         logging.info(f"Saving detailed SIM-o results to: {args.decode_path}")
         fout.write("Prompt-path\tEval-path\tSIM-o\n")

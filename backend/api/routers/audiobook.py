@@ -60,6 +60,7 @@ from services.longform_render import (
 from services import longform_resume  # pure (no torch) — durable resume manifest
 from services.expression import apply_span_emotion
 from services.longform_progress import RenderProgress, chapter_weight
+from core.scrub import scrub_text
 
 logger = logging.getLogger("omnivoice.audiobook")
 router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
@@ -204,12 +205,12 @@ async def audiobook_import(file: UploadFile = File(...)) -> dict:
         try:
             script = epub_to_chapter_script(data)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=f"couldn't parse EPUB: {e}")
+            raise HTTPException(status_code=400, detail=f"couldn't parse EPUB: {scrub_text(str(e))}")
     elif name.endswith(".pdf"):
         try:
             script = pdf_to_chapter_script(data)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=f"couldn't parse PDF: {e}")
+            raise HTTPException(status_code=400, detail=f"couldn't parse PDF: {scrub_text(str(e))}")
     else:
         from services.text_upload import decode_text_upload
         script = chapterize_plaintext(decode_text_upload(data))
@@ -1715,6 +1716,7 @@ def list_resumable_jobs() -> dict:
             "type": e["job_type"],
             "status": job.get("status", "interrupted"),
             "title": manifest.get("title", ""),
+            "plan_key": longform_resume.manifest_plan_key(manifest),
             "total_chapters": manifest.get("total_chapters", 0),
             "chapters_done": _chapters_done(jid),
             "created_at": job.get("created_at"),

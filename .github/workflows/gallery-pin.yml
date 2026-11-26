@@ -39,4 +39,13 @@ jobs:
           git clone -q --bare --filter=blob:none "$GALLERY" gallery.git
           git -C gallery.git fetch -q origin '+refs/heads/main:refs/remotes/origin/main' 2>/dev/null \
             || git -C gallery.git update-ref refs/remotes/origin/main refs/heads/main
-          python3 .github/scripts/gallery_pin.py "$old" "$new" gallery.git
+          # Run the checker from the pull request's base commit. This workflow
+          # triggers on the script itself, so running the worktree copy would let
+          # one commit move the pin and weaken check() together, and the weakened
+          # version would be what validates it. cla.yml keeps `.github/scripts`
+          # from the base tree for the same reason.
+          git show "$BASE:.github/scripts/gallery_pin.py" > "$RUNNER_TEMP/gallery_pin.py" || {
+            echo "::error::.github/scripts/gallery_pin.py is missing at the base commit; cannot validate the pin"
+            exit 1
+          }
+          python3 "$RUNNER_TEMP/gallery_pin.py" "$old" "$new" gallery.git

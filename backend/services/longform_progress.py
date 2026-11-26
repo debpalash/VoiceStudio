@@ -50,6 +50,7 @@ class RenderProgress:
         self._clock = clock
         self._started = clock()
         self._finished: set[int] = set()
+        self._finished_weight = 0
         self._partial: dict[int, float] = {}  # chapter -> fraction rendered
         self._samples: deque[tuple[float, float, float]] = deque(maxlen=max(1, window))
         self._mark: float | None = None  # when the last chunk finished
@@ -92,7 +93,9 @@ class RenderProgress:
 
     def finish_chapter(self, index: int, *, now: float | None = None) -> None:
         """Chapter ``index`` is over — rendered, served from cache, or failed."""
-        self._finished.add(index)
+        if index not in self._finished:
+            self._finished.add(index)
+            self._finished_weight += self._weights_at(index)
         self._partial.pop(index, None)
         self._mark = self._clock() if now is None else now
 
@@ -106,9 +109,10 @@ class RenderProgress:
         n = len(self._weights)
         if self._total <= 0:
             return (len(self._finished) / n) if n else 1.0
-        done = sum(self._weights_at(i) for i in self._finished)
-        done += sum(f * self._weights_at(i) for i, f in self._partial.items()
-                    if i not in self._finished)
+        done = self._finished_weight + sum(
+            fraction * self._weights_at(index)
+            for index, fraction in self._partial.items()
+        )
         return min(1.0, done / self._total)
 
     def remaining_units(self) -> float:

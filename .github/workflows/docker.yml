@@ -102,9 +102,13 @@ on:
         type: boolean
         default: false
 
+# Least privilege: the registry-write token is granted on the three publishing
+# jobs below instead of workflow-wide, so a job that never pushes does not hold it.
+# Steps inside those jobs, such as release-ref validation and source-commit
+# resolution, still run with the job's token; a new job that only reads belongs at
+# the workflow default.
 permissions:
   contents: read
-  packages: write
 
 # Only the newest main push needs to build the rolling :latest/:main images, so a
 # newer push cancels an older one. Releases and manual backfills never cancel
@@ -128,6 +132,9 @@ jobs:
     # Only version releases publish images; other release tags are ignored.
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -234,7 +241,7 @@ jobs:
             type=raw,value=sha-${{ steps.source.outputs.short_sha }}
 
       - name: Build and push
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: deploy/Dockerfile
@@ -294,6 +301,9 @@ jobs:
     # Only version releases publish images; other release tags are ignored.
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -375,9 +385,9 @@ jobs:
             type=raw,value=rocm,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=sha-${{ steps.source.outputs.short_sha }}-rocm
 
-      # cache-from only: reading the CUDA job's exported cache reuses the
-      # identical frontend-builder stage. Deliberately NO cache-to — the ROCm
-      # runtime layers would overwrite the CUDA job's cache image.
+      # Reads the ROCm cache first, then the CUDA job's cache (identical
+      # frontend-builder stage). cache-to writes a SEPARATE ref so the ROCm
+      # runtime layers never overwrite the CUDA job's cache image.
       # The ROCm base ships its own HIP torch, which must equal the checked-out
       # pin: a backfill of an older release builds that release's constraints,
       # so the base follows deploy/torch-constraints.txt, not this workflow.
@@ -400,7 +410,7 @@ jobs:
           echo "image=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_${torch}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push (ROCm)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: deploy/Dockerfile
@@ -411,7 +421,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit
+          cache-from: |
+            type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit-rocm
+            type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit
+          # A failed cache export must never fail (or skip) the image publish.
+          cache-to: type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit-rocm,mode=max,ignore-error=true
 
       - name: Backfill canonical GHCR release tags (ROCm)
         if: inputs.backfill_release
@@ -458,6 +472,9 @@ jobs:
     # Only version releases publish images; other release tags are ignored.
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -539,7 +556,7 @@ jobs:
       # Its own cache tag: amd64 layers are useless on arm64, and sharing the
       # CUDA job's tag would overwrite it.
       - name: Build and push (CUDA arm64)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: deploy/Dockerfile

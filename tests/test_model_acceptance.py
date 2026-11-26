@@ -80,7 +80,8 @@ def test_revoke_blocks_again(store):
         ma.ensure_accepted(["k2-fsa/OmniVoice"])
 
 
-def test_error_lists_every_unaccepted_model_with_structured_detail(store):
+def test_error_lists_every_unaccepted_model_with_structured_detail(store, monkeypatch):
+    monkeypatch.setattr(ma, "omnivoice_tokenizer_fallback_needed", lambda: True)
     with pytest.raises(ma.ModelLicenceNotAccepted) as err:
         ma.ensure_engine_accepted("omnivoice")
     detail = err.value.detail()
@@ -176,7 +177,7 @@ def test_withdrawn_is_reported_as_withdrawn(store):
     assert ma.revoke("k2-fsa/OmniVoice")["state"] == "withdrawn"
 
 
-@pytest.mark.parametrize("field", ["notes", "credit", "evidence_url", "runtime_revision"])
+@pytest.mark.parametrize("field", ["credit", "evidence_url", "runtime_revision"])
 def test_any_visible_terms_change_asks_again_and_names_it(store, monkeypatch, field):
     ma.accept("k2-fsa/OmniVoice", ma.status("k2-fsa/OmniVoice")["fingerprint"])
     _info_with(monkeypatch, **{field: "updated by a later registry"})
@@ -184,6 +185,29 @@ def test_any_visible_terms_change_asks_again_and_names_it(store, monkeypatch, fi
     assert state["state"] == "terms_updated" and state["accepted"] is False
     assert state["changed_fields"] == [field]
     assert state["accepted_at"]
+
+
+def test_a_notes_only_edit_keeps_the_acceptance(store, monkeypatch):
+    # #4334: rewording the description re-asked every user and skipped preload.
+    fp = ma.status("k2-fsa/OmniVoice")["fingerprint"]
+    ma.accept("k2-fsa/OmniVoice", fp)
+    _info_with(monkeypatch, notes="reworded by a later registry")
+    state = ma.status("k2-fsa/OmniVoice")
+    assert state["state"] == "accepted" and state["accepted"] is True
+    assert state["changed_fields"] == []
+    ma.ensure_accepted(["k2-fsa/OmniVoice"])
+    # A binding change alongside it still asks, and names both fields.
+    _info_with(monkeypatch, notes="reworded again", credit="new credit")
+    state = ma.status("k2-fsa/OmniVoice")
+    assert state["state"] == "terms_updated"
+    assert state["changed_fields"] == ["credit", "notes"]
+
+
+def test_a_notes_edit_does_not_revive_a_withdrawal(store, monkeypatch):
+    ma.accept("k2-fsa/OmniVoice", ma.status("k2-fsa/OmniVoice")["fingerprint"])
+    ma.revoke("k2-fsa/OmniVoice")
+    _info_with(monkeypatch, notes="reworded")
+    assert ma.status("k2-fsa/OmniVoice")["state"] == "withdrawn"
 
 
 def test_licence_document_change_asks_again(store, monkeypatch):

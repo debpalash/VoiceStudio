@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Optional
 
+from core.failure import strip_ansi
 from services.ffmpeg_utils import local_inputs_only
 
 _BITRATE_RE = re.compile(r"^\d{2,3}k$")
@@ -385,21 +386,31 @@ def wav_is_complete(path: str) -> bool:
     no sample decode — so it is cheap on hour-long chapters.
     """
     try:
-        size = os.path.getsize(path)
         with open(path, "rb") as f:
+            size = os.fstat(f.fileno()).st_size
             head = f.read(12)
             if len(head) < 12 or head[:4] != b"RIFF" or head[8:12] != b"WAVE":
                 return False
+            riff_end = 8 + int.from_bytes(head[4:8], "little")
+            if riff_end > size:
+                return False
+            block_align = 0
             pos = 12
-            while pos + 8 <= size:
+            while pos + 8 <= riff_end:
                 f.seek(pos)
                 hdr = f.read(8)
                 if len(hdr) < 8:
                     return False
                 chunk_len = int.from_bytes(hdr[4:8], "little")
+                chunk_end = pos + 8 + chunk_len + (chunk_len & 1)
+                if chunk_end > riff_end:
+                    return False
+                if hdr[:4] == b"fmt " and chunk_len >= 16:
+                    fmt = f.read(16)
+                    block_align = int.from_bytes(fmt[12:14], "little")
                 if hdr[:4] == b"data":
-                    return chunk_len > 0 and pos + 8 + chunk_len <= size
-                pos += 8 + chunk_len + (chunk_len & 1)
+                    return block_align > 0 and chunk_len > 0 and chunk_len % block_align == 0
+                pos = chunk_end
     except OSError:
         return False
     return False
@@ -605,6 +616,9 @@ class SegmentCache:
         try:
             from services.audio_io import atomic_save_wav
             os.makedirs(self.dir, exist_ok=True)
+            # Durable: a power-off can leave a full-length file whose sample
+            # blocks were never written, which ``wav_is_complete`` (header and
+            # length only) cannot detect, and the span would then be reused.
             atomic_save_wav(self._path(span, nonce), audio, self.sample_rate, durable=True)
         except Exception:
             pass
@@ -675,6 +689,13 @@ def parse_loudnorm_measure(stderr_text: Optional[str]) -> Optional[MeasuredLoudn
     the five required keys to finite floats."""
     if not stderr_text:
         return None
+    stderr_text = strip_ansi(stderr_text)
+    # FFmpeg can mention arbitrary filenames before the measurement. A brace
+    # in a path is not the opening of the JSON report.
+    report_start = 0
+    for report in re.finditer(r"(?m)^\[Parsed_loudnorm_\d+ @ [^\r\n]*\][ \t]*\r?\n[ \t]*(?=\{)", stderr_text):
+        report_start = report.end()
+    stderr_text = stderr_text[report_start:]
     # Find the last balanced top-level {...} block via a single linear scan.
     start = -1
     depth = 0

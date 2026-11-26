@@ -39,6 +39,8 @@ _CONTROL_TAG_RE = re.compile(
     r")\s*\]",
     re.IGNORECASE,
 )
+# Match the long-form emotion grammar, including directions split across lines.
+_EMOTION_TAG_RE = re.compile(r"\[emotion:[^\[\]]*\]", re.IGNORECASE)
 _INLINE_OVERRIDE_RE = re.compile(r"\[\[([^\]]{0,256})\]\]")
 _HSPACE_RE = re.compile(r"[^\S\n]+")
 
@@ -55,6 +57,7 @@ def strip_script_markup(text: Optional[str]) -> str:
     if "[" in text:
         text = _INLINE_OVERRIDE_RE.sub(_spoken_override, text)
         text = _CONTROL_TAG_RE.sub(" ", text)
+        text = _EMOTION_TAG_RE.sub(" ", text)
     text = _HSPACE_RE.sub(" ", text)
     return "\n".join(line.strip() for line in text.split("\n")).strip()
 

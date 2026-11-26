@@ -4,6 +4,19 @@
 mobile/ios/VoiceStudio/Resources/NativeLicences/*.txt text eol=lf
 mobile/android/app/src/main/assets/licenses/*.txt text eol=lf
 
+# Hash- and byte-compared mobile contracts (tests/test_mobile_contract.py): the
+# bundled model asset is verified by SHA-256 over its raw bytes, and the generated
+# catalogue, token and design artifacts are compared byte-for-byte. Git's Windows
+# default (core.autocrlf=true) rewrites an unpinned text file to CRLF on checkout,
+# so identical content looks stale and the bundled asset fails its pin there only.
+mobile/contract/tts/* text eol=lf
+mobile/contract/openapi.json text eol=lf
+mobile/contract/models.json text eol=lf
+mobile/contract/design.json text eol=lf
+mobile/contract/tokens.json text eol=lf
+mobile/ios/VoiceStudioKit/Sources/VoiceStudioKit/Theme/Tokens.generated.swift text eol=lf
+mobile/android/core/designsystem/src/main/kotlin/com/voicestudio/mobile/designsystem/Tokens.generated.kt text eol=lf
+
 # Windows batch files break goto/labels with LF endings.
 *.bat text eol=crlf
 
@@ -14,3 +27,6 @@ mobile/android/app/src/main/assets/licenses/*.txt text eol=lf
 # Pinned upstream MP3 encoder; provenance and checksums are reviewed separately.
 mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/** text eol=lf linguist-vendored
 mobile/native/ios/patches/*.patch text eol=lf
+
+# Vendored wheels are hash-pinned in uv.lock: never rewrite line endings.
+*.whl binary

@@ -67,7 +67,7 @@ jobs:
         with:
           workspaces: native/desktop-bridge -> target
           key: electron-snap-x86_64-unknown-linux-gnu
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: '0.12.13'
           enable-cache: false
@@ -109,8 +109,8 @@ jobs:
       - name: Package without publishing
         working-directory: electron
         env:
-          SUPERMETRY_APP_ID: ${{ vars.SUPERMETRY_APP_ID || secrets.SUPERMETRY_APP_ID }}
-          SUPERMETRY_INGEST_KEY: ${{ vars.SUPERMETRY_INGEST_KEY || secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
           SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
         run: |
           bun x electron-builder --config electron-builder.config.mjs --linux snap --x64 --publish never
@@ -137,7 +137,7 @@ jobs:
           }
           NODE
       - name: Save Snap and provenance for review
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: snap-store-rehearsal-linux-x64
           retention-days: 14

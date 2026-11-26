@@ -77,6 +77,28 @@ def run(gh: GitHub, event: dict, root: Path = ROOT) -> bool:
     return passed
 
 
+def resolve_failed_evaluation(gh: GitHub, event: dict) -> None:
+    """Give a failed evaluation a terminal status instead of leaving `pending`.
+
+    ``run`` writes ``pending`` before it evaluates. GitHub does not retry a
+    failed job, so an exception on a recoverable race (the pull request's base or
+    head moved while the checkout was taken) would leave the required
+    ``Commit identity policy`` status pending forever: the merge stays blocked
+    and the only clue is a log nobody is pointed at.
+
+    The status asks for a new commit rather than a re-run. A re-run replays the
+    same event payload, including the base commit the race already invalidated,
+    so it fails the same way; a new commit, or merging ``main``, produces a fresh
+    event with the current base.
+    """
+    sha = str(((event.get("pull_request") or {}).get("head") or {}).get("sha") or "")
+    try:
+        set_status(gh, sha, "error", "Push a new commit or merge main to re-check the identities",
+                   context=STATUS_CONTEXT)
+    except Exception as status_error:  # noqa: BLE001 - the job is already failing
+        print(f"identity check: could not resolve the pending status: {status_error}", file=sys.stderr)
+
+
 def main() -> int:
     if os.environ.get("GITHUB_EVENT_NAME") != "pull_request_target":
         raise RuntimeError("Identity enforcement requires trusted pull_request_target orchestration")
@@ -84,7 +106,12 @@ def main() -> int:
         event = json.load(handle)
     gh = GitHub(os.environ["GITHUB_TOKEN"], os.environ["GITHUB_REPOSITORY"],
                 os.environ.get("GITHUB_API_URL", "https://api.github.com"))
-    print("Commit identity policy:", "passed" if run(gh, event) else "blocked")
+    try:
+        passed = run(gh, event)
+    except Exception:
+        resolve_failed_evaluation(gh, event)
+        raise
+    print("Commit identity policy:", "passed" if passed else "blocked")
     return 0  # eligibility is the status; API/execution failures raise
 
 

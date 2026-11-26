@@ -109,6 +109,15 @@ describe('parseSrt', () => {
       '00:00:01.000 --> 00:00:02.000\nSpoken text\n';
     expect(parseSrt(vtt)).toBe('Spoken text');
   });
+  it('imports only cue blocks with a timing line after an optional identifier', () => {
+    const vtt =
+      'WEBVTT\n\n00:01.000 --> 00:02.000\nFirst cue\n\n' +
+      'Orphaned text\n\n' +
+      'broken-id\n00:03.000 --> invalid\nMalformed cue text\n\n' +
+      'Unknown metadata\nExtra metadata\n00:04.000 --> 00:05.000\nNot a cue\n\n' +
+      'last-id\n00:06.000 --> 00:07.000\nLast cue\n';
+    expect(parseSrt(vtt)).toBe('First cue\nLast cue');
+  });
   it('lets a timing line in position two outrank a STYLE or REGION identifier', () => {
     for (const identifier of ['STYLE', 'REGION']) {
       expect(parseSrt(`WEBVTT\n\n${identifier}\n00:01.000 --> 00:02.000\nSpoken text\n`)).toBe(

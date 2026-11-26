@@ -129,12 +129,15 @@ const SETUP_ISSUE_CODES: Record<string, InstallFailureCode> = {
   files_locked: 'RUNTIME_FILES_LOCKED',
   missing_system_library: 'SYSTEM_LIBRARY_PROBLEM',
   outdated_system_library: 'SYSTEM_LIBRARY_PROBLEM',
+  torch_dll_init_failed: 'SYSTEM_LIBRARY_PROBLEM',
   unsupported_platform: 'UNSUPPORTED_PLATFORM',
   wrong_architecture: 'UNSUPPORTED_PLATFORM',
 };
 
 const DOWNLOAD_INTERRUPTED =
   /peer closed connection|close_notify|error decoding response body|error sending request|failed to download|failed to fetch|connection (?:reset|closed|refused|timed out)|operation timed out|network (?:is )?unreachable|dns error/i;
+
+const TORCH_DLL_INIT = /WinError 1114[^\r\n]*\btorch[\\/]+lib[\\/]+\w+\.dll/i;
 
 const ILLEGAL_INSTRUCTION = 0xc000001d;
 const ACCESS_VIOLATION = 0xc0000005;
@@ -173,7 +176,6 @@ export function classifyInstallFailure(evidence: FailureEvidence): InstallFailur
     if (
       /Smart App Control/.test(message) ||
       evidence.smartAppControl === 'on' ||
-      evidence.smartAppControl === 'evaluation' ||
       evidence.blockedFiles?.length
     )
       return 'WINDOWS_APP_CONTROL_BLOCKED';
@@ -185,6 +187,14 @@ export function classifyInstallFailure(evidence: FailureEvidence): InstallFailur
   if (inSyncedFolder(message)) return 'RUNTIME_IN_SYNCED_FOLDER';
   const native = nativeCode(evidence, message);
   if (native) return native;
+
+  // torch could not initialise c10.dll: the Visual C++ runtime, not the wheels (#4230).
+  if (
+    TORCH_DLL_INIT.test(message) ||
+    lines.some((line) => TORCH_DLL_INIT.test(line)) ||
+    /Windows could not initialise PyTorch's c10\.dll/.test(message)
+  )
+    return 'SYSTEM_LIBRARY_PROBLEM';
 
   if (/Python environment\b.*\b(is missing|is incomplete|missing or incomplete)\b/is.test(message))
     return /setup:api/.test(message) ? 'SOURCE_ENV_INCOMPLETE' : 'BROKEN_VENV';
@@ -386,9 +396,7 @@ export function failureGuidance(
   if (message) message = withoutBackendLogEvidence(message);
   if (
     code === 'WINDOWS_APP_CONTROL_BLOCKED' &&
-    (smartAppControl === 'on' ||
-      smartAppControl === 'evaluation' ||
-      /Smart App Control/.test(message ?? ''))
+    (smartAppControl === 'on' || /Smart App Control/.test(message ?? ''))
   ) {
     guidance = {
       cause: 'smart_app_control',

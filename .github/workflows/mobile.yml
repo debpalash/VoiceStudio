@@ -92,7 +92,7 @@ jobs:
             mobile package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
             config/analytics.json config/diagnostics.json tests/fixtures/diagnostic-app-events.json
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: steps.pass.outputs.hit != 'true'
         with:
           distribution: temurin
@@ -119,6 +119,44 @@ jobs:
           path: mobile/native/android/build
           key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
 
+      # Robolectric's android-all jars (~100 MB each) come from Maven Central, which
+      # rate-limits (HTTP 429) shared runner IPs. setup-gradle's cache is read-only
+      # off the default branch and only saved after a green job, so a 429 on main
+      # leaves nothing to restore. Cache the resolved jars on their own, keyed on
+      # the two catalog versions, save them as soon as they resolve, and retry the
+      # resolution with backoff.
+      - name: Robolectric SDK cache key
+        id: robolectric
+        if: steps.pass.outputs.hit != 'true'
+        run: echo "key=robolectric-sdk-$(grep 'android-all-instrumented' gradle/libs.versions.toml | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Robolectric SDK jars
+        id: robolectric-cache
+        if: steps.pass.outputs.hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/android/app/build/robolectric-sdk
+          key: ${{ steps.robolectric.outputs.key }}
+
+      - name: Resolve Robolectric SDK (retry on rate limits)
+        if: steps.pass.outputs.hit != 'true'
+        run: |
+          for delay in 0 30 90 180; do
+            sleep "$delay"
+            ./gradlew --no-daemon :app:prepareRobolectricSdk && exit 0
+            echo "::warning::Robolectric SDK download failed; retrying"
+          done
+          exit 1
+
+      # Saved as soon as the jars resolve, not after a green job: a later test
+      # failure must not throw away a download that succeeded.
+      - name: Save Robolectric SDK jars
+        if: steps.pass.outputs.hit != 'true' && steps.robolectric-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/android/app/build/robolectric-sdk
+          key: ${{ steps.robolectric.outputs.key }}
+
       - name: Build, unit tests, lint
         if: steps.pass.outputs.hit != 'true'
         run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest testDebugUnitTest lint
@@ -132,9 +170,23 @@ jobs:
           grep -qE '^versionName=[0-9]+\.[0-9]+\.[0-9]+-beta\.1 versionCode=[0-9]+$' "$RUNNER_TEMP/version.txt"
           git checkout -- ../../package.json
 
+      # The artifact SDK can fail immediately on transient DNS errors. Each
+      # upload gets one delayed retry; a failed retry keeps the job red.
       - name: Upload reports on failure
+        id: android_reports_upload
+        continue-on-error: true
         if: failure() && steps.pass.outputs.hit != 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-reports
+          path: mobile/android/**/build/reports/
+          retention-days: 7
+      - name: Wait before retrying android-reports upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.android_reports_upload.outcome == 'failure'
+        run: sleep 10
+      - name: Retry android-reports upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.android_reports_upload.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-reports
           path: mobile/android/**/build/reports/
@@ -245,12 +297,12 @@ jobs:
 
       - name: UI smoke test
         if: steps.pass.outputs.hit != 'true'
-        # The suite takes about 30 minutes. No retry flags: on this runner a retry
+        # The suite takes about 35 minutes (the 60 minute cap leaves headroom for runner variance). No retry flags: on this runner a retry
         # re-ran all 34 tests, so one failure doubled the step and pushed the job to
         # its job time limit. Each test gets a 10 minute allowance instead (the
         # slowest takes under 5), so a hang fails that test by name and the run
         # moves on; the step cap bounds anything the allowance cannot.
-        timeout-minutes: 50
+        timeout-minutes: 60
         run: |
           xcodebuild -project mobile/ios/VoiceStudio/VoiceStudio.xcodeproj \
             -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
@@ -275,8 +327,21 @@ jobs:
           mkdir -p "$RUNNER_TEMP/shots"
           xcrun xcresulttool export attachments --path "$RUNNER_TEMP/ui.xcresult" --output-path "$RUNNER_TEMP/shots"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - id: ios_screenshots_upload
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && steps.pass.outputs.hit != 'true'
+        with:
+          name: ios-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Wait before retrying ios-screenshots upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.ios_screenshots_upload.outcome == 'failure'
+        run: sleep 10
+      - name: Retry ios-screenshots upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.ios_screenshots_upload.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-screenshots
           path: ${{ runner.temp }}/shots
@@ -298,8 +363,20 @@ jobs:
           cp -R "$RUNNER_TEMP/device/Build/Products/Release-iphoneos/VoiceStudio.app" "$RUNNER_TEMP/ipa/Payload/"
           (cd "$RUNNER_TEMP/ipa" && zip -qry "$RUNNER_TEMP/VoiceStudio-unsigned.ipa" Payload)
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - id: ios_unsigned_upload
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.pass.outputs.hit != 'true'
+        with:
+          name: VoiceStudio-ios-unsigned
+          path: ${{ runner.temp }}/VoiceStudio-unsigned.ipa
+          retention-days: 7
+      - name: Wait before retrying VoiceStudio-ios-unsigned upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.ios_unsigned_upload.outcome == 'failure'
+        run: sleep 10
+      - name: Retry VoiceStudio-ios-unsigned upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.ios_unsigned_upload.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: VoiceStudio-ios-unsigned
           path: ${{ runner.temp }}/VoiceStudio-unsigned.ipa
@@ -425,7 +502,7 @@ jobs:
             mobile package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
             config/analytics.json config/diagnostics.json tests/fixtures/diagnostic-app-events.json
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: steps.pass.outputs.hit != 'true'
         with:
           distribution: temurin
@@ -489,7 +566,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: "21"
@@ -529,8 +606,21 @@ jobs:
           script: |
             ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true -Pandroid.testInstrumentationRunnerArguments.class=com.voicestudio.mobile.PlayScreenshotTour -Pandroid.testInstrumentationRunnerArguments.playScreenshots=true -Pandroid.testInstrumentationRunnerArguments.downloadSmokeModels=true -Pandroid.testInstrumentationRunnerArguments.acceptModelLicencesForSmoke=true; status=$?; adb pull /sdcard/Android/data/sh.voicestudio.mobile/files/play-screenshots "$RUNNER_TEMP"; exit $status
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - id: android_screenshots_upload
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
+        with:
+          name: android-play-screenshots
+          path: ${{ runner.temp }}/play-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
+      - name: Wait before retrying android-play-screenshots upload
+        if: ${{ !cancelled() && steps.android_screenshots_upload.outcome == 'failure' }}
+        run: sleep 10
+      - name: Retry android-play-screenshots upload
+        if: ${{ !cancelled() && steps.android_screenshots_upload.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-play-screenshots
           path: ${{ runner.temp }}/play-screenshots/*.png

@@ -1,3 +1,4 @@
+import { localDataIdentity } from './local-data-identity';
 import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-rocm';
 import { runtimeProjectReady } from './runtime-readiness';
@@ -17,12 +18,14 @@ import {
   installRuntime,
   MISSING_SYSTEM_LIBRARY_CODE,
   OUTDATED_SYSTEM_LIBRARY_CODE,
+  TORCH_DLL_INIT_FAILED_CODE,
   RUNTIME_FILES_LOCKED_CODE,
   promoteLegacyRuntimeCaches,
   runtimeDependenciesReady,
   runtimeDownloadHosts,
   cpuTorchApplies,
   resolveTorchVariant,
+  primeTorchVariantProbe,
   managedPythonRequest,
   runtimeInstallInterrupted,
   runtimePython,
@@ -81,8 +84,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { access, open, rm, stat } from 'node:fs/promises';
-import setupLock from '../../../uv.lock?raw';
+import { access, lstat, open, rm, stat } from 'node:fs/promises';
 import { cpus, homedir, release, totalmem } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { app } from 'electron';
@@ -114,7 +116,13 @@ import { SUPERVISE_ACTIVE_MS as SUPERVISE_POLL_MS, superviseDelayMs } from './su
 import { DEFAULT_BACKEND_PORT } from '../../../config/app-config.mjs';
 
 const DEFAULT_BUDGET_S = 300;
-const READY_POLL_MS = 500;
+const READY_POLL_SCHEDULE_MS = [40, 80, 120, 200, 300, 500] as const;
+
+/** Fast stepped backoff for startup/attach readiness probes so ready backends are detected within ~40-80ms. */
+export function readyPollDelayMs(attempt: number): number {
+  const index = Math.min(Math.max(0, attempt), READY_POLL_SCHEDULE_MS.length - 1);
+  return READY_POLL_SCHEDULE_MS[index];
+}
 /** Allow another VoiceStudio shell to take ownership without showing a false crash. */
 const REPLACEMENT_ATTACH_GRACE_MS = 10_000;
 const PROBE_TIMEOUT_MS = 1500;
@@ -876,7 +884,7 @@ export function spawnFailureMessage(
   if (!launchRejected) return `Could not start ${command}: ${detail}`;
   if (runtimeOwned && code === 'UNKNOWN') {
     const control = smartAppControl ?? readSmartAppControl();
-    if (control === 'on' || control === 'evaluation') {
+    if (control === 'on') {
       return `Could not start ${command}: ${detail}. Windows Smart App Control blocked it.`;
     }
   }
@@ -911,8 +919,7 @@ export function loadBlockMessage(
   const who =
     block === 'antivirus'
       ? 'Your antivirus blocked it.'
-      : block === 'application_control' &&
-          (smartAppControl === 'on' || smartAppControl === 'evaluation')
+      : block === 'application_control' && smartAppControl === 'on'
         ? 'Windows Smart App Control blocked it.'
         : 'A Windows application control policy blocked it.';
   return (
@@ -986,6 +993,121 @@ export function backendDataDir(
         ? join(env.APPDATA ?? '', 'OmniVoice')
         : join(homedir(), '.omnivoice');
   return resolve(launch.cwd || '.', dataDir);
+}
+
+/** Prove absence of root-changing keys without interpreting dotenv values.
+ * Python dotenv never interpolates key names. Scan the entire bounded UTF-8
+ * source, including comments/quoted text, so unsupported syntax stays unknown
+ * when it mentions either key (or platform selectors for a default root);
+ * unrelated settings cannot redirect this root.
+ */
+const DEFAULT_DATA_SELECTOR_KEY =
+  /(?:^|[\r\n])[^\S\r\n]*(?:export[^\S\r\n]+)?(?:'(?:HOME|APPDATA|USERPROFILE|HOMEDRIVE|HOMEPATH)'|(?:HOME|APPDATA|USERPROFILE|HOMEDRIVE|HOMEPATH))[^\S\r\n]*(?:=|[\r\n#]|$)/i;
+async function startupEnvPreservesDataRoot(
+  path: string,
+  derivesDefault: boolean,
+): Promise<boolean> {
+  const limit = 64 * 1024;
+  let file: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    file = await open(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+    );
+    const info = await file.stat();
+    const entry = await lstat(path);
+    if (
+      !info.isFile() ||
+      !entry.isFile() ||
+      info.dev !== entry.dev ||
+      info.ino !== entry.ino ||
+      info.size > limit
+    )
+      return false;
+    const buffer = Buffer.alloc(limit + 1);
+    let size = 0;
+    while (size < buffer.length) {
+      const { bytesRead } = await file.read(buffer, size, buffer.length - size, size);
+      if (!bytesRead) break;
+      size += bytesRead;
+    }
+    if (size > limit) return false;
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, size));
+    return (
+      !text.includes('\0') &&
+      !/OMNIVOICE_(?:DATA_DIR|ENV_FILE)/i.test(text) &&
+      (!derivesDefault || !DEFAULT_DATA_SELECTOR_KEY.test(text))
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      try {
+        await lstat(path);
+      } catch (missing) {
+        return (missing as NodeJS.ErrnoException).code === 'ENOENT';
+      }
+    }
+    return false;
+  } finally {
+    await file?.close();
+  }
+}
+
+/** Python loads saved settings after dotenv, overriding launcher data defaults. */
+async function launchDataRootEstablished(launch: BackendLaunchLog): Promise<string | undefined> {
+  // Windows environment names are case-insensitive, so Python honours
+  // `omnivoice_env_file` or `appdata` where the exact-case lookups below would
+  // miss them and prove the wrong root. Leave the identity unknown instead.
+  if (
+    process.platform === 'win32' &&
+    Object.keys(launch.env).some(
+      (key) =>
+        /^(?:OMNIVOICE_DATA_DIR|OMNIVOICE_ENV_FILE|USERPROFILE|HOMEDRIVE|HOMEPATH|APPDATA)$/i.test(
+          key,
+        ) && key !== key.toUpperCase(),
+    )
+  )
+    return;
+  const raw = launch.env.OMNIVOICE_DATA_DIR;
+  // Python uses this string verbatim; backendDataDir's log-only trim must not
+  // manufacture authority for a different directory.
+  if (raw && raw !== raw.trim()) return;
+  const home =
+    process.platform === 'win32'
+      ? launch.env.USERPROFILE ||
+        (launch.env.HOMEDRIVE && launch.env.HOMEPATH
+          ? launch.env.HOMEDRIVE + launch.env.HOMEPATH
+          : undefined)
+      : launch.env.HOME;
+  // A missing launch home may be filled by project dotenv before Python picks
+  // its default saved-env path; the parent's home is not authority for it.
+  if (!launch.env.OMNIVOICE_ENV_FILE && !home) return;
+  const derivesDefault = !raw;
+  const selector = process.platform === 'win32' ? launch.env.APPDATA : home;
+  // config.py's platform defaults use only these exact child values. Neither
+  // Node's parent home nor a relative/missing selector proves Python's root.
+  if (derivesDefault && (!selector || selector !== selector.trim() || !isAbsolute(selector)))
+    return;
+  const dataDirectory =
+    raw ||
+    (process.platform === 'darwin'
+      ? join(selector!, 'Library', 'Application Support', 'OmniVoice')
+      : process.platform === 'win32'
+        ? join(selector!, 'OmniVoice')
+        : join(selector!, '.omnivoice'));
+  const savedEnv = launch.env.OMNIVOICE_ENV_FILE || join(home!, '.config', 'omnivoice', 'env');
+  const paths = new Set([resolve(launch.cwd, savedEnv), join(launch.cwd, 'backend', '.env')]);
+  let directory = resolve(launch.cwd);
+  // find_dotenv walks from backend/main.py to the filesystem root. A present
+  // file can redirect the saved-env location; never expose its values.
+  for (let depth = 0; depth < 64; depth++) {
+    paths.add(join(directory, '.env'));
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    if (depth === 63) return;
+    directory = parent;
+  }
+  for (const path of paths) if (!(await startupEnvPreservesDataRoot(path, derivesDefault))) return;
+  return resolve(launch.cwd, dataDirectory);
 }
 
 /** Enough for LOG_TAIL_LINES lines without reading a whole rotated log. */
@@ -1187,6 +1309,16 @@ export class BackendSupervisor extends EventEmitter<{
   private launchLog: BackendLaunchLog | null = null;
   /** Bumped on every start/shutdown so stale poll loops and exit handlers no-op. */
   private generation = 0;
+  private dataIdentity: string | undefined;
+  private dataIdentityChild: ChildProcess | null = null;
+  private identityChecked = false;
+  private identityProof: {
+    generation: number;
+    launch: BackendLaunchLog;
+    settled: boolean;
+    frozen: boolean;
+    value?: string;
+  } | null = null;
   /** A generation owns at most one health loop, even if readiness is observed twice. */
   private supervisingGeneration: number | null = null;
   /**
@@ -1258,6 +1390,8 @@ export class BackendSupervisor extends EventEmitter<{
         return { status: 'unavailable', checkedAt: Date.now() };
       // Compile the approved artifact catalog into the app; mutable local files
       // must not supply destinations or data for this diagnostic request.
+      // Dynamic import keeps the ~1.7 MB lockfile out of the main startup bundle.
+      const { default: setupLock } = await import('../../../uv.lock?raw');
       const url = setupProbeUrl(setupLock, this.setupProgress.snapshot(), {
         platform: process.platform,
         arch: process.arch,
@@ -1351,6 +1485,13 @@ export class BackendSupervisor extends EventEmitter<{
       elapsedMs: Date.now() - this.startedAt,
       logTail: this.log.slice(-LOG_TAIL_LINES),
       lastCrash: this.crashes.latest(),
+      ...(this.managed &&
+      this.child &&
+      this.child === this.dataIdentityChild &&
+      !this.remoteUrl &&
+      this.dataIdentity
+        ? { dataIdentity: this.dataIdentity }
+        : {}),
       ...(app.isPackaged
         ? {
             runtimePath: dirname(this.runtimeProject ?? join(defaultRuntimeRoot(), 'project')),
@@ -1421,7 +1562,16 @@ export class BackendSupervisor extends EventEmitter<{
 
   /** Attach to a backend already answering on the port, else spawn one. */
   async start(): Promise<void> {
+    // Read the GPU once, off the main thread, before any torch-variant resolution.
+    // A shutdown (or another start) during the probe must not be undone below.
+    const requested = this.generation;
+    await primeTorchVariantProbe();
+    if (this.generation !== requested) return;
     const gen = ++this.generation;
+    this.dataIdentity = undefined;
+    this.dataIdentityChild = null;
+    this.identityChecked = false;
+    this.identityProof = null;
     this.shuttingDown = false;
     this.startedAt = Date.now();
     this.exitCode = undefined;
@@ -1825,7 +1975,9 @@ export class BackendSupervisor extends EventEmitter<{
                 ? 'missing_system_library'
                 : code === OUTDATED_SYSTEM_LIBRARY_CODE
                   ? 'outdated_system_library'
-                  : code === RUNTIME_FILES_LOCKED_CODE
+                  : code === TORCH_DLL_INIT_FAILED_CODE
+                    ? 'torch_dll_init_failed'
+                    : code === RUNTIME_FILES_LOCKED_CODE
                     ? 'files_locked'
                     : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
                       ? 'access'
@@ -2464,6 +2616,39 @@ export class BackendSupervisor extends EventEmitter<{
     return true;
   }
 
+  /** Optional proof starts before spawn and never delays readiness. */
+  private async prepareDataIdentity(launch: BackendLaunchLog, generation: number): Promise<void> {
+    const proof = {
+      generation,
+      launch,
+      settled: false,
+      frozen: false,
+      value: undefined as string | undefined,
+    };
+    this.identityProof = proof;
+    this.identityChecked = false;
+    this.dataIdentity = undefined;
+    this.dataIdentityChild = null;
+    try {
+      if (
+        !app.isPackaged ||
+        this.remoteUrl ||
+        parseBackendCmdOverride(launch.env.OMNIVOICE_BACKEND_CMD)
+      )
+        return;
+      const directory = await launchDataRootEstablished(launch);
+      if (!directory) return;
+      if (proof.frozen || this.identityProof !== proof || generation !== this.generation) return;
+      const value = await localDataIdentity(directory);
+      if (!proof.frozen && this.identityProof === proof && generation === this.generation)
+        proof.value = value;
+    } catch {
+      /* Unknown provenance must not affect backend startup. */
+    } finally {
+      proof.settled = true;
+    }
+  }
+
   private spawnChild(plan: SpawnPlan, gen: number, attempt = 0): void {
     this.crashes.startProcess();
     const [command, ...args] = plan.argv;
@@ -2484,6 +2669,12 @@ export class BackendSupervisor extends EventEmitter<{
     }
     // Per launch: a failed spawn must not leave an older launch's log in place.
     this.launchLog = null;
+    const launch: BackendLaunchLog = {
+      env: processOptions.env,
+      cwd: plan.cwd,
+      startedAt: Date.now(),
+    };
+    void this.prepareDataIdentity(launch, gen);
     try {
       child = spawn(command, args, {
         cwd: plan.cwd,
@@ -2505,7 +2696,7 @@ export class BackendSupervisor extends EventEmitter<{
     }
     this.child = child;
     this.childPid = child.pid;
-    this.launchLog = { env: processOptions.env, cwd: plan.cwd, startedAt: Date.now() };
+    this.launchLog = launch;
     if (processOptions.drainFd !== null) {
       // Python passes this child-side descriptor to every nested operation.
       // Reading the parent side keeps the ownership channel live and lets
@@ -2555,6 +2746,7 @@ export class BackendSupervisor extends EventEmitter<{
     // attachment, not a crash, and keep renderer requests paused meanwhile.
     this.setStage('attaching', { managed: false, message: undefined });
     const deadline = Date.now() + REPLACEMENT_ATTACH_GRACE_MS;
+    let attachAttempt = 0;
     while (gen === this.generation && !this.shuttingDown) {
       if (await this.probe()) {
         if (gen !== this.generation || this.shuttingDown) return;
@@ -2565,7 +2757,7 @@ export class BackendSupervisor extends EventEmitter<{
         return;
       }
       if (Date.now() >= deadline) break;
-      await delay(READY_POLL_MS);
+      await delay(readyPollDelayMs(attachAttempt++));
     }
     if (gen !== this.generation || this.shuttingDown) return;
 
@@ -2620,7 +2812,7 @@ export class BackendSupervisor extends EventEmitter<{
       !/the specified module could not be found|could not find module/i.test(
         this.childErrorLog.slice(-20).join('\n'),
       ) &&
-      ['on', 'evaluation'].includes(readSmartAppControl())
+      readSmartAppControl() === 'on'
         ? 'application_control'
         : null);
     if (loadBlock) {
@@ -2789,6 +2981,22 @@ export class BackendSupervisor extends EventEmitter<{
     const credentials = await this.remoteCredentials();
     if (gen !== this.generation) return false;
     if (credentials === 'valid') {
+      if (!this.identityChecked) {
+        this.identityChecked = true;
+        const proof = this.identityProof;
+        if (proof) proof.frozen = true;
+        if (
+          proof?.settled &&
+          proof.generation === gen &&
+          proof.launch === this.launchLog &&
+          this.managed &&
+          this.child &&
+          !this.remoteUrl
+        ) {
+          this.dataIdentity = proof.value;
+          this.dataIdentityChild = this.child;
+        }
+      }
       // A healthy run must not leave import errors behind: a later unrelated
       // exit would otherwise match them and be misread as a broken runtime.
       this.childErrorLog.length = 0;
@@ -2827,6 +3035,7 @@ export class BackendSupervisor extends EventEmitter<{
     // for a second and reporting "did not answer within 300 s".
     this.readinessClockAt = Date.now();
     const waitingStage = this.stage;
+    let readyAttempt = 0;
     while (gen === this.generation && this.stage === waitingStage) {
       const ready = await this.probe();
       // Child-exit recovery owns its own grace period. Its transition from
@@ -2872,7 +3081,7 @@ export class BackendSupervisor extends EventEmitter<{
         });
         return;
       }
-      await delay(READY_POLL_MS);
+      await delay(readyPollDelayMs(readyAttempt++));
     }
   }
 

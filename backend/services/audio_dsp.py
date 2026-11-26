@@ -14,6 +14,7 @@ returned unmodified). The leveler and the peak limiter are pure numpy (#3412), s
 they always run.
 """
 import logging
+import math
 import subprocess
 import sys
 import threading
@@ -248,7 +249,26 @@ def trim_speech_padding(audio_tensor: torch.Tensor, sample_rate: int) -> torch.T
     margin = int(sample_rate * 0.05)
     start = max(0, int(voiced[0].item()) - margin)
     end = min(audio_tensor.shape[-1], int(voiced[-1].item()) + 1 + margin)
-    return audio_tensor[..., start:end]
+    return _fade_out_tail(audio_tensor[..., start:end], sample_rate)
+
+
+def _fade_out_tail(audio_tensor: torch.Tensor, sample_rate: int, fade_ms: float = 25.0) -> torch.Tensor:
+    """Ease the last ``fade_ms`` to zero so a trimmed take never ends on a click (#4229).
+
+    Edge trimming leaves the final sample wherever the decay happened to be,
+    and some engines stop mid-tail; the step to silence reads as a sharp
+    cut-off. The length is unchanged. A tail already below -60 dBFS is left
+    as is. Never touches the head.
+    """
+    n = min(int(sample_rate * fade_ms / 1000), audio_tensor.shape[-1])
+    if n < 2:
+        return audio_tensor
+    if float(audio_tensor[..., -1].abs().max()) <= 10 ** (-60 / 20):
+        return audio_tensor
+    ramp = 0.5 * (1 + torch.cos(torch.linspace(0, math.pi, n, device=audio_tensor.device, dtype=audio_tensor.dtype)))
+    out = audio_tensor.clone()
+    out[..., -n:] = out[..., -n:] * ramp
+    return out
 
 #: Samples per block for the numpy stages. Long takes are processed in blocks
 #: so temporary memory stays bounded (a 30-minute take at 24 kHz is 43 M

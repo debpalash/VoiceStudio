@@ -25,6 +25,45 @@ Generation is separate from playback and export. Vidstack provides the player, w
 
 Draft writes reuse the coalesced persistence helper and flush on lifecycle events. Working drafts currently use browser storage. Named Stories and Audiobook projects use the shared native IndexedDB adapter in a separate Electron database. Saves await the committed transaction, concurrent writes are serialized, and opening or deleting a project requires confirmation. Projects include script/lines, voices, settings and the last output reference. Storage failures are surfaced. Book details include author, narrator, year, genre, description and an uploaded JPEG/PNG cover. Loudness offers off, ACX and podcast presets. Audiobook pronunciation rows reach the existing lexicon engine; duplicate words are flagged before rendering. These settings persist with the draft. Full cast management and other advanced controls remain tracked in `electron/PARITY.md`.
 
+### Saved audio and connections
+
+Completed Stories and Audiobook results stay with the VoiceStudio connection
+that rendered them. Switching to another local data directory or remote computer
+keeps the editable text and each connection's latest result; its player appears
+only when that connection is selected and ready. A verified, app-managed local
+data directory has an opaque identifier, so local port changes retain its
+result. Attached or otherwise unverified local directories use the current
+connection only: a fresh render remains usable, while a restart or reload needs
+an explicit check for older audio. Identity discovery never delays backend
+readiness. Opening or starting another project replaces the current
+workspace's result slots without deleting saved projects or rendered files.
+
+Older results and imported projects whose connection is unknown keep their
+saved details without automatically requesting audio. Use **Check saved audio on
+this connection** to check that filename through the current authenticated
+connection. This checks availability only: a matching filename may contain a
+different file. The warning and original saved details remain available after a
+successful check, including after reopening the app. No request goes directly
+to a previous connection. A connection change, authentication reset, new render,
+new project or data reset cancels a pending check, and its late reply cannot adopt
+the result. Restoring a valid session for the same connection makes its saved
+result available again.
+
+Connection records stay in private local draft persistence without local data
+paths or credentials. Older path-based records lose their automatic association
+but retain their saved result details for an explicit availability check. Saving
+a named project retains its result details even when another connection hides
+the player; replacing that workspace from a dub still asks before discarding it.
+Home does not open a project over an active Stories or Audiobook render.
+Named projects carry
+only an opaque result-owner token, not connection endpoints, local data paths,
+credentials or other connections' cached results. Availability-only results carry
+no ownership token in a named project; reopening that project requires another
+explicit availability check. The app's private working session keeps its checked
+state and warning across reloads. An unknown token requires the same explicit
+availability check. This behavior does not establish the cause of
+an interrupted render or a slow generation.
+
 `electron/tests/longform-smoke.mjs` verifies the main flows with mocked generation and real audio playback. Runtime tests cover stop, duplicate prevention, truncated responses, explicit resume and shared Stories compilation. Real installed-model verification passed for one English chapter: MP3 rendering, cached WAV chapter audition, and Electron-driven M4B rendering/playback. Multi-voice, multi-chapter, cancellation/recovery and other engines still require real runtime coverage.
 
 Script voice tags now expose saved-profile assignments in the Cast section. Only names present in the current script are sent as `voice_map`; assignments persist for reuse if a tag is reintroduced. An assignment to a removed profile blocks rendering until changed or reset to Default. Chapter, word and estimated runtime counts reuse the Tauri script helpers.
@@ -38,11 +77,11 @@ Run `electron/tests/longform-live.mjs` with `VOICESTUDIO_LIVE_PROFILE` set to a 
 Stories now includes named characters with saved voice assignments, character selection per line, explicit per-line voice overrides, shared/global speed and per-line speed overrides. Voice resolution and chapter compilation reuse the Tauri helpers. Lines move up/down with keyboard-accessible buttons; chapter insertion uses the same heading grammar. A story with every spoken span assigned can render without an unnecessary default-voice selection. Removed profiles block rendering rather than silently changing the voice.
 The book-wide speed lives in the Stories setup card, under the voice list. When some lines carry their own speed, the card says how many and offers one click to clear those overrides so the whole book follows the slider.
 
-Stories Auto-cast accepts tagged dialogue, screenplay text and attributed prose. The shared local parser appends lines, reuses existing characters/voices, and assigns available profiles to new speakers. Distinct names that normalize to the same identifier remain separate characters. No network or LLM call is involved.
+Stories Auto-cast accepts tagged dialogue, screenplay text and attributed prose with LF, CRLF or lone-CR line endings. The shared local parser appends lines, reuses existing characters/voices, and assigns available profiles to new speakers. Distinct names that normalize to the same identifier remain separate characters. No network or LLM call is involved.
 
 A Stories script can also be built from a finished dub, which replaces the current script, cast and pending import with the dub's speakers and lines. The action lives in the Dub workspace; see `docs/electron-dubbing.md`.
 
-WebVTT (`.vtt`) captions also import locally; their cue metadata is dropped before the spoken lines enter Stories.
+WebVTT (`.vtt`) captions also import locally. Stories extracts dialogue from blocks that start with a valid timing line, optionally preceded by a cue identifier. It skips comments and blocks without a timing line in either position.
 
 Paste & Split offers three presets: **Sentences** (size-limited, with a max-characters field), **Paragraphs** (split at blank lines, the default) and **Chapters** (one line per chapter body). A `# Heading` line is always its own line, in every preset.
 

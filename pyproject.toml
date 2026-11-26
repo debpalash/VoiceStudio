@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnivoice"
-version = "0.5.9-beta.4"
+version = "0.5.9-beta.9"
 description = "VoiceStudio — a private, local-first studio for voice cloning, speech generation, dubbing, transcription, and audiobooks"
 readme = "README.md"
 # Free and open-source under the GNU Affero General Public License v3 (see
@@ -40,6 +40,8 @@ dependencies = [
     "transformers>=5.10.0",
     "accelerate",
     "pydub",
+    # Untrusted XML (PLS lexicon import) is parsed with defusedxml.
+    "defusedxml>=0.7.1",
     # pydub imports the stdlib `audioop`, which Python 3.13 removed; gradio
     # used to pull this backport in, so declare it now that gradio is in `ui`.
     "audioop-lts ; python_version >= '3.13'",
@@ -97,6 +99,12 @@ dependencies = [
     # mlx-whisper/mlx-audio (depends on mlx — no wheels elsewhere).
     "parakeet-mlx>=0.5.2 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "demucs>=4.0.1",
+    # Source-only on PyPI (no wheel) and pulled in transitively. Declared here
+    # so [tool.uv.sources] can point them at vendor/wheels/ (#4253): building an
+    # sdist during first-run setup crashes setuptools on some Windows hosts.
+    "docopt==0.6.2",
+    "antlr4-python3-runtime==4.9.3",
+    "dora-search==0.1.12",
     "yt-dlp>=2026.7.4",
     # >=1.16: alembic.ini relies on path_separator=os (new in 1.16.0), which
     # older alembic silently ignores and then colon-splits C:\ paths /
@@ -270,6 +278,11 @@ Documentation = "https://github.com/debpalash/VoiceStudio/tree/main/docs"
 "Upstream TTS Model" = "https://github.com/k2-fsa/OmniVoice"
 
 [tool.uv.sources]
+# Wheels built from the PyPI sdists (pure Python, unmodified) so setup never
+# compiles on a user's machine (#4253). tests/test_lock_wheel_only.py guards it.
+docopt = { path = "vendor/wheels/docopt-0.6.2-py2.py3-none-any.whl" }
+antlr4-python3-runtime = { path = "vendor/wheels/antlr4_python3_runtime-4.9.3-py3-none-any.whl" }
+dora-search = { path = "vendor/wheels/dora_search-0.1.12-py3-none-any.whl" }
 # Keep both compute variants in the lockfile. Source and packaged setup select
 # CPU when no NVIDIA driver is detected; plain `uv sync` preserves the CUDA default.
 # macOS keeps the PyPI build (including MPS) regardless of the selected group.

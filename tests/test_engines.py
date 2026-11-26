@@ -680,14 +680,14 @@ def test_mlx_audio_generate_auto_language_skips_lang_code_entirely(language, mod
     assert "lang_code" not in seen_kwargs
 
 
-def test_mlx_audio_voxcpm2_8bit_resamples_48k_and_does_not_claim_cloning():
+def test_mlx_audio_voxcpm2_8bit_resamples_48k_and_claims_reference_cloning():
     # The curated 8-bit VoxCPM2 emits 48 kHz; the adapter's rate is 24 kHz, so
     # the audio must be resampled rather than played back at double length.
     backend = tts_backend.MLXAudioBackend()
     backend._model_id = backend.CURATED_MODELS["voxcpm2"]
     backend._ensure_loaded = lambda: None
     assert backend._model_id == "mlx-community/VoxCPM2-8bit"
-    assert backend.supports_cloning is False
+    assert backend.supports_cloning is True  # ref_audio clone mode (#4344)
     seen = {}
 
     def _fake_generate(**kw):

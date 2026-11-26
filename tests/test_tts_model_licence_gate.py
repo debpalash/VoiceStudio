@@ -214,7 +214,8 @@ def test_get_model_revocation_stops_a_resident_model(store, mm, monkeypatch, ma)
         asyncio.run(mm.get_model())
 
 
-def test_preload_skips_quietly_when_unaccepted(store, mm, monkeypatch, caplog):
+def test_preload_skips_quietly_when_unaccepted(store, mm, monkeypatch, caplog, ma):
+    monkeypatch.setattr(ma, "omnivoice_tokenizer_fallback_needed", lambda: False)
     monkeypatch.setattr(mm, "model", None)
     caps = importlib.import_module("core.device_caps")
 

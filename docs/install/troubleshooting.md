@@ -69,7 +69,7 @@ Your antivirus quarantined or refused an engine file. Restore the file, add the 
 
 ### `EXEC_REFUSED`
 
-The OS refused to run the engine and left no evidence of what refused it. Add the runtime folder to your security software's exclusions, make sure it is not in a cloud-synced folder, then retry. If it persists, send the in-app report: it records the program, its signature and any blocks Windows logged.
+The OS refused to run the engine and left no evidence of what refused it. Smart App Control in Evaluation mode only audits launches, so that setting alone leaves this failure under `EXEC_REFUSED`. Add the runtime folder to your security software's exclusions, make sure it is not in a cloud-synced folder, then retry. If it persists, send the in-app report: it records the program, its signature and any blocks Windows logged.
 
 ### `GATEKEEPER_QUARANTINE`
 
@@ -118,6 +118,8 @@ The runtime is inside OneDrive, Dropbox, iCloud Drive, Google Drive or Nextcloud
 ### `SYSTEM_LIBRARY_PROBLEM`
 
 A system library the engine needs is missing or too old. The setup screen names it; see the [Linux guide](linux.md).
+
+On Windows the usual one is the Microsoft Visual C++ Redistributable. `OSError: [WinError 1114] A dynamic link library (DLL) initialization routine failed ... torch\lib\c10.dll` while importing `faster_whisper`, `ctranslate2` or `torch` means the installed copy is too old or damaged (VoiceStudio reports its `msvcp140.dll` version when it can read it). Reinstalling the Python packages cannot fix it. Install the latest [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe), restart Windows, then press Retry.
 
 ### `UNSUPPORTED_PLATFORM`
 
@@ -502,9 +504,11 @@ Sidecar engines, which run in their own environments, don't use this result.
 
 **Symptom:** a Maxwell or Pascal card (GTX 900 and 1000 series, compute capability below 7.0, such as a GTX 1060 or 1080 Ti) is found, but the app runs on the CPU. The GPU report in **Settings** says the PyTorch build no longer supports that GPU generation.
 
-**Cause:** the PyTorch build VoiceStudio ships (the cu128 build) includes kernels only for compute capability 7.0 and newer. Reinstalling another CUDA build or updating the driver does not add them.
+**Cause:** the PyTorch build VoiceStudio ships (the cu128 build) includes kernels only for compute capability 7.0 and newer. A driver update does not add them. PyTorch's CUDA 12.6 build still does (compute capability 5.0 and up), and PyTorch 2.15 drops that build.
 
-**What works:** PyTorch engines run on the CPU. Engines with their own Vulkan runtime (audio.cpp, CosyVoice GGUF, OmniVoice GGUF) can use the GPU; **Settings → GPU acceleration** lists them. Install one under **Settings → Models**. See [audio.cpp](../engines/audio-cpp.md).
+**Fix (desktop app):** nothing to do. On Windows and Linux x64, runtime setup selects it when every NVIDIA card is compute capability 5.0 to 6.x (GTX 900/1000 series) and the driver is 525 or newer and installs `torch 2.10.0+cu126` from `download.pytorch.org/whl/cu126` instead of the cu128 build. An existing cu128 runtime is switched the next time setup runs, which re-downloads PyTorch (about 3 GB). Setup then checks that `torch.cuda.is_available()` is true and that the build has kernels for the card; if not, it keeps the CPU build, writes the reason to the setup log and `.runtime-torch-fallback` in the runtime folder, and the GPU report shows it as `torch_fallback`. Set `OMNIVOICE_TORCH_VARIANT=cuda` to keep the cu128 build or `cpu` to force the CPU build. Kepler (3.x) cards, hosts with any Volta or newer card next to an older one, older drivers, macOS and Linux ARM keep cu128 or CPU, and the repair advice then points to Vulkan engines or CPU instead. Docker images, source setups and sidecar engines are unchanged.
+
+**What else works:** PyTorch engines run on the CPU if the CUDA 12.6 build cannot drive the card. Engines with their own Vulkan runtime (audio.cpp, CosyVoice GGUF, OmniVoice GGUF) can use the GPU; **Settings → GPU acceleration** lists them. Install one under **Settings → Models**. See [audio.cpp](../engines/audio-cpp.md).
 
 ## 5a. Backend exits on the first `/generate` on an older NVIDIA GPU
 

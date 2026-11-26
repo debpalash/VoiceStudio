@@ -613,7 +613,9 @@
     "body_required": false,
     "encoding": "",
     "fields": [],
-    "query": [],
+    "query": [
+      "full"
+    ],
     "required": [],
     "required_query": []
   },
@@ -767,6 +769,7 @@
     "fields": [
       "input_type",
       "job_id",
+      "separate_background",
       "source_lang",
       "video"
     ],
@@ -1351,7 +1354,8 @@
     "encoding": "",
     "fields": [],
     "query": [
-      "profile_id"
+      "profile_id",
+      "format"
     ],
     "required": [],
     "required_query": []

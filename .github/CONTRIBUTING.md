@@ -220,9 +220,17 @@ Open an [issue](https://github.com/debpalash/VoiceStudio/issues/new) with:
 
 ### Pull Requests
 
-1. **Fork** the repo and create a branch from `main`
-2. **Keep PRs focused** — one feature or fix per PR
-3. **Run tests** before pushing:
+**At most two open pull requests per contributor.** Unless you are the owner, a
+member or a collaborator, keep no more than two pull requests open at once. A
+third one, including one you reopen, is closed automatically with a comment (`.github/workflows/pr-limit.yml`);
+reopen or resubmit it once one of your open pull requests is merged or closed.
+Batch related small fixes into one pull request rather than opening many.
+
+1. **Fork** the repo and create a branch from the latest `main`. In a clone of your fork, add this repository once with `git remote add upstream https://github.com/debpalash/VoiceStudio.git`, then `git fetch upstream` and `git switch -c <branch> upstream/main`
+2. **Keep it current with `main`**: merge the latest `main` into your branch right before every push. `main` requires branches to be up to date, so a PR that is behind can't merge and has to run CI again once it's updated
+3. **Keep PRs focused** — one feature or fix per PR. Keep **at most 2 PRs open at a time** (enforced, see above); open the next one when one lands. Every PR uses CI resources and gets read before merge
+4. **Prefer user-facing fixes**: bugs with an open issue or a reproducible failure come first. For new meta-tests, CI policy or tooling-only changes, open an issue first so maintainers can say whether they want them
+5. **Run tests** before pushing:
    ```bash
    # Packaging tests use Electron dependencies, including electron-builder.
    bun install --frozen-lockfile
@@ -235,9 +243,9 @@ Open an [issue](https://github.com/debpalash/VoiceStudio/issues/new) with:
    # Frontend build check
    bun run check:electron
    ```
-4. **Write a clear PR title** — it becomes the squash-merge commit message
-5. **Add a changelog fragment** if users will notice the change: one line in `changelog.d/<PR#>.<type>.md` (see [`changelog.d/README.md`](../changelog.d/README.md)). Don't edit `CHANGELOG.md` directly, so your PR never conflicts with others
-5. **Don't include** local machine stats, file paths, or private system info in PR descriptions
+6. **Write a clear PR title** — it becomes the squash-merge commit message
+7. **Add a changelog fragment** if users will notice the change: one line in `changelog.d/<PR#>.<type>.md` (see [`changelog.d/README.md`](../changelog.d/README.md)). Don't edit `CHANGELOG.md` directly, so your PR never conflicts with others
+8. **Don't include** local machine stats, file paths, or private system info in PR descriptions
 
 ### Adding a New TTS Engine
 
@@ -275,8 +283,10 @@ class MyEngineBackend(TTSBackend):
    an engine that lives in its own `backend/engines/<name>` module goes in
    `_LAZY_REGISTRY` as `"id": ("engines.<name>", "ClassName")`
 4. Add the same id under `tts_engines` in `docs/features.yaml` with its README
-   string (`readme:`) or a doc page (`doc:`) — the daily docs-drift job
-   (`python scripts/check-docs-drift.py`) flags registry ids missing from it
+   string (`readme:`) or a doc page (`doc:`) — the Python suite and relevant
+   documentation PRs run `python scripts/check-docs-drift.py` to flag missing
+   registry ids in a read-only job; only the daily/manual maintenance job gets
+   issue-write permission to maintain the rolling docs-drift issue
 5. It then appears in Settings → TTS Engine
 
 ---
@@ -521,6 +531,13 @@ test-only PR. Docker Hub overview edits still publish through the small
   and bundle signature checks, the packaged startup smoke test (on Linux through
   the `voicestudio` entry, as the AppImage starts it) and
   `electron/tests/cli-bundle-smoke.mjs`.
+- **Install smoke:** the three-OS install (`install-smoke.yml`, 6-10 minutes per system) runs on a
+  pull request only when it touches a file that affects installation: manifests and lockfiles,
+  the installer scripts, Electron packaging, the runtime setup code (`electron/src/main/` setup,
+  runtime, wheel-prefetch and pypi-mirror modules; `backend/services/sidecar_*.py`, `media_tools.py`,
+  `endpoint_race.py`), `deploy/install-worker/` or the workflow itself, and not for documentation or
+  test-only changes. Pushes to `main` use the same path list and the documentation/test-only skip;
+  manual runs always run it. A newer push cancels the superseded pull-request run. `tests/test_install_smoke_workflow.py` keeps the path list complete.
 - **CI scope:** the Electron-only jobs (UI crawler, Desktop UI, Linux native
   package, release smoke, `Tests (Electron)` and `Electron renderer smokes`) are skipped on a
   pull request whose every changed file is an *edit or addition* under `backend/`
@@ -545,6 +562,11 @@ test-only PR. Docker Hub overview edits still publish through the small
   runs the build. Merge groups retain the package's mobile and unrelated
   `.github/` exclusions; the Nix workflow itself always qualifies. Explicit
   manual/release events remain full, and the existing unsigned-CLA hold remains.
+- **Mobile artifacts:** uploads retry once after ten seconds when the first
+  attempt fails and the run is not cancelled. Both attempts use the same
+  artifact name and inputs; a failed retry still fails the job, and pass-cache
+  markers remain after the terminal upload. Native tests are never skipped
+  because an upload failed.
 - **Pass cache:** the heavy jobs in `ci.yml` (Python tests, the Electron jobs,
   UI crawler, Desktop UI, release smoke, smokes) and in `mobile.yml` (iOS, Android and their
   inference tests) skip their steps, and still pass, when their exact inputs
@@ -686,6 +708,12 @@ test-only PR. Docker Hub overview edits still publish through the small
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
     downloads from `omnivoice-gallery` GitHub Releases, only after it is turned
     on in Settings (`backend/services/gallery.py`).
+  - **Dubbing demo videos, only when the user clicks Download** in the Dub
+    demo card (owner-approved 2026-11-21): five ~10 MB clips, sha256- and
+    size-pinned in `backend/assets/samples/demo/dubbing/demo_assets.json`, from
+    the `dub-demo-v1` pre-release of `debpalash/omnivoice-gallery`
+    (`backend/services/demo_assets.py`). Nothing is fetched at install or
+    startup; offline, the card shows bundled poster stills.
   - **Packaged-app update checks** against GitHub Releases, and the background
     download of a found update from the same release (on by default; Settings
     → Updates → Download updates automatically turns it off, so downloads wait
@@ -730,7 +758,10 @@ test-only PR. Docker Hub overview edits still publish through the small
     2026-11-14). Off by default, including for existing analytics users; metadata
     follows `config/diagnostics.json`. Electron main owns desktop uploads even
     when setup/backend fails; source/Docker and both native phones own their
-    respective consent. `SUPERMETRY_APP_HOST` is an explicit, default-unset operator
+    respective consent. Release CI receives the app ID and ingest key only from
+    GitHub Actions Secrets, never public repository variables or logged values;
+    fork builds receive no upstream app credentials.
+    `SUPERMETRY_APP_HOST` is an explicit, default-unset operator
     override; any other production host needs owner approval and documentation.
     The separate `diagnostics.sessionPings` build flag remains off by default and
     still requires diagnostics consent. Withdrawal stops delivery and invalidates queued reports.
@@ -746,7 +777,11 @@ test-only PR. Docker Hub overview edits still publish through the small
   are authorized in Electron main (native save dialog), never via HTTP params.
 - **CI supply chain:** every remote action in `.github/workflows/` is pinned
   to a full 40-char commit SHA with a trailing `# vX.Y.Z` comment
-  (`tests/test_actions_pinned.py`); Dependabot bumps the pins weekly.
+  (`tests/test_actions_pinned.py`); Dependabot bumps the pins weekly. Shape
+  checks cannot prove a pin *is* the commit its comment names, so the weekly
+  `action-pin-verify.yml` run resolves every distinct action/label pair
+  (`scripts/verify_action_pins.py`); reproduce it locally with
+  `VOICESTUDIO_VERIFY_ACTION_PINS=1 uv run pytest tests/test_workflow_action_pins.py`.
 
 ## Contribution licensing
 

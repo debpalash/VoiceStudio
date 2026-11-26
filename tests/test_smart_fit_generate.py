@@ -25,6 +25,7 @@ os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 
 import asyncio
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 import torch
@@ -109,6 +110,7 @@ def patched_generate(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(dg, "rvc_is_enabled", lambda: False)
     monkeypatch.setattr(dg, "mark_synthetic", lambda wav, sr, **kw: wav)
+    monkeypatch.setattr(dg, "mark_synthetic_async", AsyncMock(side_effect=lambda wav, sr, **kw: wav))
     monkeypatch.setattr(dg, "apply_mastering", lambda a, sample_rate=None: a)
     monkeypatch.setattr(dg, "get_effect_chain", lambda preset: None)
     monkeypatch.setattr(dg, "apply_effects_chain", lambda a, **k: a)
@@ -268,6 +270,7 @@ def test_fresh_speech_is_watermarked_exactly_once(patched_generate, monkeypatch)
 
     import api.routers.dub_generate as dg
     import services.watermark as watermark
+    from services.model_manager import begin_watermark_pool_lifecycle
 
     run, _model, job, job_dir = patched_generate
     job["duration"] = 35.0
@@ -286,7 +289,9 @@ def test_fresh_speech_is_watermarked_exactly_once(patched_generate, monkeypatch)
         return {"is_watermarked": found, "confidence": 1.0 if found else 0.0,
                 "message_bits": "", "is_omnivoice": found}
 
-    monkeypatch.setattr(dg, "mark_synthetic", _fake_mark)
+    begin_watermark_pool_lifecycle()
+    monkeypatch.setattr(dg, "mark_synthetic_async", watermark.mark_synthetic_async)
+    monkeypatch.setattr(watermark, "mark_synthetic", _fake_mark)
     monkeypatch.setattr(watermark, "detect_watermark", _fake_detect)
 
     done = _done(run(_body(

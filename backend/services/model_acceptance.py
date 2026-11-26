@@ -81,6 +81,11 @@ _TERM_FIELDS = (
     "commercial_outputs", "redistribution", "voice_rights", "source_url",
     "evidence_url", "evidence_revision", "runtime_revision",
 )
+# Descriptive text the dialog shows beside the terms but which is not a
+# condition of them. An edit that rewords only these keeps an existing
+# acceptance (#4334): the stored snapshot decides, so the fingerprint format is
+# unchanged and every earlier v2 record stays valid. Any other change still asks.
+_EDITORIAL_FIELDS = frozenset({"notes"})
 _VARIANT_FIELDS = (
     "id", "label", "license_category", "commercial_inference", "commercial_outputs",
     "evidence_url",
@@ -226,6 +231,14 @@ def _changed_fields(before: dict | None, after: dict) -> list[str]:
     return sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
 
 
+def _only_editorial_change(record: dict, current_terms: dict) -> bool:
+    """Whether the terms changed since acceptance in editorial fields only."""
+    if record["last"].get("action") != "accepted":
+        return False
+    changed = _changed_fields(record.get("accepted_terms"), current_terms)
+    return bool(changed) and set(changed) <= _EDITORIAL_FIELDS
+
+
 def _evaluate(repo_id: str) -> tuple[dict, object]:
     info = _disclosure(repo_id)
     category = info.get("license_category") or "unknown"
@@ -242,7 +255,7 @@ def _evaluate(repo_id: str) -> tuple[dict, object]:
         state = "accepted" if _legacy_accepted(repo_id) else "not_accepted"
     elif last["action"] == "withdrawn":
         state = "withdrawn"
-    elif last.get("fingerprint") == current:
+    elif last.get("fingerprint") == current or _only_editorial_change(record, current_terms):
         state = "accepted"
     else:
         state = "terms_updated"
@@ -318,7 +331,61 @@ def repos_for_engine(engine_id: str, identity: str | None = None) -> list[str]:
         # A local model folder is not a registry model (ASR treats it the same way).
         return []
     rows = _registry()["models"]  # unreadable registry: let the caller fail closed
-    return [row["id"] for row in rows if engine_id in (row.get("engines") or [])]
+    return [
+        row["id"]
+        for row in rows
+        if engine_id in (row.get("engines") or []) and _repo_applies(row["id"])
+    ]
+
+
+# OmniVoice's own snapshot bundles ``audio_tokenizer/`` (covered by
+# k2-fsa/OmniVoice's licence row). The Higgs tokenizer repo below is only
+# loaded, or re-downloaded by the cache repair, when that bundled directory is
+# missing (``omnivoice.models.omnivoice``), so it gates an install only then (#4329).
+FALLBACK_TOKENIZER_REPO = "eustlb/higgs-audio-v2-tokenizer"
+
+
+def omnivoice_tokenizer_fallback_needed() -> bool:
+    """True when the installed OmniVoice would load the fallback tokenizer repo.
+
+    Local cache lookup only, never the network. An OmniVoice that is not
+    installed yet downloads its bundled tokenizer with the snapshot, so it does
+    not need the fallback (a custom checkpoint that turns out to lack it is
+    stopped at the loader, which calls the same acceptance check). Anything unreadable fails closed (needs it).
+    """
+    try:
+        import os
+
+        from services.omnivoice_checkpoint import resolve_omnivoice_checkpoint
+
+        checkpoint = resolve_omnivoice_checkpoint()
+        if os.path.isdir(checkpoint):
+            # A local folder never falls back to the Hub: the loader rejects
+            # one lacking audio_tokenizer/ outright, so there is nothing to accept.
+            return False
+        from huggingface_hub import snapshot_download
+        from huggingface_hub.errors import LocalEntryNotFoundError
+
+        try:
+            # The loader resolves the cached ``main`` ref the same way
+            # (omnivoice.models.omnivoice._resolve_snapshot_dir), so the gate
+            # and the loader read the same snapshot.
+            snapshot = snapshot_download(  # nosec B615 — local cache only, same ref as the loader
+                checkpoint, revision="main", local_files_only=True
+            )
+        except (LocalEntryNotFoundError, FileNotFoundError):
+            return False
+        return not os.path.isdir(os.path.join(snapshot, "audio_tokenizer"))
+    except Exception:  # noqa: BLE001 — unknown install state must not open the gate
+        logger.warning("OmniVoice tokenizer install check failed", exc_info=True)
+        return True
+
+
+def _repo_applies(repo_id: str) -> bool:
+    """False for a registry repo the installed engine does not actually load."""
+    if repo_id == FALLBACK_TOKENIZER_REPO:
+        return omnivoice_tokenizer_fallback_needed()
+    return True
 
 
 def ensure_engine_accepted(engine_id: str, identity: str | None = None) -> None:

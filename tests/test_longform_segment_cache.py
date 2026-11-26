@@ -253,3 +253,21 @@ def test_segment_hit_refreshes_mtime_for_lru(tmp_path):
 
     _render_chapter_cached(ch, _counting_synth(calls), _SR, "eng", _resolve, str(tmp_path))
     assert os.path.getmtime(seg) > stale + 1_000  # hit bumped it — LRU-fresh
+
+
+def test_torn_segment_file_is_rerendered(tmp_path):
+    """A segment cache WAV truncated mid-data (power loss) must be rejected by ``wav_is_complete`` and re-rendered."""
+    calls: list[str] = []
+    ch = _chapter("First sentence.", "Second sentence.")
+    wav_path, *_ = _render_chapter_cached(ch, _counting_synth(calls), _SR, "eng",
+                                          _resolve, str(tmp_path))
+    os.remove(wav_path)
+    seg = _seg_path(tmp_path, "First sentence.")
+    raw = seg.read_bytes()
+    seg.write_bytes(raw[: len(raw) // 2])  # header intact, data cut short
+
+    calls.clear()
+    _wav, _dur, _cached, seg_stats = _render_chapter_cached(
+        ch, _counting_synth(calls), _SR, "eng", _resolve, str(tmp_path))
+    assert calls == ["First sentence."]
+    assert seg_stats == {"total": 2, "cached": 1}

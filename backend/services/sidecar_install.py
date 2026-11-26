@@ -725,6 +725,10 @@ SPECS: dict[str, SidecarSpec] = {
     # leaves torch unpinned, so the pair is pinned here; each build of it was
     # resolved with voxcpm==2.0.3 on 2026-09-10 (Windows and Linux: +cu128 and
     # +cpu; Apple Silicon: plain). Weights download on first synthesis.
+    # voxcpm -> wetext -> kaldifst, which has no MSVC-buildable sdist (openfst
+    # uses __builtin_ctzll, #4316) and published 1.9.1's sdist before its wheels.
+    # The pin is a release whose wheels cover every host, and --only-binary makes
+    # a missing wheel fail fast instead of compiling from source.
     "voxcpm2": SidecarSpec(
         engine_id="voxcpm2",
         display_name="VoxCPM2",
@@ -735,7 +739,7 @@ SPECS: dict[str, SidecarSpec] = {
         probe_module="voxcpm",
         has_source=False,
         venv_args=("--python", "3.11"),
-        install_args=("voxcpm==2.0.3",),
+        install_args=("voxcpm==2.0.3", "kaldifst==1.9.0", "--only-binary", "kaldifst"),
         torch_pins=("torch==2.11.0", "torchaudio==2.11.0"),
         docs_path="docs/engines/voxcpm2.md",
         # CUDA torch (~5 GB unpacked) + transformers.
@@ -1292,11 +1296,31 @@ def _missing_compiler_remediation(platform: str = sys.platform) -> str:
 
 
 def _log(job: dict, line: str) -> None:
+    """Append one line of install output to the job record and the logger.
+
+    Every streamed line here is raw ``git``/``uv`` output, and uv runs with an
+    environment derived from ``os.environ`` (``uv_subprocess_env``) -- so a
+    regional-mirror or proxy URL of the form ``https://user:token@host``, which
+    the sanctioned-call list explicitly supports, is echoed back into a log the
+    install panel renders and a user may paste into a bug report. Redact before
+    either sink, exactly as ``subprocess_backend`` does for sidecar stderr.
+    A redaction failure never fails an install, but it never records the raw
+    line either: a marker is logged instead.
+    """
     line = line.rstrip()
-    if line:
-        with _log_lock:
-            job["log"].append(line)
-        logger.info("[%s install] %s", job["engine_id"], line)
+    if not line:
+        return
+    try:
+        from core.scrub import scrub_text
+
+        line = scrub_text(line)
+    except Exception:  # noqa: BLE001 - never fatal, never raw
+        # No exc_info: a traceback would add source and home paths to the log.
+        logger.debug("Install log redaction unavailable; line withheld")
+        line = "***REDACTED*** (install output withheld: redaction unavailable)"
+    with _log_lock:
+        job["log"].append(line)
+    logger.info("[%s install] %s", job["engine_id"], line)
 
 
 def _serialize_job(job: Optional[dict]) -> Optional[dict]:

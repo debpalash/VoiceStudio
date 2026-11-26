@@ -317,14 +317,17 @@
     "test_global_hint": "Yalnızca küresel girişler önizleniyor — dile özgü girişleri dahil etmek için bir dil seçin.",
     "test_error": "Önizleme kullanılamıyor — arka uca ulaşılamadı.",
     "backup_title": "Yedekleme ve geri yükleme",
-    "backup_hint": "Sözlüğü JSON dosyası olarak indirin veya önceki bir dışa aktarımdan girişleri içe aktarın.",
+    "backup_hint": "Sözlüğü JSON ya da PLS sözlüğü olarak indirin veya ikisinden birini içe aktarın. Diğer konuşma hizmetlerinin PLS sözlükleri de çalışır.",
     "export": "JSON dışa aktar",
+    "export_pls": "PLS dışa aktar",
     "import": "JSON içe aktar",
-    "import_error": "Bu dosya içe aktarılamadı — bir telaffuz dışa aktarımının JSON'u bekleniyordu.",
+    "import_error": "Bu dosya içe aktarılamadı — bir telaffuz dışa aktarımı (JSON) veya PLS sözlüğü bekleniyordu.",
     "import_replace_prompt_one": "Mevcut {{count}} girişi içe aktarılan dosyayla değiştirilsin mi? İçe aktarılan girişleri yanına eklemek için Hayır'ı seçin.",
     "import_replace_prompt_other": "Mevcut {{count}} girişi içe aktarılan dosyayla değiştirilsin mi? İçe aktarılan girişleri yanlarına eklemek için Hayır'ı seçin.",
     "import_done_one": "{{count}} giriş içe aktarıldı.",
     "import_done_other": "{{count}} giriş içe aktarıldı.",
+    "import_skipped_one": "{{count}} giriş atlandı: fonetik yazımı desteklenmiyor.",
+    "import_skipped_other": "{{count}} giriş atlandı: fonetik yazımı desteklenmiyor.",
     "entries_count_one": "{{count}} giriş",
     "entries_count_other": "{{count}} giriş",
     "scope_language": "Dil",
@@ -945,7 +948,8 @@
     "retry": "Tekrar dene",
     "confirm": "Onayla",
     "details": "Ayrıntılar",
-    "unknown": "bilinmiyor"
+    "unknown": "bilinmiyor",
+    "link_blocked": "Bu bağlantı açılamıyor. Yalnızca web ve e-posta bağlantılarına izin verilir."
   },
   "dubWorkspace": {
     "transcriptIssues": "Transkript sorunları",
@@ -1337,6 +1341,9 @@
     "terminal_command_added": "Eklendi. voicestudio kullanmak için yeni bir terminal penceresi açın.",
     "terminal_command_failed": "voicestudio terminale eklenemedi. Ana klasörünüzün salt okunur olmadığını kontrol edip yeniden deneyin.",
     "terminal_command_conflict": "{{path}} başka bir kuruluma ait, bu yüzden VoiceStudio onu değiştirmedi.",
+    "close_to_tray": "Kapatınca tepside çalışmaya devam et",
+    "close_to_tray_desc": "Pencereyi kapatmak VoiceStudio’yu çıkmak yerine tepsiye gizler, böylece süren işler devam eder. Tepsi simgesinden yeniden açın ve kapatmak için orada Çık’ı seçin. Bazı Linux masaüstlerinde tepsi simgesi AppIndicator desteği gerektirir; VoiceStudio’yu yeniden açmak da pencereyi geri getirir.",
+    "close_to_tray_failed": "Bu ayar kaydedilemedi. Lütfen tekrar deneyin.",
     "review_mode_on": "İncele",
     "review_mode_off": "Hızlı ateş",
     "translate_agent": "Ajanla uyarlama",
@@ -1364,6 +1371,7 @@
     "gpu_report_state_nvidia_rocm_build": "{{gpu}} bulundu, ancak bu PyTorch bir AMD ROCm derlemesi ve NVIDIA GPU'ları sürmez.",
     "gpu_report_state_intel_unsupported": "{{gpu}} bulundu, ancak kurulu hiçbir motor Intel GPU'larını kullanamaz, bu yüzden her şey CPU'da çalışır.",
     "gpu_report_state_kernels_missing": "{{gpu}} bulundu, ancak bu PyTorch derlemesi ({{torch}}) kendi hesaplama mimarisine uygun çekirdek içermediği için motorlar CPU'da çalışır.",
+    "gpu_report_torch_fallback": "Kurulum bu GPU için CUDA 12.6 PyTorch sürümünü denedi ancak kartı kullanamadı, bu yüzden PyTorch motorları CPU'da çalışmaya devam ediyor. Neden: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} eski bir NVIDIA GPU'dur (GTX 900 / 1000 serisi veya daha eski). Bu PyTorch derlemesi ({{torch}}) bu nesli artık desteklemiyor, bu yüzden PyTorch motorları CPU'da çalışır. Kendi Vulkan çalışma zamanı olan motorlar GPU'yu yine de kullanabilir.",
     "gpu_report_state_unknown": "GPU durumu belirlenemedi.",
     "gpu_report_option_vulkan_engines": "Kendi GPU çalışma zamanına sahip bir motor kullanın: audio.cpp, AMD Radeon GPU'larda Vulkan üzerinden çalışır (Ayarlar → Modeller → çalışma zamanını kur).",
@@ -1619,7 +1627,8 @@
     "open": "“{{name}}” açılıp mevcut taslak değiştirilsin mi? Önce çalışmanızı kaydedin.",
     "save_copy": "Kopyasını kaydet",
     "new": "Yeni proje",
-    "new_confirm": "Yeni ve boş bir proje başlatılsın mı? Kayıtlı projeler olduğu gibi kalır; mevcut taslaktaki kaydedilmemiş değişiklikler kaybolur."
+    "new_confirm": "Yeni ve boş bir proje başlatılsın mı? Kayıtlı projeler olduğu gibi kalır; mevcut taslaktaki kaydedilmemiş değişiklikler kaybolur.",
+    "delete_hint": "Yalnızca kayıtlı proje listeden kaldırılır. Medya dosyaları ve sesler korunur."
   },
   "sidebar": {
     "save_project": "Dub Projesini Kaydet",
@@ -1870,7 +1879,12 @@
     "cast_note_other": "{{names}} için henüz ses seçilmedi, ana sesle okunurlar. Oyuncular bölümünden ses seçin.",
     "line_gap": "Satırların arasındaki duraklama",
     "paragraph_gap": "Paragrafların arasındaki duraklama",
-    "trim_edges": "Motorun sessiz kısımlarını kes"
+    "trim_edges": "Motorun sessiz kısımlarını kes",
+    "result_other_connection": "Bu kayıtlı ses başka bir VoiceStudio bağlantısına aittir. Oynatmak için o bağlantıya geri dönün.",
+    "result_connection_unknown": "Kayıtlı sesi göstermek için yerel motorunuza veya uzak bilgisayarınıza bağlanın.",
+    "result_legacy": "Bu eski kayıtlı sonuçta bağlantı bilgisi yok. Bu bağlantıda dosya adını arayın; farklı bir dosya olabilir.",
+    "result_check_audio": "Bu bağlantıda kayıtlı sesi kontrol et",
+    "result_recovery_failed": "Kayıtlı ses bu bağlantıda kullanılamıyor. Özgün bağlantısına geri dönün veya sesi yeniden oluşturun."
   },
   "credentials": {
     "microsoft_key": "Microsoft Çevirmen Anahtarı",
@@ -2021,6 +2035,7 @@
     "setup_wrong_architecture": "VoiceStudio'yu kapatın, Apple Silicon (arm64) DMG'siyle değiştirin ve yeniden açın. Şu anda Intel sürümü Rosetta üzerinden çalışıyor; sürümü değiştirmek sesleri ve projeleri silmeden yerel yapay zekâyı etkinleştirir.",
     "setup_missing_system_library": "Bu Windows sisteminde, PyTorch ses eklentisinin ihtiyaç duyduğu Microsoft Visual C++ 2015-2022 Redistributable (x64) eksik. Microsoft’tan yükleyip Yeniden Dene’ye basın.",
     "setup_outdated_system_library": "Bu Windows sistemindeki Microsoft Visual C++ Redistributable (x64) çok eski olduğu için bir konuşma kitaplığı yüklenirken çöküyor. En son sürümü Microsoft’tan yükleyin, ardından Yeniden Dene’ye basın.",
+    "setup_torch_dll_init_failed": "PyTorch yüklenemedi ve neden belirlenemedi. En son Microsoft Visual C++ Redistributable (x64) sürümünü yükleyin, ardından grafik sürücünüzü güncelleyin ve Yeniden dene'ye basın. Yine de başarısız olursa \"Diğer çözümler\" altındaki \"Temizle ve Yeniden Dene\" seçeneğini kullanın.",
     "setup_files_locked": "Başka bir program VoiceStudio dosyalarını kullanıyor (OneDrive veya başka bir eşitleme uygulaması, antivirüs ya da hâlâ çalışan bir VoiceStudio arka ucu). Onu kapatın veya eşitlemeyi duraklatın, ardından Yeniden Dene’ye basın.",
     "download_apple_silicon": "Apple Silicon sürümünü indir",
     "ready": "Motor hazır",
@@ -2240,6 +2255,10 @@
     "dubbing_cta": "Bunu kendi videonuzda çalıştırın →",
     "dubbing_loading": "Dublaj demosu yükleniyor…",
     "dubbing_dismiss": "Dublaj demosunu kapat",
+    "dubbing_download": "Demo videolarını indir (~10 MB)",
+    "dubbing_downloading": "İndiriliyor…",
+    "dubbing_download_failed": "İndirme başarısız. Bağlantınızı kontrol edin.",
+    "dubbing_retry": "Yeniden dene",
     "original_tag": "orijinal",
     "dubbed_tag": "dublajlı",
     "script_conversational": "konuşkan",
@@ -2468,7 +2487,7 @@
   },
   "crash": {
     "uptime_value": "{{count}} s",
-    "field_exit": "Çıkış",
+    "field_exit": "Çıkış durumu",
     "field_when": "Ne zaman",
     "field_uptime": "Çökmeden önce çalışma süresi",
     "field_version": "Arka uç sürümü",
@@ -2874,6 +2893,7 @@
     "source_language_required": "Konuşma tanıma bu videoda hangi dilin konuşulduğunu bildirmedi, bu yüzden burada çevrilemiyor. Videoyu Seslendirme'de açıp kaynak dilini seçin veya dili algılayan bir konuşma tanıma modeli seçin.",
     "transcription_media_tool": "Yazıya dökme için ffmpeg gerekir, ancak VoiceStudio onu bulamadı veya çalıştıramadı. Ayarlar → Ses araçları bölümünü açıp İndir/Onar'ı kullanın ya da ffmpeg'i kurun (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: paket yöneticiniz) ve VoiceStudio'yu yeniden başlatın. FFMPEG_PATH değişkenini bir ffmpeg dosyasına da yönlendirebilirsiniz.",
     "transcription_pipe_lost": "Arka uç, yazıya dökme sırasında uygulamaya giden çıkış kanalını kaybetti (broken pipe). VoiceStudio'yu yeniden başlatıp tekrar deneyin.",
+    "reference_transcript_required": "Bu sesin referans klibinin, bu motorun klonlamak için ihtiyaç duyduğu bir transkripsiyonu yok. Transkripsiyonu ses profiline ekleyin veya otomatik olarak yazıya dökülmesi için bir konuşma tanıma modeli yükleyin.",
     "gpu_oom": "GPU belleği tükendi. GPU'yu çok kullanan diğer uygulamaları kapatın veya modelleri boşaltın, sonra tekrar deneyin. Ayarlar → Performans ve Aygıt bölümünden CPU'yu seçebilir veya daha küçük bir TTS motoru seçebilirsiniz.",
     "host_memory_exhausted": "Bilgisayarın belleği tükendi. Belleği çok kullanan diğer uygulamaları ve tarayıcı sekmelerini kapatın, kullanmadığınız modelleri boşaltın, daha kısa bir bölüm üretin veya daha hafif bir TTS motoru seçin.",
     "disk_full": "Disk dolu. VoiceStudio verilerinin, model önbelleğinin veya geçici klasörünün bulunduğu sürücüde yer açın ve yeniden deneyin. Ayarlar → Depolama disk kullanımını gösterir ve geçici dosyaları temizleyebilir.",
@@ -2926,7 +2946,8 @@
     "missingSpeech": "Konuşma eksik veya okunamıyor. Dışa aktarmadan önce ilgili bölümü yeniden oluşturun.",
     "timingOverflow": "Konuşma ayrılan süreyi aşıyor. Çeviriyi kısaltın veya kesin zaman aralığını ya da videoyu uzatmayı seçin.",
     "sourceChanged": "Bu dublaj oluşturulurken altyazılar değişti. Önceki parça korundu; yeni altyazıları kullanmak için yeniden oluşturun.",
-    "backgroundUnavailable": "Özgün ses korunamadı. Arka plan ayrımını ve diyalog zamanlarını kontrol edip yeniden deneyin veya yalnızca konuşmayı dışa aktarmayı seçin."
+    "backgroundUnavailable": "Özgün ses korunamadı. Arka plan ayrımını ve diyalog zamanlarını kontrol edip yeniden deneyin veya yalnızca konuşmayı dışa aktarmayı seçin.",
+    "untranslated": "Bu parçanın henüz çevirisi yok: tüm satırlar hâlâ kaynak metinle aynı. Çevirin veya kaynak dili seçin, ardından yeniden oluşturun."
   },
   "dubStyle": {
     "label": "Çeviri üslubu talimatları",
@@ -2945,6 +2966,8 @@
     "free": "Ücretsiz",
     "pro": "Pro",
     "get_pro": "Pro'yu edin",
+    "upgrade_pro": "Pro'ya yükselt",
+    "get_pro_app": "Pro uygulamasını edin",
     "sponsor_bar": "Sponsor çubuğu",
     "visible": "Görünür",
     "hideable": "Gizlenebilir",
@@ -2989,6 +3012,7 @@
       "speechCurl": "Metinden konuşmaya (curl)",
       "transcriptionCurl": "Transkripsiyon (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Konteyneri çalıştır",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n iş akışı",
@@ -3341,7 +3365,8 @@
     "denoise": "Referans gürültüsünü temizle",
     "polish": "Üretilen sesi iyileştir",
     "basics": "1× normal hızdır. Doğal zamanlama için süreyi boş bırakın.",
-    "hint": "Genellikle varsayılanları koruyun. Yönlendirme istemin etkisini ayarlar; diğer kontroller modelin sesi oluşturma şeklini değiştirir. Her seferinde birini değiştirin."
+    "hint": "Genellikle varsayılanları koruyun. Yönlendirme istemin etkisini ayarlar; diğer kontroller modelin sesi oluşturma şeklini değiştirir. Her seferinde birini değiştirin.",
+    "pauses_hint": "Boş satırlarda sessizlik ekler. 0, motorun kendi temposunu korur."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} için tek bir {{language}} modeli var, bu yüzden aksan referans sesi izler.",
@@ -4328,5 +4353,12 @@
     "unavailable": "Otomatik raporlar bu uygulama için kullanılamıyor veya devre dışı.",
     "managed": "Bu seçimi tarayıcıya bağlı masaüstü uygulamasından yönetin.",
     "save_failed": "Bu seçim kaydedilemedi. Lütfen tekrar deneyin."
+  },
+  "tray": {
+    "open": "{{app}} uygulamasını aç",
+    "start_dictation": "Dikteyi başlat",
+    "stop_dictation": "Dikteyi durdur",
+    "settings": "Ayarlar",
+    "quit": "Çık"
   }
 }

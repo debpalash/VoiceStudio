@@ -1,5 +1,5 @@
 import { PauseIcon, PlayIcon } from 'lucide-react';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isAudioProvider, type MediaPlayerProps } from '@vidstack/react';
 import WaveSurfer from 'wavesurfer.js';
@@ -60,6 +60,42 @@ export function waveformUrl(src: string, base = document.baseURI): string {
   } catch {
     return src;
   }
+}
+
+/**
+ * Longest clip that still gets a decoded waveform. WaveSurfer fetches the file a
+ * second time and decodes it to PCM, so a long recording would cost hundreds of MB;
+ * past this length the plain seek bar is used instead.
+ */
+export const WAVEFORM_MAX_SECONDS = 600;
+
+/**
+ * Whether a waveform may be decoded for a clip of this length. An unknown length
+ * (no hint and metadata not loaded yet) waits: the limit cannot be checked, and
+ * until then the seek bar is shown.
+ */
+export function waveformAllowed(duration: number): boolean {
+  return Number.isFinite(duration) && duration > 0 && duration <= WAVEFORM_MAX_SECONDS;
+}
+
+/**
+ * True once the element has been on screen. Sticky, so a waveform that was built is
+ * not torn down and refetched on scroll. Without IntersectionObserver it is always true.
+ */
+export function useSeenOnScreen(el: Element | null): boolean {
+  const [seen, setSeen] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    if (seen || !el) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setSeen(true);
+        observer.disconnect();
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el, seen]);
+  return seen;
 }
 
 /** The media's duration once known; until then the caller's hint (e.g. the take's stored length). */
@@ -152,7 +188,13 @@ function WaveformControls({
 }) {
   const { t } = useTranslation();
   const { theme, paletteId } = useTheme();
-  const container = useRef<HTMLDivElement>(null);
+  const container = useRef<HTMLDivElement | null>(null);
+  // State copy of the node so effects rerun when an error unmounts or remounts it.
+  const [containerNode, setContainerNode] = useState<HTMLDivElement | null>(null);
+  const setContainer = useCallback((node: HTMLDivElement | null) => {
+    container.current = node;
+    setContainerNode(node);
+  }, []);
   const waveform = useRef<WaveSurfer | null>(null);
   const rangeEnd = useRef<number | null>(null);
   const [waveReady, setWaveReady] = useState(false);
@@ -165,6 +207,8 @@ function WaveformControls({
   const time = useMediaState('currentTime');
   const error = useMediaState('error');
   const seek = usePlaybackSeek(source);
+  const seen = useSeenOnScreen(containerNode);
+  const wantWaveform = showWaveform && seen && waveformAllowed(duration);
   useEffect(() => {
     if (!media) return;
     return subscribeMediaPaused(media, setMediaPaused);
@@ -187,7 +231,7 @@ function WaveformControls({
   }, [player, time]);
   useEffect(() => {
     setWaveReady(false);
-    if (!showWaveform || !container.current || !media) return;
+    if (!wantWaveform || !container.current || !media) return;
     const ws = WaveSurfer.create({
       container: container.current,
       media,
@@ -209,7 +253,7 @@ function WaveformControls({
       ws.destroy();
       waveform.current = null;
     };
-  }, [media, src, height, showWaveform]);
+  }, [media, src, height, wantWaveform, containerNode]);
   useEffect(() => {
     if (container.current) waveform.current?.setOptions(waveColors(container.current));
   }, [theme, paletteId]);
@@ -236,7 +280,7 @@ function WaveformControls({
         </p>
       ) : (
         <div className="relative min-w-0 flex-1" style={{ height }}>
-          <div ref={container} className="pointer-events-none" />
+          <div ref={setContainer} className="pointer-events-none" />
           <input
             type="range"
             min={0}

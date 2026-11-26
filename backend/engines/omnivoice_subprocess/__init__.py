@@ -70,6 +70,23 @@ class OmniVoiceSubprocessBackend(SubprocessBackend):
     max_ref_seconds = 20.0
     ref_strategy = "best_window"
 
+    parent_owned_env = ("OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED",)
+
+    def extra_spawn_env(self) -> dict[str, str]:
+        """Tell the sidecar whether the user accepted the fallback tokenizer's licence.
+
+        The sidecar stays fail-closed (``main._guard_tokenizer_fallback``) and
+        may use the Hub fallback repo only with this explicit signal.
+        """
+        from services import model_acceptance
+
+        try:
+            state = model_acceptance.status(model_acceptance.FALLBACK_TOKENIZER_REPO)
+            accepted = bool(state["accepted"] or not state["required"])
+        except Exception:  # noqa: BLE001 — unknown state stays fail-closed
+            accepted = False
+        return {"OMNIVOICE_TOKENIZER_FALLBACK_ACCEPTED": "1"} if accepted else {}
+
     def generate(self, text: str, **kw):
         # The sidecar calls model.generate() directly, so it bypasses the
         # in-process prompt cache where a whole-clip transcript on an over-long

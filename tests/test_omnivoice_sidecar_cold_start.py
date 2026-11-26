@@ -112,3 +112,97 @@ def test_prefetch_stops_when_the_real_load_starts(tmp_path):
 def test_prefetch_never_raises_for_a_missing_checkpoint(tmp_path):
     sidecar._prefetch_weights(str(tmp_path / "does-not-exist"), threading.Event())
     sidecar._prefetch_weights("not-an-installed/repo-id", threading.Event())
+
+
+def _recording_send(monkeypatch, frames, beats=2):
+    """Record frames; `reached` is set once `beats` progress frames arrived."""
+    reached = threading.Event()
+    monkeypatch.setattr(sidecar, "_LOAD_HEARTBEAT_S", 0.01)
+
+    def send(_stream, obj):
+        frames.append(obj)
+        if sum(1 for f in frames if f["op"] == "progress") >= beats:
+            reached.set()
+
+    monkeypatch.setattr(sidecar, "_send", send)
+    return reached
+
+
+def test_heartbeating_emits_progress_while_the_body_is_silent(monkeypatch):
+    # #4228: any silent phase past the parent's 300s recv deadline kills the sidecar.
+    sent = []
+    reached = _recording_send(monkeypatch, sent)
+    with sidecar._heartbeating(None, "generating"):
+        assert reached.wait(5), "no heartbeat while the body was silent"
+    assert all(f["op"] == "progress" and f["stage"] == "generating" for f in sent)
+    # The beater is joined on exit: nothing is sent afterwards.
+    count = len(sent)
+    assert not [t for t in threading.enumerate() if t.name == "omnivoice-generating-heartbeat"]
+    assert len(sent) == count
+
+
+def test_synthesis_heartbeats_while_model_generate_runs(monkeypatch):
+    frames = []
+    reached = _recording_send(monkeypatch, frames)
+
+    class Model:
+        sampling_rate = 24000
+
+        def generate(self, **_kw):
+            assert reached.wait(5), "no heartbeat during generate"
+            return [object()]
+
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *_a, **_k: ("", 24000, 0))
+    monkeypatch.setattr(sidecar, "_load_model", lambda _s: Model())
+    sidecar._handle_synthesize({"text": "hello"}, None)
+    assert frames[-1]["op"] == "audio"
+    assert any(f["op"] == "progress" and f["stage"] == "generating" for f in frames)
+
+
+def test_cold_load_heartbeats_through_the_imports_before_from_pretrained(monkeypatch):
+    # The imports and checkpoint resolution ahead of from_pretrained were silent.
+    frames = []
+    reached = _recording_send(monkeypatch, frames)
+    monkeypatch.setattr(sidecar, "_model", None)
+
+    def slow_construct(_stdout, progress):
+        assert reached.wait(5), "no heartbeat during the cold load"
+        return "model"
+
+    monkeypatch.setattr(sidecar, "_construct_model", slow_construct)
+    assert sidecar._load_model(None) == "model"
+    assert any(f["stage"] == "loading_model" for f in frames)
+
+
+def test_reference_transcription_heartbeats_with_an_uncredited_stage(monkeypatch):
+    # The parent credits "loading_model" as cold-load time, so a stalled
+    # transcription must use a stage it does not credit (#4228).
+    from services import subprocess_backend as sb
+
+    frames = []
+    reached = _recording_send(monkeypatch, frames)
+    monkeypatch.setattr(sidecar, "_ensure_backend_on_path", lambda: None)
+    import services.asr_backend as asr
+    import services.tts_backend as tts
+
+    def transcribe(_ref, release_after=True):
+        assert reached.wait(5), "no heartbeat during reference transcription"
+        return "words"
+
+    monkeypatch.setattr(asr, "transcribe_reference", transcribe)
+    monkeypatch.setattr(tts, "reference_duration_s", lambda _r: 1.0)
+    monkeypatch.setattr(tts, "has_unresolved_clone_prompt", lambda *_a: False)
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *_a, **_k: ("", 24000, 0))
+
+    class Model:
+        sampling_rate = 24000
+
+        def generate(self, **_kw):
+            return [object()]
+
+    monkeypatch.setattr(sidecar, "_load_model", lambda _s: Model())
+    sidecar._handle_synthesize({"text": "hi", "ref_audio": "ref.wav"}, None)
+    stages = {f["stage"] for f in frames if f["op"] == "progress"}
+    assert "reference_asr" in stages
+    assert "reference_asr" in sb._UNCREDITED_PROGRESS_STAGES
+    assert "loading_model" not in sb._UNCREDITED_PROGRESS_STAGES

@@ -1026,7 +1026,7 @@ def explain_ffmpeg_failure(e, what, cmd=None):
 
 
 async def run_ffmpeg(cmd, timeout: float = 1800.0, capture: bool = True,
-                     job_id: "str | None" = None):
+                     job_id: "str | None" = None, env: "dict | None" = None):
     """Run an ffmpeg subprocess with concurrency cap, timeout, and proper cleanup.
 
     Returns (returncode, stdout_bytes, stderr_bytes). Raises asyncio.TimeoutError
@@ -1034,7 +1034,8 @@ async def run_ffmpeg(cmd, timeout: float = 1800.0, capture: bool = True,
 
     ``job_id`` (optional) registers the process with the dub pipeline's
     process tracker (``services.proc_registry``) so ``/dub/abort`` can kill
-    long export encodes (used by the Smart Fit batched retime).
+    long export encodes (used by the Smart Fit batched retime). ``env``
+    replaces the child's environment (default: inherit this process's).
 
     Path-injection note: every filesystem path placed in ``cmd`` by callers
     is realpath-normalised and containment-checked against its workspace
@@ -1056,7 +1057,7 @@ async def run_ffmpeg(cmd, timeout: float = 1800.0, capture: bool = True,
     try:
         async with _get_semaphore():
             for attempt in range(2):
-                proc = await _spawn_with_retry(cmd, stdout=stdout, stderr=stderr)
+                proc = await _spawn_with_retry(cmd, stdout=stdout, stderr=stderr, env=env)
                 if job_id:
                     try:
                         register_proc(job_id, proc)

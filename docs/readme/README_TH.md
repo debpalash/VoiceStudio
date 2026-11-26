@@ -120,12 +120,12 @@
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       สำหรับงานลูกค้าที่มีค่าจ้างบนเครื่องมากกว่าหนึ่งเครื่อง
       <ul>
-        <li>ใบอนุญาตเชิงพาณิชย์สำหรับงานลูกค้า ส่งให้ทางอีเมล</li>
+        <li>ใบอนุญาตเชิงพาณิชย์สำหรับโค้ดของ VoiceStudio ในงานลูกค้า ส่งให้ทางอีเมล</li>
         <li>ผู้ใช้หนึ่งคนบนอุปกรณ์สูงสุด 3 เครื่องพร้อมกัน</li>
         <li>ส่งงานไปยัง GPU เครื่องอื่นของคุณ โดยโปรเจกต์ยังอยู่ในเครื่อง</li>
         <li>ได้ฟีเจอร์และการแก้ไขใหม่ก่อนใคร</li>
       </ul>
-      <sub>รุ่นซอร์สปิด ต้องมีบัญชี คืนเงินเต็มจำนวนภายใน 7 วัน แอป AGPL-3.0 ยังคงฟรี รวมถึงการใช้เชิงพาณิชย์ตามเงื่อนไขของสัญญาอนุญาต</sub><br /><br />
+      <sub>รุ่นซอร์สปิด ต้องมีบัญชี คืนเงินเต็มจำนวนภายใน 7 วัน แอป AGPL-3.0 ยังคงฟรี รวมถึงการใช้เชิงพาณิชย์ตามเงื่อนไขของสัญญาอนุญาต ใบอนุญาตทั้งสองไม่ครอบคลุมน้ำหนักของโมเดล: น้ำหนัก OmniVoice เริ่มต้นเป็นแบบไม่เชิงพาณิชย์ (CC-BY-NC) จึงควรตรวจสอบใบอนุญาตของแต่ละโมเดลใน Model Manager ก่อนทำงานให้ลูกค้า</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">ดูแผน Pro →</a></strong>
     </td>
     <td width="50%" valign="top">

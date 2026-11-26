@@ -51,6 +51,14 @@ def ma():
 
 
 @pytest.fixture
+def fallback(ma, monkeypatch):
+    """Whether the installed OmniVoice would load the fallback tokenizer repo."""
+    state = {"needed": True}
+    monkeypatch.setattr(ma, "omnivoice_tokenizer_fallback_needed", lambda: state["needed"])
+    return state
+
+
+@pytest.fixture
 def store(monkeypatch):
     settings_store = importlib.import_module("services.settings_store")
     data: dict[str, str] = {}
@@ -60,7 +68,7 @@ def store(monkeypatch):
     return data
 
 
-def test_omnivoice_row_lists_the_tokenizer_licence(models):
+def test_omnivoice_row_lists_the_tokenizer_licence_when_fallback_needed(models, fallback):
     omni = models.get_model_catalog().get(OMNI)
     deps, complete = models._model_licence_dependencies(omni, models.model_key(omni))
     assert complete
@@ -69,6 +77,14 @@ def test_omnivoice_row_lists_the_tokenizer_licence(models):
     # The row never lists itself, and only gated repos are offered.
     assert OMNI not in ids
     assert all(d["required"] for d in deps)
+
+
+def test_omnivoice_row_omits_the_tokenizer_when_bundled(models, fallback):
+    fallback["needed"] = False
+    omni = models.get_model_catalog().get(OMNI)
+    deps, complete = models._model_licence_dependencies(omni, models.model_key(omni))
+    assert complete
+    assert TOKENIZER not in [d["repo_id"] for d in deps]
 
 
 def test_rows_without_extra_gated_repos_list_no_dependencies(models):
@@ -109,7 +125,7 @@ def test_engine_lookup_failure_is_not_reported_as_a_complete_list(models, monkey
     assert models._engine_gate_covers_all_rows("no-such-engine") is False
 
 
-def test_failed_engine_lookup_keeps_healthy_engines_dependencies(models, monkeypatch):
+def test_failed_engine_lookup_keeps_healthy_engines_dependencies(models, fallback, monkeypatch):
     omni = dict(models.get_model_catalog().get(OMNI))
     omni["engines"] = ["no-such-engine", "broken", *omni.get("engines", [])]
     real = models._engine_gate_covers_all_rows
@@ -135,7 +151,7 @@ def test_selectable_checkpoint_rows_list_no_alternative_models(models):
     assert OUTETTS not in ids
 
 
-def test_list_models_payload_carries_license_dependencies(models, monkeypatch):
+def test_list_models_payload_carries_license_dependencies(models, fallback, monkeypatch):
     monkeypatch.setattr(models, "_scan_cache_on_disk", lambda: {})
     monkeypatch.setattr(models, "invalidate_cache", lambda: None)
     rows = {row["repo_id"]: row for row in models.list_models()["models"]}
@@ -145,7 +161,7 @@ def test_list_models_payload_carries_license_dependencies(models, monkeypatch):
     assert rows[KOKORO]["license_dependencies"] == []
 
 
-def test_accepting_only_the_rows_own_licence_still_blocks_the_engine(ma, store):
+def test_accepting_only_the_rows_own_licence_still_blocks_the_engine(ma, store, fallback):
     with pytest.raises(ma.ModelLicenceNotAccepted):
         ma.ensure_engine_accepted("omnivoice")
     ma.accept(OMNI, ma.status(OMNI)["fingerprint"])
@@ -154,7 +170,15 @@ def test_accepting_only_the_rows_own_licence_still_blocks_the_engine(ma, store):
     assert [m["repo_id"] for m in excinfo.value.models] == [TOKENIZER]
 
 
-def test_accepting_every_dependency_clears_the_engine_gate(ma, store):
+def test_bundled_tokenizer_gates_only_on_the_engines_own_licence(ma, store, fallback):
+    """#4329: a normal install never asks for the unreviewed fallback repo."""
+    fallback["needed"] = False
+    assert TOKENIZER not in ma.repos_for_engine("omnivoice")
+    ma.accept(OMNI, ma.status(OMNI)["fingerprint"])
+    ma.ensure_engine_accepted("omnivoice")
+
+
+def test_accepting_every_dependency_clears_the_engine_gate(ma, store, fallback):
     for repo_id in (OMNI, TOKENIZER):
         ma.accept(repo_id, ma.status(repo_id)["fingerprint"])
     ma.ensure_engine_accepted("omnivoice")
@@ -167,3 +191,51 @@ def models_pending(ma) -> list[str]:
         for repo_id in ma.repos_for_engine("omnivoice")
         if ma.status(repo_id)["required"] and not ma.status(repo_id)["accepted"]
     ]
+
+
+def _fake_hf(monkeypatch, ma, snapshot_dir, *, missing=False):
+    import huggingface_hub
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    mm = importlib.import_module("services.omnivoice_checkpoint")
+    monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: OMNI)
+
+    def snapshot_download(repo, local_files_only=False, **_):
+        assert local_files_only, "the gate must never touch the network"
+        if missing:
+            raise LocalEntryNotFoundError("not cached")
+        return str(snapshot_dir)
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", snapshot_download)
+
+
+def test_fallback_check_reads_the_installed_snapshot(ma, monkeypatch, tmp_path):
+    _fake_hf(monkeypatch, ma, tmp_path)
+    assert ma.omnivoice_tokenizer_fallback_needed() is True  # no audio_tokenizer/
+    (tmp_path / "audio_tokenizer").mkdir()
+    assert ma.omnivoice_tokenizer_fallback_needed() is False
+
+
+def test_fallback_check_not_installed_needs_nothing(ma, monkeypatch, tmp_path):
+    _fake_hf(monkeypatch, ma, tmp_path, missing=True)
+    assert ma.omnivoice_tokenizer_fallback_needed() is False
+
+
+def test_fallback_check_fails_closed(ma, monkeypatch):
+    mm = importlib.import_module("services.omnivoice_checkpoint")
+
+    def boom():
+        raise RuntimeError("unreadable")
+
+    monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", boom)
+    assert ma.omnivoice_tokenizer_fallback_needed() is True
+
+
+def test_local_checkpoint_folder_never_needs_the_hub_fallback(ma, monkeypatch, tmp_path):
+    mm = importlib.import_module("services.omnivoice_checkpoint")
+    monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: str(tmp_path))
+    # The loader rejects a local folder lacking audio_tokenizer/ and never uses
+    # the Hub fallback for it, so there is nothing to accept either way.
+    assert ma.omnivoice_tokenizer_fallback_needed() is False
+    (tmp_path / "audio_tokenizer").mkdir()
+    assert ma.omnivoice_tokenizer_fallback_needed() is False

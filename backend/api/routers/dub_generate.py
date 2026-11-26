@@ -46,7 +46,7 @@ from services.dub_speech_checkpoints import SpeechCheckpoints
 from services.dub_speech_preview import preview_path, save_preview
 from services.dub_issues import cue_issues
 from services.fit_planner import FitParams, plan_fit
-from services.watermark import mark_synthetic, will_mark
+from services.watermark import mark_synthetic, mark_synthetic_async, will_mark
 from services import dub_pipeline, dub_resume
 from services.speaker_clone import auto_profile_id
 from api.routers.dub_core import _get_job, _safe_lang_or_400, _save_job
@@ -66,7 +66,7 @@ def _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts):
         return
     for index, segment in enumerate(req.segments):
         sid = seg_ids[index] if index < len(seg_ids) else f"seg_{index}"
-        if segment.end - segment.start <= 0.05 or not spoken_texts[index].strip() or (regen_only is not None and sid not in regen_only):
+        if segment.end - segment.start <= MIN_SPOKEN_SEGMENT_S or not spoken_texts[index].strip() or (regen_only is not None and sid not in regen_only):
             continue
         check(segment.target_lang or req.language)
 
@@ -169,6 +169,8 @@ def _underrun_min_rate() -> float:
 # colliding with the next speaker's onset.
 GAP_OVERFLOW_MAX_S = 0.25
 GAP_OVERFLOW_BUFFER_S = 0.05
+# A row this short is rendered as silence, so it never counts as speech.
+MIN_SPOKEN_SEGMENT_S = 0.05
 
 
 # Second-pass ASR annotations (/dub/qc) describe one rendered track. They are
@@ -180,6 +182,45 @@ QC_FIELDS = (
     "qc_measured_start",
     "qc_measured_end",
 )
+
+
+def _untranslated_track_error(job: dict, req: DubRequest, lang_code: str) -> str | None:
+    """Detect a render that would speak the source language as the target (#4347).
+
+    The editor falls back to the source text when a row has no translation, so
+    a job that never translated (e.g. source language undetected, translate
+    refused with ``source_language_required``) still reaches this endpoint with
+    every row equal to the source. Hours later the "target" track is the
+    original language. Refuse before spending TTS time unless the job is known
+    to be in the target language already. Returns the reason, or ``None``.
+    """
+    target = lang_code.split("-")[0].lower()
+    if target == "und":
+        return None
+    source = str(job.get("source_lang_override") or job.get("source_lang") or "").split("-")[0].lower()
+    if source and source == target:
+        return None
+    if not source and not job.get("source_lang_detection_missing"):
+        # Legacy job that never recorded a source language: nothing proves
+        # the rows should differ, so keep its behaviour.
+        return None
+    existing = [s for s in (job.get("segments") or []) if isinstance(s, dict)]
+    by_id = {str(s["id"]): s for s in existing if s.get("id") is not None}
+    ids = req.segment_ids or []
+    speakable = unchanged = 0
+    for i, seg in enumerate(req.segments):
+        text = (seg.text or "").strip()
+        if seg.end - seg.start <= MIN_SPOKEN_SEGMENT_S or not any(ch.isalpha() for ch in text):
+            continue
+        prev = by_id.get(str(ids[i])) if i < len(ids) and ids[i] is not None else None
+        if prev is None and i < len(existing):
+            prev = existing[i]
+        speakable += 1
+        if prev is not None and text == str(prev.get("text_original") or prev.get("text") or "").strip():
+            unchanged += 1
+    if speakable and unchanged == speakable:
+        return "no_translation"
+    return None
 
 
 def _sync_job_segments(job: dict, req: DubRequest) -> None:
@@ -594,6 +635,19 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
             "code": "dub_cue_too_short", "issues": issues,
             "message": "A subtitle containing speech has only 0.05 seconds or less. Adjust its timing or combine it with a neighbouring cue before generation.",
         })
+
+    if _untranslated_track_error(job, req, lang_code):
+        logger.warning(
+            "Refusing dub %s/%s: every segment still equals its source text (source_lang=%s)",
+            log_safe(job_id), log_safe(lang_code), log_safe(str(job.get("source_lang") or job.get("source_lang_override") or "unknown")),
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "dub_untranslated",
+                "message": "This track has no translation yet: every line still matches the source text. Translate it or choose the source language, then generate again.",
+            },
+        )
 
     # ── Engine resolution (issue #312 class) ────────────────────────────────
     # Every rendered segment clones either source speech or a saved profile,
@@ -1158,7 +1212,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
             yield f"data: {json.dumps({'type': 'progress', 'current': i, 'total': total, 'text': seg.text[:50]})}\n\n"
 
             seg_duration = seg.end - seg.start
-            if (seg_duration <= 0.05 and not flexible_timing) or not spoken_texts[i].strip():
+            if (seg_duration <= MIN_SPOKEN_SEGMENT_S and not flexible_timing) or not spoken_texts[i].strip():
                 if planning:
                     yield f"data: {json.dumps({'type': 'plan_segment', 'segment_id': str(seg_id), 'action': 'silence'})}\n\n"
                     continue
@@ -1174,7 +1228,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                         f"mix_{seg_id}",
                     )
                 )
-                if seg_duration > 0.05 and seg.text.strip() and not spoken_texts[i].strip():
+                if seg_duration > MIN_SPOKEN_SEGMENT_S and seg.text.strip() and not spoken_texts[i].strip():
                     # An explicit deletion replaces any older spoken cache at
                     # the same guarded publication boundary as generated audio.
                     try:
@@ -1569,7 +1623,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                     )
                     if (
                         candidate_index in _batched_audio
-                        or (candidate.end - candidate.start <= 0.05 and not flexible_timing)
+                        or (candidate.end - candidate.start <= MIN_SPOKEN_SEGMENT_S and not flexible_timing)
                         or not spoken_texts[candidate_index].strip()
                         or (
                             regen_only is not None
@@ -1870,6 +1924,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
 
                 # RVC needs the WAV on disk, so write it immediately only
                 # when RVC is active (uncommon path).
+                _rvc_converted = False
                 if rvc_is_enabled():
                     seg_wav_path = _staged_seg_path(seg_id)
                     atomic_save_wav(seg_wav_path, audio_tensor, backend.sample_rate)
@@ -1879,15 +1934,18 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                         rvc_wav, rvc_sr = load_audio(seg_wav_path)
                         if rvc_sr == backend.sample_rate:
                             audio_tensor = rvc_wav
+                            _rvc_converted = True
 
                     except Exception as e:
                         yield f"data: {json.dumps({'type': 'warning', 'segment': i, 'message': f'RVC skipped: {str(e)[:120]}'})}\n\n"
 
                 # Private checkpoints and journal recovery already carry the
-                # mark. RVC changes the waveform and needs a fresh mark.
-                if rvc_is_enabled():
-                    audio_tensor = mark_synthetic(audio_tensor, backend.sample_rate,
-                                                  context="dub_generate.segment")
+                # mark (checkpoints mark fresh TTS exactly once as they keep
+                # it). Only a waveform RVC actually replaced needs a new mark.
+                if _rvc_converted:
+                    audio_tensor = await mark_synthetic_async(
+                        audio_tensor, backend.sample_rate, context="dub_generate.segment"
+                    )
 
                 if journal is not None and _used_recovery:
                     _, _validated_model_fp, _ = await _run_journal_io(_model_folder_fingerprint)

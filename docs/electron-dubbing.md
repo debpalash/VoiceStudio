@@ -85,6 +85,10 @@ also answer metadata-only `HEAD` requests, including after backend restart, with
 reading the source body or starting a preview mux. Local NLLB batches scale with available accelerator memory while
 bounding batch multiplied by beam count.
 
+Fresh dub segments use the existing watermark worker before they enter recovery
+storage or the published track, keeping API requests responsive while marking runs.
+Recovered segments retain their existing mark and are not marked a second time.
+
 The backend remains responsible for separation, ASR, speaker cloning, translation,
 TTS, fitting, mixing and export. When the vocals were separated, each line starts on
 detected speech and ends after its last spoken sound (#3419): a sigh, breath, footstep
@@ -147,6 +151,8 @@ generation actions.
 Import .srt replaces the current segment text and timings after source preparation.
 The backend retains voice references only where their timing overlaps the new cues.
 Malformed, overlapping, or duration-clamped cue counts remain visible in the sidebar.
+Timestamp millisecond fields longer than three digits are skipped and counted as
+malformed, rather than truncated; one- and two-digit millisecond fields remain accepted.
 Failed imports preserve the current edits. Generated track buttons clear on successful
 replacement to avoid presenting older audio as the new subtitles' output.
 Ruby pronunciation guides in SRT/VTT captions are excluded from the spoken text

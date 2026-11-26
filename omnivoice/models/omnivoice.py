@@ -91,8 +91,11 @@ _AUDIO_TOKENIZER_FALLBACK_REPO = "eustlb/higgs-audio-v2-tokenizer"
 class OmniVoiceModelAssetError(RuntimeError):
     """A fixed nested model repository failed while OmniVoice was loading."""
 
-    def __init__(self, repository_id: str):
-        super().__init__(f"Failed to load OmniVoice model asset: {repository_id}")
+    def __init__(self, repository_id: str, detail: str = ""):
+        super().__init__(
+            f"Failed to load OmniVoice model asset: {repository_id}"
+            + (f" ({detail})" if detail else "")
+        )
         self.repository_id = repository_id
 
 
@@ -289,7 +292,7 @@ def _audio_tokenizer_cls():
     return HiggsAudioV2TokenizerModel
 
 
-def _resolve_snapshot_dir(checkpoint) -> str:
+def _resolve_snapshot_dir(checkpoint, revision=None) -> str:
     """Local snapshot directory for ``checkpoint`` (a local dir or a HF repo id).
 
     Cache-first (#959): a COMPLETE local cache is resolved with
@@ -300,16 +303,20 @@ def _resolve_snapshot_dir(checkpoint) -> str:
     already-installed model. Only a cache miss / incomplete cache falls
     through to the original network ``snapshot_download``, whose errors
     (auth, connectivity, proxy) surface exactly as before.
+
+    ``revision`` (a reviewed commit SHA) pins both lookups so a moving Hub
+    ``main`` can never resolve, or download, a different snapshot.
     """
     if os.path.isdir(checkpoint):
         return checkpoint
     from huggingface_hub import snapshot_download
 
+    pin = {"revision": revision} if revision else {}
     try:
-        return snapshot_download(checkpoint, local_files_only=True)
+        return snapshot_download(checkpoint, local_files_only=True, **pin)
     except Exception:
         # Miss/incomplete (LocalEntryNotFoundError et al.) → network path.
-        return snapshot_download(checkpoint)
+        return snapshot_download(checkpoint, **pin)
 
 
 _DEFAULT_ASR_MODEL = "openai/whisper-large-v3-turbo"
@@ -550,9 +557,25 @@ class OmniVoice(PreTrainedModel):
             raise FileNotFoundError("The local OmniVoice checkpoint no longer exists")
         if local_checkpoint:
             kwargs["local_files_only"] = True
+        # A reviewed commit SHA for a Hub repo id (the host resolves it; this
+        # package knows nothing of the pin registry). A local directory has no
+        # revision. ``tokenizer_fallback_revision`` pins the fallback repo.
+        revision = kwargs.pop("revision", None)
+        if local_checkpoint:
+            revision = None
+        elif revision:
+            kwargs["revision"] = revision
+        tokenizer_fallback_revision = kwargs.pop("tokenizer_fallback_revision", None)
         train_mode = kwargs.pop("train", False)
         load_asr = kwargs.pop("load_asr", False)
         asr_model_name = kwargs.pop("asr_model_name", _DEFAULT_ASR_MODEL)
+        asr_revision = kwargs.pop("asr_revision", None)
+        # Called with the fallback repo id right before it is used; the host
+        # raises there if the user has not accepted that repo's licence.
+        # Fail closed: with no guard the Hub fallback is refused unless the
+        # caller opts out explicitly (standalone CLI/training tools).
+        tokenizer_fallback_guard = kwargs.pop("tokenizer_fallback_guard", None)
+        allow_tokenizer_fallback = kwargs.pop("allow_tokenizer_fallback", False)
 
         # Suppress noisy INFO logs from transformers/huggingface_hub during
         # loading. Scoped to those two logger trees — NOT logging.disable(),
@@ -588,10 +611,15 @@ class OmniVoice(PreTrainedModel):
                 # Resolve local path for audio tokenizer subdirectory —
                 # cache-first so a proxy-broken HTTP session can't fail an
                 # installed model (#959; see _resolve_snapshot_dir).
-                resolved_path = _resolve_snapshot_dir(pretrained_model_name_or_path)
+                resolved_path = _resolve_snapshot_dir(
+                    pretrained_model_name_or_path,
+                    **({"revision": revision} if revision else {}),
+                )
 
+                tokenizer_pin = {"revision": revision} if revision else {}
                 model.text_tokenizer = AutoTokenizer.from_pretrained(
-                    pretrained_model_name_or_path, local_files_only=local_checkpoint
+                    pretrained_model_name_or_path, local_files_only=local_checkpoint,
+                    **tokenizer_pin,
                 )
 
                 audio_tokenizer_path = os.path.join(resolved_path, "audio_tokenizer")
@@ -601,8 +629,22 @@ class OmniVoice(PreTrainedModel):
                         raise FileNotFoundError("The local OmniVoice checkpoint is missing audio_tokenizer")
                     # Fallback to the HuggingFace Hub path of transformers'
                     # HiggsAudioV2Tokenizer if the local subdirectory doesn't exist.
+                    if tokenizer_fallback_guard is not None:
+                        tokenizer_fallback_guard(_AUDIO_TOKENIZER_FALLBACK_REPO)
+                    elif not allow_tokenizer_fallback:
+                        raise OmniVoiceModelAssetError(
+                            _AUDIO_TOKENIZER_FALLBACK_REPO,
+                            "the checkpoint has no bundled audio_tokenizer and this "
+                            "caller has no licence guard for the fallback tokenizer",
+                        )
                     audio_tokenizer_path = _AUDIO_TOKENIZER_FALLBACK_REPO
 
+                audio_pin = (
+                    {"revision": tokenizer_fallback_revision}
+                    if tokenizer_fallback_revision
+                    and audio_tokenizer_path == _AUDIO_TOKENIZER_FALLBACK_REPO
+                    else {}
+                )
                 # higgs-audio-v2-tokenizer does not support MPS (output channels > 65536)
                 tokenizer_device = (
                     "cpu" if str(model.device).startswith("mps") else model.device
@@ -610,10 +652,11 @@ class OmniVoice(PreTrainedModel):
                 try:
                     model.audio_tokenizer = _audio_tokenizer_cls().from_pretrained(
                         audio_tokenizer_path, device_map=tokenizer_device,
-                        local_files_only=local_checkpoint,
+                        local_files_only=local_checkpoint, **audio_pin,
                     )
                     model.feature_extractor = AutoFeatureExtractor.from_pretrained(
-                        audio_tokenizer_path, local_files_only=local_checkpoint
+                        audio_tokenizer_path, local_files_only=local_checkpoint,
+                        **audio_pin,
                     )
                 except Exception as exc:
                     if audio_tokenizer_path != _AUDIO_TOKENIZER_FALLBACK_REPO:
@@ -627,7 +670,7 @@ class OmniVoice(PreTrainedModel):
                 model.duration_estimator = RuleDurationEstimator()
 
                 if load_asr:
-                    model.load_asr_model(model_name=asr_model_name)
+                    model.load_asr_model(model_name=asr_model_name, revision=asr_revision)
         finally:
             for _lg, _lvl in _prev_levels:
                 _lg.setLevel(_lvl)
@@ -643,11 +686,13 @@ class OmniVoice(PreTrainedModel):
     # ASR support (optional, for auto-transcription)
     # -------------------------------------------------------------------
 
-    def load_asr_model(self, model_name: str = _DEFAULT_ASR_MODEL):
+    def load_asr_model(self, model_name: str = _DEFAULT_ASR_MODEL, revision=None):
         """Load a Whisper ASR model for reference audio transcription.
 
         Args:
             model_name: HuggingFace model name for the Whisper model.
+            revision: Reviewed commit SHA for a Hub repo id (the host resolves
+                it). Ignored for a local directory.
         """
         from transformers import pipeline as hf_pipeline
 
@@ -659,11 +704,13 @@ class OmniVoice(PreTrainedModel):
         asr_dtype = (
             torch.float16 if str(self.device).startswith("cuda") else torch.float32
         )
+        pin = {"revision": revision} if revision and not os.path.isdir(model_name) else {}
         self._asr_pipe = hf_pipeline(
             "automatic-speech-recognition",
             model=model_name,
             dtype=asr_dtype,
             device_map=self.device,
+            **pin,
         )
         logger.info("ASR model loaded on %s.", self.device)
         _diag(f"ASR loaded dtype={asr_dtype} device={self.device}")
@@ -1871,6 +1918,22 @@ def _mask_mod_packed(document_ids, b, h, q_idx, kv_idx):
     return same_doc
 
 
+def _base_language_candidates(language: str) -> list:
+    """Base-language spellings of a regional form.
+
+    ``pt-BR`` / ``pt_br`` / ``zh-Hans`` -> ``pt`` / ``zh``; the picker's
+    ``Portuguese (Brazil)`` -> ``Portuguese``. Plain input yields nothing.
+    """
+    text = " ".join(language.split())
+    out = []
+    if "(" in text and text.endswith(")"):
+        out.append(text.split("(", 1)[0].strip())
+    parts = re.split(r"[-_]", text)
+    if len(parts) > 1 and " " not in text:
+        out.append(parts[0])
+    return [c for c in out if c]
+
+
 def _resolve_language(language: Optional[str]) -> Union[str, None]:
     from omnivoice.utils.lang_map import (
         APP_LANGUAGE_IDS,
@@ -1879,16 +1942,27 @@ def _resolve_language(language: Optional[str]) -> Union[str, None]:
         LANG_NAME_TO_ID,
     )
 
+    def _lookup_language(value: str) -> Union[str, None]:
+        if value in LANG_IDS:
+            return value
+        key = value.lower()
+        if key in LANG_NAME_TO_ID:
+            return LANG_NAME_TO_ID[key]
+        if key in LANG_IDS:
+            return key
+        return APP_LANGUAGE_NAMES.get(key) or APP_LANGUAGE_IDS.get(key)
+
     if language is None or language.lower() == "none":
         return None
-    if language in LANG_IDS:
-        return language
-    key = language.lower()
-    if key in LANG_NAME_TO_ID:
-        return LANG_NAME_TO_ID[key]
-    alias = APP_LANGUAGE_NAMES.get(key) or APP_LANGUAGE_IDS.get(key)
-    if alias:
-        return alias
+    resolved = _lookup_language(language)
+    if resolved:
+        return resolved
+    # Region-tagged ("pt-BR", "es_MX") and picker variant ("Portuguese
+    # (Brazil)") forms speak the base language; the dialect is applied upstream.
+    for base in _base_language_candidates(language):
+        resolved = _lookup_language(base)
+        if resolved:
+            return resolved
     logger.warning(
         f"Language '{language}' is not recognized. "
         f"Please use a valid language ID (e.g., 'en', 'zh', 'ja', 'de') "

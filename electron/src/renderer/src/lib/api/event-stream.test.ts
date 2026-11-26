@@ -13,9 +13,9 @@ function stream(text: string) {
     }),
   );
 }
-it('preserves named events, UTF-8 and CRLF split across arbitrary chunks', async () => {
+it.each(['\r\n', '\r'])('preserves named events and UTF-8 across chunks with %j endings', async (eol) => {
   vi.mocked(apiFetch).mockResolvedValueOnce(
-    stream('event: final\r\ndata: {"text":"caf\u00e9"}\r\n\r\n'),
+    stream(['event: final', 'data: {"text":"caf\u00e9"}', '', ''].join(eol)),
   );
   const seen = vi.fn(() => true);
   await consumeTaskStream('/task', seen);
@@ -55,4 +55,55 @@ it('opens the licence dialog for a dub SSE error carrying model_licence_required
   window.removeEventListener('ov:model-licence-required', seen);
   expect(seen).toHaveBeenCalledTimes(1);
   expect(events).toHaveBeenCalledTimes(1);
+});
+it('dispatches a CR-terminated final event while the stream stays open', async () => {
+  // One chunk, then the server keeps the connection open: the terminal
+  // event must not wait for another byte or for end-of-stream.
+  const bytes = new TextEncoder().encode('data: {"type":"done"}\r\r');
+  vi.mocked(apiFetch).mockResolvedValueOnce(
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes);
+        },
+      }),
+    ),
+  );
+  const seen = vi.fn((event) => event.type === 'done');
+  await consumeTaskStream('/task', seen);
+  expect(seen).toHaveBeenCalledExactlyOnceWith({ type: 'done' });
+});
+it('treats a CRLF split across chunks as one line ending', async () => {
+  const encoder = new TextEncoder();
+  vi.mocked(apiFetch).mockResolvedValueOnce(
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: {"type":"done",\r'));
+          controller.enqueue(encoder.encode('\ndata: "ok":true}\r\n\r\n'));
+          controller.close();
+        },
+      }),
+    ),
+  );
+  const seen = vi.fn((event) => event.type === 'done');
+  await consumeTaskStream('/task', seen);
+  expect(seen).toHaveBeenCalledExactlyOnceWith({ type: 'done', ok: true });
+});
+it('delivers completion when a CRLF is split and the next chunk is a lone LF', async () => {
+  const encoder = new TextEncoder();
+  vi.mocked(apiFetch).mockResolvedValueOnce(
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const part of ['data: {"type":"progress"}\r', '\n', '\ndata: {"type":"done"}\n\n'])
+            controller.enqueue(encoder.encode(part));
+          controller.close();
+        },
+      }),
+    ),
+  );
+  const seen = vi.fn((event) => event.type === 'done');
+  await consumeTaskStream('/task', seen);
+  expect(seen.mock.calls.map(([event]) => event.type)).toEqual(['progress', 'done']);
 });

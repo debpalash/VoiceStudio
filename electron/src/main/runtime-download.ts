@@ -2,6 +2,27 @@ import { get } from 'node:https';
 import { ProxyAgent } from 'proxy-agent';
 
 /** Resolve the setup environment without changing the desktop process environment. */
+function ipv4(host: string): number | null {
+  const parts = host.split('.');
+  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part) && +part <= 255))
+    return null;
+  return parts.reduce((sum, part) => sum * 256 + +part, 0);
+}
+
+/** NO_PROXY `a.b.c.d/len` entries against an IP-literal hostname. */
+function inCidr(hostname: string, cidr: string): boolean {
+  const parts = cidr.split('/');
+  if (parts.length !== 2 || !/^\d{1,2}$/.test(parts[1])) return false;
+  const [base, bits] = parts;
+  const address = ipv4(hostname);
+  const network = ipv4(base);
+  const length = Number(bits);
+  if (address === null || network === null || !Number.isInteger(length)) return false;
+  if (length < 0 || length > 32) return false;
+  const size = 2 ** (32 - length);
+  return Math.floor(address / size) === Math.floor(network / size);
+}
+
 export function setupProxyForUrl(raw: string, env: NodeJS.ProcessEnv): string {
   const url = new URL(raw);
   const value = (key: string) => env[key.toLowerCase()] || env[key.toUpperCase()] || '';
@@ -11,14 +32,26 @@ export function setupProxyForUrl(raw: string, env: NodeJS.ProcessEnv): string {
     .split(/[,\s]+/)
     .filter(Boolean)) {
     if (entry === '*') return '';
-    const match = /^(.*):(\d+)$/.exec(entry);
+    // A trailing `:port` is a port qualifier only when the host part is
+    // unambiguous: a bracketed IPv6 (`[::1]:8443`) or a colon-free host
+    // (`example.test:8443`). In a bare IPv6 address (`::1`, `fe80::1`) the
+    // tail digits are part of the address — downloadProxyEnv injects bare
+    // `::1` into NO_PROXY, so treating it as host+port skipped the entry
+    // for every target port and proxied loopback traffic.
+    const portQualified = /^\[[^\]]*\]:\d+$/.test(entry) || /^[^:]+:\d+$/.test(entry);
+    const match = portQualified ? /^(.*):(\d+)$/.exec(entry) : null;
     if (match && match[2] !== port) continue;
     const host = match?.[1] ?? entry;
-    const suffix = host.replace(/^\*/, '');
+    if (entry.includes('/') && inCidr(url.hostname, entry)) return '';
+    // IPv6 entries match the hostname either way a URL may spell it: the
+    // WHATWG URL keeps brackets (`[::1]`), NO_PROXY commonly does not.
+    const bareHostname = url.hostname.replace(/^\[/, '').replace(/\]$/, '');
+    const entryHost = host.replace(/^\[/, '').replace(/\]$/, '');
+    const suffix = entryHost.replace(/^\*/, '');
     if (
-      url.hostname === host ||
-      (host.startsWith('.') && url.hostname === host.slice(1)) ||
-      (/^[.*]/.test(host) && url.hostname.endsWith(suffix))
+      bareHostname === entryHost ||
+      (entryHost.startsWith('.') && bareHostname === entryHost.slice(1)) ||
+      (/^[.*]/.test(entryHost) && bareHostname.endsWith(suffix))
     )
       return '';
   }

@@ -317,14 +317,17 @@
     "test_global_hint": "僅預覽全球條目 — 選擇一種語言以包含依語言限定的條目。",
     "test_error": "預覽無法使用 — 無法連線後端。",
     "backup_title": "備份與還原",
-    "backup_hint": "將字典下載為 JSON 檔案，或從先前的匯出中匯入條目。",
+    "backup_hint": "將詞典下載為 JSON 或 PLS 詞典，或匯入其中任一種。其他語音服務的 PLS 詞典同樣可用。",
     "export": "匯出 JSON",
+    "export_pls": "匯出 PLS",
     "import": "匯入 JSON",
-    "import_error": "無法匯入該檔案 — 需要發音匯出的 JSON。",
+    "import_error": "無法匯入該檔案 — 需要發音匯出（JSON）或 PLS 詞典。",
     "import_replace_prompt_one": "要用匯入的檔案取代現有的 {{count}} 個條目嗎？選擇「否」可將匯入的條目一併新增。",
     "import_replace_prompt_other": "要用匯入的檔案取代現有的 {{count}} 個條目嗎？選擇「否」可將匯入的條目一併新增。",
     "import_done_one": "已匯入 {{count}} 個條目。",
     "import_done_other": "已匯入 {{count}} 個條目。",
+    "import_skipped_one": "已略過 {{count}} 個項目：不支援其音標。",
+    "import_skipped_other": "已略過 {{count}} 個項目：不支援其音標。",
     "entries_count_one": "{{count}} 個條目",
     "entries_count_other": "{{count}} 個條目",
     "scope_language": "語言",
@@ -945,7 +948,8 @@
     "retry": "再試一次",
     "confirm": "確認",
     "details": "詳細資料",
-    "unknown": "未知"
+    "unknown": "未知",
+    "link_blocked": "無法開啟此連結。僅允許網頁和電子郵件連結。"
   },
   "dubWorkspace": {
     "transcriptIssues": "轉錄問題",
@@ -1337,6 +1341,9 @@
     "terminal_command_added": "已加入。開啟新的終端機視窗即可使用 voicestudio。",
     "terminal_command_failed": "無法將 voicestudio 加入終端機。請確認你的主資料夾不是唯讀的，然後再試一次。",
     "terminal_command_conflict": "{{path}} 屬於另一個安裝，因此 VoiceStudio 未作變更。",
+    "close_to_tray": "關閉視窗後在系統匣中繼續執行",
+    "close_to_tray_desc": "關閉視窗時 VoiceStudio 會隱藏到系統匣而不是結束，執行中的工作會繼續。可從系統匣圖示重新開啟，並在系統匣選單中選擇「結束」來真正結束。在部分 Linux 桌面上，系統匣圖示需要 AppIndicator 支援；再次啟動 VoiceStudio 也會重新開啟視窗。",
+    "close_to_tray_failed": "無法儲存此設定。請再試一次。",
     "review_mode_on": "評論",
     "review_mode_off": "速射",
     "translate_agent": "代理適配",
@@ -1364,6 +1371,7 @@
     "gpu_report_state_nvidia_rocm_build": "找到了 {{gpu}}，但此 PyTorch 是 AMD ROCm 版本，無法驅動 NVIDIA GPU。",
     "gpu_report_state_intel_unsupported": "找到了 {{gpu}}，但已安裝的引擎都無法使用 Intel GPU，因此所有工作都在 CPU 上執行。",
     "gpu_report_state_kernels_missing": "找到了 {{gpu}}，但此 PyTorch 版本（{{torch}}）沒有其計算架構對應的核心，因此引擎在 CPU 上執行。",
+    "gpu_report_torch_fallback": "安裝程式已為此 GPU 嘗試 CUDA 12.6 版 PyTorch,但無法使用該顯示卡,因此 PyTorch 引擎仍在 CPU 上執行。原因:{{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} 是較舊的 NVIDIA GPU（GTX 900 / 1000 系列或更早）。此 PyTorch 組建（{{torch}}）已不再支援該世代，因此 PyTorch 引擎在 CPU 上執行。自帶 Vulkan 執行環境的引擎仍可使用該 GPU。",
     "gpu_report_state_unknown": "無法判斷 GPU 狀態。",
     "gpu_report_option_vulkan_engines": "使用自帶 GPU 執行環境的引擎：audio.cpp 透過 Vulkan 在 AMD Radeon GPU 上執行（設定 → 模型 → 安裝執行環境）。",
@@ -1619,7 +1627,8 @@
     "open": "開啟「{{name}}」並取代目前的草稿？請先儲存目前的工作。",
     "save_copy": "儲存副本",
     "new": "新增專案",
-    "new_confirm": "建立新的空白專案？已儲存的專案維持不變；目前草稿中未儲存的變更將會遺失。"
+    "new_confirm": "建立新的空白專案？已儲存的專案維持不變；目前草稿中未儲存的變更將會遺失。",
+    "delete_hint": "僅從清單中移除已儲存的專案。媒體檔案和聲音均保留。"
   },
   "sidebar": {
     "save_project": "儲存配音項目",
@@ -1870,7 +1879,12 @@
     "cast_note_one": "{{names}} 尚未分配聲音，將使用主要聲音朗讀。請在「角色」中選擇聲音。",
     "cast_note_other": "{{names}} 尚未分配聲音，將使用主要聲音朗讀。請在「角色」中選擇聲音。",
     "line_gap": "行間停頓",
-    "paragraph_gap": "段落間停頓"
+    "paragraph_gap": "段落間停頓",
+    "result_other_connection": "此已儲存的音訊屬於另一個 VoiceStudio 連線。請切換回該連線以播放音訊。",
+    "result_connection_unknown": "請連接本機引擎或遠端電腦，以顯示已儲存的音訊。",
+    "result_legacy": "此較早儲存的結果沒有連線記錄。請在此連線中尋找它的檔案名稱；找到的可能是另一個檔案。",
+    "result_check_audio": "檢查此連線中的已儲存音訊",
+    "result_recovery_failed": "此連線中沒有該已儲存的音訊。請切換回原本的連線，或重新產生音訊。"
   },
   "credentials": {
     "microsoft_key": "微軟翻譯金鑰",
@@ -2021,6 +2035,7 @@
     "setup_wrong_architecture": "這是透過 Rosetta 在 Apple Silicon Mac 上執行的 VoiceStudio Intel (x64) 版本，因此無法安裝本機 AI 後端。請結束應用程式，覆蓋安裝 Apple Silicon (arm64) 版 DMG 後重新開啟——你的聲音與專案都會保留。",
     "setup_missing_system_library": "此 Windows 系統缺少 PyTorch 音訊擴充功能所需的 Microsoft Visual C++ 2015-2022 可再散布元件 (x64)。請從 Microsoft 安裝後按一下重試。",
     "setup_outdated_system_library": "此 Windows 系統上的 Microsoft Visual C++ 可轉散發套件 (x64) 版本過舊，導致語音程式庫在載入時當機。請從 Microsoft 安裝最新版本，然後按下重試。",
+    "setup_torch_dll_init_failed": "PyTorch 無法載入，原因尚未確定。請安裝最新的 Microsoft Visual C++ 可轉散發套件 (x64)，接著更新顯示卡驅動程式，再按重試。若仍然失敗，請使用「更多修復方法」中的「清理並重試」。",
     "setup_files_locked": "另一個程式正在使用 VoiceStudio 的檔案（OneDrive 或其他同步應用程式、防毒軟體，或仍在執行的 VoiceStudio 後端）。請關閉該程式或暫停同步，然後按下重試。",
     "download_apple_silicon": "下載 Apple Silicon 版本",
     "ready": "引擎已就緒",
@@ -2240,6 +2255,10 @@
     "dubbing_cta": "在您自己的影片上運行此→",
     "dubbing_loading": "正在載入配音演示...",
     "dubbing_dismiss": "關閉配音演示",
+    "dubbing_download": "下載示範影片（約 10 MB）",
+    "dubbing_downloading": "下載中…",
+    "dubbing_download_failed": "下載失敗，請檢查網路連線。",
+    "dubbing_retry": "重試",
     "original_tag": "原創",
     "dubbed_tag": "配音",
     "script_conversational": "會話型",
@@ -2469,7 +2488,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "查看崩潰詳細信息",
-    "field_exit": "出口",
+    "field_exit": "結束狀態",
     "field_when": "什麼時候",
     "field_uptime": "崩潰前的正常運作時間",
     "field_version": "後端版本",
@@ -2874,6 +2893,7 @@
     "source_language_required": "語音辨識未回報此影片使用的語言，因此無法在此翻譯。請在配音中開啟該影片並選擇其來源語言，或選擇能偵測語言的語音辨識模型。",
     "transcription_media_tool": "轉錄需要 ffmpeg，但 VoiceStudio 找不到或無法執行它。請開啟設定 → 音訊工具並使用下載/修復，或安裝 ffmpeg（macOS：brew install ffmpeg；Windows：winget install Gyan.FFmpeg；Linux：你的套件管理員），然後重新啟動 VoiceStudio。你也可以將 FFMPEG_PATH 指向 ffmpeg 執行檔。",
     "transcription_pipe_lost": "轉錄期間後端失去了通往應用程式的輸出管道（broken pipe）。請重新啟動 VoiceStudio 後再試一次。",
+    "reference_transcript_required": "此聲音的參考音訊沒有逐字稿，而此引擎複製聲音需要它。請將逐字稿加入聲音設定檔，或安裝語音轉文字模型以自動轉寫。",
     "gpu_oom": "GPU 記憶體不足。請關閉其他佔用 GPU 的應用程式或卸載模型後重試。你也可以在 設定 → 效能與裝置 中選擇 CPU，或選擇較小的 TTS 引擎。",
     "host_memory_exhausted": "電腦記憶體不足。請關閉其他佔用記憶體的應用程式和瀏覽器分頁，卸載不用的模型，產生較短的片段，或選擇更輕量的 TTS 引擎。",
     "disk_full": "磁碟已滿。請在存放 VoiceStudio 資料、模型快取或暫存資料夾的磁碟上釋放空間，然後重試。設定 → 儲存空間會顯示磁碟用量，並可清除暫存檔案。",
@@ -2926,7 +2946,8 @@
     "missingSpeech": "語音缺失或無法讀取。請在匯出前重新產生受影響的片段。",
     "timingOverflow": "語音超出分配的時長。請縮短譯文，或選擇嚴格時間區段或延展影片。",
     "sourceChanged": "產生此配音時字幕已變更。已保留先前的音軌；請重新產生以使用新字幕。",
-    "backgroundUnavailable": "無法保留原始聲音。請檢查背景音分離和對白時間後重試，或明確選擇僅匯出語音。"
+    "backgroundUnavailable": "無法保留原始聲音。請檢查背景音分離和對白時間後重試，或明確選擇僅匯出語音。",
+    "untranslated": "此軌道尚未翻譯：所有行仍與來源文字相同。請先翻譯或選擇來源語言，然後重新產生。"
   },
   "dubStyle": {
     "label": "翻譯風格提示詞",
@@ -2945,6 +2966,8 @@
     "free": "免費版",
     "pro": "Pro",
     "get_pro": "取得 Pro",
+    "upgrade_pro": "升級到 Pro",
+    "get_pro_app": "取得 Pro 應用程式",
     "sponsor_bar": "贊助商列",
     "visible": "顯示",
     "hideable": "可隱藏",
@@ -2989,6 +3012,7 @@
       "speechCurl": "文字轉語音（curl）",
       "transcriptionCurl": "轉錄（curl）",
       "openaiPython": "Python（OpenAI SDK）",
+      "elevenlabsPython": "Python（ElevenLabs SDK）",
       "dockerRun": "執行容器",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n 工作流程",
@@ -3341,7 +3365,8 @@
     "denoise": "清除參考音訊雜訊",
     "polish": "潤飾生成音訊",
     "basics": "1× 為正常語速。時長留空可使用自然節奏。",
-    "hint": "通常建議保留預設值。引導強度控制提示詞的影響，其他選項改變模型建構聲音的方式。每次只調整一項。"
+    "hint": "通常建議保留預設值。引導強度控制提示詞的影響，其他選項改變模型建構聲音的方式。每次只調整一項。",
+    "pauses_hint": "在空行處加入靜音。0 表示保持引擎本身的節奏。"
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} 只有一個{{language}}模型，因此口音取決於參考語音。",
@@ -4328,5 +4353,12 @@
     "unavailable": "此應用程式的自動回報無法使用或已停用。",
     "managed": "請在與此瀏覽器連線的桌面應用程式中管理此選項。",
     "save_failed": "無法儲存此選擇，請再試一次。"
+  },
+  "tray": {
+    "open": "開啟 {{app}}",
+    "start_dictation": "開始聽寫",
+    "stop_dictation": "停止聽寫",
+    "settings": "設定",
+    "quit": "結束"
   }
 }

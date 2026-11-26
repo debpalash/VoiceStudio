@@ -2,7 +2,7 @@ import { app, dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } fro
 import { join } from 'node:path';
 import { backendRoot } from './backend';
 import { DictationOutputClient } from './dictation-output';
-import { isTrustedRenderer } from './trusted-renderer';
+import { assertTrustedMainFrame } from './trusted-ipc';
 import type { WatchSelection, WatchUpload } from '../preload/index.d';
 
 /** A separate helper owns each watch: stopping a large upload cannot interrupt dictation. */
@@ -22,13 +22,7 @@ export function installWatchFolders(
   const attached = new WeakSet<object>();
   const guard = (event: IpcMainInvokeEvent) => {
     const window = main();
-    if (
-      !window ||
-      event.sender !== window.webContents ||
-      event.senderFrame !== window.webContents.mainFrame ||
-      !isTrustedRenderer(event.senderFrame.url, process.env.ELECTRON_RENDERER_URL)
-    )
-      throw new Error('Untrusted watch request');
+    assertTrustedMainFrame(event, window, 'Untrusted watch request');
     if (!attached.has(window.webContents)) {
       attached.add(window.webContents);
       window.webContents.on('did-start-loading', stop);

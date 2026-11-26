@@ -99,7 +99,7 @@ def test_the_pins_carry_no_local_version(file_constraints):
 
 def test_the_dockerfile_passes_the_constraint():
     text = _DOCKERFILE.read_text(encoding="utf-8")
-    install_start = text.index("RUN uv pip install")
+    install_start = text.index("RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \\\n    uv pip install")
     install_end = text.index("\n\n", install_start)
     install = text[install_start:install_end]
     assert "--constraint" in install and "torch-constraints.txt" in install, (
@@ -112,7 +112,7 @@ def test_docker_install_and_runtime_use_the_guarded_python():
     """#1274: ROCm's `python3` had HIP torch, while `--system` installed and
     bare `uvicorn` launched through `/usr/bin/python` with CUDA torch."""
     text = _DOCKERFILE.read_text(encoding="utf-8")
-    install_start = text.index("RUN uv pip install")
+    install_start = text.index("RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \\\n    uv pip install")
     install_end = text.index("\n\n", install_start)
     install = text[install_start:install_end]
     assert '--python "$(command -v python3)"' in install
@@ -216,7 +216,7 @@ def test_the_overrides_file_matches_pyproject():
 
 def test_the_dockerfile_passes_copies_and_checks_the_overrides():
     text = _DOCKERFILE.read_text(encoding="utf-8")
-    install_start = text.index("RUN uv pip install")
+    install_start = text.index("RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \\\n    uv pip install")
     install = text[install_start:text.index("\n\n", install_start)]
     assert "--override deploy/uv-overrides.txt" in install, install
     assert re.search(r"^COPY .*uv-overrides\.txt", text, re.MULTILINE)
@@ -302,11 +302,11 @@ def _security_floors_module():
 
 def test_the_dockerfile_raises_and_checks_the_security_floors():
     text = _DOCKERFILE.read_text(encoding="utf-8")
-    install_start = text.index("RUN uv pip install")
+    install_start = text.index("RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \\\n    uv pip install")
     install = text[install_start:text.index("\n\n", install_start)]
     assert "--constraint deploy/security-constraints.txt" in install, install
     assert re.search(r"^COPY .*security-constraints\.txt.*security_floors\.py", text, re.MULTILINE)
-    floors = text[text.index('RUN floors="$(python3 deploy/security_floors.py requirements)"'):]
+    floors = text[text.index('RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \\\n    floors="$(python3 deploy/security_floors.py requirements)"'):]
     floors = floors[:floors.index("\n\n")]
     # Upgrades what the main install left below its floor, then fails the build on any.
     assert "uv pip install" in floors and "$floors" in floors

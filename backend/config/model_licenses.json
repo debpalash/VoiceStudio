@@ -3080,11 +3080,11 @@
       "engines": [
         "pytorch-whisper"
       ],
-      "configured_at": "backend/services/tts_backend.py OMNIVOICE_PYTORCH_ASR_MODEL fallback",
-      "notes": "Clone-reference ASR fallback outside models.yaml. Model-card licence metadata is recorded; component terms and required notices remain under review.",
-      "runtime_revision": null,
-      "runtime_pin_scope": "external",
-      "runtime_pin_source": null,
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Curated PyTorch Whisper build for ROCm dictation and the clone-reference ASR fallback. Model-card licence metadata is recorded; component terms and required notices remain under review.",
+      "runtime_revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
       "component_closure": "incomplete",
       "commercial_inference": "unknown",
       "commercial_outputs": "unknown",
@@ -3162,10 +3162,11 @@
       "evidence_url": "https://huggingface.co/eustlb/higgs-audio-v2-tokenizer/blob/528e871c2a26c4f0f7773b9754e2e1acae20899d/README.md",
       "revision": "528e871c2a26c4f0f7773b9754e2e1acae20899d",
       "engines": [
-        "omnivoice"
+        "omnivoice",
+        "omnivoice-subprocess"
       ],
       "configured_at": "backend/services/hf_revisions.py CURATED_REVISIONS; backend/services/model_manager.py repair",
-      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review.",
+      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review. Gated only when an installed OmniVoice lacks its bundled audio_tokenizer/ and would load this fallback repo (backend/services/model_acceptance.py).",
       "runtime_revision": "528e871c2a26c4f0f7773b9754e2e1acae20899d",
       "runtime_pin_scope": "central",
       "runtime_pin_source": "backend/services/hf_revisions.py",
@@ -3784,6 +3785,54 @@
           "lexicon.txt"
         ]
       }
+    },
+    {
+      "id": "Jmica/Drama-3-GGUF",
+      "license": "fish-audio-community-license-v1.0",
+      "commercial_use": false,
+      "review_status": "noncommercial",
+      "credit": "Built with Fish Audio \u2014 fishaudio/drama-3 (GGUF repack: Jmica/Drama-3-GGUF)",
+      "source_url": "https://huggingface.co/Jmica/Drama-3-GGUF/blob/060acc8e5d9e5d16baf647c775dfe1a1438f5f35/drama-3-backbone-8bit-experts-Q3_K_S.gguf",
+      "evidence_url": "https://huggingface.co/fishaudio/drama-3/blob/78e5ab79e49aa9a25abe8799eff2c4d73a1c3216/LICENSE",
+      "revision": "060acc8e5d9e5d16baf647c775dfe1a1438f5f35",
+      "engines": [
+        "audiocpp-drama3"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Q3_K_S GGUF repack of Fish Audio Drama 3 (35B-A3B MoE) with tokenizer and 44.1 kHz Fish DAC codec, governed by the Fish Audio Community License v1.0 (fishaudio/drama-3 LICENSE at the pinned revision). Free for research and non-commercial use; commercial use only below USD 500k annual revenue; no Hosted Service (API, model hosting or TTS/voice-generation service) under any revenue; users are bound to its voice-consent, no-impersonation and no-training restrictions; 'Built with Fish Audio' attribution required. Owner-approved for the free app on 2026-11-23 behind first-use licence acceptance; not cleared for Pro.",
+      "runtime_revision": "060acc8e5d9e5d16baf647c775dfe1a1438f5f35",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "restricted",
+      "commercial_outputs": "restricted",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown"
+    },
+    {
+      "id": "adefossez/HTDemucs",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Demucs htdemucs (Alexandre Défossez, Meta AI)",
+      "source_url": "https://huggingface.co/adefossez/HTDemucs",
+      "evidence_url": "https://huggingface.co/adefossez/HTDemucs/blob/cbc8a9b1a87023b7fd74e7b3412e6321c0eab003/README.md",
+      "revision": "cbc8a9b1a87023b7fd74e7b3412e6321c0eab003",
+      "engines": [
+        "demucs"
+      ],
+      "configured_at": "backend/api/routers/elevenlabs_compat.py (HTDEMUCS_HF_REPO)",
+      "notes": "The htdemucs weights Demucs 4.1 loads from Hugging Face before its legacy checkpoint (see the htdemucs dynamic asset). VoiceStudio only checks whether they are cached; Demucs selects and downloads them, unpinned. The repository declares no licence metadata; terms require review.",
+      "runtime_pin_scope": "external",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown"
     }
   ],
   "dynamic_assets": [

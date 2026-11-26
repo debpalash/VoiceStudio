@@ -8,7 +8,8 @@
  */
 import { dubToStory } from '@shared/utils/dubToStory';
 import {
-  editLongform,
+  replaceLongformDraft,
+  snapshotLongformDraft,
   longformSession,
   storiesImportEpoch,
   type Draft,
@@ -49,19 +50,20 @@ export function canCreateStoryFromDub(session: { phase: string; segments: unknow
  * the dub replaces the draft, even if the current script has no lines.
  */
 export function storiesDraftOccupied(draft: Draft): boolean {
+  const saved = snapshotLongformDraft('stories', draft);
   return (
     scriptSize('stories', draft) > 0 ||
     draft.cast.length > 0 ||
     Object.keys(draft.voiceCast).length > 0 ||
-    Boolean(draft.output || draft.outputScript || draft.outputChapters.length)
+    Boolean(saved.output || saved.outputScript || saved.outputChapters.length)
   );
 }
 
 /**
  * Replace the Stories draft with this dub's cast and lines.
  *
- * Returns false and changes nothing when there is nothing to load, or when a
- * longform render is running — `editLongform` is a no-op then, so the caller
+ * Returns false and changes nothing when there is nothing to load, when the draft
+ * store refuses the replacement, or when a longform render is running — `editLongform` is a no-op then, so the caller
  * must not navigate to an editor that would still be showing the old script.
  *
  * The project link is dropped: the lines are no longer the ones that were
@@ -83,8 +85,8 @@ export function loadDubIntoStories(
   });
   if (tracks.length === 0) return false;
   const newLineId = options.newLineId ?? (() => crypto.randomUUID());
-  storiesImportEpoch.current += 1;
-  editLongform('stories', {
+  const replaced = replaceLongformDraft('stories', {
+    ...longformSession.state.drafts.stories,
     // Clearing the script the same way "Clear script" does, so a pending import
     // cannot survive underneath the lines that just replaced it.
     ...clearedScriptPatch('stories'),
@@ -98,5 +100,8 @@ export function loadDubIntoStories(
     outputCachedChapters: 0,
     outputFailedChapters: 0,
   });
+  // A refused handoff must not cancel pending imports for a draft it left alone.
+  if (!replaced) return false;
+  storiesImportEpoch.current += 1;
   return true;
 }

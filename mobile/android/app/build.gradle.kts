@@ -173,7 +173,14 @@ val robolectricLegacySdk by configurations.creating
 val prepareRobolectricSdk by tasks.registering(Sync::class) {
     from(robolectricSdk)
     from(robolectricLegacySdk)
-    into(layout.buildDirectory.dir("robolectric-sdk"))
+    val sdkDir = layout.buildDirectory.dir("robolectric-sdk")
+    into(sdkDir)
+    // Jar names carry the catalog versions, so a restored CI cache holding every
+    // expected jar is current and skips the network resolution entirely.
+    val expected = listOf(libs.robolectric.sdk, libs.robolectric.legacy.sdk).map { p ->
+        p.get().let { "${it.module.name}-${it.versionConstraint.requiredVersion}.jar" }
+    }
+    onlyIf { expected.any { !sdkDir.get().file(it).asFile.isFile } }
 }
 tasks.withType<Test>().configureEach {
     dependsOn(prepareRobolectricSdk)

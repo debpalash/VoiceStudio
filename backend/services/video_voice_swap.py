@@ -78,10 +78,10 @@ class SwapResult:
     notes: list = field(default_factory=list)
 
 
-async def _ffmpeg(cmd: list, timeout: float = 1800.0) -> "tuple[int, bytes]":
+async def _ffmpeg(cmd: list, timeout: float = 1800.0, env: "dict | None" = None) -> "tuple[int, bytes]":
     from services.ffmpeg_utils import run_ffmpeg
 
-    rc, _out, err = await run_ffmpeg(cmd, timeout=timeout)
+    rc, _out, err = await run_ffmpeg(cmd, timeout=timeout, **({"env": env} if env is not None else {}))
     return rc, err or b""
 
 
@@ -106,11 +106,13 @@ async def extract_track(video: str, out_wav: str) -> None:
         )
 
 
-async def separate_vocals(track: str, workdir: str) -> "tuple[str, str] | None":
+async def separate_vocals(track: str, workdir: str, *, offline: bool = False) -> "tuple[str, str] | None":
     """Demucs two-stem split of ``track`` into ``(vocals, background)`` WAVs.
 
     ``None`` when Demucs is missing or fails; the caller converts the whole
-    track instead. Same command Dubbing's ingest runs.
+    track instead. Same command Dubbing's ingest runs. ``offline`` keeps
+    Demucs' Hugging Face loader on its local cache (it falls back to the
+    legacy torch hub checkpoint), for callers that have checked one is there.
     """
     if not separation_available():
         return None
@@ -121,6 +123,7 @@ async def separate_vocals(track: str, workdir: str) -> "tuple[str, str] | None":
             [sys.executable, "-m", "demucs.separate", "--two-stems", "vocals", "-n", "htdemucs",
              "-d", get_best_device(), track, "-o", workdir],
             timeout=1800.0,
+            env={**os.environ, "HF_HUB_OFFLINE": "1"} if offline else None,
         )
     except asyncio.TimeoutError:
         logger.warning("Demucs timed out on a voice-swap soundtrack; converting the whole track")

@@ -15,7 +15,7 @@ export const SETUP_CHECK_TIMEOUT_MS = 15_000;
 export function setupProbeUrl(
   lock: string,
   progress: SetupProgress,
-  host: WheelHost & { torchVariant?: 'default' | 'cpu' | 'rocm' },
+  host: WheelHost & { torchVariant?: 'default' | 'cpu' | 'rocm' | 'cu126' },
 ): string | null {
   if (!progress.activePackage || !progress.downloadHost) return null;
   const normalized = (name: string) => name.toLowerCase().replace(/[-_.]+/g, '-');

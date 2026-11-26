@@ -977,6 +977,60 @@ def _numbers_to_words_native(text: str, lang: str) -> str:
     return text
 
 
+# ── Vietnamese number reading (#4319) ────────────────────────────────────────
+# OmniVoice drops magnitude words ("nghìn", "trăm", "mươi") for bare digit runs
+# like "3500" and for the spelling "nghìn". Reporter-verified reliable forms:
+# digits with the Vietnamese dot thousands separator ("3.500") and the
+# synonym "ngàn". We deliberately do NOT expand to words (#1139: num2words'
+# vi cardinals are wrong). Language-scoped, not engine-scoped: the normalizer
+# is engine-blind, and both rewrites are standard Vietnamese written forms,
+# so every engine reads them the same way.
+_VI_MASK = "\x00"
+_VI_PLAIN_INT_RE = re.compile(r"(?<![\w.,:/#@+\-])([1-9]\d{3,11})(?![\w:/@\-]|[.,]\d)")
+_VI_NGHIN_RE = re.compile(r"(?<!\w)(nghìn)(?!\w)", re.IGNORECASE)
+# "năm 2008, 2010 và 2025": a year, or a list/range of years opened by "năm".
+# Protected bracket spans are masked (\x00) and may sit between "năm" and the year.
+_VI_YEAR_PREFIX_RE = re.compile(
+    r"(?<!\w)năm[\s\x00]+(?:\d{4}(?:\s*,\s*|\s+(?:và|hoặc|đến|tới)\s+|\s*[-–]\s*))*$",
+    re.IGNORECASE,
+)
+
+
+def _vietnamese_numbers(text: str) -> str:
+    """Runs on the full text so "năm" context survives a protected [bracket]
+    span; bracket contents are masked, never rewritten."""
+    spans = [m.span() for m in _BRACKET_SPAN_RE.finditer(text)]
+    pieces: list[str] = []
+    last = 0
+    for a, b in spans:
+        # NFC first so decomposed (NFD) "nghìn" still matches; vi path only.
+        pieces.append(unicodedata.normalize("NFC", text[last:a]))
+        pieces.append(text[a:b])
+        last = b
+    pieces.append(unicodedata.normalize("NFC", text[last:]))
+    text = "".join(pieces)
+    masked = _BRACKET_SPAN_RE.sub(lambda m: _VI_MASK * len(m.group(0)), text)
+
+    edits: list[tuple[int, int, str]] = []
+    for m in _VI_NGHIN_RE.finditer(masked):
+        w = m.group(1)
+        edits.append((m.start(), m.end(),
+                      "NGÀN" if w.isupper() else "Ngàn" if w[0].isupper() else "ngàn"))
+    for m in _VI_PLAIN_INT_RE.finditer(masked):
+        raw = m.group(1)
+        # "năm 2026": a year, not a quantity — leave it alone.
+        # A number directly followed by "%" is a quantity, never a year-list item.
+        # (Word units like "xe" can't be told from a year list, so stay conservative.)
+        if (len(raw) == 4 and 1000 <= int(raw) <= 2100
+                and not masked[m.end():].lstrip(" ").startswith("%")
+                and _VI_YEAR_PREFIX_RE.search(masked[: m.start()])):
+            continue
+        edits.append((m.start(), m.end(), f"{int(raw):,}".replace(",", ".")))
+    for a, b, rep in sorted(edits, reverse=True):
+        text = text[:a] + rep + text[b:]
+    return text
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def normalize_text(text: str, language: Optional[str] = None) -> str:
@@ -991,6 +1045,8 @@ def normalize_text(text: str, language: Optional[str] = None) -> str:
     spoken_as = _plain_lang_code(language)
     if spoken_as in _RANGE_JOINERS:
         out = _outside_brackets(out, partial(_speak_number_ranges, lang=spoken_as))
+    if spoken_as == "vi":
+        out = _vietnamese_numbers(out)
     lang = _num2words_lang(language)
     if lang:
         if lang in _ABBREV_COMPILED:

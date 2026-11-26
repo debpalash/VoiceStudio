@@ -23,7 +23,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 from urllib.parse import urlparse
 
-from core.path_security import UnsafePath, resolve_within
+from core.path_security import _WINDOWS_RESERVED_NAMES, UnsafePath, resolve_within
 
 REGISTRY_PATH = Path(__file__).resolve().parents[1] / "config" / "model_licenses.json"
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -91,11 +91,9 @@ def safe_file(value: str) -> bool:
     if not isinstance(value, str) or not value or "\\" in value or ":" in value:
         return False
     parts = value.split("/")
-    reserved = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
-                *(f"LPT{i}" for i in range(1, 10))}
     return (not PurePosixPath(value).is_absolute()
             and all(p not in {"", ".", ".."} and not p.endswith((".", " "))
-                    and p.split(".")[0].upper() not in reserved for p in parts)
+                    and p.split(".")[0].upper() not in _WINDOWS_RESERVED_NAMES for p in parts)
             and not any(ord(c) < 32 or c in '*?[]<>|"' for c in value))
 
 
@@ -161,7 +159,7 @@ _CONDITIONS_LICENSES = frozenset({
     "gpl-3.0", "agpl-3.0", "lgpl-3.0",
 })
 # Deliberately unknown: no assertion, or bespoke terms nobody has categorised.
-_UNKNOWN_LICENSES = frozenset({"noassertion", "other", "unknown", "higgs audio 2"})
+_UNKNOWN_LICENSES = frozenset({"noassertion", "other", "unknown", "higgs audio 2", "fish-audio-community-license-v1.0"})
 _LLAMA = re.compile(r"(meta[ -])?llama[ -]?\d+(\.\d+)?\Z")
 _NONCOMMERCIAL = re.compile(r"(^|-)nc(-|\b)|non-?commercial")
 _LICENSE_SPLIT = re.compile(r"\s+(?:and|or|with)\s+|[;,+]")

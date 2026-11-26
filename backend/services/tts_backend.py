@@ -1005,8 +1005,10 @@ def omnivoice_ref_text(ref_audio, ref_text):
 # must not reuse a passage it did not choose (#2281).
 _PASSAGE_CHOICE_MAX = 64
 # index < 0 means the clip was ranked and no installed recognizer produced words.
+# The bool is False when the pause-trimmed window had no words and the raw
+# window was chosen instead.
 _NO_PASSAGE = -1
-_passage_choices: "OrderedDict[tuple, tuple[int, str]]" = OrderedDict()
+_passage_choices: "OrderedDict[tuple, tuple[int, str, bool]]" = OrderedDict()
 # Env pins mirrored from the ASR backends. A model change must change this key
 # even when the backend id stays the same (#2281).
 _ASR_MODEL_PINS = {
@@ -1182,7 +1184,7 @@ def _passage_choice_key(ref_audio: str) -> tuple:
     return (os.path.abspath(ref_audio), version, _reference_asr_identity())
 
 
-def _recall_passage(ref_audio: str) -> Optional[tuple[int, str]]:
+def _recall_passage(ref_audio: str) -> Optional[tuple[int, str, bool]]:
     if not _reference_asr_identity():
         return None
     key = _passage_choice_key(ref_audio)
@@ -1194,12 +1196,12 @@ def _recall_passage(ref_audio: str) -> Optional[tuple[int, str]]:
         return hit
 
 
-def _remember_passage(ref_audio: str, index: int, text: str) -> None:
+def _remember_passage(ref_audio: str, index: int, text: str, trimmed: bool = True) -> None:
     if not _reference_asr_identity():
         return
     key = _passage_choice_key(ref_audio)
     with _prompt_cache_lock:
-        _passage_choices[key] = (index, text)
+        _passage_choices[key] = (index, text, trimmed)
         _passage_choices.move_to_end(key)
         while len(_passage_choices) > _PASSAGE_CHOICE_MAX:
             _passage_choices.popitem(last=False)
@@ -1246,6 +1248,24 @@ def _read_reference_mono(path: str):
     return audio, sr
 
 
+def _window_samples(audio, sr: int, index: int, trimmed: bool = True):
+    """Window ``index`` of a mono clip. When ``trimmed``, both edges move into a pause.
+
+    Fixed 15 s windows are cut at arbitrary times. A window that ends in the
+    first sound of the next word gets a transcript without that sound, and the
+    clone then starts its output with it. Ranking and recall both use this
+    cut, so the transcript always matches the audio that is encoded.
+    """
+    import torch
+    from omnivoice.utils.audio import CLONE_REF_WINDOW_SECONDS, trim_passage_to_pauses
+
+    window = int(CLONE_REF_WINDOW_SECONDS * sr)
+    chunk = audio[index * window:(index + 1) * window]
+    if len(chunk) == 0 or not trimmed:
+        return chunk
+    return trim_passage_to_pauses(torch.from_numpy(chunk[None].copy()), sr)[0].numpy()
+
+
 def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
     """Pick a long clip's best 15 s window with the installed recognizer.
 
@@ -1283,11 +1303,9 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
     best_path: Optional[str] = None
     best_text = ""
     best_index = 0
-    n_windows = min(CLONE_REF_MAX_WINDOWS, (len(audio) + window - 1) // window)
-    for index in range(n_windows):
-        chunk = audio[index * window:(index + 1) * window]
-        if len(chunk) == 0:
-            continue
+    best_trimmed = True
+
+    def transcribe_chunk(chunk):
         fd, path = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
         try:
@@ -1296,7 +1314,27 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
         except Exception:
             logger.warning("window transcription failed")
             text = ""
+        return path, text
+
+    n_windows = min(CLONE_REF_MAX_WINDOWS, (len(audio) + window - 1) // window)
+    for index in range(n_windows):
+        chunk = _window_samples(audio, sr, index)
+        if len(chunk) == 0:
+            continue
+        trimmed = True
+        path, text = transcribe_chunk(chunk)
         score = _speech_score(text)
+        raw = _window_samples(audio, sr, index, trimmed=False)
+        if score == 0 and len(raw) != len(chunk):
+            # The trim can cut off sparse speech at an edge. The raw window
+            # is still a valid passage, so try it before giving up.
+            try:
+                os.remove(path)
+            except OSError:
+                pass  # a leftover temp transcription clip is harmless; the retry continues
+            chunk, trimmed = raw, False
+            path, text = transcribe_chunk(chunk)
+            score = _speech_score(text)
         activity = float((chunk.astype("float64") ** 2).sum()) if score else 0.0
         if score > 0 and (
             score > best_score or (score == best_score and activity > best_activity)
@@ -1311,6 +1349,7 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
             best_path = path
             best_text = text
             best_index = index
+            best_trimmed = trimmed
         else:
             try:
                 os.remove(path)
@@ -1319,22 +1358,17 @@ def _omnivoice_installed_passage(ref_audio: str) -> Optional[tuple[str, str]]:
     if best_path is None:
         _remember_passage(ref_audio, _NO_PASSAGE, "")
         return None
-    _remember_passage(ref_audio, best_index, best_text)
+    _remember_passage(ref_audio, best_index, best_text, best_trimmed)
     return best_path, best_text
 
 
-def _materialize_window(ref_audio: str, index: int) -> Optional[str]:
+def _materialize_window(ref_audio: str, index: int, trimmed: bool = True) -> Optional[str]:
     """Write one previously chosen 15 s window. The caller deletes the file."""
-    from omnivoice.utils.audio import CLONE_REF_WINDOW_SECONDS
-
     loaded = _read_reference_mono(ref_audio)
     if loaded is None or index < 0:
         return None
     audio, sr = loaded
-    window = int(CLONE_REF_WINDOW_SECONDS * sr)
-    if window <= 0:
-        return None
-    chunk = audio[index * window:(index + 1) * window]
+    chunk = _window_samples(audio, sr, index, trimmed)
     if len(chunk) == 0:
         return None
     import soundfile as sf
@@ -1365,7 +1399,7 @@ def _reuse_or_rank_passage(ref_audio: str) -> Optional[tuple[str, str]]:
         if recalled is not None:
             if recalled[0] < 0:
                 return None
-            path = _materialize_window(ref_audio, recalled[0])
+            path = _materialize_window(ref_audio, recalled[0], recalled[2])
             if path is not None:
                 return path, recalled[1]
     return _omnivoice_installed_passage(ref_audio)
@@ -1430,46 +1464,6 @@ def omnivoice_inline_reference(ref_audio, ref_text):
 def _speech_score(text: str) -> int:
     """Spoken-character count, matching OmniVoice's window ranking."""
     return len(re.sub(r"[^\w]+", "", text or "", flags=re.UNICODE))
-
-
-def _trim_selected_passage(path: str, text: str) -> tuple[str, str, Optional[str]]:
-    """Pull a backend-selected long-reference window's edges into pauses.
-
-    The model trims and re-reads a passage only when it picks one itself
-    (``ref_text is None``). A window chosen here arrives with its transcript, so
-    without this a window cut mid-word would carry that fragment into the
-    generated speech. Returns ``(path, text, owned_path)``: the trimmed copy and
-    its re-read transcript (``owned_path`` is the temp file the caller deletes),
-    or the original window and transcript when nothing needed trimming, the
-    trimmed copy has no words, or any step fails.
-    """
-    out = None
-    try:
-        import soundfile as sf
-        import tempfile
-        import torch
-        from omnivoice.utils.audio import trim_passage_to_pauses
-        from services.asr_backend import transcribe_reference
-
-        data, sr = sf.read(path, dtype="float32", always_2d=True)
-        wav = torch.from_numpy(data.T.copy())
-        trimmed = trim_passage_to_pauses(wav, sr)
-        if trimmed.size(-1) == wav.size(-1):
-            return path, text, None
-        fd, out = tempfile.mkstemp(suffix=".wav")
-        os.close(fd)
-        sf.write(out, trimmed.T.numpy(), sr)
-        new_text = (transcribe_reference(out) or "").strip()
-        if _speech_score(new_text) > 0:
-            return out, new_text, out
-    except Exception:  # noqa: BLE001 — the untrimmed window is still valid
-        logger.debug("selected-window trim failed; keeping the untrimmed window")
-    if out is not None:
-        try:
-            os.remove(out)
-        except OSError:
-            pass
-    return path, text, None
 
 
 def _unresolved_prompt_is_current(key: tuple) -> bool:
@@ -1546,9 +1540,9 @@ def _get_clone_prompt(
 
     duration = reference_duration_s(ref_audio)
     passage_file = None
-    trimmed_file = None
     passage_context = None
     recalled_index = None
+    recalled_trimmed = True
     cacheable = True
     try:
         if duration is not None and duration > CLONE_REF_TEXT_MAX_SECONDS:
@@ -1558,19 +1552,22 @@ def _get_clone_prompt(
             identity = _reference_asr_identity()
             recalled = _recall_passage(ref_audio) if identity else None
             if recalled is not None and recalled[0] >= 0:
-                recalled_index, ref_text = recalled
+                recalled_index, ref_text, recalled_trimmed = recalled
             elif recalled is None:
                 selected = _reuse_or_rank_passage(ref_audio)
                 if selected is not None:
                     passage_file, ref_text = selected
                     recalled = _recall_passage(ref_audio) if identity else None
                     if recalled is not None:
-                        recalled_index = recalled[0]
+                        recalled_index, _, recalled_trimmed = recalled
             if not identity:
                 # The selected recognizer is unknown; a reusable prompt could
                 # belong to another window with exactly the same transcript.
                 cacheable = False
             passage_context = (identity, recalled_index)
+            if not recalled_trimmed:
+                # Raw and trimmed cuts of one window are different audio.
+                passage_context += ("raw",)
         elif ref_audio and not ref_text:
             try:
                 unresolved_key = _clone_prompt_key(
@@ -1629,16 +1626,10 @@ def _get_clone_prompt(
         # A recalled passage is materialized only when neither cache hits.
         prompt = _prompt_disk_load(key) if cacheable else None
         if prompt is None and recalled_index is not None:
-            passage_file = _materialize_window(ref_audio, recalled_index)
+            passage_file = _materialize_window(ref_audio, recalled_index, recalled_trimmed)
         encode_audio = ref_audio
-        encode_text = ref_text
         if passage_file is not None:
             encode_audio = passage_file
-            if prompt is None:
-                # Only when a prompt is actually built (a cache hit needs none).
-                encode_audio, encode_text, trimmed_file = _trim_selected_passage(
-                    passage_file, ref_text
-                )
         if prompt is None:
             # Passage selection and trimming are done: unload the installed
             # recognizers now, because the model's own fallback may load another
@@ -1655,7 +1646,7 @@ def _get_clone_prompt(
                 # would do inline for this ref (omnivoice.py:964-978), so output is
                 # identical.
                 prompt = model.create_voice_clone_prompt(
-                    encode_audio, ref_text=encode_text, preprocess_prompt=preprocess_prompt
+                    encode_audio, ref_text=ref_text, preprocess_prompt=preprocess_prompt
                 )
             except Exception as e:  # noqa: BLE001 — fall back, never break synthesis
                 # #1790/#1777: a GPU OOM is the one failure this fallback cannot
@@ -1696,7 +1687,7 @@ def _get_clone_prompt(
                     except Exception:  # noqa: BLE001 — reclaim is best-effort
                         logger.debug("VRAM reclaim before OOM retry failed", exc_info=True)
                     prompt = model.create_voice_clone_prompt(
-                        encode_audio, ref_text=encode_text, preprocess_prompt=preprocess_prompt
+                        encode_audio, ref_text=ref_text, preprocess_prompt=preprocess_prompt
                     )
                 else:
                     logger.warning(
@@ -1723,11 +1714,6 @@ def _get_clone_prompt(
                 _unresolved_prompt_recognizers.pop(evicted, None)
         return prompt
     finally:
-        if trimmed_file is not None:
-            try:
-                os.remove(trimmed_file)
-            except OSError:
-                logger.debug("failed to remove trimmed reference window")
         if passage_file is not None:
             try:
                 os.remove(passage_file)
@@ -1853,10 +1839,34 @@ def clear_clone_prompt_cache(*, keep_passage_choices: bool = False) -> None:
         if not keep_passage_choices:
             _passage_choices.clear()
         else:
-            for key, (index, _text) in list(_passage_choices.items()):
-                if index == _NO_PASSAGE:
+            for key, choice in list(_passage_choices.items()):
+                if choice[0] == _NO_PASSAGE:
                     del _passage_choices[key]
         _unresolved_prompt_recognizers.clear()
+
+
+def drop_omnivoice_instance_refs() -> None:
+    """Clear the shared model from every cached ``OmniVoiceBackend`` (#4355).
+
+    ``_ensure_loaded`` stores the singleton on the adapter, and the adapter is
+    cached in ``_active_instance`` / ``_ENGINE_INSTANCES``. ``POST
+    /model/unload/tts`` only drops ``model_manager.model``, so those adapters
+    kept the whole model (weights on the GPU) alive and ``empty_cache()`` freed
+    almost nothing. Best-effort; never raises.
+
+    Safe while a render is in flight: ``generate``/``generate_batch`` hold
+    their own reference from ``_ensure_loaded()``, so clearing the adapter
+    never hands ``None`` to a running model call, and the weights are freed
+    when that render returns.
+    """
+    try:
+        with _ENGINE_CACHE_LOCK:
+            held = [_active_instance, *_ENGINE_INSTANCES.values()]
+        for inst in held:
+            if isinstance(inst, OmniVoiceBackend):
+                inst._model = None
+    except Exception:  # noqa: BLE001 — cache hygiene must never break an unload
+        logger.debug("dropping cached OmniVoice adapter refs failed", exc_info=True)
 
 
 # NB: model_manager.release_tts_side_caches() calls clear_clone_prompt_cache()
@@ -1956,7 +1966,7 @@ class OmniVoiceBackend(TTSBackend):
             from services.model_manager import ensure_tts_on_device
 
             ensure_tts_on_device()
-            return
+            return self._model
         # Reuse model_manager's cached instance so we don't double-load.
         from services.model_manager import get_model
         import asyncio
@@ -1966,15 +1976,22 @@ class OmniVoiceBackend(TTSBackend):
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            self._model = asyncio.run(get_model())
-            return
+            self._model = model = asyncio.run(get_model())
+            return model
         raise RuntimeError(
             "OmniVoiceBackend.generate() called inside an async context without a pre-loaded model. "
             "Pass `model=await get_model()` to the constructor."
         )
 
     def generate(self, text, **kw) -> torch.Tensor:
-        self._ensure_loaded()
+        # Our own reference: an unload during this render may clear
+        # ``self._model`` (#4355) and must not hand None to the model call.
+        model = self._ensure_loaded()
+        if model is None:  # a stubbed loader (tests) leaves the preset model
+            model = self._model
+        return self._generate_on_model(model, text, **kw)
+
+    def _generate_on_model(self, model, text, **kw) -> torch.Tensor:
         language = kw.get("language")
         ref_audio = kw.get("ref_audio")
         ref_text = kw.get("ref_text")
@@ -2003,7 +2020,7 @@ class OmniVoiceBackend(TTSBackend):
         # one place here and a subtly different one there is exactly how the cache
         # came to be wired into the adapter and nowhere else.
         audios = generate_with_cached_ref(
-            self._model, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
+            model, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
         )
         return audios[0]
 
@@ -2015,7 +2032,9 @@ class OmniVoiceBackend(TTSBackend):
         model together; an incomplete prompt batch falls back to the proven
         single-item path instead of changing synthesis semantics.
         """
-        self._ensure_loaded()
+        model = self._ensure_loaded()
+        if model is None:
+            model = self._model
         if not texts:
             return []
         from services.model_manager import tts_inference
@@ -2023,9 +2042,11 @@ class OmniVoiceBackend(TTSBackend):
         # Holds the shared model in place for prompt encoding + the batch
         # generate (an offload can't move it mid-batch; #2618).
         with tts_inference():
-            return self._generate_batch_on_model(texts, **kw)
+            return self._generate_batch_on_model(texts, model=model, **kw)
 
-    def _generate_batch_on_model(self, texts: list[str], **kw) -> list[torch.Tensor]:
+    def _generate_batch_on_model(self, texts: list[str], *, model=None, **kw) -> list[torch.Tensor]:
+        if model is None:
+            model = self._ensure_loaded() or self._model
         def _items(value):
             if isinstance(value, list):
                 return value
@@ -2048,7 +2069,7 @@ class OmniVoiceBackend(TTSBackend):
                     prompts = []
                     break
                 prompt = _get_clone_prompt(
-                    self._model,
+                    model,
                     ref_audio,
                     ref_text,
                     preprocess_prompt,
@@ -2060,7 +2081,9 @@ class OmniVoiceBackend(TTSBackend):
                 prompts.append(prompt)
 
         if any(ref_audios) and len(prompts) != len(texts):
-            return [self.generate(text, **_item_kwargs(i))
+            # The retained model: an unload mid-batch must not make the
+            # single-item fallback cold-load a second copy (#4355).
+            return [self._generate_on_model(model, text, **_item_kwargs(i))
                     for i, text in enumerate(texts)]
 
         gen_kw = dict(
@@ -2079,7 +2102,7 @@ class OmniVoiceBackend(TTSBackend):
         else:
             gen_kw["ref_audio"] = None
             gen_kw["ref_text"] = None
-        return self._model.generate(text=texts, **gen_kw)
+        return model.generate(text=texts, **gen_kw)
 
     def unload(self) -> None:
         """Release the OmniVoice model (MM2-02). OmniVoice shares the singleton
@@ -3065,7 +3088,13 @@ class MLXAudioBackend(TTSBackend):
     gpu_compat = ("mps", "cpu")
     # generate() seeds mlx's RNG from the request's seed.
     supports_generation_seed = True
-    cloning_model_keys = ("csm", "qwen3-tts-base")
+    # voxcpm2: mlx-audio's VoxCPM2.generate takes ref_audio on its own
+    # (reference-cloning mode, no transcript), verified against mlx-audio 0.5.
+    # outetts: generate() turns the reference into a speaker file (#2700);
+    # dia: its generate() loads ref_audio from a path (the transcript is
+    # speaker-tagged above). chatterbox is NOT listed: mlx-audio treats a
+    # str ref_audio as an array, so a saved clip path cannot clone there.
+    cloning_model_keys = ("csm", "qwen3-tts-base", "voxcpm2", "outetts", "dia")
 
     @classmethod
     def cloning_model_labels(cls) -> tuple[str, ...]:
@@ -3242,9 +3271,21 @@ class MLXAudioBackend(TTSBackend):
             config = json.loads((Path(self._model_id) / "config.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
+        if isinstance(config, dict) and config.get("model_type") == "kokoro":
+            return "kokoro"
+        if isinstance(config, dict) and config.get("model_type") == "voxcpm2":
+            return "voxcpm2"
         if isinstance(config, dict) and config.get("model_type") == "qwen3_tts" and config.get("tts_model_type") == "base":
             return "qwen3-tts-base"
         return None
+
+    def active_preset_voices(self) -> list[str]:
+        """Preset voices of the selected model: only Kokoro ships voice packs.
+
+        ``PRESET_VOICES`` is the Kokoro roster; every other model ignores a
+        ``voice`` kwarg, so offering the roster there picks nothing (#4344).
+        """
+        return list(self.PRESET_VOICES) if self._curated_key() == "kokoro" else []
 
     def _check_language(self, language: object) -> Optional[str]:
         # Kokoro's installed tables are authoritative and accept labels such
@@ -3410,9 +3451,12 @@ class MLXAudioBackend(TTSBackend):
         # stays empty and indexing into it raises an opaque
         # "IndexError: list index out of range" deep inside mlx-audio,
         # instead of ever attempting the clone. Community-diagnosed (#1012).
-        if ref_audio:
+        # VoxCPM2 clones from the clip alone; a transcript would only add an
+        # ASR pass.
+        needs_transcript = self._curated_key() != "voxcpm2"
+        if ref_audio and needs_transcript:
             ref_text = required_reference_transcript(ref_audio, ref_text)
-        if ref_audio and ref_text: kwargs["ref_text"] = ref_text
+        if ref_audio and ref_text and needs_transcript: kwargs["ref_text"] = ref_text
         if language and language.strip() and language.strip().lower() != "auto":
             if self._model_id == self.CURATED_MODELS.get("kokoro"):
                 # Kokoro's vendored pipeline hard-asserts `lang_code` against
@@ -4160,6 +4204,7 @@ _LAZY_REGISTRY: dict[str, tuple[str, str]] = {
     # dots.tts SOAR on the same managed audio.cpp runtime (#2665): native on
     # Windows too, unlike the venv `dots-tts` engine. Gated like `audiocpp`.
     "audiocpp-dots": ("engines.audiocpp", "AudioCPPDotsBackend"),
+    "audiocpp-drama3": ("engines.audiocpp", "AudioCPPDrama3Backend"),
     # Community CosyVoice.cpp GGUF server, explicitly installed and isolated.
     "cosyvoice-gguf": ("engines.cosyvoice_gguf", "CosyVoiceGGUFBackend"),
 }
@@ -4270,6 +4315,7 @@ _INSTALL_HINTS: dict[str, str] = {
     "ming-tts":      "git clone inclusionAI/Ming-3.0-tts + set OMNIVOICE_MING_TTS_DIR  (own Python 3.10 venv, transformers==4.46.3; 0.5B, ~3 GB weights auto-download; 7 langs zero-shot clone; NVIDIA CUDA only; MIT)",
     "audiocpp":     "download the matching audio.cpp v0.9.4 prebuilt + set OMNIVOICE_AUDIOCPP_BIN, then explicitly install Breeze-TTS-2 in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF server, no Python; en+zh clone+design; ~4.73 GiB; weights research/non-commercial only)",
     "audiocpp-dots": "download the matching audio.cpp v0.9.4 prebuilt (Model Catalogue installs it) + explicitly install dots.tts SOAR in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF on Windows, macOS and Linux; multilingual voice cloning; ~3 GB; Apache-2.0)",
+    "audiocpp-drama3": "install audio.cpp v0.9.4 (Model Catalogue installs it) + Drama 3 Q3_K_S GGUF in Model Catalogue → Models  (native Vulkan/CUDA/Metal GGUF; 35B MoE multilingual clone + inline/scoped tags; ~18.93 GiB, 24 GB+ GPU recommended; Built with Fish Audio — Fish Audio Community License v1.0)",
     "cosyvoice-gguf": "Build Lourdle/cosyvoice.cpp at the documented pinned revision with Vulkan enabled; set OMNIVOICE_COSYVOICE_GGUF_DIR and install its GGUF/ONNX model assets from Model Catalogue (native Vulkan/CPU; no automatic runtime download).",
 }
 
@@ -4321,6 +4367,7 @@ _ENGINE_DOCS: dict[str, str] = {
     "pockettts":            "docs/engines/pockettts.md",
     "audiocpp":             "docs/engines/audio-cpp.md",
     "audiocpp-dots":        "docs/engines/audio-cpp.md",
+    "audiocpp-drama3":      "docs/engines/audio-cpp.md",
     "cosyvoice-gguf":       "docs/engines/cosyvoice-gguf.md",
     "qwen3-tts":            "docs/engines/mlx-audio.md",
 }
@@ -4354,7 +4401,7 @@ _MLX_AUDIO_MODEL_LABELS: dict[str, str] = {
     "chatterbox": "Chatterbox",
     "melotts":    "MeloTTS (lightweight)",
     "outetts":    "OuteTTS",
-    "voxcpm2":    "VoxCPM2 8-bit (30 languages, 48 kHz)",
+    "voxcpm2":    "VoxCPM2 8-bit (30 languages, 48 kHz, voice cloning)",
 }
 
 

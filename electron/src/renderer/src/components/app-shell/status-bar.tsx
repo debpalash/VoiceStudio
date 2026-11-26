@@ -146,6 +146,15 @@ const DOT: Record<BackendStage, string> = {
   failed: 'bg-destructive',
 };
 
+/** Polls here re-render only when data or a shown state changes, not on every isFetching flip. */
+const POLLED_CHIP_PROPS: Array<'data' | 'error' | 'isLoading' | 'isError' | 'isPending'> = [
+  'data',
+  'error',
+  'isLoading',
+  'isError',
+  'isPending',
+];
+
 export function StatusBar({
   compact = false,
   inline = false,
@@ -169,6 +178,7 @@ export function StatusBar({
   const { data, isLoading: enginesLoading, isError: enginesError } = useEngines();
   const model = useQuery({
     queryKey: ['sidebar-model-status'],
+    notifyOnChangeProps: POLLED_CHIP_PROPS,
     queryFn: () => apiJson<SidebarModelStatus>('/model/status'),
     enabled: isBackendReachable(status.stage),
     refetchInterval: (query) => modelStatusPollMs(activityCount, query.state.data?.status),
@@ -180,6 +190,7 @@ export function StatusBar({
   const dictation = useDictationSelection();
   const modelCatalogue = useQuery({
     queryKey: ['model-catalogue'],
+    notifyOnChangeProps: POLLED_CHIP_PROPS,
     enabled: isBackendReachable(status.stage),
     staleTime: 30_000,
     queryFn: () =>
@@ -194,6 +205,7 @@ export function StatusBar({
   });
   const batchJobs = useQuery({
     queryKey: ['batch-jobs', 'active'],
+    notifyOnChangeProps: POLLED_CHIP_PROPS,
     enabled: isBackendReachable(status.stage),
     queryFn: ({ signal }) => apiJson<BatchJob[]>('/batch/jobs?status=active&limit=100', { signal }),
     staleTime: 1_000,
@@ -211,6 +223,7 @@ export function StatusBar({
   const batchTtsActive = runningBatchStages.has('generate');
   const loadedModels = useQuery({
     queryKey: ['loaded-models'],
+    notifyOnChangeProps: POLLED_CHIP_PROPS,
     enabled: isBackendReachable(status.stage),
     staleTime: 5_000,
     refetchInterval: loadedModelsPollMs(activityCount > 0 || hasBatchWork),

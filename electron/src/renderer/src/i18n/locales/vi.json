@@ -317,14 +317,17 @@
     "test_global_hint": "Chỉ đang xem trước các mục Toàn cầu — chọn một ngôn ngữ để bao gồm các mục theo ngôn ngữ.",
     "test_error": "Không thể xem trước — không liên lạc được với backend.",
     "backup_title": "Sao lưu & khôi phục",
-    "backup_hint": "Tải xuống từ điển dưới dạng tệp JSON, hoặc nhập các mục từ một lần xuất trước đó.",
+    "backup_hint": "Tải từ điển xuống dưới dạng JSON hoặc từ điển PLS, hoặc nhập một trong hai. Từ điển PLS từ các dịch vụ giọng nói khác cũng dùng được.",
     "export": "Xuất JSON",
+    "export_pls": "Xuất PLS",
     "import": "Nhập JSON",
-    "import_error": "Không thể nhập tệp đó — cần JSON từ một lần xuất phát âm.",
+    "import_error": "Không thể nhập tệp đó — cần một bản xuất phát âm (JSON) hoặc từ điển PLS.",
     "import_replace_prompt_one": "Thay {{count}} mục hiện có bằng tệp đã nhập? Chọn Không để thêm các mục đã nhập bên cạnh.",
     "import_replace_prompt_other": "Thay {{count}} mục hiện có bằng tệp đã nhập? Chọn Không để thêm các mục đã nhập bên cạnh.",
     "import_done_one": "Đã nhập {{count}} mục.",
     "import_done_other": "Đã nhập {{count}} mục.",
+    "import_skipped_one": "Đã bỏ qua {{count}} mục: ký hiệu phát âm không được hỗ trợ.",
+    "import_skipped_other": "Đã bỏ qua {{count}} mục: ký hiệu phát âm không được hỗ trợ.",
     "entries_count_one": "{{count}} mục",
     "entries_count_other": "{{count}} mục",
     "scope_language": "Ngôn ngữ",
@@ -945,7 +948,8 @@
     "retry": "Thử lại",
     "confirm": "Xác nhận",
     "details": "Chi tiết",
-    "unknown": "không rõ"
+    "unknown": "không rõ",
+    "link_blocked": "Không thể mở liên kết này. Chỉ cho phép liên kết web và email."
   },
   "dubWorkspace": {
     "transcriptIssues": "Vấn đề trong bản chép lời",
@@ -1337,6 +1341,9 @@
     "terminal_command_added": "Đã thêm. Mở cửa sổ terminal mới để dùng voicestudio.",
     "terminal_command_failed": "Không thể thêm voicestudio vào terminal. Hãy kiểm tra thư mục home của bạn không ở chế độ chỉ đọc, rồi thử lại.",
     "terminal_command_conflict": "{{path}} thuộc về một bản cài đặt khác nên VoiceStudio không thay đổi nó.",
+    "close_to_tray": "Tiếp tục chạy trong khay hệ thống khi đóng",
+    "close_to_tray_desc": "Đóng cửa sổ sẽ ẩn VoiceStudio vào khay hệ thống thay vì thoát, nên các tác vụ đang chạy vẫn tiếp tục. Mở lại từ biểu tượng khay và chọn Thoát tại đó để đóng hẳn. Trên một số máy tính Linux, biểu tượng khay cần hỗ trợ AppIndicator; mở lại VoiceStudio cũng sẽ mở lại cửa sổ.",
+    "close_to_tray_failed": "Không thể lưu cài đặt này. Hãy thử lại.",
     "review_mode_on": "Xem lại",
     "review_mode_off": "Bắn nhanh",
     "translate_agent": "Điều chỉnh bằng tác nhân",
@@ -1364,6 +1371,7 @@
     "gpu_report_state_nvidia_rocm_build": "Đã tìm thấy {{gpu}}, nhưng PyTorch này là bản dựng AMD ROCm và không điều khiển được GPU NVIDIA.",
     "gpu_report_state_intel_unsupported": "Đã tìm thấy {{gpu}}, nhưng không engine nào đã cài dùng được GPU Intel nên mọi thứ chạy trên CPU.",
     "gpu_report_state_kernels_missing": "Đã tìm thấy {{gpu}}, nhưng bản dựng PyTorch này ({{torch}}) không có kernel cho kiến trúc tính toán của nó nên các engine chạy trên CPU.",
+    "gpu_report_torch_fallback": "Quá trình cài đặt đã thử bản PyTorch CUDA 12.6 cho GPU này nhưng không dùng được card, nên các engine PyTorch vẫn chạy trên CPU. Lý do: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} là GPU NVIDIA đời cũ (dòng GTX 900 / 1000 trở về trước). Bản PyTorch này ({{torch}}) không còn hỗ trợ thế hệ đó, nên các engine PyTorch chạy trên CPU. Các engine có runtime Vulkan riêng vẫn dùng được GPU.",
     "gpu_report_state_unknown": "Không xác định được trạng thái GPU.",
     "gpu_report_option_vulkan_engines": "Dùng engine có runtime GPU riêng: audio.cpp chạy trên GPU AMD Radeon qua Vulkan (Cài đặt → Mô hình → cài runtime).",
@@ -1619,7 +1627,8 @@
     "open": "Mở “{{name}}” và thay thế bản nháp hiện tại? Hãy lưu công việc trước.",
     "save_copy": "Lưu bản sao",
     "new": "Dự án mới",
-    "new_confirm": "Bắt đầu một dự án mới, trống? Các dự án đã lưu vẫn giữ nguyên; những thay đổi chưa lưu trong bản nháp hiện tại sẽ bị mất."
+    "new_confirm": "Bắt đầu một dự án mới, trống? Các dự án đã lưu vẫn giữ nguyên; những thay đổi chưa lưu trong bản nháp hiện tại sẽ bị mất.",
+    "delete_hint": "Chỉ dự án đã lưu bị xóa khỏi danh sách. Tệp phương tiện và giọng nói vẫn được giữ."
   },
   "sidebar": {
     "save_project": "Lưu dự án lồng tiếng",
@@ -1870,7 +1879,12 @@
     "cast_note_one": "{{names}} chưa được chọn giọng nên sẽ đọc bằng giọng chính. Hãy chọn giọng trong mục Vai.",
     "cast_note_other": "{{names}} chưa được chọn giọng nên sẽ đọc bằng giọng chính. Hãy chọn giọng trong mục Vai.",
     "line_gap": "Độ ngắt giữa các dòng",
-    "paragraph_gap": "Độ ngắt giữa các đoạn"
+    "paragraph_gap": "Độ ngắt giữa các đoạn",
+    "result_other_connection": "Âm thanh đã lưu này thuộc một kết nối VoiceStudio khác. Hãy quay lại kết nối đó để phát âm thanh.",
+    "result_connection_unknown": "Kết nối với bộ máy cục bộ hoặc máy tính từ xa của bạn để hiển thị âm thanh đã lưu.",
+    "result_legacy": "Kết quả cũ đã lưu này không có thông tin kết nối. Hãy tìm tên tệp trên kết nối này; đó có thể là một tệp khác.",
+    "result_check_audio": "Kiểm tra âm thanh đã lưu trên kết nối này",
+    "result_recovery_failed": "Âm thanh đã lưu không có trên kết nối này. Hãy quay lại kết nối ban đầu hoặc tạo lại âm thanh."
   },
   "credentials": {
     "microsoft_key": "Khóa dịch của Microsoft",
@@ -2021,6 +2035,7 @@
     "setup_wrong_architecture": "Hãy đóng VoiceStudio, thay bằng DMG Apple Silicon (arm64), rồi mở lại. Hiện bản Intel đang chạy qua Rosetta; đổi bản sẽ bật AI cục bộ mà không xóa giọng nói hay dự án.",
     "setup_missing_system_library": "Hệ thống Windows này thiếu Microsoft Visual C++ 2015-2022 Redistributable (x64), thành phần mà tiện ích âm thanh của PyTorch cần đến. Hãy cài từ Microsoft rồi nhấn Thử lại.",
     "setup_outdated_system_library": "Microsoft Visual C++ Redistributable (x64) trên hệ thống Windows này quá cũ nên một thư viện giọng nói bị lỗi khi tải. Hãy cài phiên bản mới nhất từ Microsoft rồi nhấn Thử lại.",
+    "setup_torch_dll_init_failed": "Không thể tải PyTorch và chưa xác định được nguyên nhân. Hãy cài Microsoft Visual C++ Redistributable (x64) mới nhất, sau đó cập nhật trình điều khiển đồ họa rồi nhấn Thử lại. Nếu vẫn lỗi, hãy dùng \"Dọn dẹp & Thử lại\" trong \"Cách khắc phục khác\".",
     "setup_files_locked": "Một chương trình khác đang dùng tệp của VoiceStudio (OneDrive hoặc ứng dụng đồng bộ khác, phần mềm diệt virus, hoặc backend VoiceStudio vẫn đang chạy). Hãy đóng chương trình đó hoặc tạm dừng đồng bộ rồi nhấn Thử lại.",
     "download_apple_silicon": "Tải bản Apple Silicon",
     "retry": "Thử lại",
@@ -2240,6 +2255,10 @@
     "dubbing_cta": "Chạy cái này trên video của riêng bạn →",
     "dubbing_loading": "Đang tải bản demo lồng tiếng…",
     "dubbing_dismiss": "Loại bỏ bản demo lồng tiếng",
+    "dubbing_download": "Tải video demo (~10 MB)",
+    "dubbing_downloading": "Đang tải xuống…",
+    "dubbing_download_failed": "Tải xuống thất bại. Hãy kiểm tra kết nối.",
+    "dubbing_retry": "Thử lại",
     "original_tag": "nguyên bản",
     "dubbed_tag": "được mệnh danh là",
     "script_conversational": "đàm thoại",
@@ -2469,7 +2488,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Xem chi tiết sự cố",
-    "field_exit": "Ra",
+    "field_exit": "Trạng thái thoát",
     "field_when": "Khi",
     "field_version": "Phiên bản phụ trợ",
     "no_stderr": "Không có đầu ra lỗi nào được ghi lại.",
@@ -2874,6 +2893,7 @@
     "source_language_required": "Nhận dạng giọng nói không cho biết video này dùng ngôn ngữ nào, nên không thể dịch tại đây. Mở video trong Lồng tiếng và chọn ngôn ngữ nguồn, hoặc chọn mô hình nhận dạng giọng nói có thể phát hiện ngôn ngữ.",
     "transcription_media_tool": "Chép lời cần ffmpeg, nhưng VoiceStudio không thể tìm thấy hoặc chạy nó. Mở Cài đặt → Công cụ âm thanh và dùng Tải xuống/Sửa chữa, hoặc cài ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: trình quản lý gói của bạn) rồi khởi động lại VoiceStudio. Bạn cũng có thể trỏ FFMPEG_PATH tới tệp ffmpeg.",
     "transcription_pipe_lost": "Backend đã mất kênh đầu ra tới ứng dụng khi đang chép lời (broken pipe). Hãy khởi động lại VoiceStudio và thử lại.",
+    "reference_transcript_required": "Đoạn tham chiếu của giọng nói này không có bản ghi lời thoại mà công cụ này cần để nhân bản. Hãy thêm bản ghi lời thoại vào hồ sơ giọng nói, hoặc cài mô hình chuyển giọng nói thành văn bản để tự động phiên âm.",
     "gpu_oom": "GPU đã hết bộ nhớ. Hãy đóng các ứng dụng khác dùng nhiều GPU hoặc gỡ mô hình khỏi bộ nhớ rồi thử lại. Bạn cũng có thể chọn CPU trong Cài đặt → Hiệu năng & Thiết bị hoặc chọn công cụ TTS nhỏ hơn.",
     "host_memory_exhausted": "Máy tính đã hết bộ nhớ. Hãy đóng các ứng dụng và thẻ trình duyệt khác dùng nhiều bộ nhớ, gỡ các mô hình không dùng, tạo đoạn ngắn hơn hoặc chọn công cụ TTS nhẹ hơn.",
     "disk_full": "Ổ đĩa đã đầy. Hãy giải phóng dung lượng trên ổ chứa dữ liệu, bộ nhớ đệm mô hình hoặc thư mục tạm của VoiceStudio rồi thử lại. Cài đặt → Lưu trữ hiển thị mức dùng ổ đĩa và có thể xóa tệp tạm.",
@@ -2926,7 +2946,8 @@
     "missingSpeech": "Lời nói bị thiếu hoặc không đọc được. Hãy tạo lại đoạn bị ảnh hưởng trước khi xuất.",
     "timingOverflow": "Lời nói vượt quá thời gian được phân bổ. Hãy rút ngắn bản dịch hoặc chọn khung thời gian nghiêm ngặt hay kéo dài video.",
     "sourceChanged": "Phụ đề đã thay đổi trong khi bản lồng tiếng này đang được tạo. Bản âm thanh trước được giữ nguyên; hãy tạo lại để dùng phụ đề mới.",
-    "backgroundUnavailable": "Không thể giữ âm thanh gốc. Hãy kiểm tra việc tách âm nền và thời gian hội thoại rồi thử lại, hoặc chọn chỉ xuất giọng nói."
+    "backgroundUnavailable": "Không thể giữ âm thanh gốc. Hãy kiểm tra việc tách âm nền và thời gian hội thoại rồi thử lại, hoặc chọn chỉ xuất giọng nói.",
+    "untranslated": "Bản này chưa được dịch: mọi dòng vẫn giống văn bản gốc. Hãy dịch hoặc chọn ngôn ngữ nguồn, rồi tạo lại."
   },
   "dubStyle": {
     "label": "Hướng dẫn phong cách dịch",
@@ -2945,6 +2966,8 @@
     "free": "Miễn phí",
     "pro": "Pro",
     "get_pro": "Nhận Pro",
+    "upgrade_pro": "Nâng cấp lên Pro",
+    "get_pro_app": "Tải ứng dụng Pro",
     "sponsor_bar": "Thanh nhà tài trợ",
     "visible": "Hiển thị",
     "hideable": "Có thể ẩn",
@@ -2989,6 +3012,7 @@
       "speechCurl": "Chuyển văn bản thành giọng nói (curl)",
       "transcriptionCurl": "Chép lời (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Chạy container",
       "dockerCompose": "Docker Compose",
       "workflow": "Quy trình n8n",
@@ -3341,7 +3365,8 @@
     "denoise": "Lọc nhiễu bản tham chiếu",
     "polish": "Trau chuốt âm thanh đã tạo",
     "basics": "1× là tốc độ bình thường. Để trống thời lượng để có nhịp tự nhiên.",
-    "hint": "Thường nên giữ giá trị mặc định. Độ dẫn hướng điều chỉnh ảnh hưởng của lời nhắc; các nút khác thay đổi cách mô hình tạo âm thanh. Mỗi lần chỉ đổi một mục."
+    "hint": "Thường nên giữ giá trị mặc định. Độ dẫn hướng điều chỉnh ảnh hưởng của lời nhắc; các nút khác thay đổi cách mô hình tạo âm thanh. Mỗi lần chỉ đổi một mục.",
+    "pauses_hint": "Thêm khoảng lặng ở dòng trống. 0 giữ nhịp riêng của công cụ."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} chỉ có một mô hình {{language}}, nên giọng vùng miền theo giọng tham chiếu.",
@@ -4328,5 +4353,12 @@
     "unavailable": "Báo cáo tự động không khả dụng hoặc đã bị tắt cho ứng dụng này.",
     "managed": "Quản lý lựa chọn này trong ứng dụng máy tính kết nối với trình duyệt này.",
     "save_failed": "Không thể lưu lựa chọn này. Vui lòng thử lại."
+  },
+  "tray": {
+    "open": "Mở {{app}}",
+    "start_dictation": "Bắt đầu đọc chính tả",
+    "stop_dictation": "Dừng đọc chính tả",
+    "settings": "Cài đặt",
+    "quit": "Thoát"
   }
 }

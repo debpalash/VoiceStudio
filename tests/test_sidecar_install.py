@@ -2170,3 +2170,11 @@ def test_missing_compiler_remediation_per_platform():
         "pyworld.cpp(12): error C2065: 'foo': undeclared identifier",
         "error: command 'C:\\BuildTools\\VC\\bin\\cl.exe' failed with exit code 2",
     ])
+
+
+def test_voxcpm2_never_builds_kaldifst_from_source():
+    """#4316: kaldifst (via voxcpm -> wetext) cannot compile under MSVC, so the
+    install pins a release with wheels for every host and refuses an sdist."""
+    args = si.get_spec("voxcpm2").install_args
+    assert "kaldifst==1.9.0" in args
+    assert args[args.index("--only-binary") + 1] == "kaldifst"

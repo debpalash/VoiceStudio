@@ -312,3 +312,10 @@ def test_condense_longer_reply_is_useless(fake_llm):
     res = dp.condense_for_slot("A" * 60, available_s=2.0, target_lang="en")
     assert res["applied"] is False
     assert res["error"] == "condense-failed"
+
+
+@pytest.mark.parametrize("invalid", [(float("inf"), 2), (30, float("inf"))])
+def test_calibration_ignores_nonfinite_samples(invalid):
+    assert dp.calibrate_cps([(20, 2), (40, 2), invalid]) is None
+    result = dp.calibrate_cps([(20, 2), (40, 2), (30, 2), invalid])
+    assert result == dp.Calibration(cps=15.0, samples=3)

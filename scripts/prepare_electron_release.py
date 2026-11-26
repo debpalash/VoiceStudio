@@ -54,6 +54,28 @@ def is_credit_worthy(login):
                 or name in agents.AGENT_LOGINS or name == UNLINKED_LOGIN)
 
 
+def notes_with_contributors(notes, repo, tag, gh=_gh, head=None):
+    """`notes` plus a `### Contributors` block, or `notes` unchanged.
+
+    A hand-written block (with roles and reporters) always wins, so the automatic
+    one is only assembled when the notes do not already carry a Contributors
+    heading.
+
+    Credits must never block a release, which is why the guard is not narrowed to
+    the exceptions the GitHub CLI raises: assembling the block can also fail on an
+    unexpected answer shape or a parsing bug, and a release whose notes are ready
+    should still be prepared, with the omission reported as a warning.
+    """
+    if not repo or re.search(r"^#{2,4} Contributors", notes, re.M):
+        return notes
+    try:
+        block = contributors_section(repo, tag, gh, head=head)
+    except Exception as error:  # noqa: BLE001 - credits must never block a release
+        print(f"::warning::Contributors section skipped: {error!r}", file=sys.stderr)
+        return notes
+    return f"{notes}\n{block}" if block else notes
+
+
 def contributors_section(repo, tag, gh=_gh, head=None):
     """A `### Contributors` block for everyone who contributed since the last stable release.
 
@@ -65,8 +87,16 @@ def contributors_section(repo, tag, gh=_gh, head=None):
     are left out. Returns "" when there is nobody to thank. `head` replaces the
     tag as the end of the comparison when the tag does not exist yet (a rehearsal).
     """
-    latest = gh("api", f"repos/{repo}/releases/latest", "--jq", ".tag_name + \" \" + .published_at").split()
-    base, since = latest[0], latest[1][:10]
+    raw = gh("api", f"repos/{repo}/releases/latest", "--jq", '.tag_name + " " + .published_at').split()
+    if len(raw) < 2 or not raw[1]:
+        # No published stable release yet, or `published_at` came back null/empty.
+        # There is no window to compare against, and indexing a short answer used
+        # to raise IndexError outside the caller's guard — credits must never
+        # block a release, so say so and return without a block.
+        print("::warning::Contributors section skipped: no previous stable release",
+              file=sys.stderr)
+        return ""
+    base, since = raw[0], raw[1][:10]
     ordered = _ranked_contributors(repo, base, since, head or tag, gh)
     if not ordered:
         return ""
@@ -155,16 +185,7 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh, head=None, missing=
     if not section or not section[1].strip():
         raise ValueError("Write versioned CHANGELOG notes before release")
     notes = section[1].strip() + "\n"
-    # A hand-written Contributors block (with roles, reporters) always wins.
-    if repo and not re.search(r"^#{2,4} Contributors", notes, re.M):
-        try:
-            block = contributors_section(repo, tag, gh, head=head)
-        except (subprocess.CalledProcessError, OSError) as error:
-            # Credits must never block a release; say so loudly instead.
-            print(f"::warning::Contributors section skipped: {error}", file=sys.stderr)
-            block = ""
-        if block:
-            notes += "\n" + block
+    notes = notes_with_contributors(notes, repo, tag, gh, head=head)
     (assets / "RELEASE_NOTES.md").write_text(notes, encoding="utf-8")
     (assets / "SHA256SUMS.txt").write_text("\n".join(
         f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}" for p in sorted(files)

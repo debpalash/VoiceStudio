@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookAIcon, DownloadIcon, PlusIcon, Trash2Icon, UploadIcon } from 'lucide-react';
+import { BookAIcon, DownloadIcon, PlusIcon, UploadIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -16,38 +15,19 @@ import {
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiFetch, apiJson, describeError } from '@/lib/api/client';
 import { isImeComposing } from '@/lib/ime';
-import { saveLocalFile } from '@/lib/local-export';
 import { listProfiles } from '@/lib/api/profiles';
 import { SettingsRow, SettingsSection } from './settings-layout';
-
-type PronunciationType = 'respelling' | 'ipa' | 'cmu';
-
-interface PronunciationEntry {
-  id: string;
-  term: string;
-  replacement: string;
-  type: PronunciationType;
-  language: string;
-  scope?: string;
-  enabled: boolean;
-}
-
-interface TestResult {
-  substituted: string;
-  changed: boolean;
-}
-
-interface ImportPayload {
-  entries: Omit<PronunciationEntry, 'id' | 'scope'>[];
-}
-
-// An import belongs to the dictionary it was started for (#3873 review).
-interface PendingImport extends ImportPayload {
-  profileId: string;
-  count: number;
-}
-
-const TYPES: PronunciationType[] = ['respelling', 'ipa', 'cmu'];
+import { PronunciationEntryRow } from './pronunciation-entry-row';
+import {
+  exportPronunciation,
+  readPronunciationImport,
+  TYPES,
+  type ImportPayload,
+  type PendingImport,
+  type PronunciationEntry,
+  type PronunciationType,
+  type TestResult,
+} from './pronunciation-io';
 
 export function PronunciationSettings() {
   const { t } = useTranslation();
@@ -184,7 +164,7 @@ export function PronunciationSettings() {
         }),
       });
       setPendingImport(null);
-      setNotice(t('pronunciation.import_done', { count: result.imported }));
+      importNotice(result.imported, payload.skipped);
       await refresh();
     });
   const loadImport = async (file: File) => {
@@ -194,30 +174,27 @@ export function PronunciationSettings() {
     setError('');
     setNotice('');
     try {
-      const parsed = JSON.parse(await file.text()) as unknown;
-      const imported = Array.isArray(parsed)
-        ? parsed
-        : parsed && typeof parsed === 'object' && 'entries' in parsed
-          ? (parsed as { entries?: unknown }).entries
-          : null;
-      if (!Array.isArray(imported)) throw new Error('Invalid pronunciation export');
+      const payload = await readPronunciationImport(file);
       if (profileIdRef.current !== target) return;
-      const payload = { entries: imported } as ImportPayload;
+      if (payload.entries.length === 0) {
+        // Nothing usable: never offer to replace the dictionary with nothing.
+        importNotice(0, payload.skipped);
+        return;
+      }
       if (existing) setPendingImport({ ...payload, profileId: target, count: existing });
       else void importEntries(payload, target, false);
     } catch {
       setError(t('pronunciation.import_error'));
     }
   };
-  const exportEntries = () =>
+  const exportAs = (format: 'json' | 'pls') =>
     act(async () => {
-      if (voiceScopeNeedsVoice) return;
-      const data = await apiJson<ImportPayload>('/pronunciation/export' + profileQuery);
-      await saveLocalFile(
-        new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
-        profileId ? 'pronunciation-voice-dictionary.json' : 'pronunciation-dictionary.json',
-      );
+      if (!voiceScopeNeedsVoice) await exportPronunciation(profileId, format);
     });
+  const importNotice = (count: number, skipped?: number) => {
+    const done = t('pronunciation.import_done', { count });
+    setNotice(skipped ? `${done} ${t('pronunciation.import_skipped', { count: skipped })}` : done);
+  };
 
   const scopedLanguages = Array.from(
     new Set(
@@ -319,34 +296,13 @@ export function PronunciationSettings() {
         <p className="px-4 py-3 text-sm text-muted-foreground">{t('pronunciation.empty')}</p>
       )}
       {rows.map((entry) => (
-        <SettingsRow
+        <PronunciationEntryRow
           key={entry.id}
-          id={'pronunciation-' + entry.id}
-          title={entry.term + ' → ' + (entry.replacement || '—')}
-          description={
-            t('pronunciation.type_' + entry.type) +
-            ' · ' +
-            ((entry.scope || entry.language) === '*'
-              ? t('pronunciation.global')
-              : entry.scope || entry.language)
-          }
-        >
-          <Switch
-            checked={entry.enabled}
-            disabled={busy}
-            aria-label={t('pronunciation.enable_entry', { term: entry.term })}
-            onCheckedChange={(enabled) => void update(entry, enabled)}
-          />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={busy}
-            aria-label={t('pronunciation.remove', { term: entry.term })}
-            onClick={() => void remove(entry)}
-          >
-            <Trash2Icon />
-          </Button>
-        </SettingsRow>
+          entry={entry}
+          busy={busy}
+          onToggle={(enabled) => void update(entry, enabled)}
+          onRemove={() => void remove(entry)}
+        />
       ))}
       <SettingsRow
         id="pronunciation-add"
@@ -469,10 +425,18 @@ export function PronunciationSettings() {
         <Button
           variant="outline"
           disabled={busy || voiceScopeNeedsVoice}
-          onClick={() => void exportEntries()}
+          onClick={() => void exportAs('json')}
         >
           <DownloadIcon />
           {t('pronunciation.export')}
+        </Button>
+        <Button
+          variant="outline"
+          disabled={busy || voiceScopeNeedsVoice}
+          onClick={() => void exportAs('pls')}
+        >
+          <DownloadIcon />
+          {t('pronunciation.export_pls')}
         </Button>
         <Button
           variant="outline"
@@ -486,7 +450,7 @@ export function PronunciationSettings() {
           ref={fileInput}
           hidden
           type="file"
-          accept="application/json,.json"
+          accept="application/json,.json,application/pls+xml,.pls,.xml"
           aria-label={t('pronunciation.import')}
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -500,7 +464,10 @@ export function PronunciationSettings() {
           <p className="min-w-0 flex-1">
             {t('pronunciation.import_replace_prompt', { count: pendingImport.count })}
           </p>
-          <Button disabled={busy} onClick={() => void importEntries(pendingImport, pendingImport.profileId, true)}>
+          <Button
+            disabled={busy}
+            onClick={() => void importEntries(pendingImport, pendingImport.profileId, true)}
+          >
             {t('common.yes')}
           </Button>
           <Button

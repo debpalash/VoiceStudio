@@ -218,7 +218,7 @@ jobs:
         with:
           workspaces: native/desktop-bridge -> target
           key: electron-${{ matrix.target }}
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: '0.12.13'
           enable-cache: false
@@ -266,8 +266,8 @@ jobs:
             > "$RUNNER_TEMP/prepare-apple-notarization.sh"
       - name: Package without publishing
         env:
-          SUPERMETRY_APP_ID: ${{ vars.SUPERMETRY_APP_ID || secrets.SUPERMETRY_APP_ID }}
-          SUPERMETRY_INGEST_KEY: ${{ vars.SUPERMETRY_INGEST_KEY || secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
           SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
           CSC_LINK: ${{ matrix.platform == 'darwin' && secrets.ELECTRON_MACOS_CSC_LINK || matrix.platform == 'win32' && secrets.ELECTRON_WINDOWS_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.ELECTRON_MACOS_CSC_KEY_PASSWORD || matrix.platform == 'win32' && secrets.ELECTRON_WINDOWS_CSC_KEY_PASSWORD || '' }}
@@ -330,7 +330,7 @@ jobs:
       - name: Upload the unsigned Windows installer for SignPath
         id: upload-unsigned-installer
         if: env.SIGNPATH_ENABLED == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signpath-unsigned-${{ matrix.platform }}-${{ matrix.arch }}
           retention-days: ${{ inputs.rehearsal && 3 || 7 }}
@@ -339,7 +339,7 @@ jobs:
       - name: Sign the Windows installer with SignPath
         if: env.SIGNPATH_ENABLED == 'true'
         timeout-minutes: 70
-        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -462,7 +462,7 @@ jobs:
           mkdir -p electron/release-signing
           printf '{"platform":"linux","arch":"%s","status":"not-applicable"}\n' "${{ matrix.arch }}" > "electron/release-signing/signing-linux-${{ matrix.arch }}.json"
       - name: Save the signing report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: electron-signing-${{ matrix.platform }}-${{ matrix.arch }}
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
@@ -482,7 +482,7 @@ jobs:
             node tests/packaged-smoke.mjs --setup
           fi
       - name: Save installers and updater metadata for review
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: electron-release-${{ matrix.platform }}-${{ matrix.arch }}
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
@@ -624,7 +624,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Rehearsal - save the release notes and checksums
         if: inputs.rehearsal == true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: electron-rehearsal-notes
           retention-days: 3

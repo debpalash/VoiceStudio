@@ -4,6 +4,28 @@ import { classifyInstallFailure, type FailureEvidence, type InstallFailureCode }
 // Text from real reports. When an issue reveals a new class, add it here.
 const CORPUS: [string, FailureEvidence, InstallFailureCode][] = [
   [
+    '#4230 torch c10.dll failure under a very long runtime path',
+    {
+      stage: 'setup_required',
+      message: 'Runtime setup exited with code 1',
+      logLines: [
+        `OSError: [WinError 1114] A dynamic link library (DLL) initialization routine failed. Error loading "D:\\${'a'.repeat(400)}\\torch\\lib\\c10.dll" or one of its dependencies.`,
+      ],
+    },
+    'SYSTEM_LIBRARY_PROBLEM',
+  ],
+  [
+    '#4230 torch c10.dll initialisation failed (outdated Visual C++ runtime)',
+    {
+      stage: 'setup_required',
+      message: 'Runtime setup exited with code 1; the import check stopped while importing "faster_whisper"',
+      logLines: [
+        'OSError: [WinError 1114] A dynamic link library (DLL) initialization routine failed. Error loading "~\\AppData\\Roaming\\VoiceStudio\\runtime\\project\\.venv\\Lib\\site-packages\\torch\\lib\\c10.dll" or one of its dependencies.',
+      ],
+    },
+    'SYSTEM_LIBRARY_PROBLEM',
+  ],
+  [
     '#3635 Smart App Control confirmed by the reporter',
     { stage: 'failed', message: 'spawn UNKNOWN', smartAppControl: 'on' },
     'WINDOWS_APP_CONTROL_BLOCKED',

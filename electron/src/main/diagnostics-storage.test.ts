@@ -875,7 +875,8 @@ it('keeps combined saved and deferred intake within the existing queue bound', a
   await reports.initialize();
   for (let index = 0; index < MAX_RECORDS + 4; index++) {
     now += 60_001;
-    reports.capture({ category: 'generation_failed' });
+    // Distinct fingerprints: this test bounds the whole queue, not one failure's budget.
+    reports.capture({ category: 'generation_failed', frames: `renderer:${index + 1}:1` });
   }
   expect(reports.status().pending_count).toBe(MAX_RECORDS);
   gate.failReadTarget = '';

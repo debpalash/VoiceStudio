@@ -72,6 +72,8 @@ tts_engines:
     doc: docs/engines/audio-cpp.md
   - id: audiocpp-dots
     doc: docs/engines/audio-cpp.md
+  - id: audiocpp-drama3
+    doc: docs/engines/audio-cpp.md
 
 # Same contract against backend/services/asr_backend.py _REGISTRY.
 asr_engines:

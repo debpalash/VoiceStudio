@@ -16,7 +16,7 @@ final class ApplePresentationScreens: XCTestCase {
         app.tabButton("Settings").tapReady()
         let models = app.buttons["Models"]
         for _ in 0..<8 { if models.isHittable { break }; app.swipeUp() }
-        models.tap()
+        models.tapReady()
         app.buttons["model.licence.kitten-mini-en-fp16"].tapReady()
         let accept = app.buttons["models.accept"]
         XCTAssertTrue(accept.waitForExistence(timeout: uiReadyTimeout))
@@ -43,12 +43,12 @@ final class ApplePresentationScreens: XCTestCase {
             search.tapReady(); search.typeText("French")
             app.buttons["keyboard.done"].tapReady()
         }
-        french.tap()
+        french.tapReady()
         XCTAssertEqual(french.value as? String, "Selected")
         app.buttons["Cancel"].tapReady()
         app.buttons["dub.languages"].tapReady()
         let reopenedSearch = app.textFields["search.field"]
-        reopenedSearch.tap(); reopenedSearch.typeText("French")
+        reopenedSearch.tapReady(); reopenedSearch.typeText("French")
         app.buttons["keyboard.done"].tapReady()
         XCTAssertEqual(app.buttons["French"].value as? String, "Not selected")
         app.buttons["Cancel"].tapReady()

@@ -336,3 +336,73 @@ def test_reentrant_request_for_a_privileged_caller_keeps_its_standalone_ability(
     seen = _headers_seen_by_the_backend(monkeypatch, privileged=True)
     assert _dependencies().DELEGATED_CALLER_HEADER.lower() not in seen
     assert seen["authorization"] == "Bearer s3cret"
+
+# ?? The marker must remove implicit trust from every loopback short-circuit ??
+# #4128 taught `check_admin` that a loopback peer may be the in-process MCP
+# bridge re-entering with its original HTTP peer preserved. The sibling guards
+# share the same loopback assumption, and six routes depend on them alone --
+# including `POST /tools/probe`, whose docstring says a remote caller must never
+# probe an arbitrary host path. Sending the marker by hand cannot help an
+# attacker: it only ever *removes* privilege.
+
+MARKER = {"x-omnivoice-delegated": "1", **CSRF_PROOF}
+
+
+@pytest.mark.parametrize(
+    "guard_name",
+    [
+        "require_loopback",
+        "require_admin_action",
+        "require_admin_media_action",
+        "require_admin_diagnostics",
+    ],
+)
+def test_a_delegated_loopback_caller_loses_the_implicit_admin_short_circuit(guard_name):
+    dependencies = _dependencies()
+    guard = getattr(dependencies, guard_name)
+
+    plain = _request(headers=CSRF_PROOF)
+    result = guard(plain)
+    if asyncio.iscoroutine(result):
+        asyncio.run(result)
+
+    with pytest.raises(HTTPException) as excinfo:
+        result = guard(_request(headers=MARKER))
+        if asyncio.iscoroutine(result):
+            asyncio.run(result)
+    assert excinfo.value.status_code == 403
+
+
+@pytest.mark.parametrize("guard_name", ["require_desktop", "require_native_access"])
+def test_a_delegated_loopback_caller_cannot_borrow_desktop_filesystem_access(guard_name):
+    dependencies = _dependencies()
+    guard = getattr(dependencies, guard_name)
+
+    guard(_request(headers=CSRF_PROOF))  # plain loopback is the desktop
+
+    with pytest.raises(HTTPException) as excinfo:
+        guard(_request(headers=MARKER))
+    assert excinfo.value.status_code == 403
+
+
+def test_a_remote_caller_is_refused_regardless_of_the_marker():
+    dependencies = _dependencies()
+    for headers in (CSRF_PROOF, MARKER):
+        with pytest.raises(HTTPException):
+            dependencies.require_native_access(_request(host="10.0.0.5", headers=headers))
+
+
+@pytest.mark.parametrize("guard_name", ["require_loopback", "require_admin_action"])
+def test_a_delegated_loopback_caller_with_the_api_key_passes_in_server_mode(monkeypatch, guard_name):
+    monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
+    monkeypatch.setenv("OMNIVOICE_API_KEY", "s3cret")
+    guard = getattr(_dependencies(), guard_name)
+    marked = {**MARKER, "authorization": "Bearer s3cret"}
+
+    guard(_request(headers=marked, method="GET"))
+
+    with pytest.raises(HTTPException) as excinfo:
+        guard(_request(headers={**MARKER, "authorization": "Bearer nope"}, method="GET"))
+    assert excinfo.value.status_code == 403
+    with pytest.raises(HTTPException):
+        guard(_request(headers=MARKER, method="GET"))

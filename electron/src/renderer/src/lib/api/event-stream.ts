@@ -42,15 +42,16 @@ export async function consumeTaskStream(
       type: eventName || (typeof object.type === 'string' ? object.type : 'message'),
     });
   };
+  let afterCR = false;
   try {
     while (!terminal) {
       const chunk = await reader.read();
       buffer += decoder.decode(chunk.value, { stream: !chunk.done });
       if (chunk.done && buffer) buffer += '\n';
-      const split = splitSSEBuffer(buffer);
+      const split = splitSSEBuffer(buffer, afterCR);
       buffer = split.rest;
-      for (const raw of split.lines) {
-        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+      afterCR = split.endsWithCR;
+      for (const line of split.lines) {
         if (!line) {
           if (dispatch()) {
             terminal = true;

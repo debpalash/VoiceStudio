@@ -317,14 +317,17 @@
     "test_global_hint": "Voorbeeld met alleen globale vermeldingen — kies een taal om taalspecifieke vermeldingen mee te nemen.",
     "test_error": "Voorbeeld niet beschikbaar — de backend was niet bereikbaar.",
     "backup_title": "Back-up & herstel",
-    "backup_hint": "Download het woordenboek als JSON-bestand, of importeer vermeldingen uit een eerdere export.",
+    "backup_hint": "Download het woordenboek als JSON of als PLS-lexicon, of importeer een van beide. PLS-lexicons van andere spraakdiensten werken ook.",
     "export": "JSON exporteren",
+    "export_pls": "PLS exporteren",
     "import": "JSON importeren",
-    "import_error": "Kan dat bestand niet importeren — JSON van een uitspraak-export verwacht.",
+    "import_error": "Kan dat bestand niet importeren — een uitspraak-export (JSON) of een PLS-lexicon verwacht.",
     "import_replace_prompt_one": "Het {{count}} bestaande item vervangen door het geïmporteerde bestand? Kies Nee om de geïmporteerde items ernaast toe te voegen.",
     "import_replace_prompt_other": "De {{count}} bestaande items vervangen door het geïmporteerde bestand? Kies Nee om de geïmporteerde items ernaast toe te voegen.",
     "import_done_one": "{{count}} item geïmporteerd.",
     "import_done_other": "{{count}} items geïmporteerd.",
+    "import_skipped_one": "{{count}} item overgeslagen: de fonetische notatie wordt niet ondersteund.",
+    "import_skipped_other": "{{count}} items overgeslagen: de fonetische notatie wordt niet ondersteund.",
     "entries_count_one": "{{count}} item",
     "entries_count_other": "{{count}} items",
     "scope_language": "Taal",
@@ -945,7 +948,8 @@
     "retry": "Probeer het opnieuw",
     "confirm": "Bevestigen",
     "details": "Details",
-    "unknown": "onbekend"
+    "unknown": "onbekend",
+    "link_blocked": "Deze link kan niet worden geopend. Alleen web- en e-maillinks zijn toegestaan."
   },
   "dubWorkspace": {
     "transcriptIssues": "Problemen in transcript",
@@ -1337,6 +1341,9 @@
     "terminal_command_added": "Toegevoegd. Open een nieuw terminalvenster om voicestudio te gebruiken.",
     "terminal_command_failed": "voicestudio kon niet aan de terminal worden toegevoegd. Controleer of je thuismap niet alleen-lezen is en probeer het opnieuw.",
     "terminal_command_conflict": "{{path}} hoort bij een andere installatie, dus VoiceStudio heeft het niet gewijzigd.",
+    "close_to_tray": "Blijven draaien in het systeemvak bij sluiten",
+    "close_to_tray_desc": "Bij het sluiten van het venster verdwijnt VoiceStudio naar het systeemvak in plaats van af te sluiten, zodat lopende taken doorgaan. Open het opnieuw via het pictogram in het systeemvak en kies daar Afsluiten om te stoppen. Op sommige Linux-desktops heeft het pictogram AppIndicator-ondersteuning nodig; VoiceStudio opnieuw starten opent het venster ook weer.",
+    "close_to_tray_failed": "Deze instelling kon niet worden opgeslagen. Probeer het opnieuw.",
     "review_mode_on": "Beoordeling",
     "review_mode_off": "Snelvuur",
     "translate_agent": "Agent geschikt",
@@ -1364,6 +1371,7 @@
     "gpu_report_state_nvidia_rocm_build": "{{gpu}} is gevonden, maar deze PyTorch is een AMD-ROCm-build en kan geen NVIDIA-GPU's aansturen.",
     "gpu_report_state_intel_unsupported": "{{gpu}} is gevonden, maar geen geïnstalleerde engine kan Intel-GPU's gebruiken, dus alles draait op de CPU.",
     "gpu_report_state_kernels_missing": "{{gpu}} is gevonden, maar deze PyTorch-build ({{torch}}) bevat geen kernels voor de rekenarchitectuur, dus de engines draaien op de CPU.",
+    "gpu_report_torch_fallback": "De installatie probeerde de CUDA 12.6-build van PyTorch voor deze GPU, maar kon de kaart niet gebruiken, dus PyTorch-engines blijven op de CPU draaien. Reden: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} is een oudere NVIDIA-GPU (GTX 900-/1000-serie of ouder). Deze PyTorch-build ({{torch}}) ondersteunt die generatie niet meer, dus PyTorch-engines draaien op de CPU. Engines met een eigen Vulkan-runtime kunnen de GPU nog wel gebruiken.",
     "gpu_report_state_unknown": "De GPU-status kon niet worden bepaald.",
     "gpu_report_option_vulkan_engines": "Gebruik een engine met een eigen GPU-runtime: audio.cpp draait via Vulkan op AMD Radeon-GPU's (Instellingen → Modellen → runtime installeren).",
@@ -1619,7 +1627,8 @@
     "open": "‘{{name}}’ openen en het huidige concept vervangen? Sla je werk eerst op.",
     "save_copy": "Kopie opslaan",
     "new": "Nieuw project",
-    "new_confirm": "Een nieuw, leeg project beginnen? Opgeslagen projecten blijven ongewijzigd; niet-opgeslagen wijzigingen in het huidige concept gaan verloren."
+    "new_confirm": "Een nieuw, leeg project beginnen? Opgeslagen projecten blijven ongewijzigd; niet-opgeslagen wijzigingen in het huidige concept gaan verloren.",
+    "delete_hint": "Alleen het opgeslagen project wordt uit de lijst verwijderd. Mediabestanden en stemmen blijven behouden."
   },
   "sidebar": {
     "save_project": "Dub-project opslaan",
@@ -1870,7 +1879,12 @@
     "recovery_busy": "Er loopt al een andere render. Hervat zodra die klaar is.",
     "cast_note_one": "{{names}} heeft nog geen stem en wordt met de hoofdstem gelezen. Kies er een onder Cast.",
     "cast_note_other": "{{names}} hebben nog geen stem en worden met de hoofdstem gelezen. Kies stemmen onder Cast.",
-    "line_gap": "Stilte tussen regels"
+    "line_gap": "Stilte tussen regels",
+    "result_other_connection": "Dit opgeslagen audiobestand hoort bij een andere VoiceStudio-verbinding. Schakel terug naar die verbinding om het af te spelen.",
+    "result_connection_unknown": "Verbind je lokale engine of externe computer om opgeslagen audio te tonen.",
+    "result_legacy": "Bij dit oudere opgeslagen resultaat is geen verbinding vastgelegd. Zoek op deze verbinding naar de bestandsnaam; het kan om een ander bestand gaan.",
+    "result_check_audio": "Opgeslagen audio op deze verbinding controleren",
+    "result_recovery_failed": "De opgeslagen audio is niet beschikbaar op deze verbinding. Schakel terug naar de oorspronkelijke verbinding of genereer de audio opnieuw."
   },
   "credentials": {
     "microsoft_key": "Microsoft Translator-sleutel",
@@ -2021,6 +2035,7 @@
     "setup_wrong_architecture": "Sluit VoiceStudio, vervang het door de Apple Silicon-DMG (arm64) en start opnieuw. Nu draait de Intel-editie via Rosetta; na de wissel werkt lokale AI en blijven stemmen en projecten behouden.",
     "setup_missing_system_library": "Op dit Windows-systeem ontbreekt het Microsoft Visual C++ 2015-2022 Redistributable (x64) dat de PyTorch-audio-extensie nodig heeft. Installeer het via Microsoft en druk daarna op Opnieuw proberen.",
     "setup_outdated_system_library": "Het Microsoft Visual C++ Redistributable (x64) op dit Windows-systeem is te oud, waardoor een spraakbibliotheek crasht bij het laden. Installeer de nieuwste versie via Microsoft en druk daarna op Opnieuw proberen.",
+    "setup_torch_dll_init_failed": "PyTorch kon niet worden geladen en de oorzaak is niet vastgesteld. Installeer de nieuwste Microsoft Visual C++ Redistributable (x64), werk daarna je grafische driver bij en kies Opnieuw proberen. Mislukt het nog steeds, gebruik dan \"Wissen & Opnieuw proberen\" onder \"Meer oplossingen\".",
     "setup_files_locked": "Een ander programma gebruikt de bestanden van VoiceStudio (OneDrive of een andere sync-app, antivirus, of een VoiceStudio-backend die nog draait). Sluit het of pauzeer de synchronisatie en druk daarna op Opnieuw proberen.",
     "download_apple_silicon": "Apple Silicon-versie downloaden",
     "ready": "Engine gereed",
@@ -2240,6 +2255,10 @@
     "dubbing_cta": "Voer dit uit op uw eigen video →",
     "dubbing_loading": "Dubdemo laden…",
     "dubbing_dismiss": "Nasynchronisatiedemo sluiten",
+    "dubbing_download": "Demovideo's downloaden (~10 MB)",
+    "dubbing_downloading": "Downloaden…",
+    "dubbing_download_failed": "Downloaden mislukt. Controleer je verbinding.",
+    "dubbing_retry": "Opnieuw proberen",
     "original_tag": "origineel",
     "dubbed_tag": "nagesynchroniseerd",
     "script_conversational": "Gemoedelijk",
@@ -2469,7 +2488,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Bekijk crashdetails",
-    "field_exit": "Uitgang",
+    "field_exit": "Afsluitstatus",
     "field_when": "Wanneer",
     "field_uptime": "Uptime vóór crash",
     "field_version": "Backend-versie",
@@ -2874,6 +2893,7 @@
     "source_language_required": "Spraakherkenning heeft niet gemeld in welke taal deze video gesproken is, dus hij kan hier niet worden vertaald. Open de video in Nasynchronisatie en kies de brontaal, of kies een spraakherkenningsmodel dat de taal detecteert.",
     "transcription_media_tool": "Voor transcriptie is ffmpeg nodig, dat VoiceStudio niet kon vinden of uitvoeren. Open Instellingen → Audiotools en gebruik Downloaden/Herstellen, of installeer ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: je pakketbeheerder) en herstart VoiceStudio. Je kunt ook FFMPEG_PATH naar een ffmpeg-bestand laten wijzen.",
     "transcription_pipe_lost": "De backend verloor tijdens de transcriptie zijn uitvoerkanaal naar de app (broken pipe). Herstart VoiceStudio en probeer het opnieuw.",
+    "reference_transcript_required": "De referentieclip van deze stem heeft geen transcriptie, die deze engine nodig heeft om hem te klonen. Voeg de transcriptie toe aan het stemprofiel of installeer een spraakherkenningsmodel zodat het automatisch kan worden getranscribeerd.",
     "gpu_oom": "De GPU heeft geen geheugen meer. Sluit andere GPU-intensieve apps of ontlaad modellen en probeer het opnieuw. Je kunt ook CPU kiezen in Instellingen → Prestaties en apparaat of een kleinere TTS-engine selecteren.",
     "host_memory_exhausted": "De computer heeft geen geheugen meer. Sluit andere geheugenintensieve apps en browsertabs, ontlaad ongebruikte modellen, genereer een kortere passage of kies een lichtere TTS-engine.",
     "disk_full": "De schijf is vol. Maak ruimte vrij op het station met de gegevens, modelcache of tijdelijke map van VoiceStudio en probeer het opnieuw. Instellingen → Opslag toont het schijfgebruik en kan tijdelijke bestanden wissen.",
@@ -2926,7 +2946,8 @@
     "missingSpeech": "Spraak ontbreekt of is onleesbaar. Genereer het betreffende segment opnieuw voordat je exporteert.",
     "timingOverflow": "De spraak overschrijdt het tijdvak. Verkort de vertaling of kies een strikt tijdvak of het uitrekken van de video.",
     "sourceChanged": "De ondertitels zijn gewijzigd terwijl deze nasynchronisatie werd gemaakt. Het vorige spoor is behouden; genereer opnieuw om de nieuwe ondertitels te gebruiken.",
-    "backgroundUnavailable": "Het oorspronkelijke geluid kon niet behouden blijven. Controleer de achtergrondscheiding en dialoogtijden en probeer opnieuw, of kies expliciet voor alleen spraak exporteren."
+    "backgroundUnavailable": "Het oorspronkelijke geluid kon niet behouden blijven. Controleer de achtergrondscheiding en dialoogtijden en probeer opnieuw, of kies expliciet voor alleen spraak exporteren.",
+    "untranslated": "Dit spoor heeft nog geen vertaling: alle regels komen nog overeen met de brontekst. Vertaal het of kies de brontaal en genereer opnieuw."
   },
   "dubStyle": {
     "label": "Instructies voor vertaalstijl",
@@ -2945,6 +2966,8 @@
     "free": "Gratis",
     "pro": "Pro",
     "get_pro": "Pro nemen",
+    "upgrade_pro": "Upgraden naar Pro",
+    "get_pro_app": "Pro-app downloaden",
     "sponsor_bar": "Sponsorbalk",
     "visible": "Zichtbaar",
     "hideable": "Kan worden verborgen",
@@ -2989,6 +3012,7 @@
       "speechCurl": "Tekst naar spraak (curl)",
       "transcriptionCurl": "Transcriptie (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Container starten",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n-workflow",
@@ -3341,7 +3365,8 @@
     "denoise": "Ruis uit referentie verwijderen",
     "polish": "Gegenereerde audio verfijnen",
     "basics": "1× is normale snelheid. Laat de duur leeg voor een natuurlijk ritme.",
-    "hint": "Gebruik doorgaans de standaardwaarden. Sturing bepaalt de invloed van de instructie; de andere instellingen veranderen hoe het model geluid opbouwt. Wijzig één instelling tegelijk."
+    "hint": "Gebruik doorgaans de standaardwaarden. Sturing bepaalt de invloed van de instructie; de andere instellingen veranderen hoe het model geluid opbouwt. Wijzig één instelling tegelijk.",
+    "pauses_hint": "Voegt stilte toe bij lege regels. 0 behoudt het eigen tempo van de engine."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} heeft één model voor het {{language}}, dus het accent volgt de referentiestem.",
@@ -4328,5 +4353,12 @@
     "unavailable": "Automatische rapporten zijn niet beschikbaar of uitgeschakeld voor deze app.",
     "managed": "Beheer deze keuze in de desktopapp die met deze browser is verbonden.",
     "save_failed": "Deze keuze kon niet worden opgeslagen. Probeer het opnieuw."
+  },
+  "tray": {
+    "open": "{{app}} openen",
+    "start_dictation": "Dicteren starten",
+    "stop_dictation": "Dicteren stoppen",
+    "settings": "Instellingen",
+    "quit": "Afsluiten"
   }
 }

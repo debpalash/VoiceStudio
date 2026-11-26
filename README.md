@@ -6,6 +6,7 @@
   <h2>AI voice studio. On your device.</h2>
   <h3>Clone, design, dub, dictate, transcribe and narrate in 646 languages.</h3>
   <p>Runs on your laptop, desktop, servers, phone, tablets and more</p>
+  <p>🎉 <strong>Black Friday:</strong> 50% off VoiceStudio Pro (1 year) and Lifetime with code <code>BLACKFRIDAY50</code>, until 1 Dec, 23:59 UTC. <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=black-friday-2026">See Pro →</a></p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Website</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Download</a> ·
@@ -117,12 +118,12 @@ Everything above is free, runs on your own hardware and needs no account. Pro an
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="docs/assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       For paid client work across more than one machine.
       <ul>
-        <li>A Commercial License for your client work, emailed to you</li>
+        <li>A Commercial License for VoiceStudio's code in your client work, emailed to you</li>
         <li>One user on up to 3 devices at once</li>
         <li>Send jobs to your other GPUs while your projects stay local</li>
         <li>New features and fixes first</li>
       </ul>
-      <sub>Closed-source build, account required, 7-day full refund. The AGPL-3.0 app stays free, including commercial use under its terms.</sub><br /><br />
+      <sub>Closed-source build, account required, 7-day full refund. The AGPL-3.0 app stays free, including commercial use under its terms. Neither licence covers model weights: the default OmniVoice weights are non-commercial (CC-BY-NC), so check each model's licence in the Model Manager before client work.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">See Pro plans →</a></strong>
     </td>
     <td width="50%" valign="top">

@@ -237,6 +237,24 @@ class WorkflowTests(unittest.TestCase):
         self.install(q)
         self.service.verify_installed(q["plan_digest"], self.fetch)
 
+    def test_adding_unrelated_model_keeps_pre_pr_receipt_valid(self):
+        p = self.prepare(); old = self.commit(p); self.install(p)
+        old_digest = old["registry_digest"]
+
+        other = copy.deepcopy(self.registry["models"][0])
+        other["id"] = "fixture/new-drama3-model"
+        self.registry["models"].append(other)
+
+        q = self.prepare()
+        self.assertNotEqual(q["registry_digest"], old_digest)
+        self.assertEqual(p["plan_digest"], q["plan_digest"])
+        self.assertEqual(old, self.commit(q))
+
+        exported = self.service.export(p["plan_digest"])
+        self.assertEqual(exported["receipt"]["registry_digest"], old_digest)
+        verified = self.service.verify_installed(p["plan_digest"], self.fetch)
+        self.assertEqual(verified["status"], "verified")
+
     def test_removal_requires_review_again_preserves_files(self):
         p = self.prepare(); self.commit(p); self.install(p)
         self.service.remove(p["plan_digest"])
@@ -358,7 +376,7 @@ class ProductionTests(unittest.TestCase):
 
     def test_production_rows_never_use_synthetic_positive_fixtures(self):
         registry = ml.load_registry()
-        self.assertEqual(len(registry["models"]), 73)
+        self.assertEqual(len(registry["models"]), 75)
         self.assertEqual(len(registry["dynamic_assets"]), 7)
         for row in registry["models"]:
             self.assertEqual(row["component_closure"], "incomplete")
@@ -381,7 +399,7 @@ class ProductionTests(unittest.TestCase):
         expected = {r["id"]: r["runtime_revision"] for r in data["models"]
                     if r["runtime_pin_scope"] == "central"}
         self.assertEqual(CURATED_REVISIONS, expected)
-        self.assertEqual(len(expected), 49)
+        self.assertEqual(len(expected), 51)
         self.assertEqual(expected.pop("OpenMOSS-Team/MOSS-Audio-Tokenizer"),
                          "3cd226ba2947efa357ef453bcad111b6eafba782")
         self.assertEqual(expected.pop("Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF"),
@@ -397,6 +415,12 @@ class ProductionTests(unittest.TestCase):
                          "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d")
         self.assertEqual(expected.pop("mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"),
                          "50f45ef0047cde7e84c2ef04326acb8ada2436a7")
+        # ROCm 4 GB dictation checkpoint (#4335).
+        self.assertEqual(expected.pop("openai/whisper-large-v3-turbo"),
+                         "41f01f3fe87f28c78e2fbf8b568835947dd65ed9")
+        # Fish Audio Drama 3 GGUF (#3129, #4361): owner-approved, free app only.
+        self.assertEqual(expected.pop("Jmica/Drama-3-GGUF"),
+                         "060acc8e5d9e5d16baf647c775dfe1a1438f5f35")
         # Preserve ALL 42 pre-existing pins from base 06c6e077 unchanged.
         self.assertEqual(ml.digest(expected), "1f4811c855d9f70882aa325ad5cd44f2036cd9fc2e676bac9c1ff23008695816")
         self.assertEqual(expected["openbmb/VoxCPM2"], "bffb3df5a29440629464e5e839f4d214c8714c3d")
