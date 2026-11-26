@@ -21839,7 +21839,7 @@
   },
   "/tasks/stream/{task_id}": {
    "get": {
-    "description": "Universal Server-Sent Event stream for background tasks.\n\n`?after_seq=N` enables resumption: on reconnect, the client replays\npersisted events with seq > N, then (if the job is still live) attaches\nto the in-memory listener for live updates. After a server restart the\nin-memory task is gone but the persisted tail + final `jobs.status` are\nstill readable, so a mid-stream reload still sees the final state.",
+    "description": "Universal Server-Sent Event stream for background tasks.\n\n`?after_seq=N` enables resumption: on reconnect, the client replays\npersisted events with seq > N, then (if the job is still live) attaches\nto the in-memory listener for live updates. After a server restart the\nin-memory task is gone but the persisted tail + final `jobs.status` are\nstill readable, so a mid-stream reload still sees the final state. A job\nwhose process died before it wrote a terminal event gets one built from\nthat status, so its stream ends with a terminal frame (#4463).",
     "operationId": "stream_task_tasks_stream__task_id__get",
     "parameters": [
      {
