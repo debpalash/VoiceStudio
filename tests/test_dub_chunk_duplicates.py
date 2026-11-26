@@ -75,3 +75,23 @@ def test_previous_word_cannot_match_multiple_incoming_words():
     incoming[3].update(start=0.95, end=1.35)
     result = deduplicate_chunk_segments([old, segment("new", incoming)])
     assert result[-1]["text"] == "here welcome"
+
+
+def test_prior_words_are_matched_chronologically_not_by_cue_insertion_order():
+    prior = words('B C D', 10.4)
+    prior.append({'text': 'A', 'start': 10.0, 'end': 10.4})
+    old = {**segment('old', prior), 'start': 10.0, 'end': 11.6}
+    new = segment('new', words('A B C D Welcome', 10))
+    result = deduplicate_chunk_segments([old, new])
+    assert result[-1]['text'] == 'Welcome'
+
+
+def test_trimmed_cue_bounds_stay_ordered_when_remaining_words_are_out_of_order():
+    old = segment('old', words('one two three', 10))
+    incoming = words('one two three', 10) + [
+        {'text': 'late', 'start': 13.0, 'end': 13.4},
+        {'text': 'early', 'start': 12.0, 'end': 12.4},
+    ]
+    result = deduplicate_chunk_segments([old, segment('new', incoming)])
+    assert result[-1]['start'] == 12.0
+    assert result[-1]['end'] == 13.4
