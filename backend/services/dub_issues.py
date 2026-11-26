@@ -3,8 +3,8 @@
 Narration and opted-in SRT-only rescue place speech inside each cue's own
 window (services/subtitle_audio.py), so overlapping or out-of-range cues are
 reported by number. Every other render keeps its existing timing; there a cue
-of 0.05 s or less that holds words cannot be spoken, which the read-only plan
-reports so the user can fix it before a long render.
+of 0.05 s or less that holds words cannot be spoken (main refuses to publish
+it after the whole render), so it is refused up front, also by number.
 """
 from __future__ import annotations
 
@@ -56,6 +56,10 @@ def describe_issues(issues: list[dict], *, rescue: bool = False, noun: str = "su
     for issue in issues[:limit]:
         if issue["code"] == "dub_cue_overlap":
             parts.append(f"{noun} {issue['cue']} starts before {noun} {issue['overlaps_cue']} ends")
+        elif issue["code"] == "dub_cue_too_short":
+            parts.append(f"{noun} {issue['cue']} holds words but lasts only "
+                         f"{max(0.0, issue['end'] - issue['start']):.3f} s "
+                         f"({issue['start']:.3f}-{issue['end']:.3f} s)")
         elif issue["code"] == "dub_cue_beyond_media":
             parts.append(f"{noun} {issue['cue']} ends at {issue['end']:.2f} s, past the end of the source "
                          f"({issue['media_duration']:.2f} s)")
@@ -63,6 +67,10 @@ def describe_issues(issues: list[dict], *, rescue: bool = False, noun: str = "su
             parts.append(f"{noun} {issue['cue']} has no valid time window")
     if len(issues) > limit:
         parts.append(f"{len(issues) - limit} more")
-    fix = (f"Adjust or merge those {noun}s, or turn off automatic overflow fitting"
-           if rescue else f"Adjust or merge those {noun}s")
-    return f"These {noun} times cannot be fitted: " + "; ".join(parts) + f". {fix}, then generate again."
+    if all(issue["code"] == "dub_cue_too_short" for issue in issues):
+        fix = f"Lengthen each one or merge it with a neighbouring {noun}"
+    elif rescue:
+        fix = f"Adjust or merge those {noun}s, or turn off automatic overflow fitting"
+    else:
+        fix = f"Adjust or merge those {noun}s"
+    return f"These {noun} times cannot be used: " + "; ".join(parts) + f". {fix}, then generate again."

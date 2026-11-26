@@ -635,15 +635,15 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
     admitted_rev = source_segments_revision(job)
     # Fixed-window timing (narration, opted-in SRT-only rescue) cannot place
     # overlapping or out-of-range cues; name them before any synthesis. Other
-    # renders keep their existing behaviour: the plan only reports tiny spoken
-    # cues, and generation is never refused for them here.
+    # renders keep their timing; a tiny cue that holds words would only fail
+    # after the whole render (dub_speech_missing), so it is refused up front.
     _narration = (req.timing_strategy or "concise").lower() == "narration"
     _fixed_windows = uses_fixed_windows(req, subtitle_only=bool(job.get("subtitle_only")))
     issues = cue_issues(req.segments, req.segment_ids or [], fixed_windows=_fixed_windows,
                         source_duration=float(job.get("duration") or 0.0))
-    if issues and _fixed_windows and not planning:
+    if issues and not planning:
         raise HTTPException(status_code=422, detail={
-            "code": "dub_cue_windows_invalid", "issues": issues,
+            "code": "dub_cue_windows_invalid" if _fixed_windows else "dub_cue_too_short", "issues": issues,
             "message": describe_issues(issues, rescue=not _narration, noun="narration block" if _narration else "subtitle"),
         })
 

@@ -2,10 +2,10 @@
 
 POST /dub/plan/{job_id} resolves the same inputs as generation and counts new,
 reusable and silent segments without synthesis, publication or recovery-file
-mutation. It names tiny spoken media cues before a long render; generation of
-media jobs is not refused for them (their existing behaviour is kept). Under
-fixed windows, overlapping cues and cues past the end of the source are refused
-before synthesis with a message naming each cue number.
+mutation. Generation refuses, before any synthesis, a media cue of 0.05 s or
+less that holds words (it cannot be spoken and would otherwise fail only after
+the whole render). Under fixed windows, overlapping cues and cues past the end
+of the source are refused instead. Each refusal names the cue numbers to fix.
 Explicit regeneration takes precedence over reuse.
 
 Completed natural takes are retained privately with integrity checks. Both

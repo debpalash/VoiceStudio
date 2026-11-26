@@ -590,20 +590,22 @@ def test_preflight_detects_a_corrupt_checkpoint_and_preserves_old_track(render_d
     assert (render_dub.path/'dubbed_en.wav').read_bytes()==track
 
 
-def test_tiny_spoken_cue_on_a_media_job_keeps_mains_generation_behaviour(render_dub):
-    """No new 422 on media jobs: generation runs exactly as on main.
-
-    Main renders the cue's slot as silence and then refuses to publish a
-    spoken line with no speech (dub_speech_missing). The read-only plan
-    names the cue first so it can be fixed before a long render.
-    """
+def test_tiny_spoken_cue_on_a_media_job_is_refused_before_any_synthesis(render_dub):
+    """Main refuses this cue only after the whole render (dub_speech_missing);
+    the same refusal now comes first, naming the cue and the fix."""
+    from fastapi import HTTPException
     body=dict(segments=[dict(start=0,end=1,text='Hello'),dict(start=1,end=1.049,text='Right?')],segment_ids=['first','short'])
     plan=_generation_plan(**body)
     assert [(i['code'], i['cue'], i['segment_id']) for i in plan['issues']]==[('dub_cue_too_short', 2, 'short')]
-    assert plan['synthesize']==1 and plan['silence']==1
-    events=render_dub.run(**body)
-    assert [g['text'] for g in render_dub.generated]==['Hello']
-    assert events[-1]['error_code']=='dub_speech_missing' and events[-1]['segment_id']=='short'
+    with pytest.raises(HTTPException) as error:
+        render_dub.run(**body)
+    assert error.value.status_code==422
+    assert error.value.detail['code']=='dub_cue_too_short'
+    message=error.value.detail['message']
+    assert 'subtitle 2 holds words but lasts only 0.049 s (1.000-1.049 s)' in message
+    assert 'Lengthen each one or merge it with a neighbouring subtitle' in message
+    assert 'overflow' not in message
+    assert not render_dub.generated
     assert not render_dub.job['dubbed_tracks']
 
 
