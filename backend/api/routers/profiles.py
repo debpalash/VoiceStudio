@@ -86,9 +86,31 @@ async def _auto_transcribe_reference(audio_path: str) -> str:
     timeout = _reference_transcribe_timeout()
     try:
         from services.asr_backend import transcribe_reference
+        from services.model_manager import offload_tts_for_asr, restore_tts_after_asr
+
+        # Clone uploads auto-transcribe a reference while the TTS model is
+        # resident. Let the ASR model load against a released/relocated TTS
+        # model, then restore it only after the transcription attempt ends.
+        # The clone path forces a unified-memory release because the WhisperX
+        # cold-load is itself the freeze trigger, not ordinary memory pressure.
+        def _offload_transcribe_restore() -> str:
+            # One worker owns the whole sequence, so a response-deadline
+            # timeout (which only cancels the awaiting task, never the
+            # thread) cannot restore TTS to the GPU while ASR still holds
+            # memory: the restore runs when transcription actually ends.
+            if offload_tts_for_asr(force_unified_release=True) is False:
+                logger.warning(
+                    "reference transcription skipped: the TTS model is in use "
+                    "and could not be released; saving without a transcript"
+                )
+                return ""
+            try:
+                return transcribe_reference(audio_path)
+            finally:
+                restore_tts_after_asr()
 
         return (await asyncio.wait_for(
-            asyncio.to_thread(transcribe_reference, audio_path), timeout,
+            asyncio.to_thread(_offload_transcribe_restore), timeout,
         ) or "").strip()
     except asyncio.TimeoutError:
         logger.warning(

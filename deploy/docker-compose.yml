@@ -6,6 +6,9 @@
 #    docker compose -f deploy/docker-compose.yml --profile gpu up    # NVIDIA GPU
 #    docker compose -f deploy/docker-compose.yml --profile rocm up   # AMD GPU (ROCm)
 #
+#  Intel Arc XPU: no compose profile or image exists (published images are
+#  CPU/CUDA/ROCm); run VoiceStudio natively on Intel Arc hosts.
+#
 #  The Studio services publish the UI on loopback and the authenticated TLS
 #
 #  First run downloads ~4 GB of models. Progress is shown in logs.
