@@ -15,7 +15,7 @@ from core.render_trace import timed as _render_timed
 import threading
 import traceback
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Annotated, Optional, Literal
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Depends, Request, Query
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
@@ -3133,7 +3133,9 @@ def _history_item(row, text_limit: Optional[int] = None) -> dict:
 
 
 @router.get("/history", dependencies=[Depends(reject_cross_site_get)])
-def list_history(text_limit: Optional[int] = Query(None, ge=1, le=100_000)):
+def list_history(
+    text_limit: Annotated[Optional[int], Query(ge=1, le=100_000)] = None,
+):
     """The newest 50 generations plus every starred take, newest first, kept to
     rows whose audio still exists on disk.
 
