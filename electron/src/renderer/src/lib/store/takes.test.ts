@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as history from '@/lib/api/history';
 import { cloneSettingsStore, DEFAULT_CLONE_SETTINGS, patchCloneSettings } from './clone-settings';
 import type { CloneSettings } from './clone-settings';
 import { rememberTake, reuseTake, takeSettings } from './takes';
@@ -69,6 +70,25 @@ describe('take metadata', () => {
       speed: 1.25,
       autoPlay: true,
     });
+  });
+  it('leaves a newer voice choice alone when the whole script arrives late (#4483)', async () => {
+    let finish!: (value: HistoryItem) => void;
+    const spy = vi
+      .spyOn(history, 'fullTake')
+      .mockReturnValue(new Promise<HistoryItem>((resolve) => (finish = resolve)));
+    try {
+      patchCloneSettings({ text: 'current', selectedProfileId: 'before' });
+      const pending = reuseTake({ ...item, text_truncated: true } as HistoryItem);
+      patchCloneSettings({ selectedProfileId: 'picked-meanwhile' });
+      finish({ ...item, text: 'whole script' });
+      expect(await pending).toBe(false);
+      expect(cloneSettingsStore.state).toMatchObject({
+        text: 'current',
+        selectedProfileId: 'picked-meanwhile',
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
   it('reusing legacy take metadata clears emotion from an unrelated recording', async () => {
     // Old takes only saved a handful of controls: absent emotion must mean Off.

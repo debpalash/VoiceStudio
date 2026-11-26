@@ -145,6 +145,7 @@ GET /generate/budget
 GET /glossary/{project_id}
 GET /health
 GET /history
+GET /history/{history_id}
 GET /jobs
 GET /jobs/{job_id}
 GET /jobs/{job_id}/events

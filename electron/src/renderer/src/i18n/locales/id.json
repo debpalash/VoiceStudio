@@ -703,6 +703,7 @@
     "history_star": "Bintang",
     "history_unstar": "Hapus bintang",
     "history_reuse": "Gunakan kembali skrip",
+    "history_full_text_failed": "Tidak dapat memuat skrip lengkap take ini. Pastikan VoiceStudio berjalan, lalu coba lagi.",
     "characters_one": "karakter {{count}}",
     "cancel_generation": "Batalkan pembuatan",
     "duration_seconds": "{{seconds}}s",

@@ -728,6 +728,7 @@
     "history_star": "نجم",
     "history_unstar": "إلغاء النجمة",
     "history_reuse": "إعادة استخدام البرنامج النصي",
+    "history_full_text_failed": "تعذّر تحميل النص الكامل لهذا التسجيل. تأكد من أن VoiceStudio قيد التشغيل، ثم حاول مرة أخرى.",
     "characters_one": "حرف {{count}}",
     "cancel_generation": "إلغاء الجيل",
     "duration_seconds": "{{seconds}}s",

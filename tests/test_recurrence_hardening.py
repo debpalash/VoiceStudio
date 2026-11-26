@@ -40,14 +40,17 @@ def profiles_client(tmp_path, monkeypatch):
     yield TestClient(_main.app, client=("127.0.0.1", 50002))
 
 
-def test_clone_profile_save_sanitizes_instruct(profiles_client):
+def test_clone_profile_instruct_is_generation_safe(profiles_client):
     """The 400-on-every-use class recurred THREE times via clients that
-    bypassed the frontend filter; the server-side save heal was gated to
-    design-kind. Clone-kind saves must be generation-safe too."""
+    bypassed the frontend filter. Saves now keep Style text as typed (#4474)
+    so free-form engines get the prose; tag-only OmniVoice must still never
+    see an instruct its validator rejects, because every OmniVoice call runs
+    the stored text through ``tag_safe_instruct`` (#4054)."""
+    prose = "please read this in a very dramatic movie-trailer way!!"
     r = profiles_client.post("/profiles", data={
         "name": "poisoned clone",
         "kind": "clone",
-        "instruct": "please read this in a very dramatic movie-trailer way!!",
+        "instruct": prose,
     }, files={"ref_audio": ("ref.wav", _FAKE_AUDIO, "audio/wav")})
     assert r.status_code == 200, r.text
     pid = r.json()["id"]
@@ -57,10 +60,12 @@ def test_clone_profile_save_sanitizes_instruct(profiles_client):
             "SELECT instruct FROM voice_profiles WHERE id=?", (pid,)
         ).fetchone()
     persisted = row["instruct"] or ""
-    from omnivoice.utils.voice_design import sanitize_instruct
-    assert persisted == sanitize_instruct(persisted), (
-        "persisted clone instruct is not validator-safe — the #550/#594 class is open again"
-    )
+    assert persisted == prose
+    from omnivoice.models.omnivoice import _resolve_instruct
+    from services.instruct_safety import tag_safe_instruct
+    rendered = tag_safe_instruct(persisted)
+    if rendered:
+        _resolve_instruct(rendered)  # raises ValueError if OmniVoice would 400
 
 
 # ── Class 5: reinstall inherits a stale env file ─────────────────────────────

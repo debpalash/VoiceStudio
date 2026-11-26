@@ -702,6 +702,7 @@
     "history_star": "Ster",
     "history_unstar": "Ster verwijderen",
     "history_reuse": "Script hergebruiken",
+    "history_full_text_failed": "Het volledige script van deze opname kon niet worden geladen. Controleer of VoiceStudio actief is en probeer het opnieuw.",
     "characters_one": "{{count}}-teken",
     "cancel_generation": "Generatie annuleren",
     "duration_seconds": "{{seconds}}'s",
