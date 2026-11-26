@@ -64,6 +64,8 @@ def dub(monkeypatch, tmp_path):
     monkeypatch.setattr(dg, "rvc_is_enabled", lambda: False)
     monkeypatch.setattr(dg, "mark_synthetic", lambda a, *args, **kw: a)
     monkeypatch.setattr(dg, "mark_synthetic_async", AsyncMock(side_effect=lambda a, *args, **kw: a))
+    # The identity mark above embeds nothing, so marking reports as off.
+    monkeypatch.setattr(dg, "will_mark", lambda: False)
     monkeypatch.setattr(dg, "get_effect_chain", lambda _: None)
     monkeypatch.setattr(dg, "normalize_audio", lambda a, **kw: a)
 
@@ -625,6 +627,39 @@ def test_model_change_during_load_never_publishes_mixed_recovered_weights(dub, m
     assert not list(dub.path.glob("seg_en_*.wav"))
     assert any(event["type"] == "done" for event in dub.run())
     assert len(dub.generated) == 4
+
+
+def test_model_change_after_checkpoint_reuse_never_publishes_mixed_weights(dub, monkeypatch, tmp_path):
+    """A saved take from the old weights must not be published beside a line
+    the newly loaded weights rendered, exactly like journal recovery."""
+    from services import local_model_paths
+
+    folder = tmp_path / "checkpointed-before-load"
+    folder.mkdir()
+    weights = folder / "model.pt"
+    weights.write_bytes(b"old weights")
+    monkeypatch.setenv("OMNIVOICE_MODEL", str(folder))
+    assert any(event["type"] == "done" for event in dub.run())
+    assert len(dub.generated) == 4
+    _, backend = asyncio.run(dub.dg._resolve_dub_execution())
+    original_generate = backend.generate
+
+    def generate(**kwargs):
+        if not getattr(backend, "_model", None):
+            weights.write_bytes(b"new weights loaded after reuse")
+            backend._model = SimpleNamespace(
+                _voicestudio_checkpoint=str(folder),
+                _voicestudio_weights_fingerprint=local_model_paths._weights_fingerprint(str(folder)),
+            )
+        return original_generate(**kwargs)
+
+    backend.generate = generate
+    segments = [dict(segment) for segment in SEGMENTS]
+    segments[-1]["text"] = "an edited last line"
+    events = dub.run(segments=segments)
+    assert [row["text"] for row in dub.generated] == ["an edited last line"]
+    assert not any(event["type"] == "done" for event in events)
+    assert any(event["type"] == "error" for event in events)
 
 
 def test_hub_repository_name_alone_never_records_reusable_speech(dub, monkeypatch):

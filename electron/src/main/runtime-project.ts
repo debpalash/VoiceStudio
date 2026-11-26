@@ -57,7 +57,18 @@ import {
 } from './wheel-prefetch';
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { cp, mkdir, readFile, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises';
+import {
+  cp,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  rmdir,
+  stat,
+  statfs,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, isAbsolute, join, win32 } from 'node:path';
 
 // The web UI is not staged: the backend serves it straight from the app's
@@ -1457,7 +1468,59 @@ export async function installManagedPython(
   }
 }
 
-/** Called only by the user's install action; normal startup never downloads. */
+
+function errorText(error: unknown): string {
+  return [error instanceof Error ? error.message : String(error), (error as { stderr?: unknown })?.stderr]
+    .filter((part) => typeof part === 'string')
+    .join('\n');
+}
+
+const MINOR_LINK_ERROR_RE =
+  /Missing expected target directory for Python minor version link at ([^\r\n]+)/;
+
+/**
+ * uv (up to at least 0.12) fails `python install` with "Missing expected target
+ * directory for Python minor version link" when its `cpython-3.11-<platform>`
+ * junction cannot be validated, even though the patch interpreter is intact
+ * (astral-sh/uv#19622; #4487). Setup only needs the interpreter, so on this
+ * error drop the stale minor-version links (links only, never an interpreter
+ * directory) and, if uv still refuses, hand back the patch interpreter's own
+ * path, which needs no link. Returns null when the error is something else.
+ */
+export async function recoverMinorVersionLink(
+  error: unknown,
+  installDir: string,
+  log: (line: string) => void = () => {},
+): Promise<{ python: string | null } | null> {
+  const patchDir = MINOR_LINK_ERROR_RE.exec(errorText(error))?.[1]?.trim();
+  if (!patchDir) return null;
+  let removed = 0;
+  for (const name of await readdir(installDir).catch(() => [] as string[])) {
+    if (!/^cpython-\d+\.\d+-/.test(name)) continue;
+    const link = join(installDir, name);
+    try {
+      if (!(await lstat(link)).isSymbolicLink()) continue;
+      await rmdir(link).catch(() => rm(link, { force: true }));
+      removed++;
+    } catch {
+      /* leave anything we cannot inspect alone */
+    }
+  }
+  // Windows interpreters sit at the patch root, POSIX ones under bin/.
+  let python: string | null = null;
+  for (const candidate of [join(patchDir, 'python.exe'), join(patchDir, 'bin', 'python3')]) {
+    if (await stat(candidate).then(() => true, () => false)) {
+      python = candidate;
+      break;
+    }
+  }
+  log(
+    `uv could not validate its Python minor-version link (uv#19622); removed ${removed} stale link(s)` +
+      (python ? ', using the interpreter path directly if uv still refuses.' : '.'),
+  );
+  return { python };
+}
+
 /**
  * Runs the pinned interpreter once before gigabytes of wheels arrive, so a machine
  * that refuses it finds out now. Only a refusal stops setup and it removes nothing;
@@ -1472,7 +1535,7 @@ async function interpreterCanary(
   signal: AbortSignal,
   downloads: MirrorReporter,
   allowMirrorFallback = false,
-): Promise<void> {
+): Promise<string | undefined> {
   const refused = (program: string, error: unknown) => {
     const refusal = runtimeLaunchRefusal(program, error);
     if (!refusal) return null;
@@ -1484,12 +1547,12 @@ async function interpreterCanary(
     );
   };
   const request = managedPythonRequest();
-  let python = '';
-  try {
-    // Stays inside the runtime: no user-wide python on PATH, no Windows registry entry.
-    await installManagedPython(
+  const installArgs = ['python', 'install', '--no-bin', '--no-registry', request];
+  // Stays inside the runtime: no user-wide python on PATH, no Windows registry entry.
+  const install = () =>
+    installManagedPython(
       uv,
-      ['python', 'install', '--no-bin', '--no-registry', request],
+      installArgs,
       project,
       env,
       run,
@@ -1497,27 +1560,52 @@ async function interpreterCanary(
       allowMirrorFallback,
       downloads.log,
     );
+  let python = '';
+  let direct: string | undefined;
+  try {
+    try {
+      await install();
+    } catch (error) {
+      signal.throwIfAborted();
+      const recovery = await recoverMinorVersionLink(
+        error,
+        env.UV_PYTHON_INSTALL_DIR ?? join(project, '..', '.python'),
+        downloads.log,
+      );
+      if (!recovery) throw error;
+      try {
+        await install();
+      } catch (second) {
+        signal.throwIfAborted();
+        if (!MINOR_LINK_ERROR_RE.test(errorText(second)) || !recovery.python) throw second;
+        downloads.log?.("Using the installed interpreter by path, without uv's minor-version link.");
+        direct = recovery.python;
+        python = direct;
+      }
+    }
     signal.throwIfAborted();
-    const found = await run(uv, ['python', 'find', '--managed-python', request], project, env, {
-      timeoutMs: CANARY_TIMEOUT_MS,
-      quiet: true,
-    });
-    // The quiet runner mixes stderr in, so a warning may sit beside the path.
-    python =
-      typeof found === 'string'
-        ? (found
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .find((line) => isAbsolute(line) || win32.isAbsolute(line)) ?? '')
-        : '';
+    if (!direct) {
+      const found = await run(uv, ['python', 'find', '--managed-python', request], project, env, {
+        timeoutMs: CANARY_TIMEOUT_MS,
+        quiet: true,
+      });
+      // The quiet runner mixes stderr in, so a warning may sit beside the path.
+      python =
+        typeof found === 'string'
+          ? (found
+              .split(/\r?\n/)
+              .map((line) => line.trim())
+              .find((line) => isAbsolute(line) || win32.isAbsolute(line)) ?? '')
+          : '';
+    }
   } catch (error) {
     signal.throwIfAborted();
     const refusal = refused(uv, error);
     if (refusal) throw refusal;
     downloads.log?.('Skipping the interpreter check: uv could not prepare Python here.');
-    return;
+    return undefined;
   }
-  if (!python) return;
+  if (!python) return direct;
   try {
     await run(python, ['-c', 'import _ctypes'], project, env, {
       timeoutMs: CANARY_TIMEOUT_MS,
@@ -1529,6 +1617,7 @@ async function interpreterCanary(
     if (refusal) throw refusal;
     downloads.log?.('The interpreter check did not pass; continuing with setup.');
   }
+  return direct;
 }
 
 export async function installRuntime(
@@ -1669,11 +1758,11 @@ export async function installRuntime(
     // supply a system file (#3058).
     throw missingSystemLibraryError(missingSystemLibraries);
   }
-  const pythonArgs = existingPython
+  let pythonArgs = existingPython
     ? ['--python', runtimePython(project)]
     : ['--managed-python', '--python', managedPythonRequest()];
-  if (!existingPython)
-    await interpreterCanary(
+  if (!existingPython) {
+    const direct = await interpreterCanary(
       uv,
       project,
       env,
@@ -1682,6 +1771,10 @@ export async function installRuntime(
       downloads,
       region === 'auto' && !process.env.UV_PYTHON_INSTALL_MIRROR,
     );
+    // uv's own minor-version link is broken here (#4487): name the interpreter
+    // itself so the sync never has to validate that link.
+    if (direct) pythonArgs = ['--python', direct];
+  }
   const cpuTorch = torch.variant === 'cpu';
   const linuxRocm = process.platform === 'linux' && torch.variant === 'rocm';
   const legacyCuda = torch.variant === 'cu126';

@@ -22,7 +22,7 @@ from core.config import VOICES_DIR, OUTPUTS_DIR
 from core import event_bus, voice_leases
 from core.scrub import scrub_text
 from core.personalities import get_personalities
-from omnivoice.utils.voice_design import heal_design_instruct, sanitize_instruct
+from omnivoice.utils.voice_design import heal_design_instruct
 from core.media_types import media_upload_suffix
 from core.path_security import UnsafePath, resolve_within
 from services.reference_transcript import take_reference_transcript
@@ -121,6 +121,17 @@ async def _auto_transcribe_reference(audio_path: str) -> str:
     except Exception as exc:  # noqa: BLE001 — profile save remains usable
         logger.warning("reference transcription during profile save failed: %s", exc)
         return ""
+
+
+_MAX_INSTRUCT_CHARS = 2000
+
+
+def _clean_instruct(value: str) -> str:
+    """Store Style text as typed: control characters out, whitespace trimmed,
+    bounded. OmniVoice's tag whitelist is applied right before its model call
+    (``tag_safe_instruct``), not here, so prose for free-form engines survives."""
+    cleaned = "".join(ch for ch in value if ch.isprintable() or ch in "\n\t")
+    return cleaned.strip()[:_MAX_INSTRUCT_CHARS]
 
 
 class ProfileUpdate(BaseModel):
@@ -235,13 +246,10 @@ async def create_profile(
             recipe_data["engine"] = design_engine
             stored_recipe = _json.dumps(recipe_data, ensure_ascii=False)
     else:
-        # Clone-kind saves get the same server-side choke point (audit finding:
-        # this class — "Unsupported instruct items" 400s on every later use —
-        # recurred THREE times via clients that bypassed the frontend filter,
-        # and the save-time heal above was gated to design-kind). A clone
-        # profile has no vd_states to rebuild from, so this is sanitize-only:
-        # valid tags survive, prose/"[object Object]" is dropped.
-        instruct = sanitize_instruct(instruct)
+        # Clone Style is stored as typed. Tag-only engines (OmniVoice) reduce
+        # it to valid tags at render time (tag_safe_instruct, profile_instruct),
+        # so prose no longer vanishes at save for free-form engines (#4474).
+        instruct = _clean_instruct(instruct)
 
     profile_id = str(uuid.uuid4())[:8]
     portrait = None
@@ -406,28 +414,33 @@ def update_profile(profile_id: str, patch: ProfileUpdate):
             if col == "name" and not val.strip():
                 raise HTTPException(status_code=400, detail="A voice profile needs a name.")
             if col == "instruct":
-                # Never let an edit persist a validator-rejecting instruct
-                # (prose / "[object Object]"); keep only whitelist tags.
-                val = sanitize_instruct(val)
-                edited_instruct = val
+                # Stored as typed (#4474); tag-only engines filter at render.
+                val = _clean_instruct(val)
+                # An unchanged Style must not reset traits/recipe/sample.
+                if val != _clean_instruct(existing["instruct"] or ""):
+                    edited_instruct = val
             fields.append(f"{col} = ?")
             params.append(val.strip() if col in ("name", "language") else val)
         if edited_instruct is not None and existing["kind"] == "design":
-            # A legacy tag editor cannot change a free-form recipe; a real
-            # instruction edit starts a new design instead of keeping old prose.
+            # A real instruction edit starts a new design: the edited prose
+            # becomes its recipe, so free-form engines receive it as typed
+            # while tag-only engines keep the tags derived from it (#4474).
             import json
 
+            from api.routers.generation import _design_recipe_json
             from core.describe_voice import instruct_to_vd_states
 
             fields.append("vd_states = ?")
             params.append(json.dumps(instruct_to_vd_states(edited_instruct)))
-            if edited_instruct != (existing["instruct"] or ""):
-                fields.append("design_recipe = NULL")
-        if (
-            existing["kind"] == "design"
-            and edited_instruct is not None
-            and edited_instruct != (existing["instruct"] or "")
-        ):
+            fields.append("design_recipe = ?")
+            params.append(
+                _design_recipe_json(
+                    json.dumps({"description": edited_instruct, "picks": {}}, ensure_ascii=False)
+                )
+                if edited_instruct
+                else None
+            )
+        if existing["kind"] == "design" and edited_instruct is not None:
             # A genuine voice-design edit invalidates its prior sample.
             # Transcript/language corrections must *not* discard a saved
             # voice's reference audio. Pending renders still compare their
@@ -670,7 +683,7 @@ def _replacement_fields(
         raise HTTPException(status_code=400, detail="A voice profile needs a name.")
     return (
         name.strip() if name is not None else None,
-        sanitize_instruct(instruct) if instruct is not None else None,
+        _clean_instruct(instruct) if instruct is not None else None,
         language.strip() if language is not None else None,
         personality,
     )

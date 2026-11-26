@@ -6,8 +6,20 @@ export interface StarredResponse {
   starred: boolean;
 }
 
+/** The list clips book-length scripts so every navigation does not parse megabytes (#4483). */
+export const HISTORY_LIST_TEXT_LIMIT = 2000;
+
 export async function listHistory(): Promise<HistoryItem[]> {
-  return apiJson<HistoryItem[]>('/history');
+  return apiJson<HistoryItem[]>(`/history?text_limit=${HISTORY_LIST_TEXT_LIMIT}`);
+}
+
+export async function getHistoryItem(id: string): Promise<HistoryItem> {
+  return apiJson<HistoryItem>(`/history/${encodeURIComponent(id)}`);
+}
+
+/** The take with its whole script: a no-op unless the list clipped it. */
+export async function fullTake(item: HistoryItem): Promise<HistoryItem> {
+  return item.text_truncated ? getHistoryItem(item.id) : item;
 }
 
 export async function clearHistory(): Promise<void> {

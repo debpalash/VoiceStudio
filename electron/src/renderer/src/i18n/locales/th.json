@@ -703,6 +703,7 @@
     "history_star": "ดาว",
     "history_unstar": "ยกเลิกการติดดาว",
     "history_reuse": "ใช้สคริปต์ซ้ำ",
+    "history_full_text_failed": "โหลดสคริปต์ฉบับเต็มของเทคนี้ไม่ได้ ตรวจสอบว่า VoiceStudio กำลังทำงานอยู่ แล้วลองอีกครั้ง",
     "characters_one": "อักขระ {{count}}",
     "cancel_generation": "ยกเลิกการสร้าง",
     "duration_seconds": "{{seconds}} วินาที",

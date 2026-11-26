@@ -705,6 +705,7 @@
     "history_star": "Estrella",
     "history_unstar": "Desestrellar",
     "history_reuse": "Reutilizar script",
+    "history_full_text_failed": "No se pudo cargar el guion completo de esta toma. Comprueba que VoiceStudio se está ejecutando y vuelve a intentarlo.",
     "characters_one": "Carácter {{count}}",
     "cancel_generation": "Cancelar generación",
     "duration_seconds": "{{seconds}}s",

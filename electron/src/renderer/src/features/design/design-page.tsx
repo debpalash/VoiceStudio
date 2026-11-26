@@ -22,6 +22,7 @@ import {
   applyDescription,
   canResetToDescription,
   designInstruct,
+  designProfileForm,
   designRecipe,
   designRequestSeed,
   editVoice,
@@ -69,7 +70,7 @@ import { cn } from '@/lib/utils';
 import { cloneSettingsStore } from '@/lib/store/clone-settings';
 import type { Profile } from '@/lib/api/types';
 import { CATEGORIES, PRESETS } from '@shared/utils/constants';
-import { buildDesignInstruct, mergeDescribedAttrs } from '@shared/utils/voiceInstruct';
+import { mergeDescribedAttrs } from '@shared/utils/voiceInstruct';
 import { pickDesignSeed } from '@shared/utils/seed';
 export function DesignPage() {
   const { t } = useTranslation();
@@ -141,13 +142,11 @@ export function DesignPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const body = new FormData();
-      body.set('name', name.trim());
-      body.set('kind', 'design');
-      body.set('seed', String(draft.seed));
-      body.set('vd_states', JSON.stringify(draft.attrs));
-      body.set('instruct', buildDesignInstruct(draft.attrs, '').instruct);
-      body.set('language', cloneSettingsStore.state.language);
+      const body = designProfileForm(draft, {
+        name,
+        language: cloneSettingsStore.state.language,
+        engineId: activeEngine?.id,
+      });
       const created = await apiJson<Profile>('/profiles', {
         method: 'POST',
         body,

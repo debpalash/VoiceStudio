@@ -710,6 +710,7 @@
     "history_star": "Gwiazda",
     "history_unstar": "Usuń gwiazdkę",
     "history_reuse": "Użyj skryptu ponownie",
+    "history_full_text_failed": "Nie udało się wczytać pełnego skryptu tego ujęcia. Sprawdź, czy VoiceStudio działa, i spróbuj ponownie.",
     "characters_one": "Znak {{count}}",
     "cancel_generation": "Anuluj generowanie",
     "duration_seconds": "{{seconds}} s",

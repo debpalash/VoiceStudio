@@ -533,3 +533,30 @@ def test_colliding_take_id_does_not_remove_saved_audio(api, monkeypatch):
             resolved_profile_id=None, used_seed=42, start_time=time.time(), already_marked=True))
     assert existing.read_bytes() == b"saved take"
     assert not (outdir / "bbbbbbbb.wav").exists()
+
+
+# -- list payload stays bounded (#4483) --------------------------------------
+
+
+def test_history_text_limit_clips_long_scripts_and_item_route_returns_full(api):
+    client, dbf, outdir, _gen = api
+    _insert_take(dbf, outdir, "long", 2.0)
+    _insert_take(dbf, outdir, "short", 1.0)
+    book = "word " * 20_000
+    with sqlite3.connect(str(dbf)) as conn:
+        conn.execute("UPDATE generation_history SET text=? WHERE id='long'", (book,))
+        conn.commit()
+
+    full = {r["id"]: r for r in client.get("/history").json()}
+    assert full["long"]["text"] == book and "text_truncated" not in full["long"]
+
+    rows = {r["id"]: r for r in client.get("/history?text_limit=500").json()}
+    assert len(rows["long"]["text"]) == 500
+    assert rows["long"]["text_truncated"] is True
+    assert rows["long"]["transcript"] == ""
+    assert rows["short"]["text"] == "text short"
+    assert "text_truncated" not in rows["short"]
+
+    one = client.get("/history/long").json()
+    assert one["text"] == book and "text_truncated" not in one
+    assert client.get("/history/nope").status_code == 404

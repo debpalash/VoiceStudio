@@ -1,8 +1,14 @@
 import { useSyncExternalStore } from 'react';
 import type { HistoryItem } from '@/lib/api/types';
 import type { CloneSettings } from './clone-settings';
-import { acceptsCloneSetting, DEFAULT_CLONE_SETTINGS, patchCloneSettings } from './clone-settings';
-import { setReferenceFile } from './reference';
+import {
+  acceptsCloneSetting,
+  cloneSettingsStore,
+  DEFAULT_CLONE_SETTINGS,
+  patchCloneSettings,
+} from './clone-settings';
+import { referenceStore, setReferenceFile } from './reference';
+import { fullTake } from '@/lib/api/history';
 
 const listeners = new Set<() => void>();
 let selected: HistoryItem | null = null;
@@ -103,8 +109,28 @@ export function takeSettings(item: HistoryItem): Partial<TakeSettings> {
     return fallback;
   }
 }
-export async function reuseTake(item: HistoryItem) {
+let reuseTicket = 0;
+/**
+ * Restore a take's script and settings. Returns false, changing nothing, when
+ * the user picked another take, reference or reuse while its whole script was
+ * loading: their newer choice wins (#4483).
+ */
+export async function reuseTake(listed: HistoryItem): Promise<boolean> {
+  const ticket = ++reuseTicket;
+  const take = selected;
+  const reference = referenceStore.state;
+  const profile = cloneSettingsStore.state.selectedProfileId;
+  const item = await fullTake(listed);
+  if (
+    ticket !== reuseTicket ||
+    selected !== take ||
+    referenceStore.state !== reference ||
+    cloneSettingsStore.state.selectedProfileId !== profile
+  ) {
+    return false;
+  }
   await setReferenceFile(null);
   patchCloneSettings(takeSettings(item));
   openTake(null);
+  return true;
 }
