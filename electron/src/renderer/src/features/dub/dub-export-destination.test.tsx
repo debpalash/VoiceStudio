@@ -67,24 +67,37 @@ it('does not export the previous dub as a newly prepared narration script', () =
   expect(screen.getByText('dub.flow_save').hasAttribute('disabled')).toBe(true);
 });
 it.each([
-  ['txt', false],
-  ['wav', true],
-] as const)('a %s save completes the audio export step: %s', async (format, completes) => {
-  mocks.save.mockResolvedValue({ canceled: false, path: '/saved/dub.' + format });
-  render(
-    <DubExportPanel
-      session={
-        {
-          ...session,
-          segments: [{ id: '1', start: 0, end: 1, text: 'Hi', translations: { en: 'Hi' } }],
-          exportOptions: { format, preserveBg: false },
-        } as unknown as DubSession
-      }
-      disabled={false}
-    />,
-  );
-  fireEvent.click(screen.getByText('dub.flow_save'));
-  await waitFor(() => expect(mocks.record).toHaveBeenCalled());
-  if (completes) expect(mocks.complete).toHaveBeenCalledWith(expect.anything(), 'en');
-  else expect(mocks.complete).not.toHaveBeenCalled();
-});
+  ['txt', true, false],
+  ['wav', true, true],
+  ['wav', false, false],
+] as const)(
+  'a %s save of current audio (%s) completes the audio export step: %s',
+  async (format, current, completes) => {
+    const { dubGenerationKey } = await import('./dub-generation-request');
+    mocks.save.mockResolvedValue({ canceled: false, path: '/saved/dub.' + format });
+    const base = {
+      ...session,
+      segments: [
+        { id: '1', start: 0, end: 1, text: 'Hi', profile_id: 'voice', translations: { en: 'Hi' } },
+      ],
+      exportOptions: { format, preserveBg: false },
+    } as unknown as DubSession;
+    const rendered = dubGenerationKey(base, 'English', 'en');
+    const edited = current
+      ? base
+      : ({
+          ...base,
+          segments: [{ ...base.segments[0], text: 'Edited', translations: { en: 'Edited' } }],
+        } as DubSession);
+    render(
+      <DubExportPanel
+        session={{ ...edited, generatedRequestKeys: { en: rendered } } as DubSession}
+        disabled={false}
+      />,
+    );
+    fireEvent.click(screen.getByText('dub.flow_save'));
+    await waitFor(() => expect(mocks.record).toHaveBeenCalled());
+    if (completes) expect(mocks.complete).toHaveBeenCalledWith(expect.anything(), 'en');
+    else expect(mocks.complete).not.toHaveBeenCalled();
+  },
+);

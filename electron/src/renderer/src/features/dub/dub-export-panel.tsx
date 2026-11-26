@@ -119,8 +119,14 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
       if (saved && !saved.canceled && saved.path) {
         recordDubSavedFile(session, saved.path);
         const code = translationTargetCode(session.target);
-        // Only a file that carries the dubbed audio completes the export step.
-        if (code && !transcript && (format === 'mp4' ? selected.includes(code) : track === code)) {
+        // Only a file that carries the current dubbed audio completes the export
+        // step: a retained track from before an edit is saved, not "exported".
+        if (
+          code &&
+          !transcript &&
+          (format === 'mp4' ? selected.includes(code) : track === code) &&
+          dubGuideState(session, code).audioReady
+        ) {
           recordDubExport(session, code);
         }
       }
