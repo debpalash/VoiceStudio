@@ -1334,6 +1334,13 @@ def _serialize_job(job: Optional[dict]) -> Optional[dict]:
     return out
 
 
+def _has_entries(path: Path) -> bool:
+    try:
+        return path.is_dir() and any(path.iterdir())
+    except OSError:
+        return False
+
+
 def get_status(engine_id: str) -> dict:
     """Install state + last/current job for one engine. Cheap (file probes)."""
     spec = get_spec(engine_id)
@@ -1354,6 +1361,8 @@ def get_status(engine_id: str) -> dict:
         "managed": bool(
             (checkout.is_dir() and (not env_dir or Path(env_dir) == checkout))
             or (env_dir and Path(env_dir) in _legacy_managed_checkouts(spec))
+            # Files an incomplete delete left behind stay ours to delete again.
+            or (not env_dir and _has_entries(managed_root(spec)))
         ),
         "install_dir": env_dir or (str(checkout) if checkout.is_dir() else None),
         "job": job,
@@ -1511,7 +1520,8 @@ def _remove_tree(path: Path) -> None:
             os.chmod(target, stat.S_IWRITE)
             func(target)
         except OSError:
-            pass
+            # Still locked by another process: leave it, uninstall reports it.
+            return
 
     if sys.version_info >= (3, 12):
         shutil.rmtree(path, onexc=_writable)
@@ -1545,12 +1555,9 @@ def uninstall(engine_id: str) -> dict:
                 f"clear {spec.env_var} in Settings."
             ),
         }
-    # A running sidecar keeps its interpreter and weights open; on Windows that
-    # locks the files, so stop it first and refuse while it is mid-request.
-    from services import subprocess_backend
-    subprocess_backend.unload_sidecar(engine_id)
-    if any(item["id"] == engine_id for item in subprocess_backend.list_live_sidecars()):
-        return {"status": "in_use", "engine": engine_id}
+    # The caller stops the engine's sidecar first and keeps requests away
+    # meanwhile (``subprocess_backend.exclusive_engine``): a running sidecar
+    # holds its interpreter and weights open, which locks them on Windows.
     root = managed_root(spec)
     removed = root.is_dir()
     if removed:
