@@ -1516,6 +1516,10 @@ def _remove_tree(path: Path) -> None:
     the caller to report.
     """
     def _writable(func: Callable, target: str, _exc) -> None:
+        # Only a removal is retried: rmtree also reports os.open/os.scandir
+        # failures here, and those need arguments this callback does not have.
+        if func not in (os.unlink, os.remove, os.rmdir):
+            return
         try:
             os.chmod(target, stat.S_IWRITE)
             func(target)

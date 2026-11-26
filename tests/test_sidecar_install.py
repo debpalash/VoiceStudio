@@ -2328,3 +2328,22 @@ def test_uninstall_removes_read_only_files_like_windows_git_packs(monkeypatch):
 
     assert si.uninstall("fake-side")["status"] == "uninstalled"
     assert not si.managed_root(spec).exists()
+
+
+def test_an_unreadable_folder_is_reported_not_raised(monkeypatch):
+    """rmtree hands os.open/os.scandir failures to the same callback (3.11)."""
+    spec = _managed_install(monkeypatch)
+    from services import subprocess_backend
+
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", set())
+    calls = []
+
+    def rmtree(path, onexc=None, onerror=None):
+        handler = onexc or onerror
+        calls.append(path)
+        handler(os.open, str(path), PermissionError(13, "denied"))
+
+    monkeypatch.setattr(si.shutil, "rmtree", rmtree)
+    res = si.uninstall("fake-side")
+    assert res["status"] == "incomplete"
+    assert calls
