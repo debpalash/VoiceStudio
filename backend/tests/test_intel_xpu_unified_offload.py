@@ -367,6 +367,8 @@ def test_forced_release_does_not_force_on_non_integrated_unified(monkeypatch):
 @pytest.fixture
 def _clean_hold(monkeypatch):
     monkeypatch.setattr(mm, "_unified_asr_holds", 0)
+    monkeypatch.setattr(mm, "_tts_loads_in_flight", 0)
+    monkeypatch.setattr(mm, "_tts_unloads_in_flight", 0)
     monkeypatch.setattr(mm, "_placement_exclusive", False)
     mm._asr_hold_tls.tokens = 0
     yield
@@ -441,7 +443,7 @@ def test_overlapping_ops_hold_until_both_end(monkeypatch, _clean_hold, first_end
 
     woke = threading.Event()
     waiter = threading.Thread(
-        target=lambda: (mm._wait_unified_asr_hold(5), woke.set())
+        target=lambda: (mm._begin_tts_load(5), mm._end_tts_load(), woke.set())
     )
     waiter.start()
 
@@ -467,4 +469,70 @@ def test_restore_without_token_is_a_noop(monkeypatch, _clean_hold):
 
 def test_wait_is_bounded(monkeypatch, _clean_hold):
     monkeypatch.setattr(mm, "_unified_asr_holds", 1)
-    mm._wait_unified_asr_hold(0.05)  # returns instead of hanging
+    mm._begin_tts_load(0.05)  # returns instead of hanging
+    mm._end_tts_load()
+
+
+def test_failed_forced_release_leaves_hold_and_returns_false(monkeypatch, _clean_hold):
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", object())
+    monkeypatch.setattr(mm, "_offload_unified_memory", lambda **_k: False)
+    assert mm.offload_tts_for_asr(force_unified_release=True) is False
+    assert mm._unified_asr_holds == 0 and mm._placement_exclusive is False
+    mm.restore_tts_after_asr()  # nothing left to release
+    assert mm._unified_asr_holds == 0
+
+
+def test_admission_waits_for_inflight_unload(monkeypatch, _clean_hold):
+    import threading, time
+
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", object())
+    gate = threading.Event()
+    monkeypatch.setattr(mm, "release_tts_side_caches", lambda: gate.wait(5))
+    monkeypatch.setattr(mm, "free_vram", lambda: None)
+
+    unloader = threading.Thread(target=mm.unload_shared_model)
+    unloader.start()
+    time.sleep(0.1)
+    assert mm.model is None  # reference cleared, unload still running
+
+    res = []
+    admit = threading.Thread(
+        target=lambda: res.append(mm.offload_tts_for_asr(force_unified_release=True))
+    )
+    admit.start()
+    time.sleep(0.2)
+    assert res == []  # admission is waiting on the slow unload
+    gate.set()
+    unloader.join(2); admit.join(2)
+    assert res == [True]
+    mm.restore_tts_after_asr()
+
+
+def test_admission_times_out_on_stuck_unload_and_leaves_hold(monkeypatch, _clean_hold):
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", None)
+    monkeypatch.setattr(mm, "_ASR_PLACEMENT_WAIT_S", 0.1)
+    monkeypatch.setattr(mm, "_tts_unloads_in_flight", 1)
+    assert mm.offload_tts_for_asr(force_unified_release=True) is False
+    assert mm._unified_asr_holds == 0 and mm._placement_exclusive is False
+
+
+def test_admission_waits_for_inflight_load(monkeypatch, _clean_hold):
+    import threading, time
+
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", None)
+    mm._begin_tts_load(1)  # a cold load already running
+    res = []
+    th = threading.Thread(
+        target=lambda: res.append(mm.offload_tts_for_asr(force_unified_release=True))
+    )
+    th.start()
+    time.sleep(0.2)
+    assert res == []
+    mm._end_tts_load()
+    th.join(2)
+    assert res == [True]
+    mm.restore_tts_after_asr()
