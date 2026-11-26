@@ -1666,6 +1666,9 @@
     "aec_row_title": "Dikte için yankı gidermeyi etkinleştir",
     "aec_experimental": "Deneysel",
     "aec_hint": "Ön izleme, dublaj veya video oynarken uygulamanın sesini yazıya dökmeden dikte etmenizi sağlar. Biraz işlem ekler; çalma sırasında dikte etmiyorsanız kapalı bırakın.",
+    "compact_title": "Kompakt katman",
+    "compact_row_title": "Basılı tutarak yazdırma için kompakt katman",
+    "compact_description": "Kısayolu basılı tuttuğunuz sürece tam kaydedici ve transkript yerine yalnızca canlı bir seviye göstergesi ve bir zamanlayıcı gösterilir. Bıraktığınızda metin yine eklenir.",
     "cleanup_title": "Metin temizliği",
     "spoken_punctuation": "Sesli noktalama",
     "spoken_punctuation_desc": "Yazmak için “comma”, “period”, “question mark”, “new line” deyin. Yalnızca İngilizce."

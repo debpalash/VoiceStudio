@@ -1666,6 +1666,9 @@
     "aec_row_title": "为听写启用回声消除",
     "aec_experimental": "实验性",
     "aec_hint": "可在播放预览、配音或视频时听写，而不会转写应用自身的声音。会增加少量音频处理；如果不会在播放时听写，请保持关闭。",
+    "compact_title": "紧凑浮层",
+    "compact_row_title": "按住听写的紧凑浮层",
+    "compact_description": "按住快捷键期间，只显示实时音量表和计时器，而不显示完整的录音器和转写文本。松开后文本仍会照常插入。",
     "cleanup_title": "文本整理",
     "spoken_punctuation": "语音标点",
     "spoken_punctuation_desc": "说 “comma”, “period”, “question mark”, “new line” 即可输入。仅支持英语。"

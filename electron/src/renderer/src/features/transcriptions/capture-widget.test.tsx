@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CaptureWidget } from './capture-widget';
@@ -48,6 +48,7 @@ const capture = vi.hoisted(() => ({
   onEvent: vi.fn(),
   phase: vi.fn(async () => {}),
   ready: vi.fn(async () => {}),
+  expand: vi.fn(async () => {}),
 }));
 
 const dictation = vi.hoisted(() => {
@@ -61,6 +62,7 @@ const dictation = vi.hoisted(() => {
     stop: vi.fn(async () => {}),
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
+    onLevel: () => () => {},
   };
 });
 
@@ -74,17 +76,18 @@ vi.mock('./live-dictation', () => ({
     stop = dictation.stop;
     getSnapshot = dictation.getSnapshot;
     subscribe = dictation.subscribe;
+    onLevel = dictation.onLevel;
   },
 }));
 vi.mock('@shared/utils/transcriptionsStore', () => ({ addTranscription: vi.fn() }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 
 /** Let the effect subscribe, then push a `start`-shaped capture event into it. */
-async function mountAndStartSession(): Promise<void> {
+async function mountAndStartSession(compact?: boolean): Promise<void> {
   const onEvent = capture.onEvent.mock.calls.at(-1)?.[0] as ((e: unknown) => void) | undefined;
   if (!onEvent) throw new Error('capture widget never subscribed to native events');
   await act(async () => {
-    onEvent({ action: 'start', session: 7 });
+    onEvent({ action: 'start', session: 7, compact });
   });
 }
 
@@ -146,5 +149,22 @@ describe('native dictation survives a busy backend recovering (#2430)', () => {
 
     expect(capture.cancel).toHaveBeenCalledWith(7);
     expect(dictation.cancel).toHaveBeenCalled();
+  });
+});
+
+describe('compact push-to-talk overlay', () => {
+  it('renders only the meter and timer when main marks the session compact', async () => {
+    render(<CaptureWidget />);
+    await mountAndStartSession(true);
+    expect(screen.getByTestId('compact-overlay')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(capture.expand).not.toHaveBeenCalled();
+  });
+
+  it('keeps the full recorder when the session is not compact', async () => {
+    render(<CaptureWidget />);
+    await mountAndStartSession(false);
+    expect(screen.queryByTestId('compact-overlay')).toBeNull();
+    expect(screen.getByRole('status')).toBeTruthy();
   });
 });

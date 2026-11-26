@@ -1666,6 +1666,9 @@
     "aec_row_title": "Bật khử tiếng vọng khi đọc chính tả",
     "aec_experimental": "Thử nghiệm",
     "aec_hint": "Cho phép đọc chính tả khi đang phát bản xem trước, lồng tiếng hoặc video mà không chép lại âm thanh của ứng dụng. Thêm một ít xử lý; hãy tắt nếu bạn không đọc khi đang phát.",
+    "compact_title": "Lớp phủ gọn",
+    "compact_row_title": "Lớp phủ gọn cho đọc chính tả nhấn giữ",
+    "compact_description": "Khi bạn giữ phím tắt, chỉ hiển thị thanh đo mức âm thanh trực tiếp và đồng hồ thay vì trình ghi âm đầy đủ và bản chép lời. Văn bản vẫn được chèn khi bạn thả phím.",
     "cleanup_title": "Làm sạch văn bản",
     "spoken_punctuation": "Dấu câu bằng giọng nói",
     "spoken_punctuation_desc": "Nói “comma”, “period”, “question mark”, “new line” để gõ. Chỉ tiếng Anh."

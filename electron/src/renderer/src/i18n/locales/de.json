@@ -1666,6 +1666,9 @@
     "aec_row_title": "Echounterdrückung für Diktat aktivieren",
     "aec_experimental": "Experimentell",
     "aec_hint": "Du kannst während einer Vorschau, Synchronisation oder eines Videos diktieren, ohne den App-Ton zu transkribieren. Benötigt etwas zusätzliche Verarbeitung; lass es aus, wenn du nicht über Wiedergabe diktierst.",
+    "compact_title": "Kompakte Anzeige",
+    "compact_row_title": "Kompakte Anzeige für Diktat per Tastenhalten",
+    "compact_description": "Solange du die Tastenkombination hältst, werden nur ein Pegelanzeiger und ein Timer statt des vollständigen Rekorders und Transkripts angezeigt. Beim Loslassen wird der Text wie gewohnt eingefügt.",
     "cleanup_title": "Textbereinigung",
     "spoken_punctuation": "Gesprochene Satzzeichen",
     "spoken_punctuation_desc": "Sag “comma”, “period”, “question mark”, “new line”, um es zu tippen. Nur Englisch."

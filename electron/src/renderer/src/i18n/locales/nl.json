@@ -1666,6 +1666,9 @@
     "aec_row_title": "Echo-onderdrukking voor dicteren inschakelen",
     "aec_experimental": "Experimenteel",
     "aec_hint": "Laat je dicteren tijdens een voorbeeld, dub of video zonder de audio van de app te transcriberen. Voegt enige verwerking toe; laat uit als je niet tijdens afspelen dicteert.",
+    "compact_title": "Compacte overlay",
+    "compact_row_title": "Compacte overlay voor dicteren met ingedrukt houden",
+    "compact_description": "Zolang je de sneltoets ingedrukt houdt, zie je alleen een live niveaumeter en een timer in plaats van de volledige recorder en transcriptie. De tekst wordt bij loslaten nog steeds ingevoegd.",
     "cleanup_title": "Tekst opschonen",
     "spoken_punctuation": "Gesproken leestekens",
     "spoken_punctuation_desc": "Zeg “comma”, “period”, “question mark”, “new line” om het te typen. Alleen Engels."

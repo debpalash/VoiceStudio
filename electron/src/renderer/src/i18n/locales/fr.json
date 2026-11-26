@@ -1668,6 +1668,9 @@
     "aec_row_title": "Activer l’annulation d’écho pour la dictée",
     "aec_experimental": "Expérimental",
     "aec_hint": "Permet de dicter pendant une préécoute, un doublage ou une vidéo sans transcrire le son de l’application. Ajoute un léger traitement ; laissez désactivé si vous ne dictez pas pendant la lecture.",
+    "compact_title": "Surimpression compacte",
+    "compact_row_title": "Surimpression compacte pour la dictée maintenue",
+    "compact_description": "Tant que vous maintenez le raccourci, affiche seulement un indicateur de niveau en direct et un minuteur au lieu de l'enregistreur complet et de la transcription. Le texte est toujours inséré au relâchement.",
     "cleanup_title": "Nettoyage du texte",
     "spoken_punctuation": "Ponctuation dictée",
     "spoken_punctuation_desc": "Dites “comma”, “period”, “question mark”, “new line” pour la saisir. Anglais uniquement."

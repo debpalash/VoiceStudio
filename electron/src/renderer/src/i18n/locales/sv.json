@@ -1666,6 +1666,9 @@
     "aec_row_title": "Aktivera ekoreducering för diktering",
     "aec_experimental": "Experimentellt",
     "aec_hint": "Låter dig diktera medan en förhandsvisning, dubbning eller video spelas utan att appens ljud transkriberas. Lägger till lite bearbetning; lämna av om du inte dikterar under uppspelning.",
+    "compact_title": "Kompakt överlagring",
+    "compact_row_title": "Kompakt överlagring för diktering med hållen tangent",
+    "compact_description": "Medan du håller ned genvägen visas bara en nivåmätare i realtid och en timer i stället för hela inspelaren och transkriptionen. Texten infogas fortfarande när du släpper.",
     "cleanup_title": "Textstädning",
     "spoken_punctuation": "Uttalad interpunktion",
     "spoken_punctuation_desc": "Säg “comma”, “period”, “question mark”, “new line” för att skriva det. Endast engelska."

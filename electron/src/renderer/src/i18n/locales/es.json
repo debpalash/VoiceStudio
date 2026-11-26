@@ -1668,6 +1668,9 @@
     "aec_row_title": "Activar cancelación de eco para el dictado",
     "aec_experimental": "Experimental",
     "aec_hint": "Permite dictar mientras se reproduce una vista previa, doblaje o vídeo sin transcribir el audio de la aplicación. Añade un poco de procesamiento; déjalo desactivado si no dictas durante la reproducción.",
+    "compact_title": "Superposición compacta",
+    "compact_row_title": "Superposición compacta para dictado mantenido",
+    "compact_description": "Mientras mantienes el atajo, muestra solo un medidor de nivel en vivo y un temporizador en lugar de la grabadora completa y la transcripción. El texto se inserta igualmente al soltarlo.",
     "cleanup_title": "Limpieza del texto",
     "spoken_punctuation": "Puntuación dictada",
     "spoken_punctuation_desc": "Di “comma”, “period”, “question mark”, “new line” para escribirlo. Solo en inglés."

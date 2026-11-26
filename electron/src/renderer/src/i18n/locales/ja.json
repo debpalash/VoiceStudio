@@ -1666,6 +1666,9 @@
     "aec_row_title": "音声入力のエコーキャンセルを有効化",
     "aec_experimental": "試験的",
     "aec_hint": "プレビュー、吹き替え、動画の再生中でも、アプリ自身の音声を文字起こしせずに音声入力できます。処理が少し増えるため、再生中に入力しない場合はオフのままにしてください。",
+    "compact_title": "コンパクト表示",
+    "compact_row_title": "押し続けるディクテーション用のコンパクト表示",
+    "compact_description": "ショートカットを押している間、完全なレコーダーと文字起こしの代わりに、リアルタイムのレベルメーターとタイマーだけを表示します。離すと、これまでどおりテキストが挿入されます。",
     "cleanup_title": "テキストの整形",
     "spoken_punctuation": "音声による句読点",
     "spoken_punctuation_desc": "“comma”, “period”, “question mark”, “new line” と言うと入力されます。英語のみ。"

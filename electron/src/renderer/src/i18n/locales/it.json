@@ -1668,6 +1668,9 @@
     "aec_row_title": "Attiva cancellazione dell'eco per la dettatura",
     "aec_experimental": "Sperimentale",
     "aec_hint": "Consente di dettare durante un'anteprima, un doppiaggio o un video senza trascrivere l'audio dell'app. Aggiunge una lieve elaborazione; lascialo spento se non detti durante la riproduzione.",
+    "compact_title": "Overlay compatto",
+    "compact_row_title": "Overlay compatto per la dettatura a pressione",
+    "compact_description": "Mentre tieni premuta la scorciatoia, mostra solo un indicatore di livello in tempo reale e un timer invece del registratore completo e della trascrizione. Il testo viene comunque inserito al rilascio.",
     "cleanup_title": "Pulizia del testo",
     "spoken_punctuation": "Punteggiatura dettata",
     "spoken_punctuation_desc": "Di’ “comma”, “period”, “question mark”, “new line” per scriverla. Solo in inglese."

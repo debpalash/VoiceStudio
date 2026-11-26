@@ -1859,6 +1859,9 @@
     "aec_row_title": "Activa a cancelación de eco para o ditado",
     "aec_experimental": "Experimental",
     "aec_hint": "Permíteche ditar mentres se reproduce unha vista previa, dobraxe ou vídeo sen transcribir o audio da propia aplicación. Engade unha pequena cantidade de procesamento; déixao desactivado se non ditas sobre a reprodución.",
+    "compact_title": "Superposición compacta",
+    "compact_row_title": "Superposición compacta para o ditado mantido",
+    "compact_description": "Mentres manteñas o atallo, amosa só un medidor de nivel en directo e un temporizador en lugar do gravador completo e a transcrición. O texto insírese igualmente ao soltalo.",
     "cleanup_title": "Limpeza de texto",
     "spoken_punctuation": "Puntuación falada",
     "spoken_punctuation_desc": "Di \"coma\", \"punto\", \"signo de interrogación\", \"liña nova\" para escribilo. Só inglés."
