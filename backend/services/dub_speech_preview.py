@@ -7,17 +7,18 @@ import re
 import shutil
 from pathlib import Path
 
-from core.path_security import contained_join
-
 _TOKEN = re.compile(r"^[a-f0-9]{64}$")
 _RENDER = re.compile(r"^[a-f0-9]{32}$")
 
 
 def preview_path(job_dir: str, render_id: str, token: str) -> str:
+    # Exact allowlists first; then the normalized path must stay inside the
+    # job's preview folder (abspath + startswith: the containment proof).
     if not _RENDER.fullmatch(render_id) or not _TOKEN.fullmatch(token):
         raise ValueError("Invalid speech preview")
-    path = contained_join(job_dir, os.path.join(".speech-previews", render_id, token + ".wav"))
-    if path is None:
+    root = os.path.abspath(os.path.join(job_dir, ".speech-previews"))
+    path = os.path.abspath(os.path.join(root, render_id, token + ".wav"))
+    if not path.startswith(root + os.sep):
         raise ValueError("Invalid speech preview")
     return path
 

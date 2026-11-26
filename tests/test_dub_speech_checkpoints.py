@@ -75,3 +75,24 @@ def test_checkpoints_stay_within_their_disk_bound(tmp_path):
     assert not cache._path({'text': 'take 0'}).with_suffix('.sha256').exists()
     assert cache.read({'text': 'take 3'}) is not None
     assert cache.prune() == 0
+
+
+def test_request_ids_cannot_escape_the_dub_folder(tmp_path, monkeypatch):
+    import os
+    import pytest
+    import api.routers.dub_generate as dg
+    import core.config as config
+    from services.dub_speech_preview import preview_path
+    monkeypatch.setattr(dg, 'DUB_DIR', str(tmp_path / 'dub'))
+    monkeypatch.setattr(config, 'DUB_DIR', str(tmp_path / 'dub'))
+    assert dg._track_path('job', 'en') == str(tmp_path / 'dub' / 'job' / 'dubbed_en.wav')
+    for job_id in ('..', '../..', '/etc'):
+        with pytest.raises(ValueError):
+            dg._track_path(job_id, 'en')
+    with pytest.raises(ValueError):
+        config.dub_seg_path('..', 'x')
+    job_dir = str(tmp_path / 'dub' / 'job')
+    assert preview_path(job_dir, 'a' * 32, 'b' * 64).startswith(os.path.join(job_dir, '.speech-previews') + os.sep)
+    for render_id, token in (('..', 'b' * 64), ('a' * 32, '../' + 'b' * 61), ('A' * 32, 'b' * 64)):
+        with pytest.raises(ValueError):
+            preview_path(job_dir, render_id, token)

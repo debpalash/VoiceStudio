@@ -550,6 +550,19 @@ def _render_staging(job_id: str):
         shutil.rmtree(stage_dir, ignore_errors=True)
 
 
+def _track_path(job_id: str, lang_code: str) -> str:
+    """``DUB_DIR/<job>/dubbed_<lang>.wav``, proven to stay inside DUB_DIR.
+
+    Both parts come from the request. Normalized, then prefix-checked: the
+    containment proof static analysis recognizes (py/path-injection).
+    """
+    root = os.path.abspath(DUB_DIR)
+    path = os.path.abspath(os.path.join(root, str(job_id), f"dubbed_{lang_code}.wav"))
+    if not path.startswith(root + os.sep):
+        raise ValueError("dub track path escapes DUB_DIR")
+    return path
+
+
 def _resume_journal_root(job_id: str, lang_code: str) -> str:
     """Where this job's finished-segment recovery copies for one track live.
 
@@ -1579,9 +1592,11 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                     # Rendered below its keyed step count: never kept for resume.
                     _oom_degraded.add(str(effective_seg_id))
                     prepared["num_step"] = retry_steps
+                    # The step count arrives in the request body: log it
+                    # through the CR/LF-safe renderer (py/log-injection).
                     logger.warning(
-                        "OOM on segment (nstep=%d), retrying with %d steps after cache flush",
-                        nstep, retry_steps,
+                        "OOM on segment (nstep=%s), retrying with %s steps after cache flush",
+                        log_safe(nstep), log_safe(retry_steps),
                     )
                     try:
                         # An OOM retry on a single-use ref pays the reference
@@ -2214,7 +2229,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
         # not from the plan — so subtitles land exactly on the audio.
         fitted_cues: list[dict] = []
 
-        track_path = os.path.join(DUB_DIR, job_id, f"dubbed_{lang_code}.wav")
+        track_path = _track_path(job_id, lang_code)
         import gc
 
         import numpy as np
