@@ -425,3 +425,18 @@ def test_skips_overlong_milliseconds_without_losing_next_cue(
     assert len(result.segments) == 1
     assert result.segments[0]["text"] == "Keep this cue."
     assert result.segments[0]["start"] == 3.0
+
+
+def test_webvtt_timing_line_starts_a_cue_even_without_a_blank_line():
+    """WebVTT parsers start a new cue at any timing line; an identifier is not dialogue."""
+    text = ("WEBVTT\n\nintro\n00:01.000 --> 00:03.000\nThe schedule says:\n"
+            "00:10.000 --> 00:11.000\nWrite that down.\n\n00:12.000 --> 00:13.000\nNext.")
+    result = parse_srt(text)
+    assert [(s["start"], s["end"], s["text"]) for s in result.segments] == [
+        (1.0, 3.0, "The schedule says:"), (10.0, 11.0, "Write that down."), (12.0, 13.0, "Next."),
+    ]
+
+
+def test_webvtt_accepts_a_first_cue_without_a_blank_after_the_header():
+    result = parse_srt("WEBVTT\n00:01.000 --> 00:02.000\nHello\n")
+    assert [segment["text"] for segment in result.segments] == ["Hello"]

@@ -23,7 +23,7 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
   const restored = restoreDubDraft(
     JSON.stringify({
       jobId: s.dubJobId,
-      filename: s.dubFilename || project.video_path,
+      filename: s.dubFilename || project.video_path || project.audio_path,
       duration: project.duration,
       segments,
       target: s.dubLang,
@@ -35,7 +35,6 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
       dialect: s.dubDialect,
       translationInstructions: s.translationInstructions,
       exportOptions: {
-        ...(typeof s.exportOptions === 'object' && s.exportOptions ? s.exportOptions : {}),
         preserveBg: s.preserveBg,
         track: s.defaultTrack,
         burn: s.burnSubs,
@@ -47,6 +46,7 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
                 .filter(([, on]) => on === false)
                 .map(([code]) => code)
             : undefined,
+        ...(typeof s.exportOptions === 'object' && s.exportOptions ? s.exportOptions : {}),
       },
       fitOptions: s.fitOptions,
       steps: s.steps,
@@ -67,7 +67,7 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
       sourceLang: s.dubSourceLangCode,
       tracks: s.dubTracks,
       phase: s.dubStep,
-      inputType: s.inputType,
+      inputType: s.inputType ?? (!project.video_path && project.audio_path ? 'audio' : 'video'),
       narration: s.narration,
       narrationWanted: s.narrationWanted,
       listenedRequestKeys: s.listenedRequestKeys,
@@ -82,12 +82,15 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
 }
 export function projectPayload(session: DubSession, name: string) {
   const prior = session.project;
+  const sourceDuration = session.duration;
   return {
     name: name.trim(),
     video_path: session.subtitleOnly ? null : prior?.video_path || session.filename,
     audio_path: prior?.audio_path ?? null,
     duration:
-      session.duration || prior?.duration || Math.max(0, ...session.segments.map((s) => s.end)),
+      typeof sourceDuration === 'number' && Number.isFinite(sourceDuration) && sourceDuration > 0
+        ? sourceDuration
+        : prior?.duration ?? session.segments.reduce((end, segment) => Math.max(end, segment.end), 0),
     state: {
       ...prior?.state,
       dubJobId: session.jobId,

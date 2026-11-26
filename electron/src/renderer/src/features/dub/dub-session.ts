@@ -888,7 +888,7 @@ export function keepDubSourceText(sourceLanguage?: string) {
   const sourceCode = dubSourceLanguage(sourceLanguage, dubSession.state.sourceLang)?.toLowerCase();
   const sourceLabel = translationTargetLabel(sourceCode);
   const next = dubSession.state.segments.map((segment) => {
-    const text = segment.text_original || segment.text;
+    const text = segment.text_original ?? segment.text;
     return {
       ...segment,
       text,
@@ -908,21 +908,29 @@ export function keepDubSourceText(sourceLanguage?: string) {
 export function restoreDubSegments() {
   let changed = false;
   const next = dubSession.state.segments.map((segment) => {
-    const text = segment.text_original || segment.text;
+    const text = segment.text_original ?? segment.text;
     if (
       text === segment.text &&
       !segment.translate_error &&
       !segment.translate_degraded &&
       !segment.translation_skipped
-    )
-      return segment;
+    ) {
+      // Already reads as the original (e.g. edited away and back): restoring
+      // still brings back its imported cue and formatting.
+      if (!segment.text_original) return segment;
+      const revived = withOriginalCueSource(segment);
+      if (revived !== segment) changed = true;
+      return revived;
+    }
     changed = true;
-    return patchSegment(segment, {
-      text,
-      translate_error: undefined,
-      translate_degraded: undefined,
-      translation_skipped: undefined,
-    });
+    return withOriginalCueSource(
+      patchSegment(segment, {
+        text,
+        translate_error: undefined,
+        translate_degraded: undefined,
+        translation_skipped: undefined,
+      }),
+    );
   });
   if (changed) commitSegmentEdit(next);
 }

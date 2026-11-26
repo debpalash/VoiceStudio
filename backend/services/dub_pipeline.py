@@ -55,7 +55,7 @@ from services.ffmpeg_utils import (
     require_audio_stream,
     validate_media_source,
 )
-from services.srt_parser import spoken_cue_text, webvtt_content_blocks
+from services.srt_parser import parse_webvtt_timing_line, spoken_cue_text, webvtt_content_blocks
 from services.model_manager import get_best_device
 # Process lifecycle moved to its own leaf module so ffmpeg_utils can import
 # it at module top (no dub_pipeline ↔ ffmpeg_utils cycle). Re-exported here —
@@ -1516,21 +1516,6 @@ def parse_vtt_segments(vtt_path: str) -> list[dict]:
     except OSError:
         return []
 
-    def _ts(s: str) -> float:
-        # Format: HH:MM:SS.mmm or MM:SS.mmm
-        parts = s.strip().split(":")
-        try:
-            parts = [float(p.replace(",", ".")) for p in parts]
-        except ValueError:
-            return 0.0
-        if len(parts) == 3:
-            h, m, sec = parts
-        elif len(parts) == 2:
-            h, m, sec = 0.0, parts[0], parts[1]
-        else:
-            return 0.0
-        return h * 3600.0 + m * 60.0 + sec
-
     segments: list[dict] = []
     text = raw.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
     for index, block in enumerate(webvtt_content_blocks(text, strict_blank=True)):
@@ -1546,15 +1531,10 @@ def parse_vtt_segments(vtt_path: str) -> list[dict]:
             lines = lines[1:]
         if not lines or "-->" not in lines[0]:
             continue
-        ts_line = lines[0]
-        try:
-            left, right = ts_line.split("-->")
-            # Drop any settings after the right timestamp ("00:01.000 align:left line:0%")
-            right = right.strip().split(" ")[0]
-            start = _ts(left)
-            end = _ts(right)
-        except Exception:
+        timing = parse_webvtt_timing_line(lines[0])
+        if timing is None:
             continue
+        start, end = timing
         text = spoken_cue_text(" ".join(ln.strip() for ln in lines[1:]), webvtt=True)
         if text:
             segments.append({"start": start, "end": end, "text": text})
