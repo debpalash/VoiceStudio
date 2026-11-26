@@ -121,3 +121,8 @@ def test_a_bullet_elsewhere_does_not_hide_a_fragment(tmp_path):
 
 def test_suffixed_fragment_names_keep_their_pr_number():
     assert re.match(r"\d*", cf.NAME.match("3263-b.docs.md").group("id")).group() == "3263"
+
+
+def test_a_byte_order_mark_does_not_reach_the_changelog(tmp_path):
+    (tmp_path / "123.fixed.md").write_bytes("﻿Fixed a thing (#123)\n".encode("utf-8"))
+    assert cf.entry_of(tmp_path / "123.fixed.md") == "Fixed a thing (#123)"

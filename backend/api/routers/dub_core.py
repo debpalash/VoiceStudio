@@ -23,7 +23,7 @@ from core.config import PREVIEW_DIR
 from core.tasks import task_manager
 from core.logging_utils import log_safe
 from core.media_types import AUDIO_EXTS, MEDIA_EXTS, media_extension, media_upload_suffix, unsupported_media_detail
-from core.url_safety import UnsafeURLError, check_public_url, is_manifest_head, is_manifest_file
+from core.url_safety import UnsafeURLError, check_public_url, is_manifest_file, is_manifest_head
 from core.failure import InvalidMediaFileError
 from core import event_bus
 from schemas.requests import CleanupSegmentsRequest, DubIngestUrlRequest, ParseSubtitleTextRequest, TranscriptSyncRequest
@@ -66,6 +66,11 @@ router = APIRouter()
 logger = logging.getLogger("omnivoice.api")
 
 _MAX_COOKIE_EXPORT_BYTES = 1024 * 1024
+# Preview uploads are copied to disk in bounded chunks: the spooled upload file is
+# already on disk, so the only question is how much of it lands in RAM at once.
+_UPLOAD_COPY_CHUNK = 1024 * 1024
+# Enough to tell a playlist or concat manifest from real media (core/url_safety.py).
+_MANIFEST_HEAD_BYTES = 512
 
 
 def _cookie_transport_allowed(
@@ -809,14 +814,20 @@ async def preview_upload(video: UploadFile = File(...)):
     safe_name = f"{uuid.uuid4().hex[:12]}"
     vid_path = os.path.join(PREVIEW_DIR, f"{safe_name}{ext}")
     wav_path = os.path.join(PREVIEW_DIR, f"{safe_name}.wav")
-    payload = await video.read()
-    if is_manifest_head(payload[:512]):
-        # A playlist/manifest named like a video: ffmpeg would follow its URLs.
-        raise InvalidMediaFileError()
 
     def _write_and_extract() -> bool:
-        with open(vid_path, "wb") as f:
-            f.write(payload)
+        # Check the head before anything is written: a playlist named like a video
+        # must be refused without creating a destination file at all.
+        video.file.seek(0)
+        if is_manifest_head(video.file.read(_MANIFEST_HEAD_BYTES)):
+            # A playlist/manifest named like a video: ffmpeg would follow its URLs.
+            raise InvalidMediaFileError()
+        # Stream the spooled upload onto disk. `await video.read()` kept the whole
+        # body in RAM, so one long preview could get the backend OOM-killed; a
+        # size cap would break legitimate long videos, so copy in chunks instead.
+        video.file.seek(0)
+        with open(vid_path, "wb") as out:
+            shutil.copyfileobj(video.file, out, _UPLOAD_COPY_CHUNK)
         if ext in {".wav", ".mp3", ".m4a", ".aac"}:
             return False
         try:
