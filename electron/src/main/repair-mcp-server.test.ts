@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { transformWithOxc } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 const LIMIT = 1_000_000;
 let dir: string;
@@ -45,7 +46,7 @@ beforeAll(async () => {
 afterAll(() => {
   server.closeAllConnections();
   server.close();
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  removeTempDir(dir);
 });
 
 function call(lines: string[]): Promise<Array<Record<string, any>>> {

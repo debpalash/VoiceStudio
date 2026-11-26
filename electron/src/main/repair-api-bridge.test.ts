@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { createServer } from 'node:http';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { startRepairApiBridge, type RepairApiBridge } from './repair-api-bridge';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 const cleanup: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -46,7 +47,7 @@ function context(bridge: RepairApiBridge) {
 it('keeps the real backend credential in main and forwards an authorized fix request', async () => {
   const target = await upstream();
   const root = mkdtempSync(join(tmpdir(), 'vs-repair-bridge-test-'));
-  cleanup.push(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  cleanup.push(() => removeTempDir(root));
   const bridge = await startRepairApiBridge(
     () => target.url,
     () => ({ Authorization: 'Bearer real-remote-session' }),
@@ -81,7 +82,7 @@ it('keeps the real backend credential in main and forwards an authorized fix req
 it('makes diagnose sessions read-only and rejects requests without the capability', async () => {
   const target = await upstream();
   const root = mkdtempSync(join(tmpdir(), 'vs-repair-bridge-test-'));
-  cleanup.push(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  cleanup.push(() => removeTempDir(root));
   const bridge = await startRepairApiBridge(
     () => target.url,
     () => ({}),
@@ -106,7 +107,7 @@ it('makes diagnose sessions read-only and rejects requests without the capabilit
 it('blocks authentication routes and removes the capability file when closed', async () => {
   const target = await upstream();
   const root = mkdtempSync(join(tmpdir(), 'vs-repair-bridge-test-'));
-  cleanup.push(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  cleanup.push(() => removeTempDir(root));
   const bridge = await startRepairApiBridge(
     () => target.url,
     () => ({}),
@@ -130,7 +131,7 @@ it('blocks authentication routes and removes the capability file when closed', a
 
 it('restores Electron-owned backend state even while the Python backend is unavailable', async () => {
   const root = mkdtempSync(join(tmpdir(), 'vs-repair-bridge-test-'));
-  cleanup.push(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  cleanup.push(() => removeTempDir(root));
   let restarts = 0;
   let setups = 0;
   const bridge = await startRepairApiBridge(
@@ -189,7 +190,7 @@ it('restores Electron-owned backend state even while the Python backend is unava
 
 it('keeps Electron recovery mutations read-only in diagnose mode', async () => {
   const root = mkdtempSync(join(tmpdir(), 'vs-repair-bridge-test-'));
-  cleanup.push(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  cleanup.push(() => removeTempDir(root));
   let restarts = 0;
   const bridge = await startRepairApiBridge(
     () => 'http://127.0.0.1:1',
@@ -220,7 +221,7 @@ it('keeps Electron recovery mutations read-only in diagnose mode', async () => {
 
 it('creates locked-down Claude and OpenCode MCP configs and removes them on close', async () => {
   const root = mkdtempSync(join(tmpdir(), 'vs-repair-bridge-test-'));
-  cleanup.push(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  cleanup.push(() => removeTempDir(root));
   const bridge = await startRepairApiBridge(
     () => 'http://127.0.0.1:1',
     () => ({}),

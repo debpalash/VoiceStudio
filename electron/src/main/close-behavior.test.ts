@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -11,6 +11,7 @@ import {
   WindowUse,
   type WindowCloseContext,
 } from './close-behavior';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 const base: WindowCloseContext = {
   platform: 'win32',
@@ -57,7 +58,7 @@ describe('decideWindowClose', () => {
 
 describe('close-to-tray preference', () => {
   let dir = '';
-  afterEach(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  afterEach(() => removeTempDir(dir));
   const fresh = () => (dir = mkdtempSync(join(tmpdir(), 'close-behavior-')));
 
   it('is off by default, for a missing, corrupt or non-boolean file', () => {

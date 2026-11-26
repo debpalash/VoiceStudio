@@ -19,10 +19,11 @@ import {
   setUpTerminalCommand,
   terminalCommandStatus,
 } from './terminal-command';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 const roots: string[] = [];
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  for (const root of roots.splice(0)) removeTempDir(root);
 });
 function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'vs-path-'));

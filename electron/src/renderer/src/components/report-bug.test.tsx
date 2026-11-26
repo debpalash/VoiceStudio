@@ -199,13 +199,12 @@ it.each([false, true])(
   async (withError) => {
     // Exercise real Node-owned journal/storage code through the test runner's
     // fixture loader, without importing it into the browser TypeScript project.
-    const { mkdtempSync, rmSync } = await vi.importActual<{
-      mkdtempSync(prefix: string): string;
-      rmSync(
-        path: string,
-        options: { recursive: boolean; force: boolean; maxRetries?: number; retryDelay?: number },
-      ): void;
-    }>('node:fs');
+    const { mkdtempSync } = await vi.importActual<{ mkdtempSync(prefix: string): string }>(
+      'node:fs',
+    );
+    const { removeTempDir } = await vi.importActual<{ removeTempDir(path: string): void }>(
+      '../../../main/test-support/remove-temp-dir',
+    );
     const { tmpdir } = await vi.importActual<{ tmpdir(): string }>('node:os');
     const { join } = await vi.importActual<{ join(...parts: string[]): string }>('node:path');
     const { CrashJournal } = await vi.importActual<{
@@ -306,7 +305,7 @@ it.each([false, true])(
       expect(body).not.toContain('private-user');
       expect(url.toString().length).toBeLessThan(8000);
     } finally {
-      rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+      removeTempDir(directory);
     }
   },
 );

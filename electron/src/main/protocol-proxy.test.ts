@@ -9,6 +9,7 @@ vi.mock('electron', () => ({
   net: { fetch: mocks.fetch },
 }));
 import { APP_ORIGIN, installAppProtocol } from './protocol';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 it('replaces caller origin with main-owned desktop identity on packaged API requests', async () => {
   mocks.fetch.mockResolvedValue(new Response('accepted'));
@@ -133,7 +134,7 @@ it('keeps remote dub uploads on the authenticated Electron transport', async () 
 });
 
 it('serves hashed renderer /assets/* with immutable Cache-Control and index.html with no-cache', async () => {
-  const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('node:fs');
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const root = mkdtempSync(join(tmpdir(), 'vs-proto-cache-'));
@@ -153,6 +154,6 @@ it('serves hashed renderer /assets/* with immutable Cache-Control and index.html
     expect(htmlRes.status).toBe(200);
     expect(htmlRes.headers.get('cache-control')).toBe('no-cache');
   } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    removeTempDir(root);
   }
 });

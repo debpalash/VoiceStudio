@@ -1,9 +1,10 @@
 // @vitest-environment node
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { inspectSourceCheckout, isVoiceStudioCheckout } from './source-checkout';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 let base: string;
 beforeEach(() => {
@@ -12,7 +13,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   chmodRecursive(base);
-  rmSync(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  removeTempDir(base);
 });
 function chmodRecursive(dir: string) {
   try {

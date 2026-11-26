@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,6 +19,7 @@ import {
   removeStalePendingUpdate,
 } from './updater-cache';
 import { compareAppVersions } from './updater';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 const require = createRequire(import.meta.url);
 const { AppUpdater } = require('electron-updater/out/AppUpdater');
@@ -56,7 +57,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(cache, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  removeTempDir(cache);
   vi.restoreAllMocks();
 });
 

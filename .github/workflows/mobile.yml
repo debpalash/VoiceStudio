@@ -150,8 +150,18 @@ jobs:
               doLast {
                 configurations.matching { it.canBeResolved }.each { c ->
                   try { c.resolve() } catch (Exception e) {
+                    // Walk every branch: a multi-cause failure exposes only its
+                    // first cause through getCause(), the rest through getCauses().
                     def msg = ""
-                    for (def x = e; x != null; x = x.cause) { msg += x.message + "\n" }
+                    def seen = Collections.newSetFromMap(new IdentityHashMap())
+                    def pending = [e]
+                    while (pending) {
+                      def x = pending.remove(pending.size() - 1)
+                      if (x == null || !seen.add(x)) continue
+                      msg += x.message + "\n"
+                      pending << x.cause
+                      if (x.metaClass.respondsTo(x, "getCauses")) pending.addAll(x.causes)
+                    }
                     if (msg.contains("429") || msg.contains("Too Many Requests")) { throw e }
                   }
                 }
