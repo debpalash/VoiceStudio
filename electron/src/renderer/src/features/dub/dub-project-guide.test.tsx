@@ -103,6 +103,17 @@ it('prepares target text before voice and waits for an explicitly requested scri
   expect(dubGuideState(s, 'en').scriptReady).toBe(false);
 });
 
+it('does not count target-language captions as text for the media language', () => {
+  const s = session();
+  s.sourceLanguage = 'es';
+  s.subtitleTargetLang = 'en';
+  s.sourceLang = 'en';
+  s.segments[0].translations = { en: 'Hello' };
+  expect(dubGuideState(s, 'en').textReady).toBe(true);
+  s.target = 'Spanish';
+  expect(dubGuideState(s, 'es').textReady).toBe(false);
+  expect(dubGuideState(s, 'es').nextStep).toBe('text');
+});
 it('treats audio saved before completion records as ready to export', () => {
   const s = { ...session(), phase: 'done' as const, tracks: ['en'] };
   s.fingerprintsByLang = { en: { a: 'hash-a' } };

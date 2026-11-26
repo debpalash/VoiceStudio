@@ -47,9 +47,12 @@ export function dubGuideState(
       const inputs = segmentGenInputs(segment);
       return Boolean(inputs.profile_id || inputs.instruct?.trim());
     });
-  const sameLanguage = Boolean(
-    code && [session.sourceLanguage, session.sourceLang, session.subtitleTargetLang].includes(code),
-  );
+  // After a target-language subtitle import the lines hold that language, not
+  // the media's, so only it counts as already-written target text.
+  const textLanguages = session.subtitleTargetLang
+    ? [session.subtitleTargetLang]
+    : [session.sourceLanguage, session.sourceLang];
+  const sameLanguage = Boolean(code && textLanguages.includes(code));
   const text =
     source &&
     Boolean(code) &&
