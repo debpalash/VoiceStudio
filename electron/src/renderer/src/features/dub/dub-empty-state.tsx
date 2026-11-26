@@ -13,11 +13,26 @@ import { compactSourceLabel } from './dub-source-row';
 const STEPS = ['dub.upload_transcribe', 'dub.translate', 'dub.generate_dub'] as const;
 
 /** One compact line for the three steps; the numbered sidebar holds their controls. */
-export function DubProgress({ current, busy }: { current: number; busy?: boolean }) {
+export function DubProgress({
+  current,
+  busy,
+  skipTranscription = false,
+  skipTranslation = false,
+}: {
+  current: number;
+  busy?: boolean;
+  skipTranscription?: boolean;
+  skipTranslation?: boolean;
+}) {
   const { t } = useTranslation();
+  const steps = [
+    skipTranscription ? 'dub.prepare_project' : STEPS[0],
+    skipTranslation ? 'dub.srt_in_target' : STEPS[1],
+    STEPS[2],
+  ];
   return (
     <ol className="flex min-w-0 flex-wrap items-center justify-center gap-x-1 gap-y-1 text-xs text-muted-foreground">
-      {STEPS.map((label, index) => {
+      {steps.map((label, index) => {
         const active = index === current;
         return (
           <li key={label} className="flex min-w-0 items-center gap-1">
@@ -134,7 +149,12 @@ export function DubEmptyState({
           {t('dub.change_file')}
         </Button>
       )}
-      <DubProgress current={0} busy={busy} />
+      <DubProgress
+        current={0}
+        busy={busy}
+        skipTranscription={session.skipTranscription}
+        skipTranslation={Boolean(session.subtitleTargetLang)}
+      />
     </div>
   );
 }

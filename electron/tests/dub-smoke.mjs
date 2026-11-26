@@ -241,6 +241,10 @@ try {
   });
   let generation;
   let generationFailure = null;
+  // Generation first shows what it will create and reuse.
+  await page.route('**/api/dub/plan/fixture', (route) =>
+    route.fulfill({ json: { total: 2, synthesize: 2, reuse: 0, silence: 0, forced: 0 } }),
+  );
   await page.route('**/api/dub/generate/fixture', (route) => {
     generation = route.request().postDataJSON();
     return route.fulfill({ json: { task_id: 'generation-fixture' } });
@@ -256,19 +260,30 @@ try {
   await page.goto(
     new URL('/#/dub', process.env.VOICESTUDIO_UI_URL || 'http://localhost:3902').href,
   );
-  // Spoken language and speaker count are compact rows, open without a disclosure.
-  await page.getByRole('button', { name: 'Spoken language', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Spoken language', exact: true }).fill('French');
-  await page.getByRole('option', { name: 'French', exact: true }).click();
-  await page.getByRole('spinbutton', { name: 'Speakers', exact: true }).fill('2');
+  // Choosing a file starts nothing: the user transcribes it, picks the spoken
+  // language and speaker count, then reviews and prepares the project.
+  const sourcePanel = page.getByRole('tabpanel', { name: 'Dubbing', exact: true });
+  const prepareSource = async (file, { pickLanguage = false } = {}) => {
+    await page.locator('input[type=file]').first().setInputFiles(file);
+    await page.locator('input[type=radio][name=srt][value=false]').check();
+    if (pickLanguage) {
+      await page.getByRole('button', { name: 'Spoken language', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Spoken language', exact: true }).fill('French');
+      await page.getByRole('option', { name: 'French', exact: true }).click();
+      await page.getByRole('spinbutton', { name: 'Speakers', exact: true }).fill('2');
+    }
+    for (const step of ['Continue', 'Continue', 'Review preparation', 'Prepare project'])
+      await sourcePanel.getByRole('button', { name: step, exact: true }).click();
+  };
 
   // A file without sound is a choose-another-file prompt on the file row, not a failure banner.
+  await prepareSource(
+    { name: 'Screen Recording.mov', mimeType: 'video/quicktime', buffer: wave },
+    { pickLanguage: true },
+  );
+  // A rejected file keeps the selection to fix; the main pane names the problem.
   await page
-    .locator('input[type=file]')
-    .first()
-    .setInputFiles({ name: 'Screen Recording.mov', mimeType: 'video/quicktime', buffer: wave });
-  const sourceRow = page.locator('[data-slot="dub-source-row"]');
-  await sourceRow
+    .locator('[data-slot="dub-source-status"]')
     .getByText('No audio track — choose a video or audio file with sound', { exact: true })
     .waitFor();
   assert.equal(await page.getByRole('alert').count(), 0);
@@ -279,14 +294,11 @@ try {
     .getByRole('button', { name: 'Change file', exact: true })
     .waitFor();
 
-  await page
-    .locator('input[type=file]')
-    .first()
-    .setInputFiles(
-      video
-        ? { name: 'sample.mp4', mimeType: 'video/mp4', buffer: video }
-        : { name: 'sample.wav', mimeType: 'audio/wav', buffer: wave },
-    );
+  await prepareSource(
+    video
+      ? { name: 'sample.mp4', mimeType: 'video/mp4', buffer: video }
+      : { name: 'sample.wav', mimeType: 'audio/wav', buffer: wave },
+  );
   await segmentRows.first().waitFor();
   const translateWithAgent = page.locator('[data-slot="translate-with-agent"]');
   await translateWithAgent.waitFor();
@@ -409,9 +421,15 @@ try {
       mimeType: 'application/x-subrip',
       buffer: Buffer.from('1\n00:00:00,500 --> 00:00:02,000\nImported subtitle'),
     });
+  // A replacement SRT asks which language it holds before it replaces the lines.
+  await page.locator('input[type=radio][name=srtLanguage][value=false]').check();
+  for (const step of ['Continue', 'Review preparation', 'Prepare project'])
+    await sourcePanel.getByRole('button', { name: step, exact: true }).click();
   await waitForSegmentText(0, 'Imported subtitle');
   await page.getByText('2 skipped (malformed)', { exact: true }).waitFor();
   const translatorPicker = page.getByRole('group', { name: 'Translator', exact: true });
+  // The translator and quality choices sit under the translation panel's Advanced.
+  await page.locator('details:has([role=group][aria-label="Translator"]) > summary').click();
   await translatorPicker.getByRole('button', { name: 'Agent', exact: true }).click();
   await page.getByRole('button', { name: 'Translate', exact: true }).click();
   await waitForSegmentText(0, 'Agent: Imported subtitle');
@@ -433,10 +451,11 @@ try {
   ]);
   assert.equal(generation, undefined, 'translation must remain reviewable before generation');
   await translatorPicker.getByRole('button', { name: 'Argos', exact: true }).click();
-  // Translation controls stay expanded without an extra disclosure click.
+  // Quality choices share that open Advanced section.
   await page.getByRole('button', { name: 'Cinematic', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Cinematic', exact: true }).click();
-  await page.getByRole('button', { name: 'Translate every segment', exact: true }).click();
+  // Every line already has a translation, so the same button now retranslates.
+  await page.getByRole('button', { name: 'Translate all again', exact: true }).click();
   await waitForSegmentText(0, 'Hola');
   assert.equal(translations[0].quality, 'cinematic');
   await page
@@ -460,7 +479,8 @@ try {
   await page.reload();
   script = await editSegment(0);
   assert.equal(await script.inputValue(), 'Hola mundo');
-  // Translation controls stay expanded without an extra disclosure click.
+  // The quality choice survives a reload, under the translation panel's Advanced.
+  await page.locator('details:has([role=group][aria-label="Translator"]) > summary').click();
   await page.getByRole('button', { name: 'Cinematic', exact: true }).waitFor({ state: 'visible' });
   assert.equal(
     await page.getByRole('button', { name: 'Cinematic', exact: true }).getAttribute('aria-pressed'),
@@ -484,7 +504,7 @@ try {
   );
   fallback = true;
   await page.getByRole('button', { name: 'Autofit', exact: true }).click();
-  await page.getByRole('button', { name: 'Translate every segment', exact: true }).click();
+  await page.getByRole('button', { name: 'Translate all again', exact: true }).click();
   await page
     .getByRole('button', { name: 'Fast', exact: true })
     .and(page.locator('[aria-pressed="true"]'))
@@ -499,7 +519,7 @@ try {
     await page.getByRole('status').getByRole('link').getAttribute('href'),
     /\/settings\/models\/llm$/,
   );
-  await page.getByRole('button', { name: 'Generate Dub', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate dubbing · 2 new clips', exact: true }).click();
   const dubbedPreview = page.getByRole('button', { name: 'es dubbed audio', exact: true });
   await dubbedPreview.waitFor();
   if (video) {
@@ -533,7 +553,7 @@ try {
   assert.equal(generation.speed, 0.5);
   assert.equal(generation.instruct, 'calm narrator');
   await page.locator('summary').filter({ hasText: 'Export options' }).click();
-  assert.equal(await page.getByRole('button', { name: 'Export', exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole('button', { name: 'Save…', exact: true }).isEnabled(), true);
   if (video) {
     assert.equal(
       await page.getByRole('switch', { name: 'Burn into video', exact: true }).isDisabled(),
@@ -560,7 +580,7 @@ try {
   await bedLevel.press('ArrowRight');
   await page.getByText('110%', { exact: true }).waitFor();
   rejectExport = true;
-  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  await page.getByRole('button', { name: 'Save…', exact: true }).click();
   await page.getByRole('alert').waitFor();
   assert.equal(await page.getByText('private backend trace').count(), 0);
   assert.equal(exportRequests.at(-1).searchParams.get('preserve_bg'), 'true');
@@ -568,7 +588,7 @@ try {
   await page.getByRole('switch', { name: 'Background audio', exact: true }).click();
   await bedLevel.waitFor({ state: 'hidden' });
   rejectExport = false;
-  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  await page.getByRole('button', { name: 'Save…', exact: true }).click();
   await page.waitForFunction(() => globalThis.__nativeSaveRequests.length === 1);
   let savedExport = await page.evaluate(() => globalThis.__nativeSaveRequests.at(-1));
   assert.match(savedExport.suggestedName, /-es-mp3\.mp3$/);
@@ -586,7 +606,7 @@ try {
   });
   await page.getByRole('button', { name: 'SRT', exact: true }).click();
   await page.getByRole('switch', { name: 'Translation + original', exact: true }).click();
-  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  await page.getByRole('button', { name: 'Save…', exact: true }).click();
   await page.waitForFunction(() => globalThis.__nativeSaveRequests.length === 2);
   savedExport = await page.evaluate(() => globalThis.__nativeSaveRequests.at(-1));
   assert.match(savedExport.suggestedName, /-es-srt\.srt$/);
@@ -611,7 +631,7 @@ try {
     return route.fulfill({ contentType: 'text/plain; charset=utf-8', body: plainText });
   });
   await page.getByRole('button', { name: 'Save plain text', exact: true }).click();
-  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  await page.getByRole('button', { name: 'Save…', exact: true }).click();
   // addInitScript resets the native-save fixture on the reload above.
   await page.waitForFunction(() => globalThis.__nativeSaveRequests.length === 1);
   savedExport = await page.evaluate(() => globalThis.__nativeSaveRequests.at(-1));
@@ -715,6 +735,8 @@ try {
       text: `Translated cue ${index + 1}`,
       text_original: `Original cue ${index + 1}`,
       speaker_id: 'SPEAKER_00',
+      // A transcribed speaker carries its automatic voice, as the cast assigns it.
+      profile_id: 'auto:speaker00',
       translations: { es: `Translated cue ${index + 1}` },
     }));
     draft.duration = 360;
@@ -725,9 +747,7 @@ try {
   const assertTimelineCueVisible = async (id) => {
     await page.waitForFunction((id) => {
       const transcript = document.querySelector('[data-slot="dub-transcript"]');
-      const scroll = [...(transcript?.children || [])].find(
-        (element) => getComputedStyle(element).overflowY === 'auto',
-      );
+      const scroll = transcript?.querySelector('[data-slot="dub-transcript-scroll"]');
       const row = document.querySelector(`article[data-dub-row-id="${id}"]`);
       if (!scroll || !row) return false;
       const viewport = scroll.getBoundingClientRect();
@@ -738,9 +758,7 @@ try {
       const transcript = document.querySelector('[data-slot="dub-transcript"]');
       const timeline = transcript.querySelector('section[aria-label="Segment timeline"]');
       const toolbar = transcript.querySelector('[data-slot="dub-transcript-toolbar"]');
-      const scroll = [...transcript.children].find(
-        (element) => getComputedStyle(element).overflowY === 'auto',
-      );
+      const scroll = transcript.querySelector('[data-slot="dub-transcript-scroll"]');
       const row = transcript.querySelector(`article[data-dub-row-id="${id}"]`);
       const bounds = transcript.getBoundingClientRect();
       const controls = timeline.getBoundingClientRect();
@@ -827,7 +845,7 @@ try {
     'Retry generation after the model is ready. Confirm that the selected voice model is installed and its reference clip can be read. The existing transcript remains editable while the model problem is resolved. No cue edits need to be discarded, and generation can be retried when the local engine is available again.',
   ]) {
     generationFailure = { reason: 'The voice model could not generate this dub.', hint };
-    await page.getByRole('button', { name: 'Generate Dub', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate dubbing · 2 new clips', exact: true }).click();
     await generationNotice.getByText(hint, { exact: true }).waitFor();
     await timeline.locator('[data-timeline-segment="long-90"]').click();
     await assertTimelineCueVisible('long-90');
@@ -838,7 +856,7 @@ try {
   await assertTimelineCueVisible('long-0');
   // A mix failure carries the row index even when the backend omits its ID.
   generationFailure = { error_code: 'dub_speech_missing', segment: 90 };
-  await page.getByRole('button', { name: 'Generate Dub', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate dubbing · 2 new clips', exact: true }).click();
   await generationNotice.getByRole('button', { name: /^Segment 91 of / }).click({ timeout: 5000 });
   await assertTimelineCueVisible('long-90');
   await generationNotice.getByRole('button', { name: 'Dismiss', exact: true }).click();
@@ -847,11 +865,16 @@ try {
   await page.evaluate(() => sessionStorage.setItem('voicestudio.test.reset-dub', '1'));
   await page.reload();
   failTranscription = true;
+  // A new project offers a link under Use link, beside Choose file.
+  await sourcePanel
+    .locator('summary')
+    .filter({ hasText: /^Use link$/ })
+    .click();
   await page
     .getByRole('textbox', { name: /paste a video URL/ })
     .fill('https://example.com/movie.mp4');
   await page
-    .locator('summary')
+    .locator('details:has(input[type=url]) details > summary')
     .filter({ hasText: /^Advanced$/ })
     .click();
   await page.getByRole('switch', { name: 'Download available captions', exact: true }).click();
