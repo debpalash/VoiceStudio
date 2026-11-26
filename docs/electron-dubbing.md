@@ -28,6 +28,8 @@ The five indicators now follow material → target text → voice/script → aud
 listen/save. A chosen natural-script preference is saved but consolidation is an
 explicit operation after target text is ready. Translator/dialect/quality settings
 remain accessible under Advanced; the voice assignment board starts expanded.
+Settings → Review mode still adds the dismissible stage checkpoint above the
+transcript after transcription, translation and generation.
 
 Before generation, an inline plan checks saved takes without synthesizing speech
 and displays new/reused counts. The primary action distinguishes Generate,

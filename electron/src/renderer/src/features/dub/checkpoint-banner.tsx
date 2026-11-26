@@ -12,6 +12,36 @@ import { Button } from '@/components/ui/button';
 
 export type CheckpointStage = 'asr' | 'translate' | 'done';
 
+/**
+ * Settings → Review mode: the stage pause the dub page shows, or null. Off,
+ * dismissed for this job and stage, or with nothing to review shows none.
+ */
+export function dubCheckpoint(
+  session: {
+    phase: string;
+    jobId: string | null;
+    segments: Array<{ translations?: Record<string, string> }>;
+  },
+  reviewMode: 'on' | 'off',
+  dismissed: ReadonlySet<string>,
+): { stage: CheckpointStage; id: string } | null {
+  if (reviewMode !== 'on' || !session.segments.length) return null;
+  const translated = session.segments.some(
+    (segment) => segment.translations && Object.keys(segment.translations).length > 0,
+  );
+  const stage: CheckpointStage | null =
+    session.phase === 'editing'
+      ? translated
+        ? 'translate'
+        : 'asr'
+      : session.phase === 'done'
+        ? 'done'
+        : null;
+  if (!stage) return null;
+  const id = `${session.jobId || 'draft'}:${stage}`;
+  return dismissed.has(id) ? null : { stage, id };
+}
+
 const stages = {
   asr: {
     title: 'checkpoint.asr_title',

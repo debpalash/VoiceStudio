@@ -42,6 +42,7 @@ import { SegmentFindBar } from './segment-find-bar';
 import { HighlightedText } from './segment-highlight';
 import { isFindBarTarget, useSegmentFind } from './use-segment-find';
 import { CastingBoard } from './casting-board';
+import { CheckpointBanner, dubCheckpoint } from './checkpoint-banner';
 import { DubbingDemo } from './dubbing-demo';
 import { ConfirmDialog } from '../clone/confirm-dialog';
 import { useDubOnsets } from './use-dub-onsets';
@@ -96,6 +97,7 @@ import { useTranslationEngines } from '@/features/settings/translation-settings'
 import { agentFitSkillsReady, useLlmSkills } from '@/features/settings/llm-skills';
 import { useModelCatalogue } from '@/features/settings/model-catalogue-query';
 import { useProfiles } from '@/hooks/use-profiles';
+import { useReviewMode } from '@/hooks/use-review-mode';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
 import { apiFetch, apiJson, apiPath, describeError, isAbortError } from '@/lib/api/client';
 import { createObjectUrl, revokeObjectUrl } from '@/lib/audio/object-url';
@@ -315,6 +317,8 @@ export function DubPage() {
   const previewHandoff = useRef<{ time: number; play: boolean } | null>(null);
   const [audioOnlyPreview, setAudioOnlyPreview] = useState(false);
   const [listenComplete, setListenComplete] = useState(false);
+  const reviewMode = useReviewMode();
+  const [dismissedCheckpoints, setDismissedCheckpoints] = useState<Set<string>>(() => new Set());
   const [completeSeek, setCompleteSeek] = useState<number | null>(null);
   const completeAudio = useRef<HTMLMediaElement>(null);
   const applyCompleteSeek = () => {
@@ -422,6 +426,7 @@ export function DubPage() {
       setListenComplete(false);
     }
   }, [narrationPending]);
+  const checkpoint = dubCheckpoint(session, reviewMode, dismissedCheckpoints);
   const speakers = useMemo(() => castSpeakers(session.segments) as string[], [session.segments]);
   const scrollToSegmentRow = useCallback(
     (row: number) => segmentVirtualizer.scrollToIndex(row, { align: 'center' }),
@@ -1980,8 +1985,8 @@ export function DubPage() {
                 />
               )}
               <div className="w-full space-y-4">
-                {/* Find and engine readiness share one slim strip, so the
-                    segment rows below stay on screen in a short window. */}
+                {/* Find, the review checkpoint and engine readiness share one slim
+                    strip, so the segment rows below stay on screen in a short window. */}
                 <div
                   data-slot="dub-transcript-strip"
                   className="divide-y divide-border/50 overflow-hidden rounded-lg border border-border/60 bg-muted/15 empty:hidden"
@@ -1992,6 +1997,35 @@ export function DubPage() {
                       canReplace={find.bar.canReplace && !busy && !session.recovery}
                       canReplaceAll={find.bar.canReplaceAll && !busy && !session.recovery}
                       disabled={busy || Boolean(session.recovery)}
+                    />
+                  )}
+                  {checkpoint && (
+                    <CheckpointBanner
+                      stage={checkpoint.stage}
+                      timingWarnings={
+                        session.segments.filter(
+                          (segment) => segment.fit_status?.status === 'overflows',
+                        ).length
+                      }
+                      disabled={
+                        busy ||
+                        Boolean(session.recovery) ||
+                        (checkpoint.stage === 'asr'
+                          ? !code || !translationReady
+                          : checkpoint.stage === 'translate'
+                            ? !code || ttsBlocker !== null
+                            : false)
+                      }
+                      onContinue={
+                        checkpoint.stage === 'asr'
+                          ? () => void translateTargets()
+                          : checkpoint.stage === 'translate'
+                            ? () => generateTargets()
+                            : undefined
+                      }
+                      onDismiss={() =>
+                        setDismissedCheckpoints((current) => new Set(current).add(checkpoint.id))
+                      }
                     />
                   )}
                   <EngineNotice
