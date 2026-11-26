@@ -22,12 +22,11 @@ logger = logging.getLogger("omnivoice.dub")
 
 
 class SpeechCheckpoints:
-    def __init__(self, job_dir: str, engine: str, sample_rate: int, context: dict, marker=None):
+    def __init__(self, job_dir: str, engine: str, sample_rate: int, context: dict):
         self.root = Path(job_dir) / '.speech-checkpoints'
         self.engine = engine
         self.sample_rate = sample_rate
         self.context = context
-        self.marker = marker or (lambda audio: audio)
         self.key_proof = None
         self._reference_hashes = {}
         self.reused = 0
@@ -89,12 +88,18 @@ class SpeechCheckpoints:
                 continue
         return None
 
+    def path_for(self, prepared: dict):
+        """Identity of a take, proven now; ``False`` when it cannot be kept."""
+        return self._path(prepared) or False
+
     def write(self, prepared: dict, audio):
+        return self.write_at(self.path_for(prepared), audio)
+
+    def write_at(self, path, audio):
+        """Keep already-marked speech under an identity from ``path_for``."""
         if not self.usable(audio):
             raise ValueError('The speech engine returned empty or silent audio')
-        audio = self.marker(audio)
-        path = self._path(prepared)
-        if path is None:
+        if not path:
             return audio
         # A cache failure must not discard usable speech. Never recreate a
         # withdrawn project's parent directory while rendering winds down.

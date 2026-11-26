@@ -674,3 +674,34 @@ def test_plan_verifies_interrupted_speech_without_mutating_recovery_files(render
     recovery.write_bytes(b'broken')
     assert _generation_plan()['synthesize'] == 1
     assert recovery.read_bytes() == b'broken'
+
+
+def test_checkpointed_take_is_marked_once_through_the_watermark_pool(render_dub, monkeypatch):
+    import shutil
+    import api.routers.dub_generate as dg
+    from services import dub_resume
+    marks = []
+    async def mark(audio, sr, *, context):
+        marks.append(context)
+        return audio + .02
+    # Fresh speech goes through main's single async mark, never a second
+    # synchronous mark inside the synthesis thread.
+    monkeypatch.setattr(dg, 'mark_synthetic_async', mark)
+    monkeypatch.setattr(dg, 'mark_synthetic', lambda *a, **k: pytest.fail('marked off the watermark pool'))
+    calls = []
+    def synthesize():
+        calls.append(True)
+        if len(calls) == 2:
+            raise RuntimeError('engine unavailable')
+        return torch.ones(1, 24000) * .1
+    render_dub.output[0] = synthesize
+    kwargs = dict(segments=[dict(start=0, end=1, text='first'), dict(start=2, end=3, text='second')], segment_ids=['a', 'b'])
+    assert render_dub.run(**kwargs)[-1]['type'] == 'error'
+    assert marks == ['dub_generate.segment']
+    # Only the private checkpoint remains (no interrupted-render journal).
+    shutil.rmtree(render_dub.path / dub_resume.JOURNAL_DIRNAME, ignore_errors=True)
+    done = render_dub.run(**kwargs)[-1]
+    assert done['type'] == 'done' and done['speech_reused'] == 1
+    assert marks == ['dub_generate.segment'] * 2
+    published, _ = sf.read(render_dub.path / 'seg_en_a.wav', dtype='float32')
+    assert published.max() == pytest.approx(.12, abs=1e-3)

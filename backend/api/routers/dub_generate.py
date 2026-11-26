@@ -925,9 +925,14 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
         # preferences without invalidating every voice for unrelated DB edits.
         checkpoint_context = {"track_language": lang_code, "voice_match": req.voice_match}
         checkpoints = SpeechCheckpoints(os.path.dirname(dub_seg_path(job_id, "checkpoint")),
-                                        engine_id, backend.sample_rate, checkpoint_context,
-                                        marker=lambda audio: mark_synthetic(audio, backend.sample_rate, context="dub_generate.segment"))
+                                        engine_id, backend.sample_rate, checkpoint_context)
         checkpoint_state["cache"] = checkpoints
+        # Fresh takes are checkpointed only after the single provenance mark
+        # at the persist point, so a reused checkpoint is never marked again.
+        # Keyed by segment id: the checkpoint path (model proof taken right
+        # after synthesis) and the takes that came from a checkpoint.
+        _fresh_takes: dict[str, object] = {}
+        _checkpoint_hits: set[str] = set()
 
         seg_ids = req.segment_ids or []
         subtitle_only = bool(job.get("subtitle_only"))
@@ -1496,10 +1501,13 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                 if reuse_checkpoints and str(effective_seg_id) not in forced_speech_ids:
                     recovered = checkpoints.read(prepared)
                     if recovered is not None:
+                        _checkpoint_hits.add(str(effective_seg_id))
                         return recovered
 
                 def keep(audio):
-                    return checkpoints.write(prepared, audio)
+                    # Checkpointed once marked, at the persist point below.
+                    _fresh_takes[str(effective_seg_id)] = checkpoints.path_for(prepared)
+                    return audio
 
                 try:
                     # The profile's seed reaches engines that take one, so
@@ -1654,6 +1662,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                         recovered = await _run_journal_io(checkpoints.read, prepared)
                         if recovered is not None:
                             _batched_audio[candidate_index] = recovered
+                            _checkpoint_hits.add(str(candidate_id))
                             continue
                     # A finished segment recovered from an earlier run is not
                     # re-rendered; the main loop reuses it.
@@ -1709,10 +1718,11 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                             f"{len(prepared_rows)} segments"
                         )
                     rendered = []
-                    for output, prepared in zip(outputs, prepared_rows):
+                    for (row_index, _), output, prepared in zip(batch, outputs, prepared_rows):
+                        _fresh_takes[str(seg_order[row_index])] = checkpoints.path_for(prepared)
                         preset = prepared["effect_preset"]
                         if preset == "raw":
-                            rendered.append(checkpoints.write(prepared, output))
+                            rendered.append(output)
                             continue
                         mastered = output
                         if not getattr(backend, "applies_own_mastering", False):
@@ -1724,8 +1734,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                                 sample_rate=backend.sample_rate,
                                 chain=effect_chain,
                             )
-                        mastered = normalize_audio(mastered, target_dBFS=-2.0)
-                        rendered.append(checkpoints.write(prepared, mastered))
+                        rendered.append(normalize_audio(mastered, target_dBFS=-2.0))
                     return rendered
 
                 try:
@@ -1925,7 +1934,11 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                 # RVC needs the WAV on disk, so write it immediately only
                 # when RVC is active (uncommon path).
                 _rvc_converted = False
-                if rvc_is_enabled():
+                _rvc_on = rvc_is_enabled()
+                _from_checkpoint = str(seg_id) in _checkpoint_hits
+                _checkpoint_hits.discard(str(seg_id))
+                _fresh_checkpoint = _fresh_takes.pop(str(seg_id), None)
+                if _rvc_on:
                     seg_wav_path = _staged_seg_path(seg_id)
                     atomic_save_wav(seg_wav_path, audio_tensor, backend.sample_rate)
                     try:
@@ -1939,13 +1952,25 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                     except Exception as e:
                         yield f"data: {json.dumps({'type': 'warning', 'segment': i, 'message': f'RVC skipped: {str(e)[:120]}'})}\n\n"
 
-                # Private checkpoints and journal recovery already carry the
-                # mark (checkpoints mark fresh TTS exactly once as they keep
-                # it). Only a waveform RVC actually replaced needs a new mark.
-                if _rvc_converted:
+                # Watermark policy: fresh TTS output is marked exactly once,
+                # here, just before it is persisted. That WAV is both the
+                # downloadable segment and the assembly input, so the final
+                # track inherits the mark. Cached reuse is already marked and
+                # silence has nothing to mark, so nothing else marks again.
+                # Recovered audio and private checkpoints were marked when
+                # first rendered; only a waveform RVC replaced needs a mark.
+                if (_recovered_wav is None and not _from_checkpoint) or _rvc_converted:
                     audio_tensor = await mark_synthetic_async(
                         audio_tensor, backend.sample_rate, context="dub_generate.segment"
                     )
+                # Checkpoints hold marked TTS output. An RVC waveform is never
+                # kept: reusing it would convert the voice a second time.
+                if _fresh_checkpoint is not None and not _rvc_on:
+                    try:
+                        await _run_journal_io(checkpoints.write_at, _fresh_checkpoint, audio_tensor)
+                    except Exception as err:  # noqa: BLE001
+                        # A cache failure never discards usable speech.
+                        logger.warning("speech checkpoint skipped for %s: %s", log_safe(seg_id), type(err).__name__)
 
                 if journal is not None and _used_recovery:
                     _, _validated_model_fp, _ = await _run_journal_io(_model_folder_fingerprint)
