@@ -760,3 +760,22 @@ def test_concise_rescue_never_lets_overflow_through_unfitted(render_dub, monkeyp
     # The take is fitted into at least its own cue, never mixed over the next.
     assert events[-1]['fit_status'][0]['auto_adjusted'] is True
     assert calls[0] == 24000
+
+
+def test_fixed_window_tiny_cue_language_is_validated_before_synthesis(render_dub, monkeypatch):
+    import api.routers.dub_generate as dg
+    render_dub.job['subtitle_only'] = True
+    _, backend = asyncio.run(dg._resolve_dub_execution())
+    checked = []
+    def check(language):
+        checked.append(language)
+        raise ValueError('unsupported language')
+    backend._check_language = check
+    async def stretch(wav, target, sr):
+        return torch.nn.functional.interpolate(wav.unsqueeze(0), size=target, mode='linear').squeeze(0)
+    monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
+    # The tiny cue is spoken under fixed windows, so it is validated too.
+    with pytest.raises(ValueError, match='unsupported language'):
+        render_dub.run(segments=[dict(start=0, end=.02, text='hello')], language='Klingon', auto_fit_overflow=True)
+    assert checked == ['Klingon']
+    assert not render_dub.generated

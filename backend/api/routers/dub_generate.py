@@ -59,14 +59,19 @@ from omnivoice.utils.voice_design import heal_design_instruct
 
 logger = logging.getLogger("omnivoice.dub")
 
-def _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts):
-    """Validate the final local render set, including repaired cache misses."""
+def _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts, min_spoken_s=None):
+    """Validate the final local render set, including repaired cache misses.
+
+    ``min_spoken_s`` is the shortest cue that is spoken rather than silenced;
+    fixed-window timing speaks every cue, however short.
+    """
     check = getattr(backend, "_check_language", None)
     if not callable(check):
         return
+    floor = MIN_SPOKEN_SEGMENT_S if min_spoken_s is None else min_spoken_s
     for index, segment in enumerate(req.segments):
         sid = seg_ids[index] if index < len(seg_ids) else f"seg_{index}"
-        if segment.end - segment.start <= MIN_SPOKEN_SEGMENT_S or not spoken_texts[index].strip() or (regen_only is not None and sid not in regen_only):
+        if segment.end - segment.start <= floor or not spoken_texts[index].strip() or (regen_only is not None and sid not in regen_only):
             continue
         check(segment.target_lang or req.language)
 
@@ -1003,7 +1008,8 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                     intact = False
                 if not intact:
                     regen_only.add(sid)
-        _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts)
+        _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts,
+                                   min_spoken_s=0.0 if flexible_timing else None)
         # Manifest: stable segment id per current index. Per-segment WAVs are
         # named by stable id (dub_seg_path) so regen reuses the right audio after
         # reorder; index-keyed readers (preview/export) resolve via this manifest.
