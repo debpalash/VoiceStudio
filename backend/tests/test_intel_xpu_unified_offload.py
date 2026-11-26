@@ -339,6 +339,8 @@ def test_forced_release_engages_on_integrated_intel_arc(monkeypatch):
     mm.offload_tts_for_asr(force_unified_release=True)
 
     assert seen == [{"force": True}]
+    monkeypatch.setattr(mm, "model", None)  # the release unloaded it
+    mm.restore_tts_after_asr()  # every forced release is paired with a restore
 
 
 def test_forced_release_does_not_force_on_non_integrated_unified(monkeypatch):
@@ -364,14 +366,17 @@ def test_forced_release_does_not_force_on_non_integrated_unified(monkeypatch):
 # ── Forced release holds placement for the whole reference ASR ───────
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def _clean_hold(monkeypatch):
+    # Every test here starts without a hold, and the undo drops any it leaves:
+    # a leaked hold keeps exclusive placement, so later TTS loads would wait.
     monkeypatch.setattr(mm, "_unified_asr_holds", 0)
     monkeypatch.setattr(mm, "_tts_loads_in_flight", 0)
     monkeypatch.setattr(mm, "_tts_unloads_in_flight", 0)
     monkeypatch.setattr(mm, "_placement_exclusive", False)
     mm._asr_hold_tls.tokens = 0
     yield
+    mm._asr_hold_tls.tokens = 0
 
 
 def test_forced_release_holds_placement_until_restore(monkeypatch, _clean_hold):
