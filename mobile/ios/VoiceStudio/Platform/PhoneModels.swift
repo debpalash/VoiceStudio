@@ -34,7 +34,7 @@ final class WifiState: @unchecked Sendable {
     private(set) var used: Int64 = 0
     private(set) var modelBytes: [String: Int64] = [:]
     var error: ClientError?
-    var allowMobileData: Bool { didSet { UserDefaults.standard.set(allowMobileData, forKey: "models.mobile-data") } }
+    var allowMobileData: Bool { didSet { UserDefaults.standard.set(allowMobileData, forKey: "models.mobile-data"); if oldValue != allowMobileData { applyMobileData(allowMobileData) } } }
     @ObservationIgnored var diagnosticObservation: (@MainActor () -> (enabled: Bool, revision: Int64, thresholdMs: Int64))?
     @ObservationIgnored var onDiagnosticStall: (@MainActor (CompanionDiagnosticObservation) -> Void)?
     @ObservationIgnored private var diagnosticForeground = true
@@ -44,6 +44,9 @@ final class WifiState: @unchecked Sendable {
     @ObservationIgnored var onFailure: (@MainActor (String, any Error, CompanionDiagnosticObservation?) -> Void)?
     @ObservationIgnored private var downloads: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var downloadTokens: [String: UUID] = [:]
+    /// Bumped only when a replacement transfer takes over a model. A task clears its own
+    /// entries on exit (also after pause) but never a replacement's.
+    @ObservationIgnored private var downloadGenerations: [String: Int] = [:]
     @ObservationIgnored private let suppliedDownloadTransport: (any HTTPTransport)?
     @ObservationIgnored private let downloadMonitorSample: (@MainActor () -> (nowMs: Int64, connected: Bool, wifi: Bool))?
     @ObservationIgnored private let downloadMonitorSleep: (@MainActor () async throws -> Void)?
@@ -193,20 +196,40 @@ final class WifiState: @unchecked Sendable {
         startDownload(model,mobile: allowMobileData,observation: observation)
     }
     /// Explicit per-download choice from the waiting state: proceed on whatever connection is active.
-    func downloadNow(_ model: PhoneModel) {
+    func downloadNow(_ model: PhoneModel) { restartDownload(model,mobile: true) }
+    /// The Mobile data setting also applies to transfers already parked on the network policy.
+    private func applyMobileData(_ allowed: Bool) {
+        for model in models where downloads[model.id] != nil && !paused.contains(model.id) {
+            guard let stage = downloadDetails[model.id]?.stage,stage.hasPrefix("waiting") else { continue }
+            restartDownload(model,mobile: allowed)
+        }
+    }
+    /// Persist the new intent first; only then replace the running task.
+    private func restartDownload(_ model: PhoneModel,mobile: Bool) {
         let observation = diagnosticFailureObservation?()
         guard let pin = try? phoneModelPin(model) else { error = ClientError("mobile.local.catalogue_failed"); return }
-        downloadTokens.removeValue(forKey: model.id); downloads[model.id]?.cancel(); downloads[model.id] = nil
+        let previous = intents
         intents.removeAll { $0.id == model.id }
-        intents.append(DownloadIntent(id: model.id,pin: pin,mobile: true,paused: false))
-        saveIntents(); paused.remove(model.id); downloadFailures.removeValue(forKey: model.id)
-        startDownload(model,mobile: true,observation: observation)
+        intents.append(DownloadIntent(id: model.id,pin: pin,mobile: mobile,paused: false))
+        guard saveIntents() else {
+            intents = previous
+            for index in intents.indices where intents[index].id == model.id { intents[index].paused = true }
+            paused.insert(model.id)
+            downloadFailures[model.id] = error ?? ClientError("mobile.simple.checkpoint_failed")
+            downloadTokens.removeValue(forKey: model.id); downloads[model.id]?.cancel()
+            return
+        }
+        downloadGenerations[model.id, default: 0] += 1
+        downloadTokens.removeValue(forKey: model.id); downloads[model.id]?.cancel(); downloads[model.id] = nil
+        paused.remove(model.id); downloadFailures.removeValue(forKey: model.id)
+        startDownload(model,mobile: mobile,observation: observation)
     }
     private func startDownload(_ model: PhoneModel,mobile: Bool,observation: CompanionDiagnosticObservation?) {
         // The restored-intent loop can race an explicit pause between its snapshot and this call.
         guard downloads[model.id] == nil,let store,!paused.contains(model.id) else { return }
         progress[model.id] = 0
         let token = UUID(); downloadTokens[model.id] = token
+        let generation = downloadGenerations[model.id, default: 0]
         let policy = DownloadPolicy(allowMobileData: mobile); let wifi = wifi
         downloads[model.id] = Task {
             let monitor = Task {
@@ -236,8 +259,8 @@ final class WifiState: @unchecked Sendable {
             }
             defer { monitor.cancel() }
             defer {
-                // A replacement started by downloadNow owns these entries; only clear our own.
-                if downloadTokens[model.id] == token || downloadTokens[model.id] == nil {
+                // A replacement owns these entries; only clear our own (still true after a pause).
+                if downloadGenerations[model.id, default: 0] == generation {
                     downloads[model.id] = nil; progress[model.id] = nil; downloadDetails[model.id] = nil; downloadTokens.removeValue(forKey: model.id)
                 }
             }
@@ -260,13 +283,15 @@ final class WifiState: @unchecked Sendable {
                                 self.downloadDetails[model.id] = details; self.progress[model.id] = details.fraction
                             }
                         })
+                        // A replacement may have taken over during the final progress callback.
+                        guard downloadGenerations[model.id, default: 0] == generation else { return }
                         intents.removeAll { $0.id == model.id }; saveIntents(); paused.remove(model.id)
                         await ModelDownloadSessions.remove(modelID: model.id)
                         break
                     } catch let error as ClientError where error.key == "mobile.local.wifi_required" { continue }
                 }
             } catch is CancellationError {} catch {
-                if !Task.isCancelled {
+                if !Task.isCancelled && downloadGenerations[model.id, default: 0] == generation {
                     let historical = error as? HistoricalModelDownloadFailure
                     let failure = historical?.failure ?? (error as? ClientError) ?? ClientError("mobile.local.download_failed")
                     if let historical { onFailure?("download", historical.failure, nil) }

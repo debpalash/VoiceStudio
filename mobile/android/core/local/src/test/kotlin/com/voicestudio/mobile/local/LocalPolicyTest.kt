@@ -441,4 +441,16 @@ class LocalPolicyTest {
         val plain=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},{Long.MAX_VALUE})
         assertEquals("waiting",plain.waitingStage(false))
     }
+    @Test fun restoredWaitingEntryIsRelabelledButActiveProgressIsKept() {
+        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},{Long.MAX_VALUE})
+        d.scheduled("fixture",10,"waiting_metered")
+        d.scheduled("fixture",10,"waiting")
+        assertEquals("Network moved off metered Wi-Fi: the stale reason must go","waiting",d.progress.value["fixture"]!!.stage)
+        val kind=ModelDownloads::class.java.getDeclaredField("mutable").apply {isAccessible=true}
+        @Suppress("UNCHECKED_CAST") val flow=kind.get(d) as kotlinx.coroutines.flow.MutableStateFlow<Map<String,DownloadProgress>>
+        flow.value=mapOf("fixture" to DownloadProgress(received=5,total=10,running=true,stage="downloading"))
+        d.scheduled("fixture",10,"waiting")
+        assertEquals("downloading",d.progress.value["fixture"]!!.stage)
+        assertEquals(5L,d.progress.value["fixture"]!!.received)
+    }
 }

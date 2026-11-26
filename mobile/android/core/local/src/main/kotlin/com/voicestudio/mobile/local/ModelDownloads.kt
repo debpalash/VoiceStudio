@@ -71,7 +71,10 @@ class ModelDownloads internal constructor(
     val progress=mutable.asStateFlow()
     /** Stage label for a queued transfer: says why it waits, never claims Wi-Fi is missing on a metered one. */
     fun waitingStage(allowMobile: Boolean): String = if(allowMobile) "waiting_network" else waitStage()
-    fun scheduled(id: String,total: Long,stage: String="waiting") {mutable.update {if(it[id]?.running==true) it else it+(id to (it[id] ?: DownloadProgress(total=total)).copy(total=total,running=true,stage=stage,error=null))}}
+    /** Queues or re-labels a waiting transfer; an entry that is actually transferring keeps its progress. */
+    fun scheduled(id: String,total: Long,stage: String="waiting") {mutable.update {
+        val current=it[id]
+        if(current?.running==true) {if(current.stage.startsWith("waiting")&&current.stage!=stage) it+(id to current.copy(stage=stage)) else it} else it+(id to (it[id] ?: DownloadProgress(total=total)).copy(total=total,running=true,stage=stage,error=null))}}
     fun paused(id: String,total: Long?=null,error: String?=null) {mutable.update {it+(id to (it[id] ?: DownloadProgress()).let {p ->p.copy(total=total ?: p.total,running=false,stage=if(error==null) "paused" else "failed",error=error,bytesPerSecond=0.0,etaSeconds=null)})}}
     private fun dir(model: PhoneModel)=File(root,model.id)
     private fun identity(model: PhoneModel)=model.revision+model.files.joinToString {it.path+it.sha256+it.size}

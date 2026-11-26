@@ -225,6 +225,25 @@ private final class RestoredModelFirstCapacity: @unchecked Sendable {
         #expect(phone.progress[model.id]==nil)
         await reporter.close()
     }
+    @Test(.timeLimit(.minutes(1)))
+    func downloadNowReplacesTheRunningTransferAndKeepsItsEntries() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent("phone-download-now-"+UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let (model,bundle)=try fixture(root:root)
+        let storeRoot=root.appendingPathComponent("models"),store=try ModelStore(root:storeRoot,available:{_ in Int64.max})
+        let receipt=try RestoredModelReceiptTransport(root:root,held:true)
+        let phone=PhoneModels(bundle:bundle,modelStore:(storeRoot,store),downloadTransport:receipt)
+        let previous=phone.allowMobileData;phone.allowMobileData=true
+        defer {phone.allowMobileData=previous}
+        phone.download(model);await receipt.waitForEntry()
+        phone.downloadNow(model);await receipt.waitForEntry()
+        // The cancelled first task must not clear the replacement's entries.
+        for _ in 0..<50 {await Task.yield()}
+        #expect(phone.progress[model.id] != nil)
+        #expect(receipt.freshTransfers >= 2)
+        phone.pause(model);await receipt.gate?.release()
+    }
     @Test(.timeLimit(.minutes(1)),arguments:[false,true])
     func restoredPermanentReceiptStaysDisplayOnlyUnderANewGrant(explicitBeforeReconcile:Bool) async throws {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent("phone-restored-receipt-"+UUID().uuidString)
