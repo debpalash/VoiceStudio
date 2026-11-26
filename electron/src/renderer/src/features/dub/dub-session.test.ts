@@ -1468,12 +1468,76 @@ it('validates supplied subtitles before upload and skips transcription', async (
 
 it('does not prepare media or start ASR when supplied subtitles are invalid', async () => {
   resetDubSession();
+  const open = [{ id: 'kept', start: 0, end: 1, text: 'Current work', text_original: 'Trabajo' }];
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'open-project',
+    filename: 'open.mp4',
+    phase: 'editing',
+    segments: open,
+  }));
   vi.mocked(apiJson).mockReset().mockRejectedValueOnce(new Error('No valid subtitle cues'));
   vi.mocked(consumeTaskStream).mockReset();
-  await uploadDub(new File(['video'], 'test.mp4'), new File(['bad'], 'bad.srt'));
+  await expect(
+    uploadDub(new File(['video'], 'test.mp4'), new File(['bad'], 'bad.srt')),
+  ).rejects.toBeInstanceOf(Error);
   expect(apiJson).toHaveBeenCalledTimes(1);
   expect(consumeTaskStream).not.toHaveBeenCalled();
-  expect(dubSession.state.error).toContain('No valid subtitle cues');
+  // The rejected replacement leaves the open project untouched.
+  expect(dubSession.state).toMatchObject({ jobId: 'open-project', filename: 'open.mp4' });
+  expect(dubSession.state.segments).toEqual(open);
+});
+
+it('imports target-language subtitles for a target the source picker does not list', async () => {
+  resetDubSession();
+  setDubTarget('Uyghur', 'ug');
+  vi.mocked(apiJson)
+    .mockReset()
+    .mockResolvedValueOnce({ imported: 1 })
+    .mockResolvedValueOnce({ job_id: 'ug-job', task_id: 'prep-ug' })
+    .mockResolvedValueOnce({
+      segments: [{ id: 0, start: 1, end: 3, text: 'target text' }],
+      stats: { imported: 1 },
+    });
+  vi.mocked(consumeTaskStream)
+    .mockReset()
+    .mockImplementationOnce(async (_path, emit) => {
+      emit({ type: 'ready', duration: 5 });
+    });
+  await uploadDub(new File(['video'], 'video.mp4'), new File(['srt'], 'target.srt'), 'voice', {
+    subtitlesInTarget: true,
+  });
+  expect(dubSession.state.subtitleTargetLang).toBe('ug');
+  expect(dubSession.state.segments[0].translations).toEqual({ ug: 'target text' });
+});
+
+it('restores the timing narration replaced when new subtitles replace its blocks', async () => {
+  resetDubSession();
+  const caption = { id: 'c', start: 0, end: 1, text: 'Hi', text_original: 'Hola' };
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'job',
+    phase: 'editing',
+    timingStrategy: 'concise',
+    segments: [caption],
+    narration: {
+      enabled: true,
+      language: 'en',
+      captions: [caption],
+      blocks: [caption],
+      sourceKey: 'k',
+      previousTiming: 'strict_slot',
+    },
+  }));
+  vi.mocked(apiJson)
+    .mockReset()
+    .mockResolvedValueOnce({
+      segments: [{ id: 0, start: 2, end: 4, text: 'Hola' }],
+      stats: { imported: 1 },
+    });
+  await importDubSubtitles(new File(['srt'], 'new.srt'));
+  expect(dubSession.state.narration).toBeUndefined();
+  expect(dubSession.state.timingStrategy).toBe('strict_slot');
 });
 
 it('opens an SRT-only audio session with a selected voice without media requests', async () => {

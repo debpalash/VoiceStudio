@@ -76,7 +76,7 @@ import {
 import { commitMoveResize } from '@shared/utils/timeline';
 import type { PasteTranslationRow } from '@shared/utils/pasteTranslations';
 import { getDubTranslationError } from './transcript-issues';
-import { translationTargetLabel } from '@/lib/translation-targets';
+import { translationTargetCode, translationTargetLabel } from '@/lib/translation-targets';
 import type {
   DubAgentTranslationRequest,
   DubAgentTranslationResult,
@@ -1538,6 +1538,14 @@ export async function uploadDub(
   options?: DubInputOptions,
 ) {
   if (controller || cancelling || dubSession.state.recovery) return false;
+  // Validate replacement subtitles before discarding the open project: a
+  // rejected SRT must leave the current work (and its undo history) intact.
+  if (subtitles && file.size > 0) {
+    const validation = new FormData();
+    validation.set('file', subtitles);
+    await apiJson('/dub/validate-srt', { method: 'POST', body: validation });
+    if (controller || cancelling || dubSession.state.recovery) return false;
+  }
   recordActionBreadcrumb('dub:upload');
   clearDubEditHistory();
   const jobId = crypto.randomUUID();
@@ -1576,22 +1584,12 @@ export async function uploadDub(
     exportOptions: { preserveBg: options?.separateBackground !== false, excluded: ['original'] },
     subtitleTargetLang:
       subtitles && options?.subtitlesInTarget
-        ? LANG_CODES.find((item) => item.label === current.target)?.code
+        ? translationTargetCode(current.target)
         : undefined,
   }));
   // An empty file has nothing to upload; the file row asks for another one.
   if (file.size === 0) return false;
   return run('preparing', async (signal, observeRequest) => {
-    // Validate subtitles before copying or preparing a potentially large video.
-    if (subtitles) {
-      const validation = new FormData();
-      validation.set('file', subtitles);
-      await apiJson('/dub/validate-srt', {
-        method: 'POST',
-        signal,
-        body: validation,
-      });
-    }
     const body = new FormData();
     body.set('video', file);
     body.set('job_id', jobId);
@@ -2671,7 +2669,7 @@ async function loadDubSubtitles(
   if (dubSession.state.narration?.enabled) setDubNarrationEnabled(false);
   const snapshot = dubSession.state;
   const importedTarget = options?.subtitlesInTarget
-    ? LANG_CODES.find((item) => item.label === snapshot.target)?.code
+    ? translationTargetCode(snapshot.target)
     : undefined;
   if (options?.subtitlesInTarget && !importedTarget)
     throw new Error(tr('languagePicker.chooseSupported'));
@@ -2704,7 +2702,13 @@ async function loadDubSubtitles(
     subtitleTargetLang: importedTarget,
     subtitleOnly: !snapshot.jobId || snapshot.subtitleOnly,
     inputType: !snapshot.jobId ? 'audio' : snapshot.inputType,
-    timingStrategy: !snapshot.jobId ? 'concise' : snapshot.timingStrategy,
+    // The narration toggle cannot run inside this import, so restore the
+    // timing it replaced; a new subtitle-only job starts on Concise.
+    timingStrategy: !snapshot.jobId
+      ? 'concise'
+      : snapshot.narration?.enabled
+        ? ((snapshot.narration.previousTiming as DubTiming | undefined) ?? 'strict_slot')
+        : snapshot.timingStrategy,
     segments: result.segments.map((segment, index) => ({
       ...segment,
       id: String(segment.id ?? index),
