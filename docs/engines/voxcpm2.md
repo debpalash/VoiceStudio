@@ -85,7 +85,7 @@ NVIDIA GPU, a matching ROCm build on Linux ROCm hosts, the CPU build on other
 Windows and Linux machines, and the regular build on Apple Silicon.
 
 Nothing it installs touches VoiceStudio itself or any other engine, and
-**Uninstall** in the same row removes only that folder. An existing
+**Delete** in the same row removes only that folder. An existing
 `pip install voxcpm` setup keeps working as it is. The button is not offered
 on Intel Macs, where no PyTorch build it needs exists. The model weights
 download on first use.

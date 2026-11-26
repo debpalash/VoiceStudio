@@ -1524,9 +1524,18 @@ def uninstall(engine_id: str) -> dict:
                 f"clear {spec.env_var} in Settings."
             ),
         }
+    # A running sidecar keeps its interpreter and weights open; on Windows that
+    # locks the files, so stop it first and refuse while it is mid-request.
+    from services import subprocess_backend
+    subprocess_backend.unload_sidecar(engine_id)
+    if any(item["id"] == engine_id for item in subprocess_backend.list_live_sidecars()):
+        return {"status": "in_use", "engine": engine_id}
     root = managed_root(spec)
     removed = root.is_dir()
     shutil.rmtree(root, ignore_errors=True)
+    # The install is unusable either way, so clear its configuration below, but
+    # never report a delete that left gigabytes behind as done.
+    leftover = root.exists()
     if env_dir:  # only ever the managed checkout at this point
         os.environ.pop(spec.env_var, None)
     from core import prefs
@@ -1538,6 +1547,16 @@ def uninstall(engine_id: str) -> dict:
         pass  # best-effort cache invalidation — uninstall already succeeded
     with _jobs_lock:
         _jobs.pop(engine_id, None)
+    if leftover:
+        return {
+            "status": "incomplete",
+            "engine": engine_id,
+            "detail": (
+                f"Some {spec.display_name} files in {root} could not be deleted, usually "
+                "because another program is using them. Close it and delete again, or "
+                "remove that folder yourself."
+            ),
+        }
     return {"status": "uninstalled" if removed else "not_installed", "engine": engine_id}
 
 

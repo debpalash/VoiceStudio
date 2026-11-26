@@ -68,7 +68,7 @@ It differs from upstream's own setup:
   that share its repository.
 
 Nothing it installs touches VoiceStudio itself or any other engine, and
-**Uninstall** in the same row removes only that folder. An existing source
+**Delete** in the same row removes only that folder. An existing source
 installation keeps working as it is. The button is not offered on Intel
 Macs, where PyTorch 2.7.0 has no build.
 

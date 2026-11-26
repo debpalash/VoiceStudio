@@ -648,8 +648,14 @@ def uninstall_sidecar_engine(engine_id: str):
         )
     if res["status"] == "install_in_progress":
         raise HTTPException(status_code=409, detail="Install is still running — wait for it to finish.")
+    if res["status"] == "in_use":
+        raise HTTPException(
+            status_code=409, detail="The engine is busy with a request — try again when it finishes."
+        )
     if res["status"] == "not_managed":
         raise HTTPException(status_code=400, detail=res["detail"])
+    if res["status"] == "incomplete":
+        raise HTTPException(status_code=500, detail=res["detail"])
     return res
 
 

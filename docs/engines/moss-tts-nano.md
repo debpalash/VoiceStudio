@@ -76,7 +76,7 @@ data directory, gives it its own Python environment (CUDA PyTorch on an NVIDIA
 GPU or a matching ROCm build on Linux ROCm hosts), and runs it in a separate process.
 
 Nothing it installs touches VoiceStudio itself or any other engine, and
-**Uninstall** in the same row removes only that folder. The button is not
+**Delete** in the same row removes only that folder. The button is not
 offered on Intel Macs, where the PyTorch version it pins has no build.
 
 The first synthesis downloads the model and its audio tokenizer. The

@@ -2178,3 +2178,73 @@ def test_voxcpm2_never_builds_kaldifst_from_source():
     args = si.get_spec("voxcpm2").install_args
     assert "kaldifst==1.9.0" in args
     assert args[args.index("--only-binary") + 1] == "kaldifst"
+
+
+# ── uninstall stops the live sidecar and reports leftovers (#4490) ─────────
+
+
+def _managed_install(monkeypatch):
+    spec = _mk_spec()
+    monkeypatch.setitem(si.SPECS, "fake-side", spec)
+    checkout = si.managed_checkout(spec)
+    py = si._venv_python(checkout / ".venv")
+    py.parent.mkdir(parents=True)
+    py.write_text("#!fake\n")
+    monkeypatch.setattr("core.prefs.get", lambda k, d=None: None)
+    monkeypatch.setattr("core.prefs.delete", lambda k: None)
+    return spec
+
+
+def test_uninstall_stops_the_engines_running_sidecar_first(monkeypatch):
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    calls = []
+
+    def unload(engine_id):
+        calls.append(("unload", engine_id, si.managed_root(spec).exists()))
+        return 1
+
+    monkeypatch.setattr(subprocess_backend, "unload_sidecar", unload)
+    monkeypatch.setattr(subprocess_backend, "list_live_sidecars", lambda: [])
+
+    assert si.uninstall("fake-side")["status"] == "uninstalled"
+    # Stopped while the files still existed, i.e. before the delete.
+    assert calls == [("unload", "fake-side", True)]
+
+
+def test_uninstall_refuses_while_the_sidecar_is_mid_request(monkeypatch):
+    from api.routers import engines as engines_router
+    from fastapi import HTTPException
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    monkeypatch.setattr(subprocess_backend, "unload_sidecar", lambda engine_id: 0)
+    monkeypatch.setattr(
+        subprocess_backend, "list_live_sidecars", lambda: [{"id": "fake-side", "pid": 1}]
+    )
+
+    assert si.uninstall("fake-side")["status"] == "in_use"
+    assert si.managed_root(spec).exists()
+    with pytest.raises(HTTPException) as ei:
+        engines_router.uninstall_sidecar_engine("fake-side")
+    assert ei.value.status_code == 409
+
+
+def test_uninstall_reports_files_it_could_not_delete(monkeypatch):
+    from api.routers import engines as engines_router
+    from fastapi import HTTPException
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    monkeypatch.setattr(subprocess_backend, "unload_sidecar", lambda engine_id: 0)
+    monkeypatch.setattr(subprocess_backend, "list_live_sidecars", lambda: [])
+    # A locked file: rmtree(ignore_errors=True) silently leaves the folder.
+    monkeypatch.setattr(si.shutil, "rmtree", lambda *a, **k: None)
+
+    res = si.uninstall("fake-side")
+    assert res["status"] == "incomplete"
+    assert str(si.managed_root(spec)) in res["detail"]
+    with pytest.raises(HTTPException) as ei:
+        engines_router.uninstall_sidecar_engine("fake-side")
+    assert ei.value.status_code == 500

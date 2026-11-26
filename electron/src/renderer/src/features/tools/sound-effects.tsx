@@ -74,7 +74,18 @@ export function SoundEffects() {
   };
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
-      <h2 className="text-lg font-semibold">{t('sfx.title')}</h2>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h2 className="text-lg font-semibold">{t('sfx.title')}</h2>
+        {/* Installed: Repair when needed, and Delete to free its ~19 GB (#4490). */}
+        {info?.installed && (
+          <EngineInstall
+            id={SFX_ENGINE_ID}
+            name={t('sfx.title')}
+            repairOnly
+            onRemoved={() => void status.refetch()}
+          />
+        )}
+      </div>
       {status.isError && !info && (
         <PipelineFailure
           fallback={describeError(status.error)}
