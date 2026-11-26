@@ -99,10 +99,11 @@ class DubRequest(BaseModel):
     # High-level timing strategy. Replaces the audio-compression default that
     # produced chipmunk/alien artefacts on high-density target languages
     # (Bengali, Hindi, Arabic…). Three modes:
-    #   "concise"       — synthesize at a natural rate, then use available
-    #                     cue/gap space. auto_fit_overflow rescues an overlong
-    #                     take with pitch-preserving compression; disabling it
-    #                     reports a timing error without replacing the track.
+    #   "concise"       — never compress TTS audio by default. Synthesize at
+    #                     a natural rate and use available cue/gap space; if
+    #                     it still overflows, fail without replacing the
+    #                     current track. Opting in to auto_fit_overflow
+    #                     rescues the take with pitch-preserving compression.
     #                     DEFAULT.
     #   "stretch_video" — never compress TTS audio. Re-lay the timeline so
     #                     each segment's video portion is stretched (via
@@ -112,14 +113,16 @@ class DubRequest(BaseModel):
     #                     mild pitch-preserving audio speed-up (≤1.2× alone,
     #                     ≤1.5× in hybrid) and a mild per-segment video
     #                     slow-down (≤2.0×), per services/fit_planner.py.
-    #                     auto_fit_overflow can rescue residual overflow.
+    #                     Residual overflow fails without discarding words
+    #                     unless auto_fit_overflow is opted in.
     #   "strict_slot"   — pitch-preserving fit of the complete speech to
     #                     the original start/end; may sound faster or slower.
     timing_strategy: Optional[Literal["concise", "stretch_video", "strict_slot", "smart_fit", "narration"]] = "concise"
 
-    # If natural speech exceeds Concise/Smart Fit limits, fit the entire take
-    # with pitch-preserving audio compression instead of failing or clipping.
-    auto_fit_overflow: bool = True
+    # Opt-in (default off): if natural speech exceeds Concise/Smart Fit
+    # limits, fit the entire take with pitch-preserving audio compression
+    # instead of failing. Off keeps the blocking timing error.
+    auto_fit_overflow: bool = False
 
     # Per-job slip budget for "concise" mode. Overflow fails once gap
     # absorption + this much extra time has been consumed.

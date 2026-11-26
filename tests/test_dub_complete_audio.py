@@ -12,6 +12,9 @@ import soundfile as sf
 
 from schemas.requests import DubRequest
 
+# Trimming eases the last 25 ms to zero (#4229); probe the take's real tail
+# 50 ms (at 24 kHz) before the end to prove no words were cut.
+_BEFORE_TAIL_FADE = -1200
 
 @pytest.fixture
 def render_dub(monkeypatch, tmp_path):
@@ -452,7 +455,7 @@ def test_automatic_overflow_fits_whole_phrase_and_announces_playable_take(render
     render_dub.output[0] = lambda: torch.cat((torch.ones(1, 24000)*.1, torch.ones(1, 24000)*.3), dim=-1)
     calls = []
     async def stretch(wav, target, sr):
-        calls.append((wav.shape[-1], target, float(wav[0, -1])))
+        calls.append((wav.shape[-1], target, float(wav[0, _BEFORE_TAIL_FADE])))
         return torch.nn.functional.interpolate(wav.unsqueeze(0), size=target, mode='linear').squeeze(0)
     monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
     events = render_dub.run(auto_fit_overflow=True)
@@ -468,8 +471,32 @@ def test_automatic_overflow_fits_whole_phrase_and_announces_playable_take(render
     assert sf.info(render_dub.path / 'seg_en_a.wav').duration == 2
 
 
-def test_automatic_fitting_enabled_by_default():
-    assert DubRequest(segments=[dict(start=0, end=1, text="hello")]).auto_fit_overflow is True
+def test_automatic_fitting_is_opt_in():
+    assert DubRequest(segments=[dict(start=0, end=1, text="hello")]).auto_fit_overflow is False
+
+
+def test_default_concise_overflow_still_blocks_without_compression(render_dub, monkeypatch):
+    import api.routers.dub_generate as dg
+    render_dub.output[0] = lambda: torch.ones(1, 48000) * .1
+    calls = []
+    async def stretch(wav, target, sr):
+        calls.append(target)
+        return wav[..., :target]
+    monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
+    events = render_dub.run()
+    assert events[-1]['error_code'] == 'dub_timing_overflow'
+    assert not calls
+    assert not render_dub.job['dubbed_tracks']
+
+
+def test_default_smart_fit_overflow_still_blocks_without_rescue(render_dub):
+    render_dub.job['duration'] = 1.0
+    render_dub.output[0] = lambda: torch.ones(1, 48000) * .1
+    events = render_dub.run(timing_strategy='smart_fit',
+        fit_options={'allow_video_retime': False, 'audio_rate_cap': 1.2, 'max_audio_only_rate': 1.2})
+    assert events[-1]['error_code'] == 'dub_timing_overflow'
+    assert not any(e['type'] == 'done' for e in events)
+    assert not render_dub.job['dubbed_tracks']
 
 
 def test_playable_first_take_survives_a_later_engine_failure(render_dub):
@@ -494,7 +521,7 @@ def test_smart_fit_overflow_is_rescued_in_one_pitch_preserving_pass(render_dub, 
     render_dub.output[0] = lambda: torch.cat((torch.ones(1,24000)*.1, torch.ones(1,24000)*.3), dim=-1)
     calls=[]
     async def stretch(wav, target, sr):
-        calls.append((wav.shape[-1], target, float(wav[0,-1])))
+        calls.append((wav.shape[-1], target, float(wav[0, _BEFORE_TAIL_FADE])))
         return torch.nn.functional.interpolate(wav.unsqueeze(0),size=target,mode='linear').squeeze(0)
     monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
     events=render_dub.run(timing_strategy='smart_fit',auto_fit_overflow=True,
@@ -608,7 +635,7 @@ def test_bounded_narration_does_not_move_the_following_block_and_reuses_full_tak
     render_dub.output[0] = lambda: torch.cat((torch.ones(1, 24000)*.1, torch.ones(1, 24000)*.3),dim=-1)
     calls=[]
     async def stretch(wav,target,sr):
-        calls.append((wav.shape[-1],target,float(wav[0,-1])))
+        calls.append((wav.shape[-1],target,float(wav[0, _BEFORE_TAIL_FADE])))
         return torch.nn.functional.interpolate(wav.unsqueeze(0),size=target,mode='linear').squeeze(0)
     monkeypatch.setattr(dg,'_pitch_preserving_stretch',stretch)
     kwargs=dict(timing_strategy='narration', segments=[dict(start=0,end=1,text='Hello',source_ids=['a']),dict(start=2,end=3,text='World',source_ids=['b'])],segment_ids=['one','two'],caption_segments=[dict(start=0,end=1,text='Hello'),dict(start=2,end=3,text='World')],caption_segment_ids=['a','b'])

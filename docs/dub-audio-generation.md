@@ -24,7 +24,9 @@ needed. Later blocks never slide to compensate for an overlong phrase. Natural
 cached takes retain every word; acceleration above 1.5x needs listening review.
 There is no automatic text rewrite or promise of natural speech at any rate.
 
-For ordinary Concise/Smart Fit, auto_fit_overflow (default true) fits the entire
-remaining take instead of failing at the end of a long job. It can be disabled
-to retain a blocking timing error. Per-language speech manifests drive preview,
+For ordinary Concise/Smart Fit, overflow rescue is opt-in: auto_fit_overflow
+(default false) fits the entire take with pitch-preserving compression instead
+of failing. Left off, an overlong take keeps the blocking timing error, and
+Concise reports it as soon as that take is rendered rather than at the end of
+a long job. Per-language speech manifests drive preview,
 QC and clip export while subtitle exports retain the separate captions.

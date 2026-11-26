@@ -415,7 +415,7 @@ def test_smart_fit_fit_options_override(patched_generate):
     job["duration"] = 1.0
     segs = [{"start": 0.0, "end": 1.0, "text": "2.0:texto"}]
     parsed = run(_body(
-        segs, timing_strategy="smart_fit", auto_fit_overflow=False,
+        segs, timing_strategy="smart_fit",
         fit_options={"allow_video_retime": False},
     ))
     assert any(e.get("error_code") == "dub_timing_overflow" for e in parsed)

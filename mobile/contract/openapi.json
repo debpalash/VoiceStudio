@@ -6991,7 +6991,7 @@
    "schemas__requests__DubRequest": {
     "properties": {
      "auto_fit_overflow": {
-      "default": true,
+      "default": false,
       "title": "Auto Fit Overflow",
       "type": "boolean"
      },
