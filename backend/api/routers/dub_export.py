@@ -310,7 +310,7 @@ async def stream_task(task_id: str, after_seq: int = 0):
     in-memory task is gone but the persisted tail + final `jobs.status` are
     still readable, so a mid-stream reload still sees the final state. A job
     whose process died before it wrote a terminal event gets one built from
-    that status, so the stream never just stops (#4463).
+    that status, so its stream ends with a terminal frame (#4463).
     """
     from core import job_store
     job_row = job_store.get(task_id)
