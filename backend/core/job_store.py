@@ -33,6 +33,11 @@ logger = logging.getLogger("omnivoice.jobs")
 # Per-job event cap. Above this, the oldest row is dropped on every insert.
 _EVENT_CAP_PER_JOB = 500
 
+#: The error a job gets when the process running it died before it finished.
+INTERRUPTED_BY_RESTART = (
+    "Job was interrupted by a server restart. Re-run from the task's project to continue."
+)
+
 
 # ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -197,6 +202,16 @@ def completed_chapters(job_id: str) -> set[int]:
         return done if done is not None else _chapters_in_events(conn, job_id)
 
 
+def last_event(job_id: str) -> Optional[str]:
+    """Payload of the job's newest retained event, or None if it has none."""
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT payload FROM job_events WHERE job_id = ? ORDER BY seq DESC LIMIT 1",
+            (job_id,),
+        ).fetchone()
+    return row["payload"] if row else None
+
+
 def events_since(job_id: str, after_seq: int = 0, limit: int = 1000) -> list[dict]:
     """Return `[{seq, created_at, payload}]` for events with seq > after_seq."""
     with db_conn() as conn:
@@ -285,7 +300,7 @@ def sweep_orphans_on_startup() -> int:
 
     Returns the number of jobs swept.
     """
-    msg = "Job was interrupted by a server restart. Re-run from the task's project to continue."
+    msg = INTERRUPTED_BY_RESTART
     now = time.time()
     with db_conn() as conn:
         cur = conn.execute(

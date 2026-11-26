@@ -45,6 +45,45 @@ def _stream_failure(update):
     return detail if isinstance(detail, str) and detail else "Task failed"
 
 
+_TERMINAL_EVENTS = frozenset({"done", "error", "cancelled"})
+
+
+def _stream_event_type(update):
+    """An SSE update's event name, else its JSON ``type``, else None."""
+    payload, lines = _stream_payload(update)
+    for line in lines:
+        if line.startswith("event:"):
+            return line[6:].strip()
+    return payload.get("type") if payload is not None else None
+
+
+def closing_event(job: "dict | None") -> "str | None":
+    """The terminal frame a replay of a job that is no longer running must end with.
+
+    A process that dies mid-task (an OOM kill, a crash, an update restart)
+    leaves the job's last progress event as its tail. The startup sweep marks
+    the job ``failed`` but cannot write the terminal event its worker never
+    reached, so a reconnecting client's stream ended without one and the
+    client kept waiting on a task that no longer exists (#4463). Returns None
+    when the retained tail already ends with a terminal event or the job
+    completed; a ``done`` event carries results that cannot be rebuilt here.
+    """
+    if not job or job.get("status") == "done":
+        return None
+    try:
+        last = job_store.last_event(job["id"])
+    except Exception:
+        logger.exception("job_store.last_event failed; ending the replay from the job status")
+        last = None
+    if last is not None and _stream_event_type(last) in _TERMINAL_EVENTS:
+        return None
+    if job.get("status") == "cancelled":
+        return f"data: {json.dumps({'type': 'cancelled'})}\n\n"
+    # ``failed``, or still ``pending``/``running`` with no live task behind it.
+    event = failure.build_failure_event(job.get("error") or job_store.INTERRUPTED_BY_RESTART, stage="task")
+    return f"data: {json.dumps(event)}\n\n"
+
+
 class TaskManager:
     """In-memory task dispatcher with SQLite-backed metadata.
 
