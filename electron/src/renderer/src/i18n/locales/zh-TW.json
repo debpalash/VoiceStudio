@@ -704,6 +704,7 @@
     "history_star": "星星",
     "history_unstar": "取消星標",
     "history_reuse": "重複使用腳本",
+    "history_full_text_failed": "無法載入此錄音的完整腳本。請確認 VoiceStudio 正在執行，然後再試一次。",
     "characters_one": "{{count}} 字符",
     "cancel_generation": "取消生成",
     "duration_seconds": "{{seconds}}s",

@@ -552,6 +552,7 @@
     "history_star": "Estrela",
     "history_unstar": "Desestrela",
     "history_reuse": "Reutilizar o script",
+    "history_full_text_failed": "Non se puido cargar o guión completo desta toma. Comproba que VoiceStudio está en execución e téntao de novo.",
     "history_starred": "Destacado",
     "history_all": "Todos",
     "characters_one": "{{count}} carácter",
