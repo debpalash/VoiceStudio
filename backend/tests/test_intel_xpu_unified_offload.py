@@ -1,8 +1,9 @@
 """Integrated Intel Arc XPUs are unified-memory devices, not dedicated-VRAM
 devices.
 
-A single Intel Arc XPU (e.g. Lunar Lake 130V/140V) advertises a tiny
-``local_mem_size`` in the kilobytes while allocating weights in system RAM.
+A single integrated Intel Arc XPU (e.g. Lunar Lake 130V/140V, reported via
+the device properties' ``is_integrated_gpu`` flag) allocates weights in system
+RAM.
 On those boxes ``offload_tts_for_asr()`` must release the TTS model through
 ``_offload_unified_memory()`` and ``restore_tts_after_asr()`` must leave it
 released, instead of moving it CPU<->XPU via ``_relocate_shared_model()``.
@@ -15,14 +16,18 @@ import pytest
 
 import services.model_manager as mm
 
-_TINY_LOCAL = 128 * 1024  # 128 KiB, like Lunar Lake integrated Arc
-_DISCRETE_LOCAL = 12 * 1024 ** 3  # 12 GiB, like a discrete Arc card
+_INTEGRATED = True
+_DISCRETE = False
 
 
 class _FakeProps:
-    def __init__(self, name: str, local_mem_size):
+    def __init__(self, name: str, is_integrated_gpu):
         self.name = name
-        self.local_mem_size = local_mem_size
+        # local_mem_size is per-work-group memory: deliberately tiny on both
+        # integrated and discrete parts, so it must not drive detection.
+        self.local_mem_size = 64 * 1024
+        if is_integrated_gpu is not None:
+            self.is_integrated_gpu = is_integrated_gpu
 
 
 class _FakeXPU:
@@ -80,7 +85,7 @@ def _integrated_intel_arc_torch():
         xpu=_FakeXPU(
             available=True,
             count=1,
-            props=_FakeProps("Intel(R) Arc(TM) Graphics", _TINY_LOCAL),
+            props=_FakeProps("Intel(R) Arc(TM) Graphics", _INTEGRATED),
         )
     )
 
@@ -90,7 +95,7 @@ def _discrete_intel_arc_torch():
         xpu=_FakeXPU(
             available=True,
             count=1,
-            props=_FakeProps("Intel(R) Arc Pro B70", _DISCRETE_LOCAL),
+            props=_FakeProps("Intel(R) Arc Pro B70", _DISCRETE),
         )
     )
 
@@ -119,7 +124,7 @@ def test_multi_xpu_box_stays_dedicated(monkeypatch):
         xpu=_FakeXPU(
             available=True,
             count=2,
-            props=_FakeProps("Intel(R) Arc(TM) Graphics", _TINY_LOCAL),
+            props=_FakeProps("Intel(R) Arc(TM) Graphics", _INTEGRATED),
         )
     )
     _patch_torch(monkeypatch, fake)
@@ -127,12 +132,12 @@ def test_multi_xpu_box_stays_dedicated(monkeypatch):
     assert mm._has_dedicated_vram() is True
 
 
-def test_non_intel_xpu_with_tiny_local_memory_stays_dedicated(monkeypatch):
+def test_non_intel_integrated_xpu_stays_dedicated(monkeypatch):
     fake = _FakeTorch(
         xpu=_FakeXPU(
             available=True,
             count=1,
-            props=_FakeProps("Other Accelerator", _TINY_LOCAL),
+            props=_FakeProps("Other Accelerator", _INTEGRATED),
         )
     )
     _patch_torch(monkeypatch, fake)
@@ -140,7 +145,7 @@ def test_non_intel_xpu_with_tiny_local_memory_stays_dedicated(monkeypatch):
     assert mm._has_dedicated_vram() is True
 
 
-def test_missing_local_mem_size_stays_dedicated(monkeypatch):
+def test_missing_is_integrated_gpu_attribute_stays_dedicated(monkeypatch):
     fake = _FakeTorch(
         xpu=_FakeXPU(
             available=True,
@@ -261,6 +266,39 @@ def test_discrete_intel_arc_restore_relocates_back_to_xpu(monkeypatch):
     mm.restore_tts_after_asr()
 
     assert relocate_calls == [(model, "xpu")]
+
+
+def test_integrated_intel_arc_offload_waits_for_exclusive_placement(monkeypatch):
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", object())
+    events = []
+    monkeypatch.setattr(
+        mm, "_acquire_exclusive_placement", lambda _w: events.append("acquire") or True
+    )
+    monkeypatch.setattr(
+        mm, "_release_exclusive_placement", lambda: events.append("release")
+    )
+    monkeypatch.setattr(
+        mm, "_offload_unified_memory", lambda **_k: events.append("unload") or True
+    )
+
+    mm.offload_tts_for_asr(force_unified_release=True)
+
+    assert events == ["acquire", "unload", "release"]
+
+
+def test_integrated_intel_arc_offload_skips_while_generation_active(monkeypatch):
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", object())
+    monkeypatch.setattr(mm, "_acquire_exclusive_placement", lambda _w: False)
+    unloaded = []
+    monkeypatch.setattr(
+        mm, "_offload_unified_memory", lambda **_k: unloaded.append(1) or True
+    )
+
+    mm.offload_tts_for_asr(force_unified_release=True)
+
+    assert unloaded == []
 
 
 def test_unified_offload_force_releases_despite_headroom(monkeypatch):

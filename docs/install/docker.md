@@ -42,24 +42,14 @@ with `no matching manifest for linux/arm64/v8`.
 
 ## Intel Arc XPU images (experimental)
 
-The published CPU, CUDA and ROCm images do not pass `/dev/dri` or run
-torch XPU. For a single integrated Intel Arc GPU (Lunar Lake 130V/140V)
-build the XPU image from `Dockerfile.voicestudio-xpu-full` in the repo root:
-
-```bash
-docker build -f Dockerfile.voicestudio-xpu-full \
-  --build-arg BUILD_COMMIT=$(git rev-parse --short HEAD) \
-  -t voicestudio-xpu:local .
-```
-
-Run it with `--device=/dev/dri` and `--group-add` for the host's render/video
-groups. The image must contain PR #4480 or later; that change detects
-integrated Intel Arc XPU unified memory by its tiny `local_mem_size` and
-releases the TTS model through `_offload_unified_memory()` instead of
-relocating it, and wraps clone-reference auto-transcription in
-offload/restore. A runtime copy of those files into an older image is
-temporary; rebuild to bake the fix. Discrete Arc, CUDA, NPU and multi-XPU
-hosts keep the dedicated path unchanged.
+The published CPU, CUDA and ROCm images do not pass `/dev/dri` or run torch
+XPU, and the repository ships no XPU image recipe, so Intel Arc XPU is not
+available in Docker. Run VoiceStudio natively on an Intel Arc host instead.
+For a single integrated Intel Arc GPU (Lunar Lake 130V/140V) the backend
+treats the GPU as unified memory: it releases the TTS model before
+transcription instead of relocating it, and clone-reference
+auto-transcription offloads and restores around the ASR load. Discrete Arc,
+CUDA, NPU and multi-XPU hosts keep the dedicated path unchanged.
 
 ## Image tags
 

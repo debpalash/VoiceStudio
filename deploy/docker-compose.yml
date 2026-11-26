@@ -6,11 +6,8 @@
 #    docker compose -f deploy/docker-compose.yml --profile gpu up    # NVIDIA GPU
 #    docker compose -f deploy/docker-compose.yml --profile rocm up   # AMD GPU (ROCm)
 #
-#  Intel Arc XPU (experimental): this compose has no XPU profile because the
-#  published images are CPU/CUDA/ROCm. Build Dockerfile.voicestudio-xpu-full
-#  from a checkout containing PR #4480 and run the XPU service with /dev/dri.
-#  The integrated-Arc unified-memory TTS offload/clone fix must be baked into
-#  that image; a docker-cp runtime copy is temporary.
+#  Intel Arc XPU: no compose profile or image exists (published images are
+#  CPU/CUDA/ROCm); run VoiceStudio natively on Intel Arc hosts.
 #
 #  The Studio services publish the UI on loopback and the authenticated TLS
 #

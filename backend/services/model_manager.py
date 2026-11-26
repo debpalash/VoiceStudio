@@ -4027,22 +4027,20 @@ def unload_shared_model() -> bool:
     return True
 
 
-# Intel integrated Xe/Arc GPUs (e.g. Lunar Lake 130V/140V) advertise a tiny
-# dedicated local-memory window — kilobytes, not GiBs — because model weights
-# live in system RAM. Discrete Arc cards report GiBs of local memory. Detect
-# that unified case first; the rest of the stack stays unchanged.
-_XPU_INTEGRATED_LOCAL_MEMORY_MAX = 1 << 30  # 1 GiB
+# Intel integrated Xe/Arc GPUs (e.g. Lunar Lake 130V/140V) allocate model
+# weights in system RAM, so they are unified-memory devices. Detect that case
+# first; the rest of the stack stays unchanged.
 
 
 def _xpu_is_unified_memory() -> bool:
-    """True only for a single integrated Intel Arc XPU with tiny local memory.
+    """True only for a single integrated Intel Arc XPU.
 
-    Integrated Arc parts report a local_mem_size in the kilobytes while
-    allocating weights in system RAM (Lunar Lake 130V/140V). A discrete Arc
-    card reports GiBs of dedicated local memory, and a multi-XPU box is not
-    "only GPU" territory; both keep the dedicated path. Never raises: an
-    unreadable device property falls back to dedicated, preserving behaviour
-    on non-Intel XPU hosts.
+    Uses the device properties' ``is_integrated_gpu`` flag. (``local_mem_size``
+    is per-work-group memory, not device memory, so it cannot tell integrated
+    from discrete.) A discrete Arc card, a multi-XPU box, a non-Intel device,
+    or a torch build that does not expose the flag all keep the dedicated
+    path. Never raises: an unreadable property falls back to dedicated,
+    preserving behaviour on non-Intel XPU hosts.
     """
     torch = _lazy_torch()
     if not (hasattr(torch, "xpu") and torch.xpu.is_available()):
@@ -4051,19 +4049,13 @@ def _xpu_is_unified_memory() -> bool:
         if torch.xpu.device_count() != 1:
             return False
         props = torch.xpu.get_device_properties(0)
-        local_mem_size = getattr(props, "local_mem_size", None)
+        integrated = getattr(props, "is_integrated_gpu", None)
         name = str(getattr(props, "name", "")).lower()
     except Exception:  # noqa: BLE001 — a probe must never break the caller
         return False
-    if local_mem_size is None:
+    if integrated is not True:
         return False
-    if "intel" not in name or "arc" not in name:
-        return False
-    try:
-        local_mem_bytes = int(local_mem_size)
-    except (TypeError, ValueError):
-        return False
-    return local_mem_bytes <= _XPU_INTEGRATED_LOCAL_MEMORY_MAX
+    return "intel" in name and "arc" in name
 
 
 def _has_dedicated_vram():
@@ -4143,9 +4135,20 @@ def offload_tts_for_asr(*, force_unified_release: bool = False):
         # Only the integrated Intel Arc case forces a release; on Apple Silicon
         # or CPU-only unified boxes the old headroom window stays in charge,
         # because those machines are not the host-reset case this guards.
-        _offload_unified_memory(
-            force=force_unified_release and _xpu_is_unified_memory()
-        )
+        if not _xpu_is_unified_memory():
+            _offload_unified_memory(force=False)
+            return
+        # Integrated Arc: like the dedicated branch, wait for active
+        # tts_inference() slots before releasing the model under them.
+        if not _acquire_exclusive_placement(_ASR_PLACEMENT_WAIT_S):
+            logger.warning(
+                "TTS release for ASR skipped: a generation is still using the model."
+            )
+            return
+        try:
+            _offload_unified_memory(force=force_unified_release)
+        finally:
+            _release_exclusive_placement()
         return
     try:
         # Check if there's enough free VRAM to skip offloading

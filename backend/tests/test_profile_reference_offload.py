@@ -123,3 +123,45 @@ def test_clone_reference_forces_a_unified_memory_release(monkeypatch, tmp_path):
     assert result == "forced"
     assert seen_kwargs == [{"force_unified_release": True}]
     assert calls == ["offload", ("transcribe", audio), "restore"]
+
+
+def test_clone_reference_timeout_does_not_restore_while_asr_still_runs(
+    monkeypatch, tmp_path
+):
+    import threading
+
+    audio = str(tmp_path / "reference.wav")
+    calls = []
+    asr_started = threading.Event()
+    release_asr = threading.Event()
+
+    def fake_offload(**kwargs):
+        calls.append("offload")
+
+    def slow_transcribe(path, *, release_after=False):
+        calls.append("transcribe-start")
+        asr_started.set()
+        release_asr.wait(5)
+        calls.append("transcribe-end")
+        return "late"
+
+    def fake_restore():
+        calls.append("restore")
+
+    monkeypatch.setattr(mm, "offload_tts_for_asr", fake_offload)
+    monkeypatch.setattr(mm, "restore_tts_after_asr", fake_restore)
+    monkeypatch.setattr(profiles, "_reference_transcribe_timeout", lambda: 0.2)
+    _patch_transcribe(monkeypatch, slow_transcribe)
+
+    async def run():
+        result = await profiles._auto_transcribe_reference(audio)
+        # Deadline passed, ASR thread still running: TTS must not be restored.
+        snapshot = list(calls)
+        release_asr.set()
+        return result, snapshot
+
+    result, snapshot = asyncio.run(run())
+
+    assert result == ""
+    assert "restore" not in snapshot
+    assert calls == ["offload", "transcribe-start", "transcribe-end", "restore"]

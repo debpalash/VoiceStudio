@@ -93,15 +93,20 @@ async def _auto_transcribe_reference(audio_path: str) -> str:
         # model, then restore it only after the transcription attempt ends.
         # The clone path forces a unified-memory release because the WhisperX
         # cold-load is itself the freeze trigger, not ordinary memory pressure.
-        await asyncio.to_thread(
-            offload_tts_for_asr, force_unified_release=True
-        )
-        try:
-            return (await asyncio.wait_for(
-                asyncio.to_thread(transcribe_reference, audio_path), timeout,
-            ) or "").strip()
-        finally:
-            await asyncio.to_thread(restore_tts_after_asr)
+        def _offload_transcribe_restore() -> str:
+            # One worker owns the whole sequence, so a response-deadline
+            # timeout (which only cancels the awaiting task, never the
+            # thread) cannot restore TTS to the GPU while ASR still holds
+            # memory: the restore runs when transcription actually ends.
+            offload_tts_for_asr(force_unified_release=True)
+            try:
+                return transcribe_reference(audio_path)
+            finally:
+                restore_tts_after_asr()
+
+        return (await asyncio.wait_for(
+            asyncio.to_thread(_offload_transcribe_restore), timeout,
+        ) or "").strip()
     except asyncio.TimeoutError:
         logger.warning(
             "reference transcription during profile save exceeded %.0fs; "
