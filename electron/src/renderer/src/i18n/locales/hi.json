@@ -702,6 +702,7 @@
     "history_star": "तारा",
     "history_unstar": "अतारांकित",
     "history_reuse": "स्क्रिप्ट का पुन: उपयोग करें",
+    "history_full_text_failed": "इस टेक की पूरी स्क्रिप्ट लोड नहीं हो सकी। जाँचें कि VoiceStudio चल रहा है, फिर दोबारा कोशिश करें।",
     "characters_one": "{{count}} वर्ण",
     "cancel_generation": "पीढ़ी रद्द करें",
     "duration_seconds": "{{seconds}}s",

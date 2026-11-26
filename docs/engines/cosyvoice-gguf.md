@@ -31,26 +31,32 @@ cmake --build build --config Release --parallel
 ```
 
 On Linux, install the build tools and Vulkan headers first (on Ubuntu or
-Debian: `sudo apt install build-essential cmake git libvulkan-dev glslc
-zlib1g-dev ca-certificates`), then run the same `git` and `cmake` commands in a
-terminal. Check out the pinned commit as shown: newer upstream commits look up
-the latest ONNX Runtime release instead of the tested one.
+Debian: `sudo apt install build-essential git libvulkan-dev glslc zlib1g-dev
+ca-certificates`), then run the same `git` and `cmake` commands in a terminal.
+The project needs CMake 3.28 or newer; Ubuntu 22.04 and Debian 12 ship older
+versions, so install a current one with `pipx install cmake` (or Kitware's APT
+repository) and check `cmake --version` before configuring.
 
-If configuration stops at `Failed to download ONNX Runtime`, CMake could not
-fetch the prebuilt ONNX Runtime archive (no network from the build machine or
-container, a proxy, or a CMake build without TLS). Download the archive that
-the error names with your browser or `curl -LO <url>`, extract it, and point
-CMake at the extracted folder (the one containing `include/` and `lib/`):
+During configuration CMake looks up the latest ONNX Runtime release and
+downloads its prebuilt archive for your platform. If configuration stops at
+`Failed to download ONNX Runtime from <url>` (no network from the build machine
+or container, a proxy, or a CMake build without TLS), download that exact
+`<url>` with your browser or `curl -LO <url>`, extract it, point CMake at the
+extracted folder (the one containing `include/` and `lib/`), and build:
 
 ```bash
-tar xf onnxruntime-linux-x64-1.24.4.tgz
+tar xf <archive-from-the-error>.tgz
 cmake -S . -B build -DGGML_VULKAN=ON -DCOSYVOICE_NO_ICU=ON -DCOSYVOICE_SERVER_NO_WEBUI=ON \
-  -DORT_PREBUILT_DIR="$PWD/onnxruntime-linux-x64-1.24.4"
+  -DORT_PREBUILT_DIR="$PWD/<folder-it-extracted>"
+cmake --build build --config Release --parallel
 ```
 
 The VoiceStudio Docker image does not include this native runtime. To use it
 from Docker, build it for Linux x64, mount the build output folder into the
-container and set `OMNIVOICE_COSYVOICE_GGUF_DIR` to the mounted path.
+container and set `OMNIVOICE_COSYVOICE_GGUF_DIR` to the mounted path. The
+binaries load ONNX Runtime from the folder CMake used, so also mount that
+folder's `lib/` (for example at `/opt/onnxruntime/lib`) and add it to the
+container's `LD_LIBRARY_PATH`.
 
 Use the build output containing `cosyvoice-server` and `cosyvoice-cli`
 (`cosyvoice-server.exe` and `cosyvoice-cli.exe` on Windows).

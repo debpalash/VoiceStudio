@@ -561,10 +561,14 @@ export interface PrefetchOptions {
   freeBytes?: (dir: string) => Promise<number>;
 }
 
-function withDeadline<T>(work: Promise<T> | undefined, ms: number): Promise<T | 0> {
+function withDeadline<T>(
+  work: Promise<T> | undefined,
+  ms: number,
+  onExpire: () => void = () => {},
+): Promise<T | 0> {
   if (!work) return Promise.resolve(0);
   return new Promise<T | 0>((resolve, reject) => {
-    const timer = setTimeout(() => resolve(0), ms);
+    const timer = setTimeout(() => (onExpire(), resolve(0)), ms);
     work.then(
       (value) => (clearTimeout(timer), resolve(value)),
       (error: unknown) => (clearTimeout(timer), reject(error)),
@@ -606,9 +610,14 @@ export async function prefetchWheels(
       wheels.push(wheel);
       continue;
     }
+    // Its own signal, so a probe stalled before it has a socket is torn down at
+    // the deadline instead of lingering until the shared signal ends.
+    const probe = new AbortController();
+    const stallMs = options.stallMs ?? PREFETCH_STALL_MS;
     const size = await withDeadline(
-      options.probeSize?.(wheel.url, options.signal),
-      options.stallMs ?? PREFETCH_STALL_MS,
+      options.probeSize?.(wheel.url, AbortSignal.any([options.signal, probe.signal])),
+      stallMs,
+      () => probe.abort(new DownloadStalledError(wheel.filename, Math.round(stallMs / 1000))),
     ).catch(() => 0);
     options.signal.throwIfAborted();
     if (size && size >= PREFETCH_MIN_BYTES) wheels.push({ ...wheel, size });

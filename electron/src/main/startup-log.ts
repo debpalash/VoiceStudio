@@ -55,11 +55,25 @@ const OPEN_FLAGS = constants.O_RDWR | constants.O_CREAT | (constants.O_NOFOLLOW 
 
 let defaultFile: string | null | undefined;
 
-/** Append one timestamped line. Never throws: logging must not cause or mask an exit. */
-export function logStartup(message: string, file?: string): void {
+const SECRET_VALUE = /(\b[\w.-]*(?:token|key|secret|passw(?:or)?d|auth)[\w.-]*=)[^\s&"']+/gi;
+
+/** Drop credential-like values and the user's home path before anything is persisted. */
+export function scrubStartupText(text: string, home: string = safeHome()): string {
+  let out = text.replace(SECRET_VALUE, '$1[redacted]');
+  if (home.length > 1) {
+    for (const variant of new Set([home, home.replace(/\\/g, '/')])) out = out.split(variant).join('~');
+  }
+  return out;
+}
+
+/**
+ * Append one timestamped line and return the file it reached, or null when it
+ * could not be written. Never throws: logging must not cause or mask an exit.
+ */
+export function logStartup(message: string, file?: string): string | null {
   try {
     const target = file ?? (defaultFile ??= startupLogPath());
-    if (!target) return;
+    if (!target) return null;
     const fd = openSync(target, OPEN_FLAGS, 0o600);
     try {
       let end = fstatSync(fd).size;
@@ -67,12 +81,14 @@ export function logStartup(message: string, file?: string): void {
         ftruncateSync(fd, 0);
         end = 0;
       }
-      writeSync(fd, `${new Date().toISOString()} pid=${process.pid} ${message}\n`, end);
+      const line = `${new Date().toISOString()} pid=${process.pid} ${scrubStartupText(message)}\n`;
+      writeSync(fd, line, end);
     } finally {
       closeSync(fd);
     }
+    return target;
   } catch {
-    /* nowhere to write */
+    return null; /* nowhere to write */
   }
 }
 

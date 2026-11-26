@@ -1,4 +1,4 @@
-import { logStartup, startupLogPath } from './startup-log';
+import { logStartup } from './startup-log';
 import {
   decideTerminalStop,
   decideWindowClose,
@@ -710,7 +710,7 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
       // while retaining durable evidence for the next launch and repair agent.
       mainErrors.record(error, 'unhandledRejection');
       console.error('[startup] Electron initialization failed', error);
-      logStartup(
+      const savedTo = logStartup(
         `exiting: initialization failed: ${error instanceof Error ? error.stack : String(error)}`,
       );
       if (!headlessOwner) {
@@ -718,10 +718,9 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
           dialog.showErrorBox(
             `${PRODUCT_NAME} could not start`,
             (() => {
-              const log = startupLogPath();
               const detail = error instanceof Error ? error.message : String(error);
-              return log
-                ? `Startup failed. Details were saved to ${log}`
+              return savedTo
+                ? `Startup failed. Details were saved to ${savedTo}`
                 : `Startup failed: ${detail.slice(0, 500)}`;
             })(),
           );

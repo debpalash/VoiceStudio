@@ -705,6 +705,33 @@ describe('packaged runtime setup', () => {
     );
     expect(verify?.[1][1]).toContain('sentencepiece');
   });
+  it('syncs with the recovered interpreter path when the minor-version link stays broken (#4487)', async () => {
+    const { bundle, project } = await fixture();
+    const patch = join(project, '..', '.python', 'cpython-3.11.16-test-none');
+    await mkdir(join(patch, 'bin'), { recursive: true });
+    const python = process.platform === 'win32' ? join(patch, 'python.exe') : join(patch, 'bin', 'python3');
+    await writeFile(python, '');
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args[0] === 'python' && args[1] === 'install') {
+        throw new Error(
+          `error: Missing expected target directory for Python minor version link at ${patch}\n`,
+        );
+      }
+      await interpreter(project);
+    });
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+      undefined,
+      'global',
+    );
+    const sync = run.mock.calls.find(([, args]) => args[0] === 'sync');
+    expect(sync?.[1]).not.toContain('--managed-python');
+    expect(sync?.[1]).toEqual(expect.arrayContaining(['--python', python]));
+  });
   it('reinstalls the pinned ROCm stack only after an explicit opt-in', async () => {
     forcePlatform('linux');
     const { bundle, project } = await fixture();

@@ -3,7 +3,13 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { installStartupLogging, logStartup, startupLogDirs, startupLogPath } from './startup-log';
+import {
+  installStartupLogging,
+  logStartup,
+  scrubStartupText,
+  startupLogDirs,
+  startupLogPath,
+} from './startup-log';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'vs-startup-'));
 
@@ -43,7 +49,15 @@ describe('startup log', () => {
     logStartup('first', file);
     logStartup('second', file);
     expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(2);
-    expect(() => logStartup('x', join(file, 'nope', 'x'))).not.toThrow();
+    expect(logStartup('x', join(file, 'nope', 'x'))).toBeNull();
+    expect(logStartup('third', file)).toBe(file);
+  });
+
+  it('redacts credentials and the home path before writing', () => {
+    expect(
+      scrubStartupText('at /Users/alice/app.js --api-key=s3cr3t HF_TOKEN=hf_abc --inspect', '/Users/alice'),
+    ).toBe('at ~/app.js --api-key=[redacted] HF_TOKEN=[redacted] --inspect');
+    expect(scrubStartupText('C:/Users/a/x C:\\Users\\a\\y', 'C:\\Users\\a')).toBe('~/x ~\\y');
   });
 
   it('starts an oversized log over instead of growing it', () => {

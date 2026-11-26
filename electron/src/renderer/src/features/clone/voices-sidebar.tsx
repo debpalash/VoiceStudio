@@ -39,6 +39,7 @@ import { selectCloneProfile } from '@/lib/store/reference';
 import { cn } from '@/lib/utils';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { ConfirmDialog } from './confirm-dialog';
+import { reuseWithFeedback } from './reuse-feedback';
 import { displayTitle, formatRelative } from './format';
 import {
   DESIGN_DRAFT_EVENT,
@@ -529,15 +530,16 @@ function RecentTakes({ scrollRef }: RecentTakesProps) {
 
   const rowProps: Omit<TakeRowProps, 'item'> = {
     onStar: (item) => toggleStarred.mutate({ id: item.id, starred: !item.starred }),
-    onReuse: async (item) => {
-      if (item.mode === 'design') {
-        writeDraft(designDraftFromTake(await fullTake(item)));
-        setCloneSetting('language', item.language || 'Auto');
-        openTake(null);
-        return;
-      }
-      await reuseTake(item);
-    },
+    onReuse: (item) =>
+      reuseWithFeedback(async () => {
+        if (item.mode === 'design') {
+          writeDraft(designDraftFromTake(await fullTake(item)));
+          setCloneSetting('language', item.language || 'Auto');
+          openTake(null);
+          return;
+        }
+        await reuseTake(item);
+      }, t),
     onDelete: (item) => deleteItem.mutate(item.id),
   };
 

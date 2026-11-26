@@ -699,6 +699,7 @@
     "history_star": "星",
     "history_unstar": "スターを外す",
     "history_reuse": "スクリプトを再利用する",
+    "history_full_text_failed": "このテイクの全文を読み込めませんでした。VoiceStudio が起動していることを確認して、もう一度お試しください。",
     "characters_one": "{{count}} 文字",
     "cancel_generation": "生成をキャンセルする",
     "duration_seconds": "{{seconds}}秒",

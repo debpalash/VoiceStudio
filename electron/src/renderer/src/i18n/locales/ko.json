@@ -693,6 +693,7 @@
     "history_star": "별",
     "history_unstar": "별표 해제",
     "history_reuse": "스크립트 재사용",
+    "history_full_text_failed": "이 테이크의 전체 스크립트를 불러오지 못했습니다. VoiceStudio가 실행 중인지 확인한 후 다시 시도하세요.",
     "characters_one": "{{count}} 문자",
     "cancel_generation": "생성 취소",
     "duration_seconds": "{{seconds}}초",

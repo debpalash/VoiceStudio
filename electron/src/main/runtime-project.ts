@@ -1617,6 +1617,7 @@ async function interpreterCanary(
     if (refusal) throw refusal;
     downloads.log?.('The interpreter check did not pass; continuing with setup.');
   }
+  return direct;
 }
 
 export async function installRuntime(

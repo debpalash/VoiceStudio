@@ -400,15 +400,24 @@ def update_profile(profile_id: str, patch: ProfileUpdate):
             fields.append(f"{col} = ?")
             params.append(val.strip() if col in ("name", "language") else val)
         if edited_instruct is not None and existing["kind"] == "design":
-            # A legacy tag editor cannot change a free-form recipe; a real
-            # instruction edit starts a new design instead of keeping old prose.
+            # A real instruction edit starts a new design: the edited prose
+            # becomes its recipe, so free-form engines receive it as typed
+            # while tag-only engines keep the tags derived from it (#4474).
             import json
 
+            from api.routers.generation import _design_recipe_json
             from core.describe_voice import instruct_to_vd_states
 
             fields.append("vd_states = ?")
             params.append(json.dumps(instruct_to_vd_states(edited_instruct)))
-            fields.append("design_recipe = NULL")
+            fields.append("design_recipe = ?")
+            params.append(
+                _design_recipe_json(
+                    json.dumps({"description": edited_instruct, "picks": {}}, ensure_ascii=False)
+                )
+                if edited_instruct
+                else None
+            )
         if existing["kind"] == "design" and edited_instruct is not None:
             # A genuine voice-design edit invalidates its prior sample.
             # Transcript/language corrections must *not* discard a saved

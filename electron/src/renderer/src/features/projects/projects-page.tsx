@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/dialog';
 import { useDeleteProfile } from '@/hooks/use-profiles';
 import { deleteHistoryItem, fullTake } from '@/lib/api/history';
+import { reuseWithFeedback } from '../clone/reuse-feedback';
 import { Input } from '@/components/ui/input';
 import { VirtualGrid, VirtualList } from '@/components/virtual-list';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
@@ -754,7 +755,7 @@ export function ProjectsPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => void reuseTake(row.take!)}
+                              onClick={() => void reuseWithFeedback(() => reuseTake(row.take!), t)}
                             >
                               {t('clone.history_reuse')}
                             </Button>

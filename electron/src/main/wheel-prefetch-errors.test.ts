@@ -132,3 +132,24 @@ it('fails a download that never receives a byte instead of looping (#4476)', asy
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it('aborts a size probe that stalls past the deadline (#4476)', async () => {
+  let probeSignal: AbortSignal | undefined;
+  const local = await prefetchWheels(
+    [{ name: 'torch', version: '1', url: 'https://x.test/torch.whl', filename: 'torch.whl', sha256: 'a'.repeat(64), size: 0 }],
+    {
+      dir: join(tmpdir(), 'vs-probe-unused'),
+      connections: 4,
+      transport: async () => { throw new Error('not reached'); },
+      probeSize: (_url, signal) => {
+        probeSignal = signal;
+        return new Promise<number>(() => {});
+      },
+      signal: new AbortController().signal,
+      stallMs: 20,
+      freeBytes: async () => Infinity,
+    },
+  );
+  expect(local.size).toBe(0);
+  expect(probeSignal?.aborted).toBe(true);
+});
