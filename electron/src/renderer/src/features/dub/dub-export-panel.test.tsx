@@ -88,3 +88,30 @@ it.each([{ segments: [] }, { jobId: null }])(
     expect(mocks.save).not.toHaveBeenCalled();
   },
 );
+
+it('exports the transcript before narration audio exists, but not narration audio', () => {
+  const segments = session().segments;
+  const narration = {
+    enabled: true,
+    language: 'en',
+    captions: segments,
+    blocks: segments,
+    sourceKey: 'k',
+  };
+  const { rerender } = render(
+    <DubExportPanel session={session({ target: 'English', narration })} disabled={false} />,
+  );
+  expect(screen.getByRole('button', { name: 'dub.flow_save' })).not.toBeDisabled();
+  rerender(
+    <DubExportPanel
+      session={session({
+        target: 'English',
+        narration,
+        tracks: ['en'],
+        exportOptions: { format: 'wav', track: 'en' },
+      })}
+      disabled={false}
+    />,
+  );
+  expect(screen.getByRole('button', { name: 'dub.flow_save' })).toBeDisabled();
+});

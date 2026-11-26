@@ -73,7 +73,8 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
     !dubGuideState(session, translationTargetCode(session.target)).completed[3],
   );
   const ready =
-    (!narrationPending || subtitles) &&
+    // Transcripts never wait for narration audio; only audio formats do.
+    (!narrationPending || transcript) &&
     !!session.jobId &&
     !!track &&
     (transcript || (format === 'mp4' && undubbed)
