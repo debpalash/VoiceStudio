@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { browserCandidates, listInstalledBrowsers, openInBrowser } from './installed-browsers';
 
@@ -7,8 +7,14 @@ const mocks = vi.hoisted(() => ({ access: vi.fn(), spawn: vi.fn(), external: vi.
 vi.mock('node:fs/promises', () => ({ access: mocks.access }));
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn }));
 vi.mock('electron', () => ({ shell: { openExternal: mocks.external } }));
+const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+afterEach(() => {
+  Object.defineProperty(process, 'platform', platform);
+  vi.unstubAllEnvs();
+});
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv('LOCALAPPDATA', 'C:/Users/User/AppData/Local');
   mocks.access.mockRejectedValue(new Error('missing'));
 });
 
@@ -59,7 +65,10 @@ it('passes URLs as a single argument to a detected browser without a command she
   });
   mocks.spawn.mockImplementation(() => {
     const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
-    queueMicrotask(() => child.emit('spawn'));
+    queueMicrotask(() => {
+      child.emit('spawn');
+      child.emit('exit', 0, null);
+    });
     return child;
   });
   await openInBrowser('chrome', 'https://example.com/?q=$(unsafe)&a=2');
@@ -67,4 +76,70 @@ it('passes URLs as a single argument to a detected browser without a command she
   expect(args.at(-1)).toBe('https://example.com/?q=$(unsafe)&a=2');
   expect(options.shell).not.toBe(true);
   expect(options.windowsHide).toBe(true);
+});
+
+
+it.each([
+  [1, null],
+  [null, 'SIGTERM'],
+] as const)('rejects a failed macOS browser launcher (%s, %s)', async (code, signal) => {
+  Object.defineProperty(process, 'platform', { value: 'darwin' });
+  mocks.access.mockResolvedValue(undefined);
+  mocks.spawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+    queueMicrotask(() => {
+      child.emit('spawn');
+      child.emit('exit', code, signal);
+    });
+    return child;
+  });
+  await expect(openInBrowser('chrome', 'https://example.com')).rejects.toThrow();
+});
+
+it('waits for successful macOS launcher completion', async () => {
+  Object.defineProperty(process, 'platform', { value: 'darwin' });
+  mocks.access.mockResolvedValue(undefined);
+  const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+  mocks.spawn.mockReturnValue(child);
+  let completed = false;
+  const opening = openInBrowser('chrome', 'https://example.com').then(() => {
+    completed = true;
+  });
+  await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalled());
+  child.emit('spawn');
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(completed).toBe(false);
+  child.emit('exit', 0, null);
+  await opening;
+  expect(completed).toBe(true);
+});
+
+// A faked Linux host needs a POSIX PATH: on a Windows runner the real one
+// splits on ':' into no absolute directories, so no browser is found.
+const fakeHost = (host: NodeJS.Platform) => {
+  Object.defineProperty(process, 'platform', { value: host });
+  if (host === 'linux') vi.stubEnv('PATH', '/usr/bin');
+};
+
+it.each(['win32', 'linux'] as const)('resolves a direct %s browser launch before exit', async (host) => {
+  fakeHost(host);
+  mocks.access.mockResolvedValue(undefined);
+  const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+  mocks.spawn.mockImplementation(() => {
+    queueMicrotask(() => child.emit('spawn'));
+    return child;
+  });
+  await openInBrowser('chrome', 'https://example.com');
+  expect(child.unref).toHaveBeenCalled();
+});
+
+it.each(['darwin', 'win32', 'linux'] as const)('reports %s spawn errors', async (host) => {
+  fakeHost(host);
+  mocks.access.mockResolvedValue(undefined);
+  mocks.spawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+    queueMicrotask(() => child.emit('error', new Error('launch refused')));
+    return child;
+  });
+  await expect(openInBrowser('chrome', 'https://example.com')).rejects.toThrow('launch refused');
 });

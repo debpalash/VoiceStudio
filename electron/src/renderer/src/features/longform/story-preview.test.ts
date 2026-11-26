@@ -73,3 +73,11 @@ it('uses the full-render default for an unassigned inline name', () => {
     storyChunkBody(draft, 'Hello', 'Unassigned', null, [{ id: 'narrator' }]).get('profile_id'),
   ).toBe('narrator');
 });
+
+it.each([true, false, null])('uses the Generate trim flag for Story auditions: %s', (trimEdges) => {
+  const draft = blankLongformDraft();
+  draft.overrides.trimEdges = trimEdges;
+  const body = storyChunkBody(draft, 'Hello', null, null, []);
+  expect(body.get('trim_engine_silence')).toBe(trimEdges === null ? null : String(trimEdges));
+  expect(body.has('trim_edges')).toBe(false);
+});

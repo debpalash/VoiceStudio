@@ -614,7 +614,12 @@ def test_openai_upload_keeps_request_owner_for_nested_asr(reporter, monkeypatch,
     calls = []
     class Upload:
         filename = 'fixture.wav'
-        async def read(self):
+        sent = False
+        async def read(self, size=-1):
+            # The route reads the upload in chunks; the first chunk flips consent.
+            if self.sent:
+                return b''
+            self.sent = True
             reporter.consent(False); reporter.consent(True)
             calls.append('upload_changed_consent')
             return b'RIFF-fixture'

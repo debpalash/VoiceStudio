@@ -317,14 +317,17 @@
     "test_global_hint": "グローバルなエントリーのみをプレビューしています — 言語別のエントリーを含めるには言語を選択してください。",
     "test_error": "プレビューを利用できません — バックエンドに接続できませんでした。",
     "backup_title": "バックアップと復元",
-    "backup_hint": "辞書を JSON ファイルとしてダウンロードするか、以前のエクスポートからエントリーをインポートします。",
+    "backup_hint": "辞書を JSON または PLS レキシコンとしてダウンロードするか、どちらかをインポートします。他の音声サービスの PLS レキシコンも使えます。",
     "export": "JSON をエクスポート",
+    "export_pls": "PLS をエクスポート",
     "import": "JSON をインポート",
-    "import_error": "そのファイルをインポートできませんでした — 発音エクスポートの JSON が必要です。",
+    "import_error": "そのファイルをインポートできませんでした — 発音エクスポート（JSON）または PLS レキシコンが必要です。",
     "import_replace_prompt_one": "既存の {{count}} 件をインポートしたファイルで置き換えますか？「いいえ」を選ぶと、インポートした項目を追加します。",
     "import_replace_prompt_other": "既存の {{count}} 件をインポートしたファイルで置き換えますか？「いいえ」を選ぶと、インポートした項目を追加します。",
     "import_done_one": "{{count}} 件をインポートしました。",
     "import_done_other": "{{count}} 件をインポートしました。",
+    "import_skipped_one": "{{count}} 件の項目を除外しました（対応していない発音記号）。",
+    "import_skipped_other": "{{count}} 件の項目を除外しました（対応していない発音記号）。",
     "entries_count_one": "{{count}} 件",
     "entries_count_other": "{{count}} 件",
     "scope_language": "言語",
@@ -2488,7 +2491,7 @@
     "field_when": "いつ",
     "field_uptime": "クラッシュ前の稼働時間",
     "no_stderr": "エラー出力はキャプチャされませんでした。",
-    "field_exit": "出口",
+    "field_exit": "終了ステータス",
     "field_version": "バックエンドのバージョン"
   },
   "errors": {
@@ -3009,6 +3012,7 @@
       "speechCurl": "音声合成 (curl)",
       "transcriptionCurl": "文字起こし (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "コンテナを実行",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n ワークフロー",
@@ -4349,5 +4353,12 @@
     "unavailable": "このアプリでは自動報告を利用できないか、無効になっています。",
     "managed": "このブラウザに接続されたデスクトップアプリで設定してください。",
     "save_failed": "この選択を保存できませんでした。もう一度お試しください。"
+  },
+  "tray": {
+    "open": "{{app}} を開く",
+    "start_dictation": "音声入力を開始",
+    "stop_dictation": "音声入力を停止",
+    "settings": "設定",
+    "quit": "終了"
   }
 }

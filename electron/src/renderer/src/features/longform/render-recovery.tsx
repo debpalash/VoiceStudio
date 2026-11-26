@@ -13,6 +13,7 @@ export interface Recovery {
   chapters_done: number;
   total_chapters: number;
   created_at?: number | string | null;
+  plan_key?: string | null;
 }
 
 /** The backend job type each page renders as (`_render_longform_sse(job_type=…)`). */
@@ -42,15 +43,14 @@ function writeDismissed(ids: readonly string[]) {
 }
 
 const projectKey = (job: Recovery) =>
-  `${job.title.trim().toLocaleLowerCase()}:${job.total_chapters}`;
+  job.plan_key ? `plan:${job.plan_key}` : `job:${job.job_id}`;
 
 const stamp = (job: Recovery) =>
   typeof job.created_at === 'number' ? job.created_at : Date.parse(job.created_at ?? '') || 0;
 
 /**
- * This page's interrupted renders, newest first, one card per project: a render
- * stopped twice leaves two manifests for the same title, and both resume the
- * same work from the shared chapter cache.
+ * This page's interrupted renders, newest first, one card per render plan.
+ * Older backends omit the key, so each job remains individually recoverable.
  */
 export function recoveriesFor(
   mode: Mode,
@@ -115,7 +115,7 @@ export function RenderRecovery({
   }
   const jobs = active ? [] : recoveriesFor(mode, query.data?.jobs, dismissed);
   if (!jobs.length) return null;
-  // Dismissing a card hides every manifest of that project, not just the newest.
+  // Dismissing a card hides every manifest of that render plan, not just the newest.
   const dismiss = (card: Recovery) => {
     const listed = query.data?.jobs ?? [];
     const same = listed

@@ -100,7 +100,8 @@ it('does not expose detail pages for entries without completed wiring', () => {
 it('offers copyable API snippets for the current backend', () => {
   route.slug = 'voicestudio-api';
   render(<IntegrationDetailPage />);
-  expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(4);
+  expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(5);
+  expect(screen.getByText('Python (ElevenLabs SDK)')).toBeInTheDocument();
   expect(
     screen.getByText(/curl http:\/\/127\.0\.0\.1:3912\/v1\/audio\/speech/),
   ).toBeInTheDocument();
