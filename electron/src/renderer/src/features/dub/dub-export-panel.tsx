@@ -1,9 +1,13 @@
+import { dubPreservesBackground } from './dub-flow-state';
+import { dubGuideState } from './dub-project-guide';
+import { translationTargetCode } from '@/lib/translation-targets';
 import { useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDownIcon, DownloadIcon, LoaderCircleIcon } from 'lucide-react';
+import { ChevronDownIcon, DownloadIcon, FolderOpenIcon, LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { getBridge } from '@/components/bridge';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiPath, describeError } from '@/lib/api/client';
 import { saveExport } from '@/lib/export-history';
@@ -14,7 +18,12 @@ import {
   syncDubTranscript,
   type DubExportFormat,
 } from './dub-export';
-import { setDubExportPreferences, type DubSession } from './dub-session';
+import {
+  setDubExportPreferences,
+  recordDubExport,
+  recordDubSavedFile,
+  type DubSession,
+} from './dub-session';
 
 export function DubExportPanel({ session, disabled }: { session: DubSession; disabled: boolean }) {
   const { t } = useTranslation();
@@ -26,9 +35,10 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const setFormat = (format: DubExportFormat) => setDubExportPreferences({ format });
   const trackChoice = preferences.track || '';
   const setTrack = (track: string) => setDubExportPreferences({ track });
-  const excluded = preferences.excluded || [];
+  const excluded = preferences.excluded || ['original'];
   const setExcluded = (excluded: string[]) => setDubExportPreferences({ excluded });
-  const preserveBg = preferences.preserveBg ?? true;
+  const preserveBg = dubPreservesBackground(session);
+  const backgroundUnavailable = session.subtitleOnly || session.separateBackground === false;
   const setPreserveBg = (preserveBg: boolean) => setDubExportPreferences({ preserveBg });
   const bedLevel = clampBedLevel(preferences.bedLevel ?? 100);
   const setBedLevel = (bedLevel: number) =>
@@ -58,7 +68,13 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const locked = disabled || saving;
   const subtitles = ['srt', 'vtt', 'ass'].includes(format);
   const transcript = subtitles || format === 'txt';
+  const narrationPending = Boolean(
+    session.narration?.enabled &&
+    !dubGuideState(session, translationTargetCode(session.target)).completed[3],
+  );
   const ready =
+    // Transcripts never wait for narration audio; only audio formats do.
+    (!narrationPending || transcript) &&
     !!session.jobId &&
     !!track &&
     (transcript || (format === 'mp4' && undubbed)
@@ -82,7 +98,10 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
     setError(null);
     try {
       if (undubbed && (transcript || format === 'mp4'))
-        await syncDubTranscript(session.jobId!, session.segments);
+        await syncDubTranscript(
+          session.jobId!,
+          session.narration?.enabled ? session.narration.captions : session.segments,
+        );
       const request = dubExportRequest({
         jobId: session.jobId!,
         format,
@@ -96,7 +115,21 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
         bitrate,
       });
       const url = apiPath(request.path);
-      await saveExport(url, request.name);
+      const saved = await saveExport(url, request.name);
+      if (saved && !saved.canceled && saved.path) {
+        recordDubSavedFile(session, saved.path);
+        const code = translationTargetCode(session.target);
+        // Only a file that carries the current dubbed audio completes the export
+        // step: a retained track from before an edit is saved, not "exported".
+        if (
+          code &&
+          !transcript &&
+          (format === 'mp4' ? selected.includes(code) : track === code) &&
+          dubGuideState(session, code).audioReady
+        ) {
+          recordDubExport(session, code);
+        }
+      }
     } catch (error) {
       setError(describeError(error));
     } finally {
@@ -177,7 +210,10 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
         </div>
         {['mp4', 'wav', 'mp3'].includes(format) &&
           !undubbed &&
-          toggle(t('exportModal.bg_audio'), preserveBg, setPreserveBg)}
+          toggle(t('exportModal.bg_audio'), preserveBg, setPreserveBg, backgroundUnavailable)}
+        {backgroundUnavailable && !undubbed && (
+          <p className="text-xs text-muted-foreground">{t('dub.flow_background_no')}</p>
+        )}
         {['mp4', 'wav', 'mp3'].includes(format) && !undubbed && preserveBg && (
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between gap-3">
@@ -233,13 +269,39 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
           <p className="text-xs text-muted-foreground">{t('exportModal.undubbed_video_note')}</p>
         )}
         {!ready && (
-          <p className="text-xs text-muted-foreground">{t('exportModal.nothing_selected')}</p>
+          <p className="text-xs text-muted-foreground">
+            {t(narrationPending ? 'dub.guide_audio_hint' : 'exportModal.nothing_selected')}
+          </p>
         )}
+        <p className="text-xs text-muted-foreground">{t('dub.export_destination_hint')}</p>
         <Button className="w-full" disabled={!ready || locked} onClick={() => void save()}>
           {saving ? <LoaderCircleIcon className="animate-spin" /> : <DownloadIcon />}
-          {t(saving ? 'common.loading' : 'exportModal.export')}
+          {t(saving ? 'common.loading' : 'dub.flow_save')}
         </Button>
       </fieldset>
+      {session.lastExport && (
+        <div
+          role="status"
+          className="mt-3 space-y-2 rounded-lg border border-emerald-500/30 p-2 text-xs"
+        >
+          <p className="font-medium">{t('dub.export_saved')}</p>
+          <p className="break-all select-text">{session.lastExport.path}</p>
+          {getBridge() && (
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => {
+                void getBridge()
+                  ?.files.revealPath(session.lastExport!.path)
+                  .catch((error) => setError(describeError(error)));
+              }}
+            >
+              <FolderOpenIcon />
+              {t('dub.export_show_folder')}
+            </Button>
+          )}
+        </div>
+      )}
       {error && (
         <PipelineFailure fallback={error} onDismiss={() => setError(null)} className="text-xs" />
       )}

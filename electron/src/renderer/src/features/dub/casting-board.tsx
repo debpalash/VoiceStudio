@@ -56,7 +56,7 @@ export function CastingBoard({
   // Automatic speaker matching is already a usable default. Keep the editor
   // folded until someone wants to override a voice, which makes the primary
   // upload → language → translate/generate path readable at a glance.
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const speakers = castSpeakers(segments) as string[];
   if (!speakers.length) return null;

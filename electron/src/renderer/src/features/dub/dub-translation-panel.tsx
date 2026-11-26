@@ -151,200 +151,218 @@ export function DubTranslationPanel({
             ))}
           </ul>
         )}
-        {dialects.length > 0 && (
-          <DubFieldRow label={t('dub.dialect_label')} hint={t('dub.dialect_title')}>
-            <Select
-              items={[
-                { value: DEFAULT_DIALECT, label: t('dub.dialect_default') },
-                ...dialects.map((dialect) => ({
-                  value: dialect,
-                  label: dialectLabel(dialect, i18n.language),
-                })),
-              ]}
-              value={
-                session.dialect && dialects.includes(session.dialect)
-                  ? session.dialect
-                  : DEFAULT_DIALECT
-              }
-              disabled={locked}
-              onValueChange={(value) =>
-                setDubTranslationOptions({
-                  dialect: !value || value === DEFAULT_DIALECT ? undefined : String(value),
-                })
-              }
-            >
-              <SelectTrigger aria-label={t('dub.dialect_label')} className="max-w-[60%]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={DEFAULT_DIALECT}>{t('dub.dialect_default')}</SelectItem>
-                {dialects.map((dialect) => (
-                  <SelectItem key={dialect} value={dialect}>
-                    {dialectLabel(dialect, i18n.language)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </DubFieldRow>
-        )}
       </div>
-      <div className="space-y-2 border-t border-border/40 pt-2">
-        <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <LanguagesIcon className="size-3.5" aria-hidden="true" />
-          {t('about.translator')}
-        </p>
-        <div
-          role="group"
-          aria-label={t('about.translator')}
-          className={cn(SEGMENTS, 'grid-cols-2')}
-        >
-          <Button
-            size="sm"
-            variant={agent ? 'secondary' : 'ghost'}
-            aria-pressed={agent}
-            disabled={locked || !agentAvailable}
-            className={SEGMENT}
-            title={`${t('dub.translate_with_agent')} · ${agentDescription}`}
-            onClick={() => setDubQuality('agent')}
-          >
-            <WandSparklesIcon className="shrink-0" />
-            {t('dub.translator_agent')}
-          </Button>
-          <Button
-            size="sm"
-            variant={!agent ? 'secondary' : 'ghost'}
-            aria-pressed={!agent}
-            disabled={locked || !provider}
-            className={SEGMENT}
-            title={engineName}
-            onClick={() => setDubQuality(engineQuality)}
-          >
-            <LanguagesIcon className="shrink-0" />
-            {engineName}
-          </Button>
-        </div>
-        {agent && <DubHint>{agentDescription}</DubHint>}
-      </div>
-      {agent ? (
-        <div className="space-y-2 border-t border-border/40 pt-2">
-          <label htmlFor="dub-translation-instructions" className="text-xs font-medium">
-            {t('dubStyle.label')}
-          </label>
-          <textarea
-            dir="auto"
-            id="dub-translation-instructions"
-            aria-describedby="dub-translation-instructions-help"
-            rows={3}
-            maxLength={5000}
-            value={session.translationInstructions || ''}
-            disabled={locked}
-            onChange={(event) =>
-              setDubTranslationOptions({ translationInstructions: event.target.value })
-            }
-            className="w-full resize-y rounded-lg border border-input bg-background/40 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          />
-          <DubHint id="dub-translation-instructions-help">{t('dubStyle.help')}</DubHint>
-        </div>
-      ) : (
-        <div className="space-y-2 border-t border-border/40 pt-2">
-          <p
-            className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
-            title={t('settings.translate_quality_desc')}
-          >
-            <GaugeIcon className="size-3.5" aria-hidden="true" />
-            {t('settings.translate_quality')}
-          </p>
-          <div
-            role="group"
-            aria-label={t('settings.translate_quality')}
-            aria-describedby="dub-translate-quality-help"
-            className={cn(SEGMENTS, 'grid-cols-3')}
-          >
-            {(['fast', 'autofit', 'cinematic'] as const).map((quality) => (
-              <Button
-                key={quality}
-                size="sm"
-                variant={session.quality === quality ? 'secondary' : 'ghost'}
-                aria-pressed={session.quality === quality}
+      <details>
+        <summary className="cursor-pointer text-xs text-muted-foreground">
+          {t('dub.advanced')}
+        </summary>
+        <div className="mt-3 space-y-3">
+          {dialects.length > 0 && (
+            <DubFieldRow label={t('dub.dialect_label')} hint={t('dub.dialect_title')}>
+              <Select
+                items={[
+                  { value: DEFAULT_DIALECT, label: t('dub.dialect_default') },
+                  ...dialects.map((dialect) => ({
+                    value: dialect,
+                    label: dialectLabel(dialect, i18n.language),
+                  })),
+                ]}
+                value={
+                  session.dialect && dialects.includes(session.dialect)
+                    ? session.dialect
+                    : DEFAULT_DIALECT
+                }
                 disabled={locked}
-                className={SEGMENT}
-                onClick={() => setDubQuality(quality)}
+                onValueChange={(value) =>
+                  setDubTranslationOptions({
+                    dialect: !value || value === DEFAULT_DIALECT ? undefined : String(value),
+                  })
+                }
               >
-                {t('settings.translate_' + quality)}
+                <SelectTrigger aria-label={t('dub.dialect_label')} className="max-w-[60%]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DEFAULT_DIALECT}>{t('dub.dialect_default')}</SelectItem>
+                  {dialects.map((dialect) => (
+                    <SelectItem key={dialect} value={dialect}>
+                      {dialectLabel(dialect, i18n.language)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </DubFieldRow>
+          )}
+          <div className="space-y-2 border-t border-border/40 pt-2">
+            <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <LanguagesIcon className="size-3.5" aria-hidden="true" />
+              {t('about.translator')}
+            </p>
+            <div
+              role="group"
+              aria-label={t('about.translator')}
+              className={cn(SEGMENTS, 'grid-cols-2')}
+            >
+              <Button
+                size="sm"
+                variant={agent ? 'secondary' : 'ghost'}
+                aria-pressed={agent}
+                disabled={locked || !agentAvailable}
+                className={SEGMENT}
+                title={`${t('dub.translate_with_agent')} · ${agentDescription}`}
+                onClick={() => setDubQuality('agent')}
+              >
+                <WandSparklesIcon className="shrink-0" />
+                {t('dub.translator_agent')}
               </Button>
-            ))}
+              <Button
+                size="sm"
+                variant={!agent ? 'secondary' : 'ghost'}
+                aria-pressed={!agent}
+                disabled={locked || !provider}
+                className={SEGMENT}
+                title={engineName}
+                onClick={() => setDubQuality(engineQuality)}
+              >
+                <LanguagesIcon className="shrink-0" />
+                {engineName}
+              </Button>
+            </div>
+            {agent && <DubHint>{agentDescription}</DubHint>}
           </div>
-          <DubHint id="dub-translate-quality-help">{t('settings.translate_quality_desc')}</DubHint>
-          <DubTranslationToggles session={session} locked={locked} provider={provider} />
-        </div>
-      )}
-      {session.translationFallback && (
-        <div role="status" className="space-y-2 text-xs text-muted-foreground">
-          <p>{t('dub_workflow.cinematic_no_llm')}</p>
-          <Link to="/settings/models/$family" params={{ family: 'llm' }}>
-            {t('engineSidebar.llm')}
-          </Link>
-        </div>
-      )}
-      {/* #2752: the engine could not honour the chosen dialect. Without
+          {agent ? (
+            <div className="space-y-2 border-t border-border/40 pt-2">
+              <label htmlFor="dub-translation-instructions" className="text-xs font-medium">
+                {t('dubStyle.label')}
+              </label>
+              <textarea
+                dir="auto"
+                id="dub-translation-instructions"
+                aria-describedby="dub-translation-instructions-help"
+                rows={3}
+                maxLength={5000}
+                value={session.translationInstructions || ''}
+                disabled={locked}
+                onChange={(event) =>
+                  setDubTranslationOptions({ translationInstructions: event.target.value })
+                }
+                className="w-full resize-y rounded-lg border border-input bg-background/40 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              />
+              <DubHint id="dub-translation-instructions-help">{t('dubStyle.help')}</DubHint>
+            </div>
+          ) : (
+            <div className="space-y-2 border-t border-border/40 pt-2">
+              <p
+                className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
+                title={t('settings.translate_quality_desc')}
+              >
+                <GaugeIcon className="size-3.5" aria-hidden="true" />
+                {t('settings.translate_quality')}
+              </p>
+              <div
+                role="group"
+                aria-label={t('settings.translate_quality')}
+                aria-describedby="dub-translate-quality-help"
+                className={cn(SEGMENTS, 'grid-cols-3')}
+              >
+                {(['fast', 'autofit', 'cinematic'] as const).map((quality) => (
+                  <Button
+                    key={quality}
+                    size="sm"
+                    variant={session.quality === quality ? 'secondary' : 'ghost'}
+                    aria-pressed={session.quality === quality}
+                    disabled={locked}
+                    className={SEGMENT}
+                    onClick={() => setDubQuality(quality)}
+                  >
+                    {t('settings.translate_' + quality)}
+                  </Button>
+                ))}
+              </div>
+              <DubHint id="dub-translate-quality-help">
+                {t('settings.translate_quality_desc')}
+              </DubHint>
+              <DubTranslationToggles session={session} locked={locked} provider={provider} />
+            </div>
+          )}
+          {session.translationFallback && (
+            <div role="status" className="space-y-2 text-xs text-muted-foreground">
+              <p>{t('dub_workflow.cinematic_no_llm')}</p>
+              <Link to="/settings/models/$family" params={{ family: 'llm' }}>
+                {t('engineSidebar.llm')}
+              </Link>
+            </div>
+          )}
+          {/* #2752: the engine could not honour the chosen dialect. Without
           this the pick looked applied and the output looked simply wrong. */}
-      {session.dialectIgnored && (
-        <div role="status" className="space-y-2 text-xs text-muted-foreground">
-          <p>
-            {session.dialectUsed
-              ? t('dub_workflow.dialect_used', {
-                  variant: languageTagName(session.dialectUsed, i18n.language),
-                })
-              : t('dub_workflow.dialect_not_applied')}
-          </p>
-          <Link to="/settings/models/$family" params={{ family: 'llm' }}>
-            {t('engineSidebar.llm')}
+          {session.dialectIgnored && (
+            <div role="status" className="space-y-2 text-xs text-muted-foreground">
+              <p>
+                {session.dialectUsed
+                  ? t('dub_workflow.dialect_used', {
+                      variant: languageTagName(session.dialectUsed, i18n.language),
+                    })
+                  : t('dub_workflow.dialect_not_applied')}
+              </p>
+              <Link to="/settings/models/$family" params={{ family: 'llm' }}>
+                {t('engineSidebar.llm')}
+              </Link>
+            </div>
+          )}
+          <Link
+            to="/settings/models/$family"
+            params={{ family: 'translation' }}
+            className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <Settings2Icon className="size-3.5 shrink-0" />
+            <span className="truncate" title={engineName}>
+              {engineName}
+              {provider ? ` · ${t('modelMaintenance.' + provider.category)}` : ''}
+            </span>
           </Link>
+          {provider?.id === 'argos' && Boolean(argos.error) && (
+            <PipelineFailure
+              className="text-xs"
+              fallback={describeError(argos.error)}
+              action={
+                <Button size="xs" variant="ghost" onClick={argos.retry}>
+                  <RotateCcwIcon />
+                  {t('backend.retry')}
+                </Button>
+              }
+            />
+          )}
+          {provider?.id === 'argos' && argos.missing.length > 0 && (
+            <PipelineFailure
+              className="text-xs"
+              fallback={`${t('modelMaintenance.install')} · ${provider.display_name} · ${argos.missing
+                .map((pair) => `${pair.source_lang} → ${pair.target_lang}`)
+                .join(', ')}`}
+              action={
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={argos.installing}
+                  onClick={argos.install}
+                >
+                  {argos.installing ? (
+                    <LoaderCircleIcon className="animate-spin" />
+                  ) : (
+                    <LanguagesIcon />
+                  )}
+                  {t(argos.installing ? 'common.loading' : 'modelMaintenance.install')}
+                </Button>
+              }
+            />
+          )}
+          {provider && !(provider.ready ?? provider.installed) && (
+            <PipelineFailure
+              className="text-xs"
+              fallback={provider.availability_reason || t('modelSettings.unavailable')}
+            />
+          )}
         </div>
-      )}
-      <Link
-        to="/settings/models/$family"
-        params={{ family: 'translation' }}
-        className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
-      >
-        <Settings2Icon className="size-3.5 shrink-0" />
-        <span className="truncate" title={engineName}>
-          {engineName}
-          {provider ? ` · ${t('modelMaintenance.' + provider.category)}` : ''}
-        </span>
-      </Link>
-      {provider?.id === 'argos' && Boolean(argos.error) && (
-        <PipelineFailure
-          className="text-xs"
-          fallback={describeError(argos.error)}
-          action={
-            <Button size="xs" variant="ghost" onClick={argos.retry}>
-              <RotateCcwIcon />
-              {t('backend.retry')}
-            </Button>
-          }
-        />
-      )}
-      {provider?.id === 'argos' && argos.missing.length > 0 && (
-        <PipelineFailure
-          className="text-xs"
-          fallback={`${t('modelMaintenance.install')} · ${provider.display_name} · ${argos.missing
-            .map((pair) => `${pair.source_lang} → ${pair.target_lang}`)
-            .join(', ')}`}
-          action={
-            <Button size="xs" variant="outline" disabled={argos.installing} onClick={argos.install}>
-              {argos.installing ? <LoaderCircleIcon className="animate-spin" /> : <LanguagesIcon />}
-              {t(argos.installing ? 'common.loading' : 'modelMaintenance.install')}
-            </Button>
-          }
-        />
-      )}
-      {provider && !(provider.ready ?? provider.installed) && (
-        <PipelineFailure
-          className="text-xs"
-          fallback={provider.availability_reason || t('modelSettings.unavailable')}
-        />
-      )}
+      </details>
     </section>
   );
 }
