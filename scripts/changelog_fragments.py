@@ -35,7 +35,8 @@ def fragment_files(directory: Path = FRAGMENT_DIR) -> list[Path]:
 
 def entry_of(path: Path) -> str:
     """The one-line entry a fragment holds, without a leading list marker."""
-    lines = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    # utf-8-sig: Windows editors save a byte-order mark, which strip() keeps.
+    lines = [ln.strip() for ln in path.read_text(encoding="utf-8-sig").splitlines() if ln.strip()]
     if len(lines) != 1:
         raise ValueError(f"{path.name}: a fragment is exactly one line, found {len(lines)}")
     return re.sub(r"^[-*]\s+", "", lines[0])
