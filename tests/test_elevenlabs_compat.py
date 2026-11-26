@@ -611,3 +611,246 @@ def test_the_upload_cap_counts_bytes_without_a_declared_length():
     finally:
         ul.MAX_UPLOAD_BYTES = old
     assert exc.value.status_code == 413
+
+
+def test_text_to_dialogue_joins_each_voice_with_a_pause(client, engine, profile):
+    pid, _ = profile
+    res = client.post("/elevenlabs/v1/text-to-dialogue", params={"output_format": "pcm_24000"},
+                      json={"inputs": [{"text": "Hi.", "voice_id": "default"},
+                                       {"text": "Hello!", "voice_id": pid}],
+                            "model_id": "eleven_v3", "seed": 3})
+    assert res.status_code == 200, res.text
+    gap = int(24000 * _el()._TURN_GAP_S)
+    assert len(res.content) // 2 == 2 * int(24000 * SECONDS) + gap
+    first, second = engine.calls[-2:]
+    assert "ref_audio" not in first and second["ref_audio"].endswith(f"{pid}.wav")
+    assert first["seed"] == second["seed"] == 3
+
+    streamed = client.post("/elevenlabs/v1/text-to-dialogue/stream", params={"output_format": "pcm_24000"},
+                           json={"inputs": [{"text": "Hi.", "voice_id": "default"}]})
+    assert streamed.status_code == 200 and len(streamed.content) // 2 == int(24000 * SECONDS)
+
+
+def test_text_to_dialogue_checks_every_voice_first(client, engine):
+    res = client.post("/elevenlabs/v1/text-to-dialogue", params={"output_format": "pcm_24000"},
+                      json={"inputs": [{"text": "Hi.", "voice_id": "default"},
+                                       {"text": "Yo.", "voice_id": "21m00Tcm4TlvDq8ikWAM"}]})
+    assert res.status_code == 404
+    assert res.json()["detail"]["status"] == "voice_not_found"
+    assert engine.calls == []
+
+
+def test_with_timestamps_uses_recognized_words_when_available(client, engine, monkeypatch):
+    import base64
+
+    oc = importlib.import_module("api.routers.openai_compat")
+    asr = importlib.import_module("services.asr_backend")
+    monkeypatch.setattr(asr, "asr_model_missing_error", lambda: None)
+
+    async def fake(**kw):
+        assert kw["file"].file.read(4) == b"RIFF"
+        return {"text": "Hello there.", "words": [{"word": "Hello", "start": 0.05, "end": 0.2},
+                                                  {"word": "there", "start": 0.25, "end": 0.45}]}
+
+    monkeypatch.setattr(oc, "_transcribe_request", fake)
+    res = client.post("/elevenlabs/v1/text-to-speech/default/with-timestamps",
+                      params={"output_format": "pcm_16000"}, json={"text": "Hello there."})
+    assert res.status_code == 200, res.text
+    assert res.headers["x-omnivoice-alignment"] == "recognized"
+    body = res.json()
+    assert len(base64.b64decode(body["audio_base64"])) == 16000 * 2 * SECONDS
+    alignment = body["alignment"]
+    assert "".join(alignment["characters"]) == "Hello there."
+    assert alignment["character_start_times_seconds"][6] == pytest.approx(0.25)
+
+
+def test_with_timestamps_estimates_without_a_recognizer(client, engine, monkeypatch):
+    asr = importlib.import_module("services.asr_backend")
+    monkeypatch.setattr(asr, "asr_model_missing_error", lambda: {"error": "asr_model_missing"})
+    res = client.post("/elevenlabs/v1/text-to-speech/default/stream/with-timestamps",
+                      params={"output_format": "pcm_24000"}, json={"text": "Hi you"})
+    assert res.status_code == 200, res.text
+    assert res.headers["x-omnivoice-alignment"] == "estimated"
+    import json as _json
+
+    line = _json.loads(res.content.decode().strip())
+    ends = line["alignment"]["character_end_times_seconds"]
+    assert len(ends) == 6 and ends[-1] == pytest.approx(SECONDS, abs=0.01)
+
+
+def test_add_voice_creates_a_clone_profile(client, monkeypatch):
+    pr = importlib.import_module("api.routers.profiles")
+    seen = {}
+
+    async def fake_create(**kw):
+        seen.update(kw)
+        seen["audio"] = await kw["ref_audio"].read()
+        return {"id": "new-profile"}
+
+    monkeypatch.setattr(pr, "create_profile", fake_create)
+    res = client.post("/elevenlabs/v1/voices/add",
+                      data={"name": "Narrator", "labels": '{"language": "en"}'},
+                      files=[("files", ("a.wav", b"first", "audio/wav")),
+                             ("files", ("b.wav", b"second", "audio/wav"))])
+    assert res.status_code == 200, res.text
+    assert res.json() == {"voice_id": "new-profile", "requires_verification": False}
+    assert seen["name"] == "Narrator" and seen["kind"] == "clone"
+    assert seen["language"] == "en" and seen["audio"] == b"first"
+
+    bad = client.post("/elevenlabs/v1/voices/add", data={"name": "X", "labels": "[1]"},
+                      files=[("files", ("a.wav", b"x", "audio/wav"))])
+    assert bad.status_code == 422 and bad.json()["detail"]["status"] == "invalid_labels"
+
+
+def test_delete_voice_removes_the_profile(client, monkeypatch, profile):
+    pr = importlib.import_module("api.routers.profiles")
+    deleted = []
+    monkeypatch.setattr(pr, "delete_profile", lambda pid: deleted.append(pid) or {"deleted": pid})
+    pid, name = profile
+    res = client.delete(f"/elevenlabs/v1/voices/{name}")
+    assert res.status_code == 200, res.text
+    assert deleted == [pid]
+    missing = client.delete("/elevenlabs/v1/voices/default")
+    assert missing.status_code == 404
+
+
+def test_deleting_a_voice_needs_administrator_access():
+    from api.routers.elevenlabs_compat import router
+
+    route = next(r for r in router.routes if r.path.endswith("/v1/voices/{voice_id}") and "DELETE" in r.methods)
+    assert any(getattr(d.dependency, "__name__", "") == "require_admin" for d in route.dependencies)
+
+
+def test_dubbing_runs_on_the_batch_queue(client, monkeypatch, tmp_path):
+    batch = importlib.import_module("api.routers.batch")
+    seen = {}
+
+    async def fake_enqueue(**kw):
+        seen.update(kw)
+        seen["video"] = await kw["video"].read()
+        return {"job_id": "dub123", "status": "queued", "queue_position": 1}
+
+    monkeypatch.setattr(batch, "enqueue_batch_job", fake_enqueue)
+    res = client.post("/elevenlabs/v1/dubbing", data={"target_lang": "es", "drop_background_audio": "true"},
+                      files={"file": ("clip.mp4", b"video", "video/mp4")})
+    assert res.status_code == 200, res.text
+    assert res.json()["dubbing_id"] == "dub123"
+    assert seen["langs"] == "es" and seen["preserve_bg"] is False and seen["video"] == b"video"
+
+    no_file = client.post("/elevenlabs/v1/dubbing", data={"target_lang": "es", "source_url": "https://x"})
+    assert no_file.status_code == 422 and no_file.json()["detail"]["status"] == "file_required"
+
+    output = tmp_path / "out.mp4"
+    output.write_bytes(b"dubbed-video")
+    job = {"id": "dub123", "status": "running", "filename": "clip.mp4", "langs": ["es"],
+           "outputs": {"es": str(output)}, "error": None}
+    monkeypatch.setitem(batch._jobs, "dub123", job)
+    status = client.get("/elevenlabs/v1/dubbing/dub123").json()
+    assert status == {"dubbing_id": "dub123", "name": "clip.mp4", "status": "dubbing",
+                      "target_languages": ["es"], "error": None}
+    early = client.get("/elevenlabs/v1/dubbing/dub123/audio/es")
+    assert early.status_code == 425 and early.json()["detail"]["status"] == "dubbing_not_ready"
+
+    job["status"] = "done"
+    assert client.get("/elevenlabs/v1/dubbing/dub123").json()["status"] == "dubbed"
+    done = client.get("/elevenlabs/v1/dubbing/dub123/audio/es")
+    assert done.status_code == 200 and done.content == b"dubbed-video"
+
+    job.update(status="failed", error="Translation failed")
+    assert client.get("/elevenlabs/v1/dubbing/dub123").json()["error"] == "Translation failed"
+    assert client.get("/elevenlabs/v1/dubbing/nope").status_code == 404
+
+
+def test_ready_text_waits_for_a_sentence_or_a_long_run():
+    take = _el().take_ready_text
+    assert take("Hello there. How are", flush=False) == (["Hello there."], "How are")
+    assert take("No end yet", flush=False) == ([], "No end yet")
+    assert take("Tail", flush=True) == (["Tail"], "")
+    assert take('She said "hi." Then left. ', flush=False) == (['She said "hi."', "Then left."], "")
+    long = "word " * 80
+    ready, rest = take(long, flush=False)
+    assert ready and all(len(r) <= _el()._WS_MAX_BUFFER for r in ready)
+    assert len(rest) <= _el()._WS_MAX_BUFFER
+
+
+def test_stream_input_speaks_each_sentence_then_finishes(client, engine):
+    import base64
+
+    path = "/elevenlabs/v1/text-to-speech/default/stream-input?output_format=pcm_16000"
+    with client.websocket_connect(path) as ws:
+        ws.send_json({"text": " ", "voice_settings": {"speed": 1.1}})
+        ws.send_json({"text": "Hello there. How are"})
+        first = ws.receive_json()
+        assert len(base64.b64decode(first["audio"])) == 16000 * 2 * SECONDS
+        assert "".join(first["normalizedAlignment"]["chars"]) == "Hello there."
+        ws.send_json({"text": " you"})
+        ws.send_json({"text": ""})
+        second = ws.receive_json()
+        assert "".join(second["normalizedAlignment"]["chars"]) == "How are you"
+        assert ws.receive_json() == {"isFinal": True}
+    assert engine.calls[0]["speed"] == pytest.approx(1.1)
+    assert len(engine.calls) == 2
+
+
+def test_stream_input_rejects_a_bad_format(client):
+    with client.websocket_connect("/elevenlabs/v1/text-to-speech/default/stream-input?output_format=flac_1") as ws:
+        assert ws.receive_json()["error"] == "invalid_output_format"
+
+
+@pytest.fixture()
+def history(profile):
+    """Three takes in generation history (two by the profile), plus one whose
+    audio is gone."""
+    import soundfile as sf
+    from core.config import OUTPUTS_DIR
+    from core.db import db_conn
+
+    pid, _ = profile
+    os.makedirs(OUTPUTS_DIR, exist_ok=True)
+    ids, files = [], []
+    with db_conn() as conn:
+        for i, (voice, has_audio) in enumerate([(pid, True), (None, True), (pid, True), (pid, False)]):
+            hid = f"el-h-{uuid.uuid4().hex[:8]}"
+            name = f"{hid}.wav"
+            if has_audio:
+                sf.write(os.path.join(OUTPUTS_DIR, name), np.zeros(240, dtype=np.float32), 24000)
+                files.append(os.path.join(OUTPUTS_DIR, name))
+            conn.execute(
+                "INSERT INTO generation_history (id, text, mode, profile_id, audio_path, created_at) "
+                "VALUES (?, ?, 'clone', ?, ?, ?)",
+                (hid, f"take {i}", voice, name, 4_000_000_000 + i),
+            )
+            ids.append(hid)
+    yield ids
+    with db_conn() as conn:
+        conn.executemany("DELETE FROM generation_history WHERE id=?", [(i,) for i in ids])
+    for f in files:
+        if os.path.exists(f):
+            os.unlink(f)
+
+
+def test_history_lists_pages_and_serves_takes(client, monkeypatch, profile, history):
+    pid, name = profile
+    first, second, third, gone = history
+    page = client.get("/elevenlabs/v1/history", params={"page_size": 2}).json()
+    newest = [item["history_item_id"] for item in page["history"]]
+    assert newest == [third, second] and page["has_more"] is True
+    assert gone not in newest  # audio missing on disk
+
+    rest = client.get("/elevenlabs/v1/history", params={
+        "page_size": 2, "start_after_history_item_id": page["last_history_item_id"]}).json()
+    assert rest["history"][0]["history_item_id"] == first
+
+    mine = client.get("/elevenlabs/v1/history", params={"voice_id": pid}).json()["history"]
+    assert [item["history_item_id"] for item in mine][:2] == [third, first]
+    assert mine[0]["voice_name"] == name and mine[0]["text"] == "take 2"
+
+    audio = client.get(f"/elevenlabs/v1/history/{third}/audio")
+    assert audio.status_code == 200 and audio.content[:4] == b"RIFF"
+    assert client.get(f"/elevenlabs/v1/history/{gone}").status_code == 404
+
+    gen = importlib.import_module("api.routers.generation")
+    deleted = []
+    monkeypatch.setattr(gen, "delete_single_history", lambda hid: deleted.append(hid))
+    assert client.delete(f"/elevenlabs/v1/history/{third}").status_code == 200
+    assert deleted == [third]

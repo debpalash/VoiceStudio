@@ -73,6 +73,10 @@ ALLOWLIST: dict[str, str] = {
         "Streams audio; inline require_ws_access checks Origin and the local, trusted-network "
         "or remote-admin principal before accept. The HTTP-only PIN does not authorize a socket."
     ),
+    "WS /elevenlabs/v1/text-to-speech/{voice_id}/stream-input": (
+        "ElevenLabs input streaming, the same audio as /ws/tts; inline require_ws_access checks "
+        "Origin and the local, trusted-network or remote-admin principal before accept."
+    ),
     "WS /ws/events": (
         "Read-only event feed; inline require_ws_access checks Origin and the local, trusted-network "
         "or remote-admin principal before accept. The HTTP-only PIN does not authorize a socket."
