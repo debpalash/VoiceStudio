@@ -43,6 +43,15 @@ describe('startup log', () => {
     expect(() => logStartup('x', join(file, 'nope', 'x'))).not.toThrow();
   });
 
+  it('starts an oversized log over instead of growing it', () => {
+    const file = join(tmp(), 'startup.log');
+    writeFileSync(file, 'x'.repeat(300 * 1024));
+    logStartup('fresh', file);
+    const text = readFileSync(file, 'utf8');
+    expect(text.length).toBeLessThan(1024);
+    expect(text).toContain('fresh');
+  });
+
   it('records fatal errors, rejections and exit codes', () => {
     const file = join(tmp(), 'log');
     const proc = new EventEmitter();

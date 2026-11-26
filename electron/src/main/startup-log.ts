@@ -1,10 +1,9 @@
 // Dependency-free startup evidence. Imported first by index.ts so even a failure
 // while loading the remaining modules, or an exit before userData exists, leaves a
 // line somewhere a user can find (see docs/install/macos.md).
-import { appendFileSync, mkdirSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, ftruncateSync, mkdirSync, openSync, writeSync } from 'node:fs';
 import { homedir, release, tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
-import { renameSyncWithRetry } from './rename-retry';
 
 const MAX_BYTES = 256 * 1024;
 const FILE_NAME = 'VoiceStudio-startup.log';
@@ -48,12 +47,15 @@ let defaultFile: string | null = null;
 export function logStartup(message: string, file?: string): void {
   try {
     const target = file ?? (defaultFile ??= startupLogPath());
+    // One descriptor for the size check and the write, so nothing can swap the
+    // file in between; an oversized log starts over rather than growing forever.
+    const fd = openSync(target, 'a');
     try {
-      if (statSync(target).size > MAX_BYTES) renameSyncWithRetry(target, `${target}.1`);
-    } catch {
-      /* no file yet */
+      if (fstatSync(fd).size > MAX_BYTES) ftruncateSync(fd, 0);
+      writeSync(fd, `${new Date().toISOString()} pid=${process.pid} ${message}\n`);
+    } finally {
+      closeSync(fd);
     }
-    appendFileSync(target, `${new Date().toISOString()} pid=${process.pid} ${message}\n`);
   } catch {
     /* nowhere to write */
   }
