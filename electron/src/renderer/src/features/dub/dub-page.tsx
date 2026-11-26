@@ -710,6 +710,8 @@ export function DubPage() {
     setSegmentPreview(null);
     setPreviewingSegmentId(null);
     setGenerationReview(null);
+    setListenComplete(false);
+    setCompleteSeek(null);
   }, [session.jobId, livePreview.stop]);
 
   const segmentIssues = useMemo(() => dubSegmentIssues(session), [session]);
@@ -1485,7 +1487,7 @@ export function DubPage() {
             }}
             onRegenerate={(id) => generateTargets([id])}
             onListen={
-              code && previewTracks.includes(code)
+              code && guide.audioReady && previewTracks.includes(code)
                 ? (id) => {
                     const row = session.segments.find((s) => s.id === id);
                     if (row) {
