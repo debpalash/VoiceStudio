@@ -107,3 +107,17 @@ def test_idless_segments_use_index_keys(qc_env):
         del seg["id"]
     job["segments_i18n"]["es"] = {"0": "hola mundo", "1": "muchas gracias"}
     assert _qc(qc_env, "es")["flagged_count"] == 0
+
+
+def test_narration_qc_annotates_speech_blocks_without_changing_captions(qc_env):
+    import copy
+    job = qc_env['job']
+    captions = copy.deepcopy(job['segments'])
+    blocks = [dict(start=0, end=1, id='speech-a', text='hola mundo'),
+              dict(start=1, end=2, id='speech-b', text='muchas gracias')]
+    job['narration_scripts'] = {'es': {'version': 2, 'blocks': blocks}}
+    job['seg_order_by_lang'] = {'es': ['speech-a', 'speech-b']}
+    result = _qc(qc_env, 'es')
+    assert result['flagged_count'] == 0
+    assert [row['qc_drift'] for row in blocks] == [0.0, 0.0]
+    assert job['segments'] == captions

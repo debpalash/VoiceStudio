@@ -279,6 +279,8 @@ class DubResumeJournal:
         key: str,
         sample_rate: int,
         validate: Callable[[str], bool],
+        *,
+        discard_invalid: bool = True,
     ) -> Optional[str]:
         """Path of a verified recovery copy for this exact key, else ``None``.
 
@@ -308,8 +310,9 @@ class DubResumeJournal:
                     reason = f"audio unreadable ({type(err).__name__})"
             if reason is None:
                 return wav
-            logger.info("dub resume: discarding recovered segment %s: %s", log_safe(seg_id), reason)
-            self.drop(seg_id)
+            if discard_invalid:
+                logger.info("dub resume: discarding recovered segment %s: %s", log_safe(seg_id), reason)
+                self.drop(seg_id)
             return None
 
     def recover_into(

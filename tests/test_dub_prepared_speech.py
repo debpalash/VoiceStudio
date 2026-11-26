@@ -94,7 +94,9 @@ def test_dub_whole_line_deletion_publishes_silence_and_a_current_fingerprint(
     events = dub.run(segments=segments, segment_ids=ids, language="English")
     assert any(event["type"] == "done" for event in events), events
     actual = [text for batch in batches for text in batch] + [text for text, _kw in fake_engine.calls]
-    assert actual == ["dogs", "birds"]
+    # Only the deleted row changed; unchanged resolved speech is reusable in
+    # both serial and native-batch paths. Empty text never reaches the engine.
+    assert actual == []
     from services.audio_io import load_audio
 
     silent, _ = load_audio(str(dub.path / "seg_en_delete.wav"))
@@ -142,3 +144,34 @@ def test_intentional_silence_staging_warning_redacts_error_paths(
     assert "intentional silence for delete" in caplog.text
     assert private_path not in caplog.text
     assert "OSError" in caplog.text
+
+
+def test_saved_takes_do_not_rescan_ahead_for_every_row(
+    spoken_dub, client, fake_engine, saved_pronunciations, monkeypatch,
+):
+    """Each checkpoint hit used to start a prefetch scan over every later row,
+    so a long fully reused dub made quadratically many lookups."""
+    dub, _backend = spoken_dub
+    checkpoints = importlib.import_module("services.dub_speech_checkpoints")
+
+    def generate_batch(_self, texts, **_kwargs):
+        return [torch.ones(1, 24000) * 0.1 for _ in texts]
+
+    monkeypatch.setattr(fake_engine, "generate_batch", generate_batch)
+    rows = 8
+    segments = [dict(start=i, end=i + 1, text=f"line {i}") for i in range(rows)]
+    ids = [f"s{i}" for i in range(rows)]
+    assert any(e["type"] == "done" for e in dub.run(segments=segments, segment_ids=ids, language="English"))
+    for wav in dub.path.glob("seg_en_*.wav"):
+        wav.unlink()
+    lookups = []
+    has = checkpoints.SpeechCheckpoints.has
+
+    def counted(self, prepared):
+        lookups.append(prepared["text"])
+        return has(self, prepared)
+
+    monkeypatch.setattr(checkpoints.SpeechCheckpoints, "has", counted)
+    events = dub.run(segments=segments, segment_ids=ids, language="English")
+    assert any(e["type"] == "done" for e in events), events
+    assert 0 < len(lookups) <= rows

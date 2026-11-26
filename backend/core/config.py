@@ -100,7 +100,10 @@ def dub_seg_path(job_id, seg_id):
     safe_seg = re.sub(r"[^A-Za-z0-9._-]", "_", str(seg_id))
     base = os.path.realpath(DUB_DIR)
     full = os.path.realpath(os.path.join(base, safe_job, f"seg_{safe_seg}.wav"))
-    if full != base and not full.startswith(base + os.sep):
+    # The name always ends in a "seg_*.wav" file, so it can never equal the
+    # root itself: a single prefix check is the whole containment proof, in
+    # the realpath + startswith form static analysis recognizes.
+    if not full.startswith(base + os.sep):
         raise ValueError(f"dub segment path escapes DUB_DIR: {job_id!r}/{seg_id!r}")
     return full
 PREVIEW_DIR = os.path.join(DATA_DIR, "preview")

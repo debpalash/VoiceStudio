@@ -584,6 +584,9 @@
     "body_required": true,
     "encoding": "application/json",
     "fields": [
+      "auto_fit_overflow",
+      "caption_segment_ids",
+      "caption_segments",
       "fit_options",
       "guidance_scale",
       "instruct",

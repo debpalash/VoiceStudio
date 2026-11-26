@@ -69,6 +69,18 @@ def failure_already_captured(event, epoch):
     return type(event) is _CapturedFailureEvent and event._diagnostic_cause[0] == epoch
 
 
+def carry_failure_identity(original, updated):
+    """Keep an existing memory-only receipt when annotating an SSE frame."""
+    try:
+        if failure_already_captured(original, inherited_grant()):
+            result = _CapturedFailureEvent(updated)
+            result._diagnostic_cause = original._diagnostic_cause
+            return result
+    except (AttributeError, IndexError, TypeError):
+        pass  # Unproven receipts leave normal dispatcher capture intact.
+    return updated
+
+
 @contextmanager
 def grant_scope(epoch):
     """Bind only a local observed grant; None means known OFF, not unknown."""
