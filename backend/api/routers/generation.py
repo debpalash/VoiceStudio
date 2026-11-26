@@ -15,8 +15,8 @@ from core.render_trace import timed as _render_timed
 import threading
 import traceback
 from pathlib import Path
-from typing import Optional, Literal
-from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Depends, Request
+from typing import Annotated, Optional, Literal
+from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Depends, Request, Query
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
@@ -3114,8 +3114,28 @@ def _prune_history_over_cap(*, keep_id: str | None = None) -> int:
     return len(victims)
 
 
+def _history_item(row, text_limit: Optional[int] = None) -> dict:
+    """One history row as served. A take stores its whole script (#3062), so a
+    book-length take would otherwise ride along in every list response and be
+    parsed by the UI on each navigation. With ``text_limit`` the text is cut
+    and ``text_truncated`` set; ``transcript`` is derived from the full text
+    first and blanked (``""`` = transcribe the audio) when it would be cut."""
+    item = dict(row)
+    # What "save as voice" may use as the take's transcript; ""
+    # asks for the take's audio to be transcribed (#3062).
+    item["transcript"] = take_reference_transcript(item.get("text"))
+    if text_limit is not None and len(item.get("text") or "") > text_limit:
+        item["text"] = item["text"][:text_limit]
+        item["text_truncated"] = True
+        if len(item["transcript"]) > text_limit:
+            item["transcript"] = ""
+    return item
+
+
 @router.get("/history", dependencies=[Depends(reject_cross_site_get)])
-def list_history():
+def list_history(
+    text_limit: Annotated[Optional[int], Query(ge=1, le=100_000)] = None,
+):
     """The newest 50 generations plus every starred take, newest first, kept to
     rows whose audio still exists on disk.
 
@@ -3142,11 +3162,7 @@ def list_history():
             if r["audio_path"] and (not p or not os.path.exists(p)):
                 stale_ids.append(r["id"])
             else:
-                item = dict(r)
-                # What "save as voice" may use as the take's transcript; ""
-                # asks for the take's audio to be transcribed (#3062).
-                item["transcript"] = take_reference_transcript(item.get("text"))
-                alive.append(item)
+                alive.append(_history_item(r, text_limit))
         if stale_ids:
             conn.executemany(
                 "DELETE FROM generation_history WHERE id=?",
@@ -3154,6 +3170,18 @@ def list_history():
             )
             logger.info("pruned %d stale history rows (audio file gone)", len(stale_ids))
     return alive
+
+
+@router.get("/history/{history_id}", dependencies=[Depends(reject_cross_site_get)])
+def get_history_item(history_id: str):
+    """One take with its full text (the list may clip it, see ``text_limit``)."""
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM generation_history WHERE id=?", (history_id,)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="That take no longer exists.")
+    return _history_item(row)
 
 
 class _StarBody(BaseModel):

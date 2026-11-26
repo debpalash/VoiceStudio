@@ -2636,6 +2636,20 @@
       "title": "Profile Id",
       "type": "string"
      },
+     "source_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Ids"
+     },
      "speed": {
       "anyOf": [
        {
@@ -6976,6 +6990,39 @@
    },
    "schemas__requests__DubRequest": {
     "properties": {
+     "auto_fit_overflow": {
+      "default": false,
+      "title": "Auto Fit Overflow",
+      "type": "boolean"
+     },
+     "caption_segment_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Caption Segment Ids"
+     },
+     "caption_segments": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/DubSegment"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Caption Segments"
+     },
      "fit_options": {
       "anyOf": [
        {
@@ -7101,7 +7148,8 @@
          "concise",
          "stretch_video",
          "strict_slot",
-         "smart_fit"
+         "smart_fit",
+         "narration"
         ],
         "type": "string"
        },
@@ -13559,6 +13607,54 @@
     "summary": "Dub Parse Subtitle Text"
    }
   },
+  "/dub/plan/{job_id}": {
+   "post": {
+    "description": "Inspect the exact render inputs and saved speech without running TTS.",
+    "operationId": "dub_generation_plan_dub_plan__job_id__post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/schemas__requests__DubRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dub Generation Plan"
+   }
+  },
   "/dub/preview-segment/{job_id}": {
    "post": {
     "description": "Generate TTS for a single segment and return WAV bytes.\n\nThis is the fast path for interactive editing \u2014 8 diffusion steps,\nno disk write, no mix. The preview IS synthetic audio leaving the app,\nso it carries the same invisible provenance mark as every other\nproducer (#1169 \u2014 \"no watermark\" here used to be an exemption).",
@@ -13956,6 +14052,64 @@
      }
     },
     "summary": "Dub Segments Text"
+   }
+  },
+  "/dub/speech-preview/{job_id}/{render_id}/{token}": {
+   "get": {
+    "operationId": "dub_speech_preview_dub_speech_preview__job_id___render_id___token__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "title": "Job Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "render_id",
+      "required": true,
+      "schema": {
+       "title": "Render Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "token",
+      "required": true,
+      "schema": {
+       "title": "Token",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "audio/wav": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      },
+      "description": "The completed take as WAV audio."
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dub Speech Preview"
    }
   },
   "/dub/srt/{job_id}": {
@@ -17729,6 +17883,26 @@
    "get": {
     "description": "The newest 50 generations plus every starred take, newest first, kept to\nrows whose audio still exists on disk.\n\nStarred takes ride along past the 50-row window so a keeper can never age\noff the rail. Rows whose WAV was deleted out-of-band (cleared outputs dir,\nmanual cleanup) used to come back anyway and render dead players that 404\non every fetch; prune them here so the UI never sees them again.",
     "operationId": "list_history_history_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "text_limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maximum": 100000,
+         "minimum": 1,
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Text Limit"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "content": {
@@ -17737,6 +17911,16 @@
        }
       },
       "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
      }
     },
     "summary": "List History"
@@ -17777,6 +17961,42 @@
      }
     },
     "summary": "Delete Single History"
+   },
+   "get": {
+    "description": "One take with its full text (the list may clip it, see ``text_limit``).",
+    "operationId": "get_history_item_history__history_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "history_id",
+      "required": true,
+      "schema": {
+       "title": "History Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get History Item"
    }
   },
   "/history/{history_id}/starred": {

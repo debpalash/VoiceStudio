@@ -40,6 +40,17 @@ with `no matching manifest for linux/arm64/v8`.
   devices using L4T/JetPack are outside this image's support because they need
   JetPack-specific PyTorch packages.
 
+## Intel Arc XPU images (experimental)
+
+The published CPU, CUDA and ROCm images do not pass `/dev/dri` or run torch
+XPU, and the repository ships no XPU image recipe, so Intel Arc XPU is not
+available in Docker. Run VoiceStudio natively on an Intel Arc host instead.
+For a single integrated Intel Arc GPU (Lunar Lake 130V/140V) the backend
+treats the GPU as unified memory: it releases the TTS model before
+transcription instead of relocating it, and clone-reference
+auto-transcription offloads and restores around the ASR load. Discrete Arc,
+CUDA, NPU and multi-XPU hosts keep the dedicated path unchanged.
+
 ## Image tags
 
 > **Image ↔ version mapping**

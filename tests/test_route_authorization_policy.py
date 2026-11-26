@@ -324,6 +324,7 @@ _DEPENDENCY_FREE_GETS: frozenset[str] = frozenset(
         "GET /generate/budget",
         "GET /health",
         "GET /history",
+        "GET /history/{history_id}",
         "GET /jobs",
         "GET /jobs/{job_id}",
         "GET /jobs/{job_id}/events",

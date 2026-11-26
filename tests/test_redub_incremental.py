@@ -397,6 +397,9 @@ def test_legacy_cache_ignored_once_job_has_another_language(patched_generate):
     run, model, job, job_dir = patched_generate
 
     run(_body(_ES_SEGS))
+    # Simulate a legacy build: it has no private recovery checkpoints.
+    import shutil
+    shutil.rmtree(job_dir / ".speech-checkpoints", ignore_errors=True)
     for i in range(2):
         (job_dir / f"seg_es_{i}.wav").rename(job_dir / f"seg_{i}.wav")
     # Another language exists on the job → the legacy files are ambiguous.
@@ -507,14 +510,14 @@ def test_promoted_regeneration_validates_languages_before_any_tts(patched_genera
     assert model.calls == [], "validate the promoted set before replacing any cached audio"
 
 
-def test_silent_short_segment_skips_language_validation(patched_generate, monkeypatch):
+def test_blank_short_segment_skips_language_validation(patched_generate, monkeypatch):
     run, model, job, job_dir = patched_generate
     def check_language(self, language):
         if language == "Japanese":
             raise ValueError("Unsupported language")
     monkeypatch.setattr(_FakeBackend, "_check_language", check_language, raising=False)
     run(_body([
-        {"start": 0, "end": 0.05, "text": "Silent", "target_lang": "Japanese"},
+        {"start": 0, "end": 0.05, "text": "", "target_lang": "Japanese"},
         {"start": 1, "end": 2, "text": "Spoken", "target_lang": "English"},
     ], language="English"))
     assert model.calls == ["Spoken"]

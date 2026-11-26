@@ -56,13 +56,24 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
       sourceLanguage: s.sourceLanguage,
       numSpeakers: s.dubNumSpeakers,
       timingStrategy: s.timingStrategy,
+      autoFitOverflow: s.autoFitOverflow === true,
       voiceMatch: s.voiceMatch,
       generatedTiming: s.generatedTiming,
       fingerprintsByLang: s.segHashesByLang,
+      generatedRequestKeys: s.generatedRequestKeys,
+      exportedRequestKeys: s.exportedRequestKeys,
+      lastGenerationError: s.lastGenerationError,
       sourceLang: s.dubSourceLangCode,
       tracks: s.dubTracks,
       phase: s.dubStep,
       inputType: s.inputType ?? (!project.video_path && project.audio_path ? 'audio' : 'video'),
+      narration: s.narration,
+      narrationWanted: s.narrationWanted,
+      listenedRequestKeys: s.listenedRequestKeys,
+      subtitleOnly: s.subtitleOnly,
+      skipTranscription: s.skipTranscription,
+      separateBackground: s.separateBackground,
+      subtitleTargetLang: s.subtitleTargetLang,
     }),
     defaults,
   );
@@ -73,12 +84,13 @@ export function projectPayload(session: DubSession, name: string) {
   const sourceDuration = session.duration;
   return {
     name: name.trim(),
-    video_path: prior?.video_path || session.filename,
+    video_path: session.subtitleOnly ? null : prior?.video_path || session.filename,
     audio_path: prior?.audio_path ?? null,
     duration:
       typeof sourceDuration === 'number' && Number.isFinite(sourceDuration) && sourceDuration > 0
         ? sourceDuration
-        : prior?.duration ?? session.segments.reduce((end, segment) => Math.max(end, segment.end), 0),
+        : (prior?.duration ??
+          session.segments.reduce((end, segment) => Math.max(end, segment.end), 0)),
     state: {
       ...prior?.state,
       dubJobId: session.jobId,
@@ -115,14 +127,25 @@ export function projectPayload(session: DubSession, name: string) {
       sourceLanguage: session.sourceLanguage,
       dubNumSpeakers: session.numSpeakers,
       timingStrategy: session.timingStrategy,
+      autoFitOverflow: session.autoFitOverflow === true,
       voiceMatch: session.voiceMatch,
       generatedTiming: session.generatedTiming,
       segHashesByLang: session.fingerprintsByLang,
+      generatedRequestKeys: session.generatedRequestKeys,
+      exportedRequestKeys: session.exportedRequestKeys,
+      lastGenerationError: session.lastGenerationError,
       dubLangCode: translationTargetCode(session.target) || 'auto',
       dubSourceLangCode: session.sourceLang,
       dubTracks: session.tracks,
       dubStep: session.phase,
       inputType: session.inputType,
+      narration: session.narration,
+      narrationWanted: session.narrationWanted,
+      listenedRequestKeys: session.listenedRequestKeys,
+      subtitleOnly: session.subtitleOnly,
+      skipTranscription: session.skipTranscription,
+      separateBackground: session.separateBackground,
+      subtitleTargetLang: session.subtitleTargetLang,
     },
   };
 }
