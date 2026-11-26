@@ -86,6 +86,17 @@ def test_prior_words_are_matched_chronologically_not_by_cue_insertion_order():
     assert result[-1]['text'] == 'Welcome'
 
 
+def test_prior_window_covers_all_incoming_words_when_they_are_out_of_order():
+    old = segment('old', words('one two three', 10))
+    incoming = words('one two three', 10) + [
+        {'text': 'late', 'start': 13.0, 'end': 13.4},
+        {'text': 'early', 'start': 8.0, 'end': 8.4},
+    ]
+    result = deduplicate_chunk_segments([old, segment('new', incoming)])
+    assert result[-1]['text'] == 'late early'
+    assert (result[-1]['start'], result[-1]['end']) == (8.0, 13.4)
+
+
 def test_trimmed_cue_bounds_stay_ordered_when_remaining_words_are_out_of_order():
     old = segment('old', words('one two three', 10))
     incoming = words('one two three', 10) + [

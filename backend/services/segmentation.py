@@ -974,10 +974,12 @@ def deduplicate_chunk_segments(segments: list[dict]) -> list[dict]:
         if words and segment.get("speaker_id"):
             # Chronological candidates: cue insertion order can interleave
             # earlier and later words, which must not hide a match.
+            span_start = min(w['start'] for w in words)
+            span_end = max(w['end'] for w in words)
             prior_words = sorted((w for previous in result
                                   if previous.get('speaker_id') == segment.get('speaker_id')
                                   for w in timed_words(previous)
-                                  if w['end'] >= words[0]['start'] - .35 and w['start'] <= words[-1]['end'] + .35),
+                                  if w['end'] >= span_start - .35 and w['start'] <= span_end + .35),
                                  key=lambda w: (w['start'], w['end']))
             used = set()
             # A prior word is matched at most once.
