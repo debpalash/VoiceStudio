@@ -618,12 +618,12 @@ already discarded by older builds.
 
 ### Automatic overflow fitting and completed-take auditions
 
-Timing → **Automatically fit long phrases** is enabled by default. If Concise
-runs out of its cue and available gap, or Smart Fit exhausts its configured
-limits, the mixer fits the **entire** take with pitch-preserving audio speed-up.
-It does not rewrite the subtitle or cut off words; very dense cues can sound
-fast. Disable the switch to retain a blocking timing error and resolve the line
-manually. Existing Strict Slot and Stretch Video choices retain their timing
+Timing → **Automatically fit long phrases** is off by default (opt-in). When
+enabled and Concise runs out of its cue and available gap, or Smart Fit exhausts
+its configured limits, the mixer fits the **entire** take with pitch-preserving
+audio speed-up. It does not rewrite the subtitle or cut off words; very dense
+cues can sound fast. Left off, an overlong line keeps its blocking timing error
+so it can be resolved manually. Existing Strict Slot and Stretch Video choices retain their timing
 semantics. Subtitle-only jobs retain their flexible audio timeline.
 
 Completed spoken rows and timeline cues turn green during rendering. **Play
@@ -636,8 +636,8 @@ ready state; the corresponding take remains on disk until the job is deleted.
 The ready indicators remain available in the current app session; task-stream
 recovery replays them if a render is still running after a reload.
 
-API: `DubRequest.auto_fit_overflow` defaults to `true`. A `segment_ready` task
-event carries `segment_id`, `language_code`, progress counters and a relative
+API: `DubRequest.auto_fit_overflow` defaults to `false` (opt-in). A
+`segment_ready` task event carries `segment_id`, `language_code`, progress counters and a relative
 `preview_url`. GET this URL to audition a finished WAV. Preview paths validate
 both opaque tokens and job-root containment; they never point into mutable
 published-track caches. On filesystems supporting hard links, auditions reuse

@@ -1584,7 +1584,7 @@ it('keeps completed takes playable before the track finishes, including after a 
   await expect(generateDub('English', 'en')).resolves.toBe(false);
   expect(speechPreviewFor(segment, dubSession.state, 'en')).toBe(previewUrl);
   expect(JSON.parse(vi.mocked(apiJson).mock.calls[0][1]!.body as string).auto_fit_overflow).toBe(
-    true,
+    false,
   );
   editDubSegment('ready-a', { text: 'Changed words' });
   expect(speechPreviewFor(dubSession.state.segments[0], dubSession.state, 'en')).toBeUndefined();

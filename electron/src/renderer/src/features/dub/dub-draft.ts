@@ -178,7 +178,7 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
       )
         ? value.timingStrategy
         : 'strict_slot',
-      autoFitOverflow: value.autoFitOverflow !== false,
+      autoFitOverflow: value.autoFitOverflow === true,
       voiceMatch: value.voiceMatch === 'consistent' ? 'consistent' : 'per_line',
       generatedTiming: ['concise', 'smart_fit', 'stretch_video', 'strict_slot'].includes(
         value.generatedTiming,

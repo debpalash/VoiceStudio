@@ -254,7 +254,7 @@ const initial: DubSession = {
   reflectPass: true,
   condenseSuggest: false,
   timingStrategy: 'strict_slot',
-  autoFitOverflow: true,
+  autoFitOverflow: false,
   voiceMatch: 'per_line',
   fingerprintsByLang: {},
   jobId: null,

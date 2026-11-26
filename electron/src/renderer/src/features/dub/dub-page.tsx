@@ -1208,7 +1208,7 @@ export function DubPage() {
                   <input
                     type="checkbox"
                     className="mt-0.5 accent-primary"
-                    checked={session.autoFitOverflow !== false}
+                    checked={session.autoFitOverflow === true}
                     disabled={busy || Boolean(session.recovery)}
                     onChange={(event) =>
                       setDubProduction({ autoFitOverflow: event.target.checked })

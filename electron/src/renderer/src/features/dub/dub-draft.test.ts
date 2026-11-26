@@ -425,3 +425,12 @@ it('retains an identified generation error across reload rather than losing its 
   );
   expect(result.lastGenerationError).toEqual(lastGenerationError);
 });
+
+it('keeps overflow rescue opt-in for drafts that never chose it', () => {
+  const draft = (extra: object) =>
+    restoreDubDraft(JSON.stringify({ ...defaults, jobId: 'job', ...extra }), defaults)
+      .autoFitOverflow;
+  expect(draft({})).toBe(false);
+  expect(draft({ autoFitOverflow: 'yes' })).toBe(false);
+  expect(draft({ autoFitOverflow: true })).toBe(true);
+});

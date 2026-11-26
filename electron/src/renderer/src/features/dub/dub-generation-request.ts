@@ -28,7 +28,7 @@ export function dubGenerationRequest(
     guidance_scale: current.guidance ?? 2,
     speed: current.speed ?? 1,
     instruct: current.instruct || undefined,
-    auto_fit_overflow: current.autoFitOverflow !== false,
+    auto_fit_overflow: current.autoFitOverflow === true,
     timing_strategy: current.narration?.enabled
       ? 'narration'
       : current.timingStrategy || 'strict_slot',
