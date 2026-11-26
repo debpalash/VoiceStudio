@@ -11,7 +11,33 @@ import { dubGenerationKey, dubExportRevision } from './dub-generation-request';
 export type DubGuideStep = 'source' | 'voice' | 'text' | 'audio' | 'export';
 const STEPS: DubGuideStep[] = ['source', 'text', 'voice', 'audio', 'export'];
 
-export function dubGuideState(session: DubSession, code: string | undefined) {
+/**
+ * Projects generated before guided completion records have no request key.
+ * Their saved per-segment audio fingerprints are the evidence instead: every
+ * spoken line must have one, and the backend's incremental check (when the
+ * page has it) must not report any line as changed since that render.
+ */
+function legacyAudioCurrent(
+  session: DubSession,
+  code: string,
+  spoken: DubSession['segments'],
+  staleIds?: readonly string[] | null,
+) {
+  const stored = session.fingerprintsByLang?.[code];
+  return Boolean(
+    !session.narration?.enabled &&
+    stored &&
+    spoken.length &&
+    spoken.every((segment) => Boolean(stored[segment.id])) &&
+    !staleIds?.length,
+  );
+}
+
+export function dubGuideState(
+  session: DubSession,
+  code: string | undefined,
+  staleIds?: readonly string[] | null,
+) {
   const spoken = session.segments.filter((segment) => segment.text.trim());
   const source = Boolean(session.jobId && spoken.length);
   const voice =
@@ -32,10 +58,13 @@ export function dubGuideState(session: DubSession, code: string | undefined) {
         (segment) =>
           Boolean(segment.translations?.[code!]?.trim()) && !getDubTranslationError(segment, code),
       ));
+  const record = code ? session.generatedRequestKeys?.[code] : undefined;
   const audio = Boolean(
     code &&
     session.tracks.includes(code) &&
-    session.generatedRequestKeys?.[code] === dubGenerationKey(session, session.target, code),
+    (record === undefined
+      ? legacyAudioCurrent(session, code, spoken, staleIds)
+      : record === dubGenerationKey(session, session.target, code)),
   );
   const exported = Boolean(
     audio && code && session.exportedRequestKeys?.[code] === dubExportRevision(session, code),
@@ -69,7 +98,9 @@ export function DubProjectGuide({
   onSelect,
   disabled,
   audioBlocked,
+  staleIds,
 }: {
+  staleIds?: readonly string[] | null;
   session: DubSession;
   code: string | undefined;
   onSelect: (step: DubGuideStep) => void;
@@ -77,7 +108,7 @@ export function DubProjectGuide({
   audioBlocked?: string | null;
 }) {
   const { t } = useTranslation();
-  const state = dubGuideState(session, code);
+  const state = dubGuideState(session, code, staleIds);
   return (
     <nav
       aria-label={t('dub.guide_title')}

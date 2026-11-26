@@ -34,7 +34,10 @@ transcript after transcription, translation and generation.
 Before generation, an inline plan checks saved takes without synthesizing speech
 and displays new/reused counts. The primary action distinguishes Generate,
 Continue and Assemble saved audio. After a current full track is published,
-Listen and Save replace the generation prompt. Forced regeneration retains its
+Listen and Save replace the generation prompt. Projects generated before these
+completion records count their audio as current while every spoken line has a
+saved take and the incremental check reports no changed line, so they open ready
+to save without another assembly pass. Forced regeneration retains its
 scope-confirmation dialog. Generated-block playback reads saved WAVs; a line
 without a saved take is auditioned on demand as before, and continuous live TTS
 preview is a separate opt-in control. A backend without the plan route still

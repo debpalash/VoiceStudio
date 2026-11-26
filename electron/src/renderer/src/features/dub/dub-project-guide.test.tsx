@@ -102,3 +102,26 @@ it('prepares target text before voice and waits for an explicitly requested scri
   expect(dubGuideState(s, 'en').nextStep).toBe('voice');
   expect(dubGuideState(s, 'en').scriptReady).toBe(false);
 });
+
+it('treats audio saved before completion records as ready to export', () => {
+  const s = { ...session(), phase: 'done' as const, tracks: ['en'] };
+  s.fingerprintsByLang = { en: { a: 'hash-a' } };
+  const state = dubGuideState(s, 'en');
+  expect(state.audioReady).toBe(true);
+  expect(state.completed).toEqual([true, true, true, true, false]);
+  expect(state.nextStep).toBe('export');
+  render(<DubProjectGuide session={s} code="en" disabled={false} onSelect={() => {}} />);
+  expect(screen.getByRole('button', { name: /dub.guide_audio.*dub.guide_complete/ })).toBeTruthy();
+});
+it('keeps legacy audio pending when a line has no saved take or changed since that render', () => {
+  const s = { ...session(), phase: 'done' as const, tracks: ['en'] };
+  expect(dubGuideState(s, 'en').audioReady).toBe(false);
+  s.fingerprintsByLang = { en: { a: 'hash-a' } };
+  expect(dubGuideState(s, 'en', ['a']).audioReady).toBe(false);
+  s.segments.push({ ...s.segments[0], id: 'b' });
+  expect(dubGuideState(s, 'en').audioReady).toBe(false);
+  // A guided completion record, once present, is authoritative.
+  s.generatedRequestKeys = { en: 'older-request' };
+  s.fingerprintsByLang.en.b = 'hash-b';
+  expect(dubGuideState(s, 'en').audioReady).toBe(false);
+});

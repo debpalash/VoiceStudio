@@ -415,10 +415,12 @@ export function DubPage() {
     requestAnimationFrame(() => segmentVirtualizer.measure());
   }, [editingSegmentId, expandedSegmentId, segmentVirtualizer]);
   const code = translationTargetCode(target);
-  const guide = dubGuideState(session, code);
-  const narrationPending = Boolean(
-    session.narration?.enabled && !dubGuideState(session, code).completed[3],
+  const guide = dubGuideState(
+    session,
+    code,
+    session.phase === 'done' ? incrementalPlan?.stale : undefined,
   );
+  const narrationPending = Boolean(session.narration?.enabled && !guide.completed[3]);
   const previewTracks = narrationPending ? [] : session.tracks;
   useEffect(() => {
     if (narrationPending) {
@@ -1387,6 +1389,7 @@ export function DubPage() {
             code={code}
             disabled={busy || Boolean(session.recovery)}
             audioBlocked={ttsBlocker}
+            staleIds={session.phase === 'done' ? incrementalPlan?.stale : undefined}
             onSelect={selectGuideStep}
           />
           {guide.nextStep === 'text' && code && !busy && (
