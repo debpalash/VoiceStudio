@@ -22,6 +22,27 @@ def preview_path(job_dir: str, render_id: str, token: str) -> str:
     return path
 
 
+def prune_previews(job_dir: str, keep: int = 4) -> int:
+    """Drop all but the ``keep`` most recent renders' auditions.
+
+    Every render gets a fresh directory and its links keep superseded takes
+    alive, so without pruning a re-rendered job grows on disk forever.
+    Recent renders (including one still running) keep their URLs playable.
+    """
+    root = os.path.join(job_dir, ".speech-previews")
+    try:
+        entries = [entry for entry in os.scandir(root)
+                   if _RENDER.fullmatch(entry.name) and entry.is_dir(follow_symlinks=False)]
+    except OSError:
+        return 0
+    entries.sort(key=lambda entry: entry.stat(follow_symlinks=False).st_mtime_ns, reverse=True)
+    removed = 0
+    for entry in entries[keep:]:
+        shutil.rmtree(entry.path, ignore_errors=True)
+        removed += 1
+    return removed
+
+
 def save_preview(job_dir: str, render_id: str, segment_id: str, source: str) -> str:
     token = hashlib.sha256(str(segment_id).encode()).hexdigest()
     destination = preview_path(job_dir, render_id, token)

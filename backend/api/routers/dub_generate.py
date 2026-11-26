@@ -43,7 +43,7 @@ from services.ffmpeg_utils import (
 from services.rvc import apply_rvc, is_enabled as rvc_is_enabled
 from services.incremental import segment_fingerprint, fit_fingerprint
 from services.dub_speech_checkpoints import SpeechCheckpoints
-from services.dub_speech_preview import preview_path, save_preview
+from services.dub_speech_preview import preview_path, prune_previews, save_preview
 from services.dub_issues import cue_issues
 from services.fit_planner import FitParams, plan_fit
 from services.watermark import mark_synthetic, mark_synthetic_async, will_mark
@@ -715,6 +715,11 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
         # timeout budgets, batches, retries and silence checks share these bytes.
         spoken_texts = await asyncio.to_thread(_prepare_segments)
         preview_render = uuid.uuid4().hex
+        if not planning:
+            try:
+                await asyncio.to_thread(prune_previews, os.path.dirname(dub_seg_path(job_id, "preview")))
+            except Exception as err:  # noqa: BLE001
+                logger.debug("speech preview pruning skipped: %s", type(err).__name__)
 
         def _ready(index, sid, path):
             # Independent, immutable files remain playable after failure/cancel;

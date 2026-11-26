@@ -705,3 +705,19 @@ def test_checkpointed_take_is_marked_once_through_the_watermark_pool(render_dub,
     assert marks == ['dub_generate.segment'] * 2
     published, _ = sf.read(render_dub.path / 'seg_en_a.wav', dtype='float32')
     assert published.max() == pytest.approx(.12, abs=1e-3)
+
+
+def test_rerenders_keep_only_recent_speech_previews(render_dub):
+    import api.routers.dub_generate as dg
+    urls = []
+    for _ in range(7):
+        events = render_dub.run()
+        assert events[-1]['type'] == 'done'
+        urls.append([e for e in events if e['type'] == 'segment_ready'][-1]['preview_url'])
+    renders = list((render_dub.path / '.speech-previews').iterdir())
+    # The current render plus the four before it; older takes are released.
+    assert len(renders) == 5
+    assert dg.dub_speech_preview('job', *urls[-1].split('/')[-2:]).path
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        dg.dub_speech_preview('job', *urls[0].split('/')[-2:])
