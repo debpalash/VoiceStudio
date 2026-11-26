@@ -879,3 +879,45 @@ def test_fresh_design_sample_stores_its_script_and_generation_pairs_it(
         ).fetchone()
     cond = _resolve_profile_conditioning(row, engine_id="omnivoice")
     assert cond["ref_text"] == _FALLBACK_SCRIPT
+
+
+PROSE = "warm, calm male narrator, slow and unhurried"
+
+
+def test_style_prose_is_stored_as_typed_on_clone_create_and_put(app_client):
+    client, _ = app_client
+    r = client.post(
+        "/profiles",
+        data={"name": "Prose clone", "kind": "clone", "instruct": PROSE},
+        files={"ref_audio": ("voice.wav", _FAKE_AUDIO, "audio/wav")},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["instruct"] == PROSE
+    pid = r.json()["id"]
+    edited = client.put(f"/profiles/{pid}", json={"instruct": "  soft whisper, intimate  "})
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["instruct"] == "soft whisper, intimate"
+
+
+def test_unchanged_style_keeps_design_traits_recipe_and_sample(app_client):
+    from core.db import db_conn
+
+    client, _ = app_client
+    recipe = {"description": PROSE, "picks": {"Age": "young adult"}}
+    r = client.post("/profiles", data={
+        "name": "Keep", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD), "design_recipe": json.dumps(recipe),
+    })
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    with db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET ref_audio_path=? WHERE id=?", (f"{pid}.wav", pid))
+    before = client.get(f"/profiles/{pid}").json()
+    same = client.put(
+        f"/profiles/{pid}", json={"name": "Keep 2", "instruct": f" {before['instruct']} "}
+    )
+    assert same.status_code == 200, same.text
+    body = same.json()
+    assert body["vd_states"] == before["vd_states"]
+    assert body["design_recipe"] == before["design_recipe"]
+    assert body["ref_audio_path"] == f"{pid}.wav"

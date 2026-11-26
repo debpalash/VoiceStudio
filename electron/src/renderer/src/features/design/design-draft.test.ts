@@ -6,6 +6,7 @@ import {
   canResetToDescription,
   designDraftFromTake,
   designInstruct,
+  designProfileForm,
   designRecipe,
   editVoice,
   designRequestSeed,
@@ -354,5 +355,19 @@ describe('canResetToDescription', () => {
   it('offers the reset when picks or a saved voice override the description', () => {
     expect(canResetToDescription({ description: 'warm', picks: pick, profileId: null })).toBe(true);
     expect(canResetToDescription({ description: 'warm', picks: {}, profileId: 'p' })).toBe(true);
+  });
+});
+
+describe('designProfileForm', () => {
+  it('sends the recipe and engine so the description is saved (#4474)', () => {
+    const draft = {
+      ...replaceRecipe(readDraft(), { description: 'warm, calm male narrator', attrs: { Gender: 'male' }, picks: {} }),
+      seed: 7,
+    };
+    const form = designProfileForm(draft, { name: ' Narrator ', language: 'Auto', engineId: 'qwen3' });
+    expect(form.get('name')).toBe('Narrator');
+    expect(form.get('engine')).toBe('qwen3');
+    expect(JSON.parse(String(form.get('design_recipe'))).description).toBe('warm, calm male narrator');
+    expect(designProfileForm(draft, { name: 'a', language: 'Auto' }).has('engine')).toBe(false);
   });
 });
