@@ -243,6 +243,19 @@ Hit a wall? See [docs/install/troubleshooting.md](troubleshooting.md).
 The in-app error UI includes an **"Open docs for this error"** button that
 deeplinks back into this docs tree at the right section for the error class.
 
+### The app closes right after launch (no window)
+
+VoiceStudio appends one line per launch and per early exit to
+`~/Library/Logs/VoiceStudio/VoiceStudio-startup.log` (the system temp folder on
+other platforms). It is written before the app data folder exists, so it is the
+first place to look. To capture more, run the app from Terminal and attach the output:
+
+```bash
+/Applications/VoiceStudio.app/Contents/MacOS/VoiceStudio --enable-logging
+```
+
+A `task_name_for_pid: (os/kern) failure (5)` line in that output is harmless macOS noise.
+
 ### `torch` "doesn't have a source distribution or wheel for the current platform"
 
 If setup fails with `You're on macOS (macosx_…_x86_64), but torch … only has
