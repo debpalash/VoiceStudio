@@ -49,6 +49,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -1498,6 +1499,26 @@ def start_install(engine_id: str) -> dict:
     return {"status": "started", "engine": engine_id}
 
 
+def _remove_tree(path: Path) -> None:
+    """Best-effort recursive delete that also removes read-only files.
+
+    Windows marks git pack files read-only, so ``rmtree(ignore_errors=True)``
+    leaves ``.git`` behind. Anything still locked by another process stays, for
+    the caller to report.
+    """
+    def _writable(func: Callable, target: str, _exc) -> None:
+        try:
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        except OSError:
+            pass
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_writable)
+    else:
+        shutil.rmtree(path, onerror=_writable)
+
+
 def uninstall(engine_id: str) -> dict:
     """Remove the app-managed install and clear the persisted path.
 
@@ -1532,7 +1553,8 @@ def uninstall(engine_id: str) -> dict:
         return {"status": "in_use", "engine": engine_id}
     root = managed_root(spec)
     removed = root.is_dir()
-    shutil.rmtree(root, ignore_errors=True)
+    if removed:
+        _remove_tree(root)
     # The install is unusable either way, so clear its configuration below, but
     # never report a delete that left gigabytes behind as done.
     leftover = root.exists()

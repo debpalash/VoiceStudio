@@ -2239,8 +2239,8 @@ def test_uninstall_reports_files_it_could_not_delete(monkeypatch):
     spec = _managed_install(monkeypatch)
     monkeypatch.setattr(subprocess_backend, "unload_sidecar", lambda engine_id: 0)
     monkeypatch.setattr(subprocess_backend, "list_live_sidecars", lambda: [])
-    # A locked file: rmtree(ignore_errors=True) silently leaves the folder.
-    monkeypatch.setattr(si.shutil, "rmtree", lambda *a, **k: None)
+    # A file another process holds open: the delete leaves the folder behind.
+    monkeypatch.setattr(si, "_remove_tree", lambda path: None)
 
     res = si.uninstall("fake-side")
     assert res["status"] == "incomplete"
@@ -2248,3 +2248,30 @@ def test_uninstall_reports_files_it_could_not_delete(monkeypatch):
     with pytest.raises(HTTPException) as ei:
         engines_router.uninstall_sidecar_engine("fake-side")
     assert ei.value.status_code == 500
+
+
+def test_uninstall_removes_read_only_files_like_windows_git_packs(monkeypatch):
+    """Windows refuses to delete a read-only file; git marks its pack files so."""
+    import stat as stat_mod
+
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    monkeypatch.setattr(subprocess_backend, "unload_sidecar", lambda engine_id: 0)
+    monkeypatch.setattr(subprocess_backend, "list_live_sidecars", lambda: [])
+    pack = si.managed_checkout(spec) / ".git" / "objects" / "pack" / "pack-1.pack"
+    pack.parent.mkdir(parents=True)
+    pack.write_bytes(b"pack")
+    pack.chmod(stat_mod.S_IREAD)
+    real_unlink = os.unlink
+
+    def windows_unlink(path, *args, **kwargs):
+        mode = os.stat(path, dir_fd=kwargs.get("dir_fd"), follow_symlinks=False).st_mode
+        if not mode & stat_mod.S_IWRITE:
+            raise PermissionError(13, "Access is denied", str(path))
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(si.os, "unlink", windows_unlink)
+
+    assert si.uninstall("fake-side")["status"] == "uninstalled"
+    assert not si.managed_root(spec).exists()
