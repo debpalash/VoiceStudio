@@ -57,7 +57,7 @@ describe('decideWindowClose', () => {
 
 describe('close-to-tray preference', () => {
   let dir = '';
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   const fresh = () => (dir = mkdtempSync(join(tmpdir(), 'close-behavior-')));
 
   it('is off by default, for a missing, corrupt or non-boolean file', () => {

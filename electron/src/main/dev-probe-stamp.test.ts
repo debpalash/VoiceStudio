@@ -17,7 +17,7 @@ beforeEach(() => {
     writeFileSync(file, 'x');
   writeFileSync(join(root, '.venv', 'pyvenv.cfg'), 'home = /x');
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 
 it('skips the import probe only after a successful probe of the same environment', () => {
   expect(devProbeStamped(root, python)).toBe(false);

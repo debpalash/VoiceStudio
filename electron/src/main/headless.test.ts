@@ -136,7 +136,7 @@ test('launch intent survives a relaunch without Chromium switches', () => {
 const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 test('discovery is replaced atomically and cleared only by its owner', () => {

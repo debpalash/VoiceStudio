@@ -303,7 +303,7 @@ it.each([false, true])(
       expect(body).not.toContain('private-user');
       expect(url.toString().length).toBeLessThan(8000);
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   },
 );

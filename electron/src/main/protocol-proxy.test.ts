@@ -153,6 +153,6 @@ it('serves hashed renderer /assets/* with immutable Cache-Control and index.html
     expect(htmlRes.status).toBe(200);
     expect(htmlRes.headers.get('cache-control')).toBe('no-cache');
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });

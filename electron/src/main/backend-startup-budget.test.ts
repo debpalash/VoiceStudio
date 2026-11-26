@@ -186,7 +186,7 @@ afterEach(() => {
   mocks.occupied.clear();
   mocks.runtimeReadyNow = true;
   mocks.prime = async () => undefined;
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 it('gives a freshly spawned backend its whole budget after slow pre-launch work', async () => {

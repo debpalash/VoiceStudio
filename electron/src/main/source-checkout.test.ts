@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   chmodRecursive(base);
-  rmSync(base, { recursive: true, force: true });
+  rmSync(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 function chmodRecursive(dir: string) {
   try {

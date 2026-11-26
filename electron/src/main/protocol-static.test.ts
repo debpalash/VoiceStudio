@@ -60,7 +60,7 @@ it('serves small and large static files from one open handle and 404s a director
 
     expect((await handler(new Request(`${APP_ORIGIN}/assets/dir.js`))).status).toBe(404);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });
 
@@ -88,6 +88,6 @@ it.each([
     expect(bytes.every((byte) => byte === 1)).toBe(true);
   } finally {
     mocks.afterStat = null;
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });

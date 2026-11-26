@@ -221,7 +221,7 @@ it('calls the macOS system tools by absolute path, never whatever PATH finds fir
     });
     expect(new Set(commands)).toEqual(new Set(['/bin/cp', '/usr/bin/plutil', '/usr/bin/codesign']));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });
 
@@ -263,7 +263,7 @@ describe('macOS development bundle cache repair', () => {
         readdirSync(join(dir, 'cache')).filter((name: string) => name.startsWith('.staging-')),
       ).toEqual([]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 });
@@ -278,7 +278,7 @@ describe('macOS development bundle cache pruning', () => {
       pruneOldBundles(root, join(root, 'current'));
       expect(readdirSync(root).sort()).toEqual(['.staging-abc', 'current']);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 });
@@ -304,7 +304,7 @@ describe.skipIf(process.platform !== 'darwin')('macOS cache cleanup safety', () 
       const exited = once(child, 'exit');
       child.kill();
       await exited;
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 
@@ -319,7 +319,7 @@ describe.skipIf(process.platform !== 'darwin')('macOS cache cleanup safety', () 
       expect(existsSync(join(root, 'old'))).toBe(true);
     } finally {
       chmodSync(root, 0o755);
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 });
@@ -458,7 +458,7 @@ describe.skipIf(process.platform !== 'darwin')('macOS bundle lifetime coordinati
       }
     } finally {
       await Promise.all(workers.map(stop));
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   }, 15000);
 
@@ -491,7 +491,7 @@ describe.skipIf(process.platform !== 'darwin')('macOS bundle lifetime coordinati
     } finally {
       first.release();
       await stop(child);
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 
@@ -512,7 +512,7 @@ describe.skipIf(process.platform !== 'darwin')('macOS bundle lifetime coordinati
       }
     } finally {
       chmodSync(options.cacheRoot, 0o755);
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 });

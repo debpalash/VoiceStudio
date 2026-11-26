@@ -10,7 +10,7 @@ const root = () => {
   roots.push(path);
   return path;
 };
-afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); vi.unstubAllEnvs(); });
+afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); vi.unstubAllEnvs(); });
 it.each([false, true])('preserves existing custom/portable storage without rewriting it (%s)', (portable) => {
   const base = root();
   const data = join(base, 'data');

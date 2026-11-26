@@ -64,7 +64,7 @@ describe('NVM discovery order', () => {
       ]);
       expect(dirs[0]).toBe('/usr/bin');
     } finally {
-      rmSync(home, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 });
@@ -77,7 +77,7 @@ describe('toolSearchDirsAsync', () => {
       const opts = { env: { PATH: '/usr/bin' }, platform: 'linux' as const, home };
       expect(await toolSearchDirsAsync(opts)).toEqual(toolSearchDirs(opts));
     } finally {
-      rmSync(home, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 

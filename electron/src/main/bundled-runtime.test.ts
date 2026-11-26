@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { bundledPython, bundledRuntimeEnv } from './bundled-runtime';
 
 const roots: string[] = [];
-afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
+afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })));
 
 function runtime(python: string) {
   const root = mkdtempSync(join(tmpdir(), 'mas-runtime-'));
