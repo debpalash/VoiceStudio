@@ -234,3 +234,19 @@ def test_install_attaches_to_uvicorn_access_logger():
     finally:
         for owner, filters in saved:
             owner.filters[:] = filters
+
+
+def test_traceback_drops_env_secret_values_and_home_paths(redactor_logger, caplog, monkeypatch):
+    import os
+    import sys
+
+    monkeypatch.setenv("VOICESTUDIO_TEST_API_TOKEN", "envsecretvalue123")
+    caplog.set_level(logging.DEBUG, logger="omnivoice.test_redactor")
+    home = os.path.expanduser("~")
+    try:
+        raise RuntimeError(f"failed with envsecretvalue123 at {home}/projects/private.wav")
+    except RuntimeError:
+        redactor_logger.error("boom", exc_info=sys.exc_info())
+    assert "envsecretvalue123" not in caplog.text
+    assert f"{home}/projects" not in caplog.text
+    assert "RuntimeError" in caplog.text

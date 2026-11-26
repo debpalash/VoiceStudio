@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import re
 
-from core.scrub import scrub_url_credentials
+from core.scrub import scrub_text, scrub_url_credentials
 
 REDACTED = "hf_***REDACTED***"
 
@@ -58,7 +58,9 @@ class HFTokenRedactor(logging.Filter):
             if record.exc_info and record.exc_info[0] is not None:
                 if not record.exc_text:
                     record.exc_text = _TRACEBACK_FORMATTER.formatException(record.exc_info)
-                record.exc_text = _redact(record.exc_text)
+                # Tracebacks are rare, so they also get the full report scrub:
+                # env-secret values and home paths, as the crash log writes.
+                record.exc_text = _redact(scrub_text(record.exc_text))
         except Exception:
             # Never let the filter break the log pipeline. If anything
             # unexpected happens, just let the record pass through —

@@ -211,8 +211,9 @@ def test_tailscale_command_exception_stays_in_local_log(monkeypatch, caplog):
 
     assert result == {"ok": False, "error": "tailscale command failed"}
     # The local log keeps the detail; once the backend's log redactor is
-    # installed, its credentials (the HF token, `TOKEN=`) are scrubbed there too.
-    assert "/home/alice/private/project.py" in caplog.text
+    # installed, its credentials (the HF token, `TOKEN=`) and the home folder
+    # are scrubbed there too.
+    assert "private/project.py" in caplog.text
     assert "private-value" not in str(result)
     assert private not in str(result)
 
