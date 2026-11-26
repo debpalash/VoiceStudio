@@ -1,7 +1,17 @@
 // @vitest-environment node
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { existsSync } from 'node:fs';
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile, statfs, utimes } from 'node:fs/promises';
+import {
+  cp,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+  statfs,
+  utimes,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { downloadRuntimeInstaller } from './runtime-download';
@@ -17,6 +27,7 @@ import { PYPI_SPEED_SAMPLE_BYTES } from './pypi-mirror';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import {
   installManagedPython,
+  recoverMinorVersionLink,
   installRuntime,
   runtimeDownloadEnv,
   runtimeRequiredGib,
@@ -2214,5 +2225,33 @@ describe('installManagedPython', () => {
     ).rejects.toMatchObject({ code: 'EPERM' });
     expect(run).toHaveBeenCalledTimes(2);
     expect(refused).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('recoverMinorVersionLink (#4487)', () => {
+  it('removes only stale minor-version links and returns the patch interpreter path', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'vs-minor-'));
+    try {
+      const patch = join(dir, 'cpython-3.11.16-linux-x86_64-none');
+      await mkdir(join(patch, 'bin'), { recursive: true });
+      await writeFile(join(patch, 'bin', 'python3'), '');
+      const link = join(dir, 'cpython-3.11-linux-x86_64-none');
+      await symlink(patch, link, 'dir');
+      const error = new Error(
+        `error: Missing expected target directory for Python minor version link at ${patch}\n`,
+      );
+      const log = vi.fn();
+      const result = await recoverMinorVersionLink(error, dir, log);
+      expect(result).toEqual({ python: join(patch, 'bin', 'python3') });
+      expect(existsSync(link)).toBe(false);
+      expect(existsSync(join(patch, 'bin', 'python3'))).toBe(true);
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('uv#19622'));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores unrelated failures', async () => {
+    expect(await recoverMinorVersionLink(new Error('network down'), '/nope')).toBeNull();
   });
 });
