@@ -9,6 +9,7 @@ import { getBridge } from '@/components/bridge';
 import {
   blankLongformDraft,
   editLongform,
+  replaceLongformDraft,
   longformSession,
   useLongformSession,
   type Mode,
@@ -202,7 +203,7 @@ export function ProjectsPage() {
             (project) => project.id === confirm.id,
           );
           if (!project || longformSession.state.active) throw new Error('Project unavailable');
-          editLongform(project.mode, {
+          replaceLongformDraft(project.mode, {
             ...blankLongformDraft(),
             ...structuredClone(project.draft),
             projectId: project.id,

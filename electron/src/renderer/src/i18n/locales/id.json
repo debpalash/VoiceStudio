@@ -317,14 +317,17 @@
     "test_global_hint": "Pratinjau hanya dengan entri Global — pilih bahasa untuk menyertakan entri khusus bahasa.",
     "test_error": "Pratinjau tidak tersedia — backend tidak dapat dihubungi.",
     "backup_title": "Cadangkan & pulihkan",
-    "backup_hint": "Unduh kamus sebagai file JSON, atau impor entri dari ekspor sebelumnya.",
+    "backup_hint": "Unduh kamus sebagai JSON atau leksikon PLS, atau impor salah satunya. Leksikon PLS dari layanan suara lain juga bisa digunakan.",
     "export": "Ekspor JSON",
+    "export_pls": "Ekspor PLS",
     "import": "Impor JSON",
-    "import_error": "File tidak dapat diimpor — diharapkan JSON dari ekspor pelafalan.",
+    "import_error": "File tidak dapat diimpor — diharapkan ekspor pelafalan (JSON) atau leksikon PLS.",
     "import_replace_prompt_one": "Ganti {{count}} entri yang ada dengan berkas impor? Pilih Tidak untuk menambahkan entri impor di sampingnya.",
     "import_replace_prompt_other": "Ganti {{count}} entri yang ada dengan berkas impor? Pilih Tidak untuk menambahkan entri impor di sampingnya.",
     "import_done_one": "{{count}} entri diimpor.",
     "import_done_other": "{{count}} entri diimpor.",
+    "import_skipped_one": "{{count}} entri dilewati: fonemnya tidak didukung.",
+    "import_skipped_other": "{{count}} entri dilewati: fonemnya tidak didukung.",
     "entries_count_one": "{{count}} entri",
     "entries_count_other": "{{count}} entri",
     "scope_language": "Bahasa",
@@ -1055,7 +1058,8 @@
     "retry": "Coba lagi",
     "confirm": "Konfirmasi",
     "details": "Detail",
-    "unknown": "tidak dikenal"
+    "unknown": "tidak dikenal",
+    "link_blocked": "Tautan ini tidak dapat dibuka. Hanya tautan web dan email yang diizinkan."
   },
   "dubWorkspace": {
     "transcriptIssues": "Masalah transkrip",
@@ -1447,6 +1451,9 @@
     "terminal_command_added": "Ditambahkan. Buka jendela terminal baru untuk memakai voicestudio.",
     "terminal_command_failed": "Tidak dapat menambahkan voicestudio ke terminal. Pastikan folder home Anda tidak hanya-baca, lalu coba lagi.",
     "terminal_command_conflict": "{{path}} milik instalasi lain, jadi VoiceStudio tidak mengubahnya.",
+    "close_to_tray": "Tetap berjalan di baki saat ditutup",
+    "close_to_tray_desc": "Menutup jendela akan menyembunyikan VoiceStudio ke baki alih-alih keluar, sehingga tugas yang berjalan tetap lanjut. Buka lagi dari ikon baki dan pilih Keluar di sana untuk menutup. Di beberapa desktop Linux, ikon baki memerlukan dukungan AppIndicator; membuka VoiceStudio lagi juga membuka kembali jendela.",
+    "close_to_tray_failed": "Pengaturan ini tidak dapat disimpan. Coba lagi.",
     "review_mode_on": "Ulasan",
     "review_mode_off": "Tembakan cepat",
     "translate_agent": "Agen cocok",
@@ -1474,6 +1481,7 @@
     "gpu_report_state_nvidia_rocm_build": "{{gpu}} ditemukan, tetapi PyTorch ini adalah build AMD ROCm dan tidak dapat mengendalikan GPU NVIDIA.",
     "gpu_report_state_intel_unsupported": "{{gpu}} ditemukan, tetapi tidak ada mesin terpasang yang dapat memakai GPU Intel, jadi semuanya berjalan di CPU.",
     "gpu_report_state_kernels_missing": "{{gpu}} ditemukan, tetapi build PyTorch ini ({{torch}}) tidak memiliki kernel untuk arsitektur komputasinya, sehingga mesin berjalan di CPU.",
+    "gpu_report_torch_fallback": "Penyiapan mencoba build PyTorch CUDA 12.6 untuk GPU ini, tetapi tidak dapat menggunakan kartunya, sehingga mesin PyTorch tetap berjalan di CPU. Alasan: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} adalah GPU NVIDIA lama (seri GTX 900 / 1000 atau lebih lama). Build PyTorch ini ({{torch}}) tidak lagi mendukung generasi tersebut, sehingga engine PyTorch berjalan di CPU. Engine dengan runtime Vulkan sendiri masih bisa memakai GPU.",
     "gpu_report_state_unknown": "Status GPU tidak dapat ditentukan.",
     "gpu_report_option_vulkan_engines": "Pakai mesin dengan runtime GPU sendiri: audio.cpp berjalan di GPU AMD Radeon lewat Vulkan (Pengaturan → Model → pasang runtime).",
@@ -1729,7 +1737,8 @@
     "open": "Buka “{{name}}” dan ganti draf saat ini? Simpan pekerjaan Anda terlebih dahulu.",
     "save_copy": "Simpan salinan",
     "new": "Proyek baru",
-    "new_confirm": "Mulai proyek baru yang kosong? Proyek tersimpan tetap utuh; perubahan yang belum disimpan pada draf saat ini akan hilang."
+    "new_confirm": "Mulai proyek baru yang kosong? Proyek tersimpan tetap utuh; perubahan yang belum disimpan pada draf saat ini akan hilang.",
+    "delete_hint": "Hanya proyek tersimpan yang dihapus dari daftar. Berkas media dan suara tetap disimpan."
   },
   "sidebar": {
     "save_project": "Simpan Proyek Dub",
@@ -1980,7 +1989,12 @@
     "cast_note_other": "{{names}} belum diberi suara, jadi dibacakan dengan suara utama. Pilih suara di Pemeran.",
     "line_gap": "Durasi jeda antarbaris",
     "paragraph_gap": "Durasi jeda antarparagraf",
-    "trim_edges": "Hapus bagian senyap dari mesin"
+    "trim_edges": "Hapus bagian senyap dari mesin",
+    "result_other_connection": "Audio tersimpan ini berasal dari koneksi VoiceStudio lain. Kembali ke koneksi tersebut untuk memutarnya.",
+    "result_connection_unknown": "Hubungkan mesin lokal atau komputer jarak jauh Anda untuk menampilkan audio tersimpan.",
+    "result_legacy": "Hasil tersimpan lama ini tidak memiliki informasi koneksi. Cari nama filenya pada koneksi ini; file tersebut mungkin berbeda.",
+    "result_check_audio": "Periksa audio tersimpan pada koneksi ini",
+    "result_recovery_failed": "Audio tersimpan tidak tersedia pada koneksi ini. Kembali ke koneksi asalnya atau buat ulang audio tersebut."
   },
   "credentials": {
     "microsoft_key": "Kunci Penerjemah Microsoft",
@@ -2130,6 +2144,7 @@
     "setup_wrong_architecture": "Tutup VoiceStudio, ganti dengan DMG Apple Silicon (arm64), lalu buka lagi. Saat ini edisi Intel berjalan melalui Rosetta; penggantian edisi mengaktifkan AI lokal tanpa menghapus suara atau proyek.",
     "setup_missing_system_library": "Sistem Windows ini tidak memiliki Microsoft Visual C++ 2015-2022 Redistributable (x64), yang dibutuhkan ekstensi audio PyTorch. Pasang dari Microsoft, lalu tekan Coba Lagi.",
     "setup_outdated_system_library": "Microsoft Visual C++ Redistributable (x64) di sistem Windows ini terlalu lama, sehingga sebuah pustaka suara mogok saat dimuat. Pasang versi terbaru dari Microsoft, lalu tekan Coba Lagi.",
+    "setup_torch_dll_init_failed": "PyTorch tidak dapat dimuat dan penyebabnya belum dipastikan. Pasang Microsoft Visual C++ Redistributable (x64) terbaru, lalu perbarui driver grafis, kemudian tekan Coba lagi. Jika masih gagal, gunakan \"Bersihkan & Coba Lagi\" di \"Solusi lain\".",
     "setup_files_locked": "Program lain sedang menggunakan file VoiceStudio (OneDrive atau aplikasi sinkronisasi lain, antivirus, atau backend VoiceStudio yang masih berjalan). Tutup program itu atau jeda sinkronisasi, lalu tekan Coba Lagi.",
     "download_apple_silicon": "Unduh build Apple Silicon",
     "ready": "Mesin siap",
@@ -2349,6 +2364,10 @@
     "dubbing_cta": "Jalankan ini di video Anda sendiri →",
     "dubbing_loading": "Memuat demo sulih suara…",
     "dubbing_dismiss": "Tolak demo sulih suara",
+    "dubbing_download": "Unduh video demo (~10 MB)",
+    "dubbing_downloading": "Mengunduh…",
+    "dubbing_download_failed": "Unduhan gagal. Periksa koneksi Anda.",
+    "dubbing_retry": "Coba lagi",
     "original_tag": "asli",
     "dubbed_tag": "dijuluki",
     "script_conversational": "Percakapan",
@@ -2577,7 +2596,7 @@
   },
   "crash": {
     "uptime_value": "{{count}} s",
-    "field_exit": "KELUAR",
+    "field_exit": "Status keluar",
     "field_when": "Kapan",
     "field_uptime": "Waktu aktif sebelum crash",
     "no_stderr": "Tidak ada keluaran kesalahan yang ditangkap.",
@@ -2983,6 +3002,7 @@
     "source_language_required": "Pengenalan suara tidak melaporkan bahasa yang diucapkan dalam video ini, jadi video tidak dapat diterjemahkan di sini. Buka video di Sulih Suara dan pilih bahasa sumbernya, atau pilih model pengenalan suara yang mendeteksi bahasa.",
     "transcription_media_tool": "Transkripsi membutuhkan ffmpeg, yang tidak dapat ditemukan atau dijalankan VoiceStudio. Buka Pengaturan → Alat audio lalu gunakan Unduh/Perbaiki, atau instal ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: pengelola paket Anda) dan mulai ulang VoiceStudio. Anda juga dapat mengarahkan FFMPEG_PATH ke berkas ffmpeg.",
     "transcription_pipe_lost": "Backend kehilangan saluran keluarannya ke aplikasi saat transkripsi (broken pipe). Mulai ulang VoiceStudio dan coba lagi.",
+    "reference_transcript_required": "Klip referensi suara ini tidak memiliki transkrip, yang dibutuhkan mesin ini untuk mengkloningnya. Tambahkan transkrip ke profil suara, atau instal model ucapan-ke-teks agar dapat ditranskripsi otomatis.",
     "gpu_oom": "GPU kehabisan memori. Tutup aplikasi lain yang berat memakai GPU atau bongkar model, lalu coba lagi. Anda juga bisa memilih CPU di Pengaturan → Performa & Perangkat atau memilih mesin TTS yang lebih kecil.",
     "host_memory_exhausted": "Komputer kehabisan memori. Tutup aplikasi dan tab peramban lain yang boros memori, bongkar model yang tidak dipakai, buat bagian yang lebih pendek, atau pilih mesin TTS yang lebih ringan.",
     "disk_full": "Disk penuh. Kosongkan ruang di drive yang menyimpan data, cache model, atau folder sementara VoiceStudio, lalu coba lagi. Pengaturan → Penyimpanan menampilkan penggunaan disk dan dapat menghapus file sementara.",
@@ -3035,7 +3055,8 @@
     "missingSpeech": "Audio ucapan hilang atau tidak dapat dibaca. Buat ulang segmen terkait sebelum mengekspor.",
     "timingOverflow": "Ucapan melebihi jatah waktunya. Persingkat terjemahan atau pilih slot ketat atau rentangkan video.",
     "sourceChanged": "Subtitle berubah saat sulih suara ini sedang dibuat. Trek sebelumnya dipertahankan; buat ulang untuk memakai subtitle baru.",
-    "backgroundUnavailable": "Suara asli tidak dapat dipertahankan. Periksa pemisahan latar dan waktu dialog, lalu coba lagi, atau pilih ekspor suara saja."
+    "backgroundUnavailable": "Suara asli tidak dapat dipertahankan. Periksa pemisahan latar dan waktu dialog, lalu coba lagi, atau pilih ekspor suara saja.",
+    "untranslated": "Trek ini belum diterjemahkan: semua baris masih sama dengan teks sumber. Terjemahkan atau pilih bahasa sumber, lalu buat lagi."
   },
   "dubStyle": {
     "label": "Instruksi gaya terjemahan",
@@ -3054,6 +3075,8 @@
     "free": "Gratis",
     "pro": "Pro",
     "get_pro": "Dapatkan Pro",
+    "upgrade_pro": "Upgrade ke Pro",
+    "get_pro_app": "Dapatkan aplikasi Pro",
     "sponsor_bar": "Bilah sponsor",
     "visible": "Terlihat",
     "hideable": "Dapat disembunyikan",
@@ -3098,6 +3121,7 @@
       "speechCurl": "Teks ke ucapan (curl)",
       "transcriptionCurl": "Transkripsi (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Jalankan kontainer",
       "dockerCompose": "Docker Compose",
       "workflow": "Alur kerja n8n",
@@ -3450,7 +3474,8 @@
     "denoise": "Bersihkan derau referensi",
     "polish": "Sempurnakan audio yang dihasilkan",
     "basics": "1× adalah kecepatan normal. Kosongkan durasi untuk irama alami.",
-    "hint": "Biasanya biarkan nilai bawaan. Panduan mengatur pengaruh instruksi; kontrol lain mengubah cara model membentuk suara. Ubah satu per satu."
+    "hint": "Biasanya biarkan nilai bawaan. Panduan mengatur pengaruh instruksi; kontrol lain mengubah cara model membentuk suara. Ubah satu per satu.",
+    "pauses_hint": "Menambahkan jeda pada baris kosong. 0 mempertahankan tempo bawaan mesin."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} hanya punya satu model {{language}}, jadi aksennya mengikuti suara referensi.",
@@ -4437,5 +4462,12 @@
     "unavailable": "Laporan otomatis tidak tersedia atau dinonaktifkan untuk aplikasi ini.",
     "managed": "Kelola pilihan ini di aplikasi desktop yang terhubung ke browser ini.",
     "save_failed": "Pilihan ini tidak dapat disimpan. Silakan coba lagi."
+  },
+  "tray": {
+    "open": "Buka {{app}}",
+    "start_dictation": "Mulai dikte",
+    "stop_dictation": "Hentikan dikte",
+    "settings": "Pengaturan",
+    "quit": "Keluar"
   }
 }

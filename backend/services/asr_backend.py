@@ -493,6 +493,36 @@ def transcribe_request_kwargs(backend, options: dict) -> dict:
 WHISPER_LONG_FORM_OPTIONS = {"condition_on_previous_text": False}
 
 
+def _whisper_thread_kwargs(device: str) -> dict:
+    """CPU decode threads: all cores up to 8 (CTranslate2 defaults to 4)."""
+    if device != "cpu":
+        return {}
+    return {"cpu_threads": min(os.cpu_count() or 4, 8)}
+
+
+def whisper_batching_enabled() -> bool:
+    """CUDA batched decode is OPT-IN (``OMNIVOICE_ASR_BATCHED=1``).
+
+    faster-whisper's batched decoder has no temperature-fallback retries and
+    other sequential-path quality checks, so it is faster but can transcribe
+    worse; dub quality wins by default.
+    """
+    return os.environ.get("OMNIVOICE_ASR_BATCHED", "0").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+# The batched pipeline keeps per-call pause-correction state on the shared
+# instance; serialize batched decodes so concurrent requests cannot mix it.
+_BATCHED_DECODE_LOCK = threading.Lock()
+
+
+def whisper_batch_size() -> int:
+    try:
+        return max(1, min(32, int(os.environ.get("OMNIVOICE_ASR_BATCH_SIZE", "12"))))
+    except ValueError:
+        return 12
+
+
 def whisper_request_options(language, initial_prompt, temperature, task) -> dict:
     """Whisper-family decode kwargs for the options that were actually set."""
     opts: dict = {}
@@ -1375,7 +1405,8 @@ class FasterWhisperBackend(ASRBackend):
             for ct in candidates:
                 try:
                     self._model = WhisperModel(
-                        _local_model_source(self._model_name), device=device, compute_type=ct
+                        _local_model_source(self._model_name), device=device, compute_type=ct,
+                        **_whisper_thread_kwargs(device),
                     )
                     self._device, self._compute_type = device, ct
                     return
@@ -1416,6 +1447,26 @@ class FasterWhisperBackend(ASRBackend):
             # the last error.
             raise last_err
 
+    def _batched_pipeline(self):
+        """Lazily wrap the model in BatchedInferencePipeline (CUDA only), else None."""
+        if getattr(self, "_batched", None) is False or getattr(self, "_device", None) != "cuda":
+            return None
+        if not whisper_batching_enabled():
+            return None
+        cached = getattr(self, "_batched_pipe", None)
+        if cached is not None and getattr(self, "_batched_for", None) is self._model:
+            return cached
+        try:
+            from faster_whisper import BatchedInferencePipeline
+
+            self._batched_pipe = BatchedInferencePipeline(self._model)
+            self._batched_for = self._model
+            return self._batched_pipe
+        except Exception as e:  # noqa: BLE001 — older faster-whisper: stay sequential
+            logger.info("faster-whisper batched pipeline unavailable (%s) — sequential decode", e)
+            self._batched = False
+            return None
+
     def supports_translation(self) -> bool:
         return whisper_checkpoint_translates(self._model_name)
 
@@ -1440,15 +1491,42 @@ class FasterWhisperBackend(ASRBackend):
         # index / re-iterate.
         from services.performance_profiles import asr_decode_defaults
 
-        segments_iter, info = self._model.transcribe(
-            audio_path,
+        decode_kwargs = dict(
             word_timestamps=word_timestamps,
             vad_filter=True,  # built-in Silero VAD — cleaner segment starts
             **asr_decode_defaults(),
             **WHISPER_LONG_FORM_OPTIONS,
             **whisper_request_options(language, initial_prompt, temperature, task),
         )
-        segments = list(segments_iter)
+        segments = info = None
+        pipeline = self._batched_pipeline()
+        if pipeline is not None:
+            try:
+                with _BATCHED_DECODE_LOCK:
+                    segments_iter, info = pipeline.transcribe(
+                        audio_path, batch_size=whisper_batch_size(),
+                        without_timestamps=False, **decode_kwargs)
+                    segments_iter = list(segments_iter)
+                # The batched decoder (faster-whisper 1.2.x) skips the sequential
+                # path's no-speech rejection; apply the same rule (defaults:
+                # no_speech_threshold 0.6, log_prob_threshold -1.0).
+                segments = [
+                    seg for seg in segments_iter
+                    if not (
+                        (getattr(seg, "no_speech_prob", None) or 0.0) > 0.6
+                        and (getattr(seg, "avg_logprob", None) if getattr(seg, "avg_logprob", None) is not None else 0.0) < -1.0
+                    )
+                ]
+            except Exception as e:  # noqa: BLE001 — any batched failure → sequential path
+                from core.scrub import scrub_text
+                logger.warning(
+                    "faster-whisper batched decode failed (%s: %s) — falling back "
+                    "to sequential decode", type(e).__name__, scrub_text(str(e)))
+                self._batched = False
+                segments = info = None
+        if segments is None:
+            segments_iter, info = self._model.transcribe(audio_path, **decode_kwargs)
+            segments = list(segments_iter)
         # Normalise to the shape segment_transcript(...) expects: a dict with
         # `chunks` (for backwards compat with mlx output) AND `segments` +
         # `language` (so callers that peek at language metadata keep working).
@@ -1496,6 +1574,10 @@ class FasterWhisperBackend(ASRBackend):
         if unload_isolated(self):
             return
         self._model = None
+        # The batched wrapper and its cache key both reference the model; drop
+        # them too or the CUDA weights outlive the unload.
+        self._batched_pipe = None
+        self._batched_for = None
         self._asr = None  # harmless if a subclass ever used it; keeps idempotence
         import gc
         gc.collect()
@@ -1653,9 +1735,21 @@ class PyTorchWhisperBackend(ASRBackend):
 
         return gpu_compatible(cls.gpu_compat)
 
-    def __init__(self, asr_pipe=None):
+    def __init__(self, asr_pipe=None, model_name: str | None = None):
         # Reuses the `_asr_pipe` attached to the TTS model when available.
         self._pipe = asr_pipe
+        # Explicit checkpoint override. The capture picker passes the model it
+        # verified is installed (the catalogue's ROCm entry), so the gate, the
+        # loader and the dictation preflight all name the same repo. Callers
+        # that pass nothing keep the env-pinned/default resolution.
+        self._explicit_model = model_name
+        # One cold load per instance: dictation can share this backend across
+        # concurrent requests, and a second GPU pipeline build can OOM.
+        self._pipe_lock = threading.Lock()
+
+    def _resolved_model_name(self) -> str:
+        """The checkpoint this instance loads: explicit override, else the default."""
+        return self._explicit_model or self._model_name()
 
     @property
     def execution_device(self):
@@ -1766,6 +1860,16 @@ class PyTorchWhisperBackend(ASRBackend):
         """Lazily create the standalone PyTorch Whisper pipeline on the chosen device."""
         if self._pipe is not None:
             return
+        # Dictation can run several requests against this one shared backend, so
+        # two cold loads could otherwise both build a GPU pipeline and one could
+        # fail on VRAM. Serialise the cold path and re-check under the lock.
+        with self._pipe_lock:
+            if self._pipe is not None:
+                return
+            self._build_pipe()
+
+    def _build_pipe(self):
+        """Build the standalone pipeline. Caller holds ``_pipe_lock``."""
         # Build a standalone transformers Whisper pipeline on demand. This runs
         # on PyTorch's own stack (cuDNN 9 ships with torch), so it works as a
         # fallback on machines where WhisperX / faster-whisper can't load
@@ -1780,7 +1884,7 @@ class PyTorchWhisperBackend(ASRBackend):
             # Keep ImportError for deep-load fallback, but do not relabel an
             # installed package's broken transitive import as an absent package.
             raise ImportError(f"PyTorch Whisper could not load Transformers pipeline: {exc}") from exc
-        model_name = self._model_name()
+        model_name = self._resolved_model_name()
         device = self._pick_device(model_name)
         asr_dtype = torch.float16 if str(device).startswith("cuda") else torch.float32
         logger.info(
@@ -1835,6 +1939,63 @@ class PyTorchWhisperBackend(ASRBackend):
         except Exception:  # noqa: BLE001
             return False
 
+    # Free host RAM (GB) below which the CPU fallback stops asking for word
+    # timestamps: segment timestamps need no attention tensors at all.
+    _CPU_WORD_TIMESTAMP_MIN_FREE_GB = 3.0
+
+    def _limit_encoder_attention(self) -> None:
+        """Stop the encoder from retaining its self-attention maps.
+
+        Word timestamps make transformers request ``output_attentions`` for the
+        whole model, so the encoder keeps a ``[batch, heads, 1500, 1500]`` map
+        per layer (about 0.18 GB per layer per sample for large-v3-turbo: 11 GB
+        at batch 2) although DTW alignment reads only decoder cross-attention.
+        A forward pre-hook pins the encoder's flag off; the decoder keeps its
+        cross-attentions, so word timestamps are unchanged. Idempotent, and a
+        pipeline whose model cannot take the hook is left as it was.
+        """
+        encoder = getattr(getattr(getattr(self._pipe, "model", None), "model", None), "encoder", None)
+        if encoder is None or getattr(encoder, "_vs_no_encoder_attentions", False):
+            return
+        try:
+            def _force_off(_module, args, kwargs):
+                if kwargs.get("output_attentions"):
+                    kwargs["output_attentions"] = False
+                return args, kwargs
+
+            encoder.register_forward_pre_hook(_force_off, with_kwargs=True)
+            encoder._vs_no_encoder_attentions = True
+        except Exception as exc:  # noqa: BLE001 — memory optimisation only
+            logger.warning(
+                "PyTorch Whisper: could not disable encoder attention capture "
+                "(%s: %s); word timestamps will use more memory.",
+                type(exc).__name__, exc,
+            )
+
+    @classmethod
+    def _host_free_gb(cls) -> float | None:
+        try:
+            import psutil
+
+            return psutil.virtual_memory().available / 1024**3
+        except Exception:  # noqa: BLE001 — unknown RAM must not block ASR
+            return None
+
+    def _cpu_word_timestamps_ok(self, word_timestamps: bool) -> bool:
+        """On CPU, keep word timestamps only while host RAM has headroom."""
+        if not word_timestamps:
+            return False
+        free_gb = self._host_free_gb()
+        if free_gb is not None and free_gb < self._CPU_WORD_TIMESTAMP_MIN_FREE_GB:
+            logger.warning(
+                "PyTorch Whisper on CPU: only %.1f GB RAM free (< %.1f GB) — "
+                "using segment timestamps instead of word timestamps to avoid "
+                "exhausting memory.",
+                free_gb, self._CPU_WORD_TIMESTAMP_MIN_FREE_GB,
+            )
+            return False
+        return True
+
     def _call_pipe(self, audio, rate, batch, word_timestamps, generate_kwargs):
         options = {
             "return_timestamps": "word" if word_timestamps else True,
@@ -1852,7 +2013,7 @@ class PyTorchWhisperBackend(ASRBackend):
             return self._call_pipe(audio, rate, batch, word_timestamps, generate_kwargs)
 
         if not self._pipe_on_gpu():
-            return attempt(2)
+            return self._attempt_on_cpu(audio, rate, word_timestamps, generate_kwargs)
         sizes = list(
             self._CUDA_BATCH_LADDER_WORDS if word_timestamps
             else self._CUDA_BATCH_LADDER
@@ -1880,7 +2041,25 @@ class PyTorchWhisperBackend(ASRBackend):
             "moving the pipeline to CPU for this request."
         )
         self._rebuild_on_cpu()
-        return attempt(2)
+        return self._attempt_on_cpu(audio, rate, word_timestamps, generate_kwargs)
+
+    def _attempt_on_cpu(self, audio, rate, word_timestamps, generate_kwargs):
+        # Only a pipeline that really sits on the CPU gets batch 1 and the
+        # host-RAM rule; MPS also lands here (it is not on the CUDA/XPU ladder)
+        # and keeps its batch of 2 and the requested word timestamps.
+        if not self._pipe_on_cpu():
+            return self._call_pipe(audio, rate, 2, word_timestamps, generate_kwargs)
+        # Batch 1: float32 activations on CPU gain nothing from batching.
+        return self._call_pipe(
+            audio, rate, 1, self._cpu_word_timestamps_ok(word_timestamps),
+            generate_kwargs,
+        )
+
+    def _pipe_on_cpu(self) -> bool:
+        try:
+            return str(getattr(self._pipe, "device", "cpu")).lower().startswith("cpu")
+        except Exception:  # noqa: BLE001
+            return True
 
     def _rebuild_on_cpu(self) -> None:
         """Move the existing pipeline to CPU without resolving any model files."""
@@ -1906,13 +2085,14 @@ class PyTorchWhisperBackend(ASRBackend):
         if english_only(self._pipe):
             return False
         loaded = getattr(getattr(self._pipe, "model", None), "name_or_path", None)
-        return whisper_checkpoint_translates(loaded or self._model_name())
+        return whisper_checkpoint_translates(loaded or self._resolved_model_name())
 
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
                    language: str | None = None, task: str = "transcribe") -> dict:
         """Decode audio and normalize PyTorch Whisper output with safe generation options."""
         import soundfile as sf
         self._ensure_pipe()
+        self._limit_encoder_attention()
         # transformers' Whisper generate() takes language/task; a prompt needs
         # tokenizer-specific prompt_ids, so it is not advertised here.
         generate_kwargs = whisper_request_options(language, None, None, task)
@@ -3215,6 +3395,17 @@ def _rocm_torch() -> bool:
         return False
 
 
+def _gpu_probe_skipped() -> bool:
+    """Whether this process runs on an explicit CPU choice (#4006).
+
+    A "restart on CPU" recovery must not initialise the driver it is avoiding,
+    so any gate that would call ``torch.cuda.is_available()`` asks this first.
+    """
+    from core.device_caps import gpu_probe_skipped
+
+    return gpu_probe_skipped()
+
+
 def _ctranslate2_cuda_ok() -> bool:
     """Whether CTranslate2 (whisperx / faster-whisper) may use ``"cuda"``.
 
@@ -3412,7 +3603,9 @@ def backend_model_repos(backend: ASRBackend) -> list[str]:
     if isinstance(backend, SherpaDictationBackend):
         return [backend.spec.repo_id]
     if isinstance(backend, PyTorchWhisperBackend):
-        repo = _licence_repo(backend._model_name())
+        # The checkpoint the instance will actually load, not the default: the
+        # capture picker can pass an explicit override.
+        repo = _licence_repo(backend._resolved_model_name())
     else:
         name = getattr(backend, "_model_name", None)
         if isinstance(name, str):
@@ -4264,8 +4457,11 @@ def get_capture_asr_backend(*, skip_sherpa: bool = False) -> ASRBackend:
                                  dictation-grade fast on the GPU.
       2. mlx-whisper Turbo     — Apple Silicon, ~5× faster than large-v3
       3. mlx-whisper large     — still native Metal, faster than CPU int8
-      4. faster-whisper        — cross-platform CTranslate2 fallback
-      5. pytorch-whisper       — last resort
+      4. pytorch-whisper       — on a ROCm/HIP torch host only, where stock
+                                 CTranslate2 has no GPU path (#1529, #4317) and
+                                 the pipeline's weights are already installed
+      5. faster-whisper        — cross-platform CTranslate2 fallback
+      6. pytorch-whisper       — last resort
 
     The caller should also pass ``word_timestamps=False`` to the returned
     backend to skip per-word timing and shave another ~30% latency.
@@ -4329,8 +4525,22 @@ def _select_capture_asr_backend(*, skip_sherpa: bool) -> ASRBackend:
         # stale whisper pick until restart (the memo in _repo_installed keeps
         # the repeated check cheap once it turns positive).
         prefer_parakeet = _capture_prefers_parakeet()
-        auto_key = f"auto:parakeet={int(prefer_parakeet)}"
-        if _capture_backend is not None and _capture_backend_key == auto_key:
+        # The ROCm/HIP tier is part of the warm-singleton key, not just a branch
+        # below: without it, a capture pick cached before the user installed the
+        # PyTorch weights would keep being served after the install, and the
+        # (uncached) preflight would name the GPU repo while dictation stayed on
+        # CTranslate2. Same reasoning as the parakeet gate above.
+        # The resolved model is part of the key as well, so repinning
+        # OMNIVOICE_PYTORCH_ASR_MODEL or a fit change rebuilds the singleton.
+        rocm_pick = _rocm_capture_gpu_pick()
+        rocm_pytorch = rocm_pick is not None
+        pytorch_model = rocm_pick or _rocm_capture_pytorch_model()
+        auto_key = (
+            f"auto:parakeet={int(prefer_parakeet)};rocm-pytorch={int(rocm_pytorch)}"
+            f";pytorch={pytorch_model if _rocm_torch() else ''}"
+        )
+        if (_capture_backend is not None and _capture_backend_key == auto_key
+                and getattr(_capture_backend, "id", None) not in _DEEP_IMPORT_BROKEN):
             return _capture_backend
 
         if prefer_parakeet:
@@ -4346,14 +4556,40 @@ def _select_capture_asr_backend(*, skip_sherpa: bool) -> ASRBackend:
             return _capture_backend
 
         # Fall back to faster-whisper (CPU int8 on non-Apple)
+        #
+        # …except on a ROCm/HIP torch host, where stock CTranslate2 is the
+        # CUDA-only wheel (#1529): faster-whisper would silently transcribe on
+        # the CPU while the HIP GPU sat idle (#4317). _auto_detect() already
+        # prefers the torch-native pipeline on exactly this host, so the capture
+        # picker agrees with it instead of contradicting it. NVIDIA (CTranslate2
+        # owns the GPU), the qualified Windows HIP CT2 and plain CPU hosts all
+        # keep the fallback below: _ctranslate2_cuda_ok() is True on the first
+        # two, and _rocm_torch() is False on the third.
+        #
+        # Gated on the weights already being on disk, exactly like the parakeet
+        # branch above: switching an auto pick to an engine whose model is not
+        # installed would turn dictation into a surprise multi-GB Hugging Face
+        # download. On ROCm the catalogue offers openai/whisper-large-v3
+        # (curated_on: [rocm]) as the opt-in install that reaches this branch,
+        # and asr_model_missing_error()'s docstring records that
+        # pytorch-whisper's default repo is deliberately not CTA-coverable.
+        if rocm_pytorch:
+            _capture_backend = PyTorchWhisperBackend(model_name=pytorch_model)
+            _capture_backend_key = auto_key
+            return _capture_backend
+
         ok, _ = FasterWhisperBackend.is_available()
         if ok:
             _capture_backend = FasterWhisperBackend()
             _capture_backend_key = auto_key
             return _capture_backend
 
-        # Last resort
-        _capture_backend = PyTorchWhisperBackend()
+        # Last resort. On a ROCm host this loads the same checkpoint the gate
+        # above verified against, so the catalogue backs what gets fetched
+        # instead of the uncatalogued default. Off ROCm it is unchanged.
+        _capture_backend = PyTorchWhisperBackend(
+            model_name=pytorch_model if _rocm_torch() else None
+        )
         _capture_backend_key = auto_key
         return _capture_backend
 
@@ -4375,6 +4611,110 @@ ASR_MODEL_MISSING = "asr_model_missing"
 
 _PYTORCH_ASR_DEFAULT = "openai/whisper-large-v3-turbo"
 _FASTER_WHISPER_DEFAULT = "Systran/faster-whisper-large-v3"
+#: The catalogue's curated PyTorch Whisper checkpoint for AMD GPUs
+#: (backend/config/models.yaml: engines: [pytorch-whisper], curated_on: [rocm]).
+#: The ROCm capture pick loads this one so that installing the model the Model
+#: Catalogue advertises is what upgrades dictation to the GPU.
+_ROCM_CAPTURE_PYTORCH_REPO = "openai/whisper-large-v3"
+
+
+#: Curated ROCm PyTorch checkpoints in preference order (backend/config/models.yaml,
+#: engines: [pytorch-whisper], curated_on: [rocm]). Turbo is the smaller one,
+#: so a 4 GB card that cannot fit large-v3 still reaches the GPU (#4335).
+_ROCM_CAPTURE_PYTORCH_CANDIDATES = (
+    _ROCM_CAPTURE_PYTORCH_REPO,
+    "openai/whisper-large-v3-turbo",
+)
+_rocm_capture_nofit_logged: set[str] = set()
+
+
+def _rocm_capture_fits(repo: str) -> bool:
+    """Whether ``repo`` fits the GPU now, by the PyTorch backend's own budget.
+
+    Fails open (True) when the probe is unavailable or the VRAM preflight is
+    disabled, exactly like ``PyTorchWhisperBackend._pick_device``. A model the
+    live capture backend already holds on the GPU counts as fitting: its own weights are
+    what shrank the free VRAM, and re-picking would evict it.
+    """
+    if os.environ.get("OMNIVOICE_ASR_VRAM_PREFLIGHT", "1").strip().lower() in (
+        "0", "false", "no",
+    ):
+        return True
+    live = _capture_backend
+    if isinstance(live, PyTorchWhisperBackend) and getattr(live, "_pipe", None) is not None:
+        try:
+            # Only weights resident on the GPU count: a cold or CPU-moved
+            # singleton holds no VRAM, so the probe must decide for it.
+            if live._resolved_model_name() == repo and not live._pipe_on_cpu():
+                return True
+        except Exception:  # noqa: BLE001 — fall through to the probe
+            pass
+    try:
+        import torch
+
+        free, _total = torch.cuda.mem_get_info()
+    except Exception:  # noqa: BLE001 — an unavailable probe must not block ASR
+        return True
+    return free / 1024**3 >= PyTorchWhisperBackend._cuda_budget_gb(repo)
+
+
+def _rocm_capture_pick() -> str | None:
+    """The PyTorch Whisper checkpoint the ROCm capture pick will use, if any.
+
+    An explicit ``OMNIVOICE_PYTORCH_ASR_MODEL`` pin wins (the user chose it;
+    it only has to be installed). Otherwise the first catalogue checkpoint
+    that is installed on disk AND fits the GPU, large-v3 before turbo, so the
+    card's VRAM decides rather than the name. ``None`` means nothing qualifies
+    and the caller keeps its CTranslate2 fallback; nothing is downloaded.
+    """
+    pin = os.environ.get("OMNIVOICE_PYTORCH_ASR_MODEL")
+    if pin:
+        return pin if _repo_installed(pin) else None
+    installed = [r for r in _ROCM_CAPTURE_PYTORCH_CANDIDATES if _repo_installed(r)]
+    for repo in installed:
+        if _rocm_capture_fits(repo):
+            return repo
+    if installed:
+        key = ",".join(installed)
+        if key not in _rocm_capture_nofit_logged:
+            _rocm_capture_nofit_logged.add(key)
+            logger.info(
+                "ROCm capture: installed PyTorch Whisper %s does not fit the "
+                "free VRAM; keeping the faster-whisper fallback", key,
+            )
+    return None
+
+
+def _rocm_capture_pytorch_model() -> str:
+    """The PyTorch Whisper checkpoint the ROCm capture pick verifies and loads.
+
+    The pin, else the curated large-v3 repo, so naming stays catalogue-backed
+    for the last-resort loader. It never probes the GPU; the fit-chosen
+    installed checkpoint comes from :func:`_rocm_capture_gpu_pick`. Being on
+    disk and fitting are separate gates there, so an uninstalled host keeps the
+    preflighted CTranslate2 pick rather than starting a multi-GB download (see
+    :func:`asr_model_missing_error` on why this repo is outside the CTA).
+    """
+    return os.environ.get("OMNIVOICE_PYTORCH_ASR_MODEL") or _ROCM_CAPTURE_PYTORCH_REPO
+
+
+def _rocm_capture_gpu_pick() -> str | None:
+    """The checkpoint the ROCm/HIP capture tier loads, or ``None`` to skip it.
+
+    One evaluation shared by the picker and the dictation preflight, so both
+    name the same repo. The cheap host gates run first and the VRAM probe in
+    :func:`_rocm_capture_pick` only after them: ``_gpu_probe_skipped()`` is
+    asked before anything touches the driver a "restart on CPU" recovery is
+    avoiding (#4006), and non-ROCm hosts never probe at all.
+    """
+    if not (_rocm_torch() and not _gpu_probe_skipped()
+            and _cuda_reported_available()
+            and not _ctranslate2_cuda_ok()):
+        return None
+    pick = _rocm_capture_pick()
+    if pick is None or not _probe_available(PyTorchWhisperBackend):
+        return None
+    return pick
 
 
 def faster_whisper_model_id() -> str:
@@ -4515,6 +4855,13 @@ def _capture_whisper_repo() -> str | None:
     ok, _ = MLXWhisperBackend.is_available()
     if ok:
         return _MLX_MODEL_TURBO
+    # Mirrors the picker's ROCm/HIP step: stock CTranslate2 has no GPU path
+    # there (#1529), so the preflight must name the torch-native repo the
+    # picker will actually load (#4317) instead of the CTranslate2 one.
+    rocm_pick = _rocm_capture_gpu_pick()
+    if rocm_pick is not None:
+        return rocm_pick
+    pytorch_model = _rocm_capture_pytorch_model()
     ok, _ = FasterWhisperBackend.is_available()
     if ok:
         # An unrecognized-but-valid alias (a name faster_whisper itself can
@@ -4522,6 +4869,10 @@ def _capture_whisper_repo() -> str | None:
         # OPEN rather than coerce to the default repo and demand a download
         # of a model the user never picked.
         return _fw_repo(faster_whisper_model_id())
+    # Last resort: on a ROCm host the picker's PyTorch fallback loads the ROCm
+    # checkpoint, so the preflight has to name that one instead of the default.
+    if _rocm_torch():
+        return pytorch_model
     return os.environ.get("OMNIVOICE_PYTORCH_ASR_MODEL", _PYTORCH_ASR_DEFAULT)
 
 
@@ -4585,12 +4936,32 @@ def _recommended_asr_model(
 
 
 #: Repos confirmed installed this session (positive-only memo). Installs only
-#: ADD models, so no invalidation is needed — and dictation utterances /
-#: generates stop paying a full ``scan_cache_dir`` walk on every call once a
-#: repo has been confirmed once. (A user deleting a model mid-session degrades
-#: to the pre-preflight behaviour for that repo: fail open, auto-download on
-#: next use.) Test fixtures that stub ``is_cached`` clear this between tests.
+#: ADD models, so the memo is dropped explicitly when the catalogue cache is
+#: busted by an install or delete instead of on every call: dictation utterances
+#: and generates then stop paying a full ``scan_cache_dir`` walk once a repo has
+#: been confirmed. Test fixtures that stub ``is_cached`` clear this between
+#: tests.
 _INSTALLED_REPO_MEMO: set[str] = set()
+#: Guards the memo against an install/delete that races a disk probe. The
+#: generation is read before the probe and compared inside the lock, so a clear
+#: that lands mid-probe cannot be undone by the add that follows it.
+_INSTALLED_MEMO_LOCK = threading.Lock()
+_INSTALLED_MEMO_GENERATION = 0
+
+
+def invalidate_installed_memo() -> None:
+    """Drop the positive-only installed memo after an install or delete.
+
+    Without this, a checkpoint deleted mid-session keeps answering "installed",
+    and any engine pick that trusts the answer would select a model that is no
+    longer on disk. Registered with the catalogue cache that owns the state, so
+    install and delete bust it without this module being imported by the router.
+    """
+    global _INSTALLED_MEMO_GENERATION
+
+    with _INSTALLED_MEMO_LOCK:
+        _INSTALLED_MEMO_GENERATION += 1
+        _INSTALLED_REPO_MEMO.clear()
 
 
 def _repo_installed(repo: str, *, refresh: bool = False) -> bool:
@@ -4600,10 +4971,23 @@ def _repo_installed(repo: str, *, refresh: bool = False) -> bool:
     so the answer matches the Model Catalogue → Models install badges."""
     if not refresh and repo in _INSTALLED_REPO_MEMO:
         return True
-    from api.routers.setup.models import cache_is_complete, get_model_catalog, is_cached
+    from api.routers.setup.models import (
+        cache_is_complete,
+        get_model_catalog,
+        is_cached,
+        register_invalidation_hook,
+    )
+
+    # Idempotent, and the dependency runs services → api only, never back.
+    register_invalidation_hook(invalidate_installed_memo)
+    generation = _INSTALLED_MEMO_GENERATION
     meta = get_model_catalog().get(repo) or {"repo_id": repo}
     if is_cached(repo) and cache_is_complete(meta):
-        _INSTALLED_REPO_MEMO.add(repo)
+        with _INSTALLED_MEMO_LOCK:
+            # Same lock as the clear, so an invalidation cannot interleave
+            # between this comparison and the insertion.
+            if generation == _INSTALLED_MEMO_GENERATION:
+                _INSTALLED_REPO_MEMO.add(repo)
         return True
     return False
 
@@ -4693,6 +5077,11 @@ def asr_model_missing_error(*, purpose: str = "transcribe",
                     excluded_sherpa_model_id=excluded_sherpa_model_id,
                 ),
             }
+        # pytorch-whisper's own default repo is catalogued since #4335 (the ROCm
+        # 4 GB pick) but stays fail-open here, as before: the CTA is not offered
+        # for an engine default the user never chose.
+        if repo == _PYTORCH_ASR_DEFAULT:
+            return None
         if get_model_catalog().get(repo) is None:
             return None  # not installable from the CTA — fail open (see docstring)
         if _repo_installed(repo):

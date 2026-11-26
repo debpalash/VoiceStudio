@@ -459,3 +459,27 @@ def test_principal_dataclass_cannot_carry_a_raw_secret():
     assert "credential" not in AuthPrincipal.__dataclass_fields__
     assert "token" not in AuthPrincipal.__dataclass_fields__
     assert "secret" not in AuthPrincipal.__dataclass_fields__
+
+
+def test_xi_api_key_is_a_credential_on_elevenlabs_routes_only(monkeypatch, store):
+    """ElevenLabs SDKs send ``xi-api-key``; it proves the master key on the
+    /elevenlabs routes and is ignored everywhere else."""
+    monkeypatch.setenv("OMNIVOICE_API_KEY", MASTER)
+
+    on_route = resolve_principal(
+        Connection(headers={"xi-api-key": MASTER}, path="/elevenlabs/v1/voices"), store=store
+    )
+    assert on_route.kind is PrincipalKind.API_KEY
+    assert on_route.transport is CredentialTransport.HEADER
+
+    elsewhere = resolve_principal(
+        Connection(headers={"xi-api-key": MASTER}, path="/v1/audio/voices"), store=store
+    )
+    assert elsewhere.kind is PrincipalKind.ANONYMOUS
+    assert not elsewhere.allows("consume")
+
+    wrong = resolve_principal(
+        Connection(headers={"xi-api-key": "wrong"}, path="/elevenlabs/v1/voices"), store=store
+    )
+    assert wrong.kind is PrincipalKind.ANONYMOUS
+    assert wrong.capabilities == frozenset()

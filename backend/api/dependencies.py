@@ -60,7 +60,7 @@ def _is_delegated_caller(request) -> bool:
     return str(value or "").strip().lower() in _TRUTHY
 
 
-def _delegated_presents_admin_credential(request) -> bool:
+def _delegated_presents_admin_credential(request, *, side_effectful_get: bool = False) -> bool:
     """Credential check for a delegated request, ignoring its peer address.
 
     :func:`_request_presents_admin_credential` reads the canonical principal,
@@ -75,8 +75,9 @@ def _delegated_presents_admin_credential(request) -> bool:
     if principal is None:
         return False
     if (principal.transport in {CredentialTransport.COOKIE, CredentialTransport.LEGACY_COOKIE}
-            and str(getattr(request, "method", "GET")).upper() not in SAFE_HTTP_METHODS):
-        return cookie_csrf_allowed(request)
+            and (side_effectful_get
+                 or str(getattr(request, "method", "GET")).upper() not in SAFE_HTTP_METHODS)):
+        return cookie_csrf_allowed(request, side_effectful_get=side_effectful_get)
     return True
 
 
@@ -210,7 +211,12 @@ def require_loopback(request: Request) -> None:
       docs/api-auth.md (#1213).
     """
     host = request.client.host if request.client else None
-    if is_loopback(host):
+    # A loopback peer can be the in-process MCP bridge re-entering with its
+    # original HTTP peer preserved (#4128). `check_admin` never grants admin
+    # rights to such a caller on the strength of that address, and neither may
+    # these guards.
+    delegated = _is_delegated_caller(request)
+    if is_loopback(host) and not delegated:
         return
     if _server_mode():
         method = str(getattr(request, "method", "GET")).upper()
@@ -222,7 +228,11 @@ def require_loopback(request: Request) -> None:
             return
         if not _admin_credential_configured(request):
             return
-        if _request_presents_admin_credential(request):
+        if (
+            _delegated_presents_admin_credential(request)
+            if delegated
+            else _request_presents_admin_credential(request)
+        ):
             return
     raise HTTPException(status_code=403, detail="loopback origin required")
 
@@ -344,11 +354,17 @@ def require_admin_action(request: Request) -> None:
     """
     reject_cross_site_get(request)
     host = request.client.host if request.client else None
-    if is_loopback(host):
+    # A loopback peer can be the in-process MCP bridge re-entering with its
+    # original HTTP peer preserved (#4128). `check_admin` never grants admin
+    # rights to such a caller on the strength of that address, and neither may
+    # these guards.
+    delegated = _is_delegated_caller(request)
+    if is_loopback(host) and not delegated:
         return
-    if _server_mode() and _request_presents_admin_credential(
-        request,
-        side_effectful_get=True,
+    if _server_mode() and (
+        _delegated_presents_admin_credential(request, side_effectful_get=True)
+        if delegated
+        else _request_presents_admin_credential(request, side_effectful_get=True)
     ):
         return
     _admin_gate_403()
@@ -366,7 +382,12 @@ def require_admin_media_action(request: Request) -> None:
     """
     reject_cross_site_get(request)
     host = request.client.host if request.client else None
-    if is_loopback(host):
+    # A loopback peer can be the in-process MCP bridge re-entering with its
+    # original HTTP peer preserved (#4128). `check_admin` never grants admin
+    # rights to such a caller on the strength of that address, and neither may
+    # these guards.
+    delegated = _is_delegated_caller(request)
+    if is_loopback(host) and not delegated:
         return
     if _server_mode() and presents_valid_credential(request):
         return
@@ -397,7 +418,12 @@ async def require_admin_diagnostics(request: Request) -> None:
     """
     reject_cross_site_get(request)
     host = request.client.host if request.client else None
-    if is_loopback(host):
+    # A loopback peer can be the in-process MCP bridge re-entering with its
+    # original HTTP peer preserved (#4128). `check_admin` never grants admin
+    # rights to such a caller on the strength of that address, and neither may
+    # these guards.
+    delegated = _is_delegated_caller(request)
+    if is_loopback(host) and not delegated:
         return
     if _server_mode() and presents_valid_credential(request):
         return
@@ -412,9 +438,8 @@ def require_desktop(request: Request) -> None:
     strictly loopback-only even when server mode is enabled.
     """
     host = request.client.host if request.client else None
-    if is_loopback(host):
-        return
-    raise HTTPException(status_code=403, detail="desktop origin required")
+    if _is_delegated_caller(request) or not is_loopback(host):
+        raise HTTPException(status_code=403, detail="desktop origin required")
 
 
 def require_local(request: Request) -> None:
@@ -443,7 +468,9 @@ def require_native_access(request: Request) -> None:
     arbitrary path on the backend host, even with the server API key.
     """
     host = request.client.host if request.client else None
-    if not is_loopback(host):
+    # The delegated marker only ever removes implicit trust, so a loopback peer
+    # that is really the MCP bridge cannot borrow the desktop's filesystem access.
+    if _is_delegated_caller(request) or not is_loopback(host):
         raise HTTPException(status_code=403, detail="native filesystem access requires loopback origin")
 
 

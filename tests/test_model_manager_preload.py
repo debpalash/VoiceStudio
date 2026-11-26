@@ -60,6 +60,12 @@ def _configure_sync_load(manager, monkeypatch):
     return loaded, calls
 
 
+def _omnivoice_checkpoint():
+    import importlib
+
+    return importlib.import_module("services.omnivoice_checkpoint")
+
+
 def test_sync_load_keeps_asr_out_of_from_pretrained_by_default(manager, monkeypatch):
     monkeypatch.delenv("OMNIVOICE_PRELOAD_TTS_ASR", raising=False)
     loaded, calls = _configure_sync_load(manager, monkeypatch)
@@ -69,6 +75,9 @@ def test_sync_load_keeps_asr_out_of_from_pretrained_by_default(manager, monkeypa
     assert result is loaded
     assert calls == [(('example/test-checkpoint',), {
         "device_map": "cuda", "dtype": "half", "load_asr": False,
+        "tokenizer_fallback_guard": manager._guard_tokenizer_fallback,
+        # #4339: every load names its reviewed revisions, never the Hub's main.
+        **_omnivoice_checkpoint().omnivoice_pin_kwargs("example/test-checkpoint"),
     })]
     assert result.llm is not None
     assert result._voicestudio_checkpoint == "example/test-checkpoint"
@@ -83,7 +92,9 @@ def test_opt_in_loads_asr_after_tts(manager, monkeypatch):
     manager._load_model_sync()
 
     assert calls[0][1]["load_asr"] is False
-    loaded.load_asr_model.assert_called_once_with()
+    loaded.load_asr_model.assert_called_once_with(
+        **_omnivoice_checkpoint().omnivoice_asr_pin_kwargs()
+    )
 
 
 @pytest.mark.parametrize("change_during_load", [False, True])
@@ -113,7 +124,7 @@ def test_checkpoint_resolution_preserves_test_sentinel_and_repairs_engine_id(
     monkeypatch.setenv("OMNIVOICE_MODEL", "test")
     assert manager.resolve_omnivoice_checkpoint() == "test"
     monkeypatch.setenv("OMNIVOICE_MODEL", "omnivoice")
-    assert manager.resolve_omnivoice_checkpoint() == manager._DEFAULT_OMNIVOICE_CHECKPOINT
+    assert manager.resolve_omnivoice_checkpoint() == importlib.import_module("services.omnivoice_checkpoint")._DEFAULT_OMNIVOICE_CHECKPOINT
 
 
 def _configure_preload(manager, monkeypatch, *, cached):

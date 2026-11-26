@@ -247,3 +247,40 @@ def test_startup_migration_leaves_app_logging_intact(tmp_path, monkeypatch):
     finally:
         root.removeHandler(marker)
         root.setLevel(prev_level)
+
+
+def test_alembic_fast_path_matches_script_directory_and_skips_alembic_at_head(tmp_path, monkeypatch):
+    """When the DB is already stamped at head, `_run_alembic_upgrade` must
+    resolve head revisions via AST without importing Alembic/SQLAlchemy."""
+    import os
+    import sys
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(db_module.__file__))))
+    versions_dir = os.path.join(root, "backend", "migrations", "versions")
+    cfg = Config(os.path.join(root, "alembic.ini"))
+    expected_heads = set(ScriptDirectory.from_config(cfg).get_heads())
+    assert db_module._fast_alembic_heads(versions_dir) == expected_heads
+
+    db = tmp_path / "omnivoice.db"
+    _seed_user_db(db)
+    monkeypatch.setattr(db_module, "DB_PATH", str(db))
+    _run_alembic_upgrade()
+
+    # Now DB is at head: blocking `alembic` import must still return cleanly
+    # via the fast path without invoking Alembic at all.
+    for name in [n for n in sys.modules if n == "alembic" or n.startswith("alembic.")]:
+        monkeypatch.delitem(sys.modules, name)
+    attempts: list[str] = []
+
+    class _RecordingBlocker:
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname == "alembic" or fullname.startswith("alembic."):
+                attempts.append(fullname)
+                raise ImportError("alembic blocked for the fast-path test")
+            return None
+
+    monkeypatch.setattr(sys, "meta_path", [_RecordingBlocker(), *sys.meta_path])
+    _run_alembic_upgrade()
+    assert attempts == [], f"fast path must not import alembic, tried {attempts}"

@@ -108,14 +108,21 @@ export async function openInBrowser(id: unknown, rawUrl: unknown): Promise<void>
   const browser = (await detectedBrowsers()).find((item) => item.id === id);
   if (!browser) throw new Error('Browser is no longer installed');
   await new Promise<void>((resolve, reject) => {
-    const child =
-      process.platform === 'darwin'
-        ? spawn('/usr/bin/open', ['-a', browser.path, url], { stdio: 'ignore', windowsHide: true })
-        : spawn(browser.path, [url], { stdio: 'ignore', windowsHide: true, shell: false });
+    const usesLaunchHelper = process.platform === 'darwin';
+    const child = usesLaunchHelper
+      ? spawn('/usr/bin/open', ['-a', browser.path, url], { stdio: 'ignore', windowsHide: true })
+      : spawn(browser.path, [url], { stdio: 'ignore', windowsHide: true, shell: false });
     child.once('error', reject);
-    child.once('spawn', () => {
-      child.unref();
-      resolve();
-    });
+    if (usesLaunchHelper) {
+      child.once('exit', (code, signal) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Could not open ${browser.name}: launcher exited (${signal ?? code})`));
+      });
+    } else {
+      child.once('spawn', () => {
+        child.unref();
+        resolve();
+      });
+    }
   });
 }

@@ -48,6 +48,9 @@ describe('classifyInstallFailure', () => {
 
   it('does not name a blocker without evidence', () => {
     expect(classifyInstallFailure({ message: refused })).toBe('EXEC_REFUSED');
+    expect(classifyInstallFailure({ message: refused, smartAppControl: 'evaluation' })).toBe(
+      'EXEC_REFUSED',
+    );
     expect(classifyInstallFailure({ message: refused, smartAppControl: 'off' })).toBe(
       'EXEC_REFUSED',
     );
@@ -59,7 +62,7 @@ describe('classifyInstallFailure', () => {
   it('upgrades a refusal once the OS provides evidence', () => {
     for (const evidence of [
       { smartAppControl: 'on' as const },
-      { smartAppControl: 'evaluation' as const },
+      { smartAppControl: 'evaluation' as const, blockedFiles: ['python.exe'] },
       { blockedFiles: ['python.exe'] },
     ])
       expect(classifyInstallFailure({ message: refused, ...evidence })).toBe(
@@ -103,9 +106,11 @@ describe('classifyInstallFailure', () => {
 
 describe('failureGuidance', () => {
   it('never sends a work PC policy to the Smart App Control toggle', () => {
-    const policy = failureGuidance('WINDOWS_APP_CONTROL_BLOCKED', { smartAppControl: 'off' });
-    expect(policy.cause).toBe('app_control_policy');
-    expect(policy.hints).not.toContain('backend.hint_smart_app_control');
+    for (const smartAppControl of ['evaluation', 'off'] as const) {
+      const policy = failureGuidance('WINDOWS_APP_CONTROL_BLOCKED', { smartAppControl });
+      expect(policy.cause).toBe('app_control_policy');
+      expect(policy.hints).not.toContain('backend.hint_smart_app_control');
+    }
   });
 
   it('gives Smart App Control its options and no antivirus advice', () => {

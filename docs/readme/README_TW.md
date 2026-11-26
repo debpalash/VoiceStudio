@@ -120,12 +120,12 @@
       <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       適合在多台機器上承接付費客戶專案。
       <ul>
-        <li>用於客戶專案的商業授權，透過電子郵件寄給你</li>
+        <li>用於客戶專案、涵蓋 VoiceStudio 程式碼的商業授權，透過電子郵件寄給你</li>
         <li>一位使用者，最多同時使用 3 台裝置</li>
         <li>把工作傳送到你的其他 GPU，專案仍留在本機</li>
         <li>搶先取得新功能和修正</li>
       </ul>
-      <sub>閉源版本，需要帳號，7 天內可全額退款。AGPL-3.0 應用程式依然免費，也可依其條款用於商業用途。</sub><br /><br />
+      <sub>閉源版本，需要帳號，7 天內可全額退款。AGPL-3.0 應用程式依然免費，也可依其條款用於商業用途。兩種授權都不涵蓋模型權重：預設的 OmniVoice 權重僅限非商業用途（CC-BY-NC），因此在進行客戶專案前，請先在模型管理器中查看每個模型的授權。</sub><br /><br />
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">查看 Pro 方案 →</a></strong>
     </td>
     <td width="50%" valign="top">

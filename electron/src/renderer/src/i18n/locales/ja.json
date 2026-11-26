@@ -317,14 +317,17 @@
     "test_global_hint": "グローバルなエントリーのみをプレビューしています — 言語別のエントリーを含めるには言語を選択してください。",
     "test_error": "プレビューを利用できません — バックエンドに接続できませんでした。",
     "backup_title": "バックアップと復元",
-    "backup_hint": "辞書を JSON ファイルとしてダウンロードするか、以前のエクスポートからエントリーをインポートします。",
+    "backup_hint": "辞書を JSON または PLS レキシコンとしてダウンロードするか、どちらかをインポートします。他の音声サービスの PLS レキシコンも使えます。",
     "export": "JSON をエクスポート",
+    "export_pls": "PLS をエクスポート",
     "import": "JSON をインポート",
-    "import_error": "そのファイルをインポートできませんでした — 発音エクスポートの JSON が必要です。",
+    "import_error": "そのファイルをインポートできませんでした — 発音エクスポート（JSON）または PLS レキシコンが必要です。",
     "import_replace_prompt_one": "既存の {{count}} 件をインポートしたファイルで置き換えますか？「いいえ」を選ぶと、インポートした項目を追加します。",
     "import_replace_prompt_other": "既存の {{count}} 件をインポートしたファイルで置き換えますか？「いいえ」を選ぶと、インポートした項目を追加します。",
     "import_done_one": "{{count}} 件をインポートしました。",
     "import_done_other": "{{count}} 件をインポートしました。",
+    "import_skipped_one": "{{count}} 件の項目を除外しました（対応していない発音記号）。",
+    "import_skipped_other": "{{count}} 件の項目を除外しました（対応していない発音記号）。",
     "entries_count_one": "{{count}} 件",
     "entries_count_other": "{{count}} 件",
     "scope_language": "言語",
@@ -1055,7 +1058,8 @@
     "retry": "もう一度試してください",
     "confirm": "確認",
     "details": "詳細",
-    "unknown": "未知"
+    "unknown": "未知",
+    "link_blocked": "このリンクは開けません。Web とメールのリンクのみ使用できます。"
   },
   "dubWorkspace": {
     "transcriptIssues": "文字起こしの問題",
@@ -1447,6 +1451,9 @@
     "terminal_command_added": "追加しました。voicestudio を使うには新しいターミナルウィンドウを開いてください。",
     "terminal_command_failed": "voicestudio をターミナルに追加できませんでした。ホームフォルダーが読み取り専用でないことを確認して、もう一度お試しください。",
     "terminal_command_conflict": "{{path}} は別のインストールのものなので、VoiceStudio は変更しませんでした。",
+    "close_to_tray": "閉じてもトレイで実行を続ける",
+    "close_to_tray_desc": "ウィンドウを閉じると、VoiceStudio は終了せずトレイに隠れ、実行中のジョブは続行されます。トレイのアイコンから再度開き、終了するにはそこで「終了」を選びます。一部の Linux デスクトップではトレイのアイコンに AppIndicator の対応が必要です。VoiceStudio をもう一度起動してもウィンドウが再表示されます。",
+    "close_to_tray_failed": "この設定を保存できませんでした。もう一度お試しください。",
     "review_mode_on": "レビュー",
     "review_mode_off": "連射",
     "translate_agent": "エージェント調整",
@@ -1474,6 +1481,7 @@
     "gpu_report_state_nvidia_rocm_build": "{{gpu}} が見つかりましたが、この PyTorch は AMD ROCm ビルドで、NVIDIA GPU を扱えません。",
     "gpu_report_state_intel_unsupported": "{{gpu}} が見つかりましたが、Intel GPU を使えるインストール済みエンジンがないため、すべて CPU で実行されます。",
     "gpu_report_state_kernels_missing": "{{gpu}} が見つかりましたが、この PyTorch ビルド ({{torch}}) にはその計算アーキテクチャ用のカーネルがないため、エンジンは CPU で実行されます。",
+    "gpu_report_torch_fallback": "セットアップはこのGPU向けにCUDA 12.6版PyTorchを試しましたが、カードを使用できなかったため、PyTorchエンジンはCPUで動作します。理由: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} は古い NVIDIA GPU（GTX 900 / 1000 シリーズ以前）です。この PyTorch ビルド（{{torch}}）はその世代をサポートしなくなったため、PyTorch エンジンは CPU で動作します。独自の Vulkan ランタイムを持つエンジンは引き続き GPU を使えます。",
     "gpu_report_state_unknown": "GPU の状態を判定できませんでした。",
     "gpu_report_option_vulkan_engines": "独自の GPU ランタイムを持つエンジンを使用します。audio.cpp は Vulkan 経由で AMD Radeon GPU 上で動作します（設定 → モデル → ランタイムをインストール）。",
@@ -1729,7 +1737,8 @@
     "open": "「{{name}}」を開いて現在の下書きを置き換えますか？先に作業を保存してください。",
     "save_copy": "コピーを保存",
     "new": "新規プロジェクト",
-    "new_confirm": "新しい空のプロジェクトを始めますか？保存済みのプロジェクトはそのまま残りますが、現在の下書きの未保存の変更は失われます。"
+    "new_confirm": "新しい空のプロジェクトを始めますか？保存済みのプロジェクトはそのまま残りますが、現在の下書きの未保存の変更は失われます。",
+    "delete_hint": "保存したプロジェクトのみ一覧から削除します。メディアファイルと声は保持されます。"
   },
   "sidebar": {
     "save_project": "ダブプロジェクトの保存",
@@ -1980,7 +1989,12 @@
     "resume_failed": "このオーディオブックを再開できませんでした: {{message}}",
     "recovery_busy": "別のレンダリングを実行中です。終わってから再開してください。",
     "cast_note_one": "{{names}} はまだ配役されていないため、メインの音声で読み上げます。キャストで音声を選んでください。",
-    "cast_note_other": "{{names}} はまだ配役されていないため、メインの音声で読み上げます。キャストで音声を選んでください。"
+    "cast_note_other": "{{names}} はまだ配役されていないため、メインの音声で読み上げます。キャストで音声を選んでください。",
+    "result_other_connection": "この保存済み音声は、別の VoiceStudio 接続のものです。再生するには、その接続に戻ってください。",
+    "result_connection_unknown": "ローカルエンジンまたはリモートコンピューターに接続すると、保存済み音声が表示されます。",
+    "result_legacy": "この古い保存結果には接続情報がありません。この接続でファイル名を探してください。同じ名前でも別のファイルの可能性があります。",
+    "result_check_audio": "この接続で保存済み音声を確認",
+    "result_recovery_failed": "この接続では保存済み音声を利用できません。元の接続に戻るか、音声を再生成してください。"
   },
   "credentials": {
     "microsoft_key": "Microsoft トランスレータ キー",
@@ -2130,6 +2144,7 @@
     "setup_wrong_architecture": "VoiceStudio を終了し、Apple Silicon（arm64）版 DMG に置き換えてから再起動してください。現在は Intel 版が Rosetta 経由で動作しています。版を切り替えてもボイスやプロジェクトは消えず、ローカル AI が利用可能になります。",
     "setup_missing_system_library": "この Windows システムには、PyTorch の音声拡張に必要な Microsoft Visual C++ 2015-2022 再頒布可能パッケージ (x64) が入っていません。Microsoft からインストールしてから、再試行を押してください。",
     "setup_outdated_system_library": "この Windows システムの Microsoft Visual C++ 再頒布可能パッケージ (x64) が古いため、音声ライブラリの読み込み時にクラッシュします。Microsoft から最新版をインストールしてから、再試行を押してください。",
+    "setup_torch_dll_init_failed": "PyTorch を読み込めませんでした。原因は特定できていません。最新の Microsoft Visual C++ 再頒布可能パッケージ (x64) をインストールし、次にグラフィックドライバーを更新してから、再試行を押してください。それでも失敗する場合は、「その他の解決策」の「クリーンアップして再試行」を使ってください。",
     "setup_files_locked": "別のプログラムが VoiceStudio のファイルを使用しています（OneDrive などの同期アプリ、ウイルス対策ソフト、または実行中のままの VoiceStudio バックエンド）。そのプログラムを閉じるか同期を一時停止してから、再試行を押してください。",
     "download_apple_silicon": "Apple Silicon 版をダウンロード",
     "ready": "エンジン準備完了",
@@ -2349,6 +2364,10 @@
     "dubbing_cta": "これを自分のビデオで実行します→",
     "dubbing_loading": "ダビングデモを読み込み中…",
     "dubbing_dismiss": "ダビングデモを閉じる",
+    "dubbing_download": "デモ動画をダウンロード（約10 MB）",
+    "dubbing_downloading": "ダウンロード中…",
+    "dubbing_download_failed": "ダウンロードに失敗しました。接続を確認してください。",
+    "dubbing_retry": "再試行",
     "original_tag": "オリジナル",
     "dubbed_tag": "吹き替えられた",
     "script_conversational": "会話型",
@@ -2581,7 +2600,7 @@
     "field_when": "いつ",
     "field_uptime": "クラッシュ前の稼働時間",
     "no_stderr": "エラー出力はキャプチャされませんでした。",
-    "field_exit": "出口",
+    "field_exit": "終了ステータス",
     "field_version": "バックエンドのバージョン"
   },
   "errors": {
@@ -2983,6 +3002,7 @@
     "source_language_required": "音声認識がこの動画の話し言葉を報告しなかったため、ここでは翻訳できません。吹き替えで動画を開いて元の言語を選ぶか、言語を検出できる音声認識モデルを選んでください。",
     "transcription_media_tool": "文字起こしには ffmpeg が必要ですが、VoiceStudio は見つけられないか実行できませんでした。設定 → オーディオツールを開いてダウンロード/修復を使うか、ffmpeg をインストール（macOS: brew install ffmpeg、Windows: winget install Gyan.FFmpeg、Linux: お使いのパッケージマネージャー）して VoiceStudio を再起動してください。FFMPEG_PATH を ffmpeg のファイルに向けることもできます。",
     "transcription_pipe_lost": "文字起こし中にバックエンドがアプリへの出力パイプを失いました（broken pipe）。VoiceStudio を再起動してもう一度お試しください。",
+    "reference_transcript_required": "この音声のリファレンスクリップには文字起こしがなく、このエンジンがクローンするために必要です。ボイスプロファイルに文字起こしを追加するか、自動で文字起こしできるよう音声認識モデルをインストールしてください。",
     "gpu_oom": "GPU のメモリが不足しました。GPU を多く使う他のアプリを閉じるかモデルをアンロードしてから、もう一度お試しください。設定 → パフォーマンスとデバイスで CPU を選ぶか、より小さな TTS エンジンを選ぶこともできます。",
     "host_memory_exhausted": "コンピューターのメモリが不足しました。メモリを多く使う他のアプリやブラウザータブを閉じ、使っていないモデルをアンロードし、短い文章で生成するか、より軽い TTS エンジンを選んでください。",
     "disk_full": "ディスクがいっぱいです。VoiceStudio のデータ、モデルキャッシュ、一時フォルダーがあるドライブの空き容量を増やしてから、もう一度お試しください。設定 → ストレージでディスク使用量を確認し、一時ファイルを削除できます。",
@@ -3035,7 +3055,8 @@
     "missingSpeech": "音声がないか読み取れません。書き出す前に該当セグメントを再生成してください。",
     "timingOverflow": "音声が割り当て時間を超えています。翻訳を短くするか、厳密な時間枠または動画の引き伸ばしを選んでください。",
     "sourceChanged": "この吹き替えの生成中に字幕が変更されました。以前のトラックはそのまま残しています。新しい字幕を使うにはもう一度生成してください。",
-    "backgroundUnavailable": "元の音声を保持できませんでした。背景音の分離と台詞のタイミングを確認して再試行するか、音声のみの書き出しを選択してください。"
+    "backgroundUnavailable": "元の音声を保持できませんでした。背景音の分離と台詞のタイミングを確認して再試行するか、音声のみの書き出しを選択してください。",
+    "untranslated": "このトラックはまだ翻訳されていません。すべての行が元のテキストのままです。翻訳するか元の言語を選んでから、もう一度生成してください。"
   },
   "dubStyle": {
     "label": "翻訳スタイルの指示",
@@ -3054,6 +3075,8 @@
     "free": "無料",
     "pro": "Pro",
     "get_pro": "Pro を入手",
+    "upgrade_pro": "Proにアップグレード",
+    "get_pro_app": "Proアプリを入手",
     "sponsor_bar": "スポンサー欄",
     "visible": "表示",
     "hideable": "非表示にできます",
@@ -3098,6 +3121,7 @@
       "speechCurl": "音声合成 (curl)",
       "transcriptionCurl": "文字起こし (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "コンテナを実行",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n ワークフロー",
@@ -3450,7 +3474,8 @@
     "denoise": "参照音声のノイズ除去",
     "polish": "生成音声の仕上げ",
     "basics": "1×が通常速度です。自然な長さにするには時間を空欄にします。",
-    "hint": "通常は既定値のままで構いません。ガイダンスはプロンプトの影響を、その他の設定はモデルの音の組み立て方を調整します。一度に一つずつ変更してください。"
+    "hint": "通常は既定値のままで構いません。ガイダンスはプロンプトの影響を、その他の設定はモデルの音の組み立て方を調整します。一度に一つずつ変更してください。",
+    "pauses_hint": "空行に無音を入れます。0 ではエンジン本来の間合いのままです。"
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} の{{language}}モデルは1つだけのため、アクセントは参照音声に従います。",
@@ -4437,5 +4462,12 @@
     "unavailable": "このアプリでは自動報告を利用できないか、無効になっています。",
     "managed": "このブラウザに接続されたデスクトップアプリで設定してください。",
     "save_failed": "この選択を保存できませんでした。もう一度お試しください。"
+  },
+  "tray": {
+    "open": "{{app}} を開く",
+    "start_dictation": "音声入力を開始",
+    "stop_dictation": "音声入力を停止",
+    "settings": "設定",
+    "quit": "終了"
   }
 }

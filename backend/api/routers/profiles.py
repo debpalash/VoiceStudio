@@ -263,7 +263,7 @@ async def create_profile(
         # Preserve the identity sample for an already resident engine; otherwise
         # use the existing pending-sample path, rendered on explicit preview.
         from pathlib import Path
-        from api.routers.archetypes import _render_archetype_wav
+        from api.routers.archetypes import _FALLBACK_SCRIPT, _render_archetype_wav
         from services.model_manager import get_model_status
         audio_path = os.path.join(VOICES_DIR, f"{profile_id}.wav")
         audio_filename = None
@@ -282,6 +282,10 @@ async def create_profile(
                     allow_model_load=False,
                 )
                 audio_filename = f"{profile_id}.wav"
+                # The sample speaks the fallback when no line was given;
+                # store it so the sample stays paired with its own script.
+                if not (ref_text or "").strip():
+                    ref_text = _FALLBACK_SCRIPT
             except Exception:
                 # OOM / inference failure — defer the sample, clearing partials.
                 logging.getLogger("omnivoice.profiles").info(
@@ -973,7 +977,10 @@ def _design_preview_inputs(row) -> tuple:
     return tuple(row[column] for column in _DESIGN_PREVIEW_FIELDS)
 
 
-def _publish_design_preview(profile_id: str, expected: tuple, staged, target, filename: str) -> None:
+def _publish_design_preview(
+    profile_id: str, expected: tuple, staged, target, filename: str,
+    script: str = "",
+) -> None:
     """Publish a completed preview only if its saved voice has not changed.
 
     Both the row comparison and the atomic file install run while SQLite owns
@@ -1000,9 +1007,16 @@ def _publish_design_preview(profile_id: str, expected: tuple, staged, target, fi
 
         restore, finalize = _install_staged(str(staged), str(target))
         try:
+            # A blank transcript is filled with the script the sample was
+            # rendered from, in the same write that records the audio. Blank
+            # uses the renderer's own test (str.strip): SQLite TRIM keeps tabs
+            # and newlines, which the renderer treats as no transcript.
+            ref_text = current["ref_text"]
+            if not (ref_text or "").strip():
+                ref_text = script or None
             conn.execute(
-                "UPDATE voice_profiles SET ref_audio_path=? WHERE id=?",
-                (filename, profile_id),
+                "UPDATE voice_profiles SET ref_audio_path=?, ref_text=? WHERE id=?",
+                (filename, ref_text, profile_id),
             )
             # Commit *before* leaving the protected section, so a failed
             # commit can restore the previous WAV (DB and file stay in sync).
@@ -1045,6 +1059,7 @@ async def _materialize_design_sample(profile_id: str, row) -> Optional[str]:
 
     async def _materialize() -> None:
         """Render into staging, then publish only if the design is still current."""
+        from api.routers.archetypes import _FALLBACK_SCRIPT
         from services.voice_design_profiles import recipe_engine
 
         staged = Path(audio_path).with_name(
@@ -1067,6 +1082,7 @@ async def _materialize_design_sample(profile_id: str, row) -> Optional[str]:
                 await _render_native_design_sample(row, staged, engine_id)
             _publish_design_preview(
                 profile_id, expected, staged, Path(audio_path), audio_filename,
+                (row["ref_text"] or "").strip() or _FALLBACK_SCRIPT,
             )
         finally:
             # Stale, cancelled and failed renders must not leave a playable
@@ -1085,7 +1101,7 @@ async def _materialize_design_sample(profile_id: str, row) -> Optional[str]:
             detail=(
                 "The voice engine isn't ready yet, so this designed voice's "
                 "preview sample can't be rendered. Finish setup / download a "
-                f"model, then try again. ({e})"
+                f"model, then try again. ({scrub_text(str(e))})"
             ),
         ) from e
     return audio_filename

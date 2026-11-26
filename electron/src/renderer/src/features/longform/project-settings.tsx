@@ -4,7 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { PlusIcon, SaveIcon, TrashIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { blankLongformDraft, type Draft, type Mode } from './longform-session';
+import {
+  blankLongformDraft,
+  snapshotLongformDraft,
+  type Draft,
+  type Mode,
+} from './longform-session';
 import { projectLibrary, type LongformProject } from './project-library';
 import { describeError } from '@/lib/api/client';
 export function ProjectSettings({
@@ -13,6 +18,7 @@ export function ProjectSettings({
   disabled,
   bare = false,
   onChange,
+  onReplace,
   onBusy,
 }: {
   mode: Mode;
@@ -21,6 +27,7 @@ export function ProjectSettings({
   /** Rendered as the Projects tab of the section pane instead of a disclosure. */
   bare?: boolean;
   onChange: (value: Partial<Draft>) => void;
+  onReplace: (value: Draft) => void;
   onBusy: (busy: boolean) => void;
 }) {
   const { t } = useTranslation();
@@ -65,7 +72,12 @@ export function ProjectSettings({
   };
   const save = (copy: boolean) =>
     run(async () => {
-      const project = await projectLibrary.save(name, mode, draft, copy ? null : draft.projectId);
+      const project = await projectLibrary.save(
+        name,
+        mode,
+        snapshotLongformDraft(mode, draft),
+        copy ? null : draft.projectId,
+      );
       onChange({ projectId: project.id });
       setSaved(true);
     });
@@ -79,7 +91,7 @@ export function ProjectSettings({
         // Re-read after confirmation so an outdated list never opens a deleted record.
         const project = (await projectLibrary.list()).find((p) => p.id === confirmation.project.id);
         if (!project) throw new Error('Project no longer exists');
-        onChange({
+        onReplace({
           ...blankLongformDraft(),
           ...structuredClone(project.draft),
           projectId: project.id,
@@ -92,7 +104,7 @@ export function ProjectSettings({
   // A new project only replaces the open draft; saved projects are never touched.
   const startNew = () => {
     if (locked || pending.current) return;
-    onChange(blankLongformDraft());
+    onReplace(blankLongformDraft());
     dirtyName.current = false;
     setName('');
     setSaved(false);

@@ -1044,6 +1044,24 @@ it('does not generate-ready an Agent Fit translation that fell back without an L
   });
 });
 
+it('offers no Retry for a translation blocked on the missing source language (#4347)', async () => {
+  const { ApiError } = await import('@/lib/api/client');
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'no-source',
+    phase: 'editing',
+    recovery: null,
+    segments: [{ id: '1', start: 0, end: 2, text: 'Hello', text_original: 'Hello' }],
+  }));
+  vi.mocked(apiJson)
+    .mockClear()
+    .mockResolvedValueOnce([])
+    .mockRejectedValueOnce(new ApiError(400, 'raw', { code: 'source_language_required' }));
+
+  await expect(translateDub('pt', 'argos')).resolves.toBe(false);
+  expect(translationActivity.state.runs.at(-1)).toMatchObject({ status: 'failed', retry: undefined });
+});
+
 it('stops Agent Fit when the slot-fitting provider disappears mid-run', async () => {
   dubSession.setState((current) => ({
     ...current,

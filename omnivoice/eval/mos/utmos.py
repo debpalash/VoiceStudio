@@ -121,8 +121,12 @@ def worker_init(
     # Initialize Model
     worker_model = UTMOS22Strong()
     try:
-        # Load weights to CPU first, then move to device
-        state_dict = torch.load(model_path, map_location="cpu")
+        # Load weights to CPU first, then move to device. ``weights_only=True``
+        # keeps torch's secure unpickler on: the checkpoint is a downloaded eval
+        # artifact, and this mirrors ``omnivoice/models/omnivoice.py``. A
+        # checkpoint that needs a pickled global must register it explicitly with
+        # ``torch.serialization.add_safe_globals`` rather than disabling this.
+        state_dict = torch.load(model_path, map_location="cpu", weights_only=True)
         worker_model.load_state_dict(state_dict)
     except Exception as e:
         logging.error(f"Failed to load model from {model_path}: {e}")
@@ -210,7 +214,9 @@ def main():
 
     fout = None
     if args.decode_path:
-        os.makedirs(os.path.dirname(args.decode_path), exist_ok=True)
+        parent = os.path.dirname(args.decode_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         fout = open(args.decode_path, "w", encoding="utf8")
         logging.info(f"Saving detailed UTMOS results to: {args.decode_path}")
         fout.write("Name\tUTMOS\n")

@@ -318,8 +318,9 @@ def apply_rocm_override_before_init(torch) -> str | None:
 _CUDA_ARCH_TAG = re.compile(r"^(sm|compute)_(\d+)([a-z]?)$")
 
 # Stamped onto the English advice for a pre-Volta NVIDIA card (Maxwell sm_5x,
-# Pascal sm_6x). No PyTorch CUDA build we ship can cover it, so a "reinstall a
-# cu128 build" remedy is wrong for it; callers key their wording off this.
+# Pascal sm_6x). The cu128 build cannot cover it, so a "reinstall a cu128
+# build" remedy is wrong for it; the CUDA 12.6 build (#4242) can. Callers key
+# their wording off this.
 LEGACY_NVIDIA_MARKER = "no longer supports this GPU generation"
 
 
@@ -338,14 +339,100 @@ def is_legacy_nvidia_arch(tag: str) -> bool:
         return False
 
 
+LEGACY_CUDA_MIN_DRIVER = 525
+_LEGACY_VULKAN_TAIL = (
+    "The Vulkan engines (e.g. audio.cpp, CosyVoice GGUF, OmniVoice GGUF) can use this GPU."
+)
+
+
+def legacy_cuda_from_smi(output: str) -> bool:
+    """Mirror of ``legacyNvidiaFromSmi`` (electron/scripts/torch-variant.mjs).
+
+    True only when EVERY NVIDIA card is compute capability 5.0 to 6.x and the
+    driver is 525 or newer: the hosts where desktop runtime setup selects cu126.
+    """
+    caps: list[float] = []
+    drivers: list[float] = []
+    for line in str(output or "").splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if not parts or not parts[0]:
+            continue
+        try:
+            caps.append(float(parts[0]))
+            drivers.append(float(re.match(r"\d+(\.\d+)?", parts[1]).group(0)))
+        except (ValueError, IndexError, AttributeError):
+            return False
+    if not caps:
+        return False
+    return min(caps) >= 5.0 and max(caps) < 7.0 and min(drivers) >= LEGACY_CUDA_MIN_DRIVER
+
+
+@functools.lru_cache(maxsize=1)
+def legacy_cuda_repair_eligible() -> bool:
+    """Will desktop runtime setup pick the CUDA 12.6 build for this host (#4242)?
+
+    Same rules as ``resolveTorchVariant``: Windows/Linux x64, all NVIDIA cards in
+    range, driver >= 525. False when the build is already cu126 (nothing to switch
+    to) or when nvidia-smi cannot say. An explicit OMNIVOICE_TORCH_VARIANT pin
+    overrides this selection, so the advice tells the user to clear it first.
+    """
+    import platform
+    import subprocess
+    import sys
+
+    if sys.platform not in ("win32", "linux") or platform.machine().lower() not in ("x86_64", "amd64"):
+        return False
+    try:
+        import torch
+
+        if str(getattr(torch.version, "cuda", "") or "").startswith("12.6"):
+            return False
+    except Exception:  # noqa: BLE001 - advice only
+        pass
+    from core.nvidia_smi import find_nvidia_smi
+
+    # Older Windows drivers keep nvidia-smi.exe in NVSMI, outside PATH.
+    executable = find_nvidia_smi()
+    if not executable:
+        return False
+    try:
+        out = subprocess.run(
+            [executable, "--query-gpu=compute_cap,driver_version", "--format=csv,noheader"],
+            capture_output=True, text=True, errors="replace", timeout=5, check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return legacy_cuda_from_smi(out or "")
+
+
+def legacy_cuda_repair_advice() -> str:
+    """The next step for a pre-Volta card, honest about whether Repair will help."""
+    if legacy_cuda_repair_eligible():
+        return (
+            "A driver update will not help, but the CUDA 12.6 PyTorch build covers this GPU: "
+            "run setup again (Repair) to install it (clear OMNIVOICE_TORCH_VARIANT first if you set it), "
+            "or use a Vulkan engine "
+            "(audio.cpp, CosyVoice GGUF, OmniVoice GGUF), or continue on CPU (slower)."
+        )
+    return (
+        "A driver update will not help, and neither will another CUDA build. Use a Vulkan engine "
+        "(audio.cpp, CosyVoice GGUF, OmniVoice GGUF) to run on this GPU, or continue on CPU (slower)."
+    )
+
+
 def legacy_nvidia_advice(device_name: str, device_arch: str) -> str:
     """The accurate reason + next step for a pre-Volta NVIDIA card (no cu128 advice)."""
-    return (
+    head = (
         f"{device_name} ({device_arch}) is an older NVIDIA GPU: this PyTorch build "
-        f"{LEGACY_NVIDIA_MARKER}, so PyTorch engines run on the CPU. Installing "
-        "another CUDA build will not help. The Vulkan engines (e.g. audio.cpp, "
-        "CosyVoice GGUF, OmniVoice GGUF) can use this GPU."
+        f"{LEGACY_NVIDIA_MARKER}, so PyTorch engines run on the CPU. "
     )
+    if legacy_cuda_repair_eligible():
+        return head + (
+            "A CUDA 12.6 build still covers this card: the desktop app's runtime setup "
+            "installs it on the next Repair (clear OMNIVOICE_TORCH_VARIANT first if you set it). "
+            + _LEGACY_VULKAN_TAIL
+        )
+    return head + "Installing another CUDA build will not help. " + _LEGACY_VULKAN_TAIL
 
 
 def cuda_build_covers(arch_list, major: int, minor: int) -> bool:
@@ -1077,6 +1164,9 @@ __all__ = [
     "LEGACY_NVIDIA_MARKER",
     "is_legacy_nvidia_arch",
     "legacy_nvidia_advice",
+    "legacy_cuda_repair_advice",
+    "legacy_cuda_repair_eligible",
+    "legacy_cuda_from_smi",
     "DIRECTML_MARKER",
     "UNUSABLE_GPU_MARKER",
     "cuda_forced",

@@ -2444,6 +2444,11 @@ def _repair_model_cache(checkpoint: str, *, force: bool = False) -> bool:
     for attempt in range(1, retries + 1):
         try:
             _attempt()
+            from services.hf_revisions import settle_install_pending
+            # A returned snapshot_download is not proof of a whole snapshot
+            # (it can hand back an existing incomplete one); the marker only
+            # clears once every file is verified.
+            settle_install_pending(checkpoint, revision, cache_root, fetch_kwargs=dl_kwargs)
             logger.info("Auto-repair of %s completed; retrying model load.", checkpoint)
             return True
         except Exception as e:
@@ -2482,51 +2487,12 @@ def _repair_model_cache(checkpoint: str, *, force: bool = False) -> bool:
     return False
 
 
-_DEFAULT_OMNIVOICE_CHECKPOINT = "k2-fsa/OmniVoice"
+from services import omnivoice_checkpoint as _omnivoice_checkpoint  # noqa: E402
 
-
-def resolve_omnivoice_checkpoint() -> str:
-    """Resolve the VoiceStudio TTS checkpoint from ``OMNIVOICE_MODEL``, self-healing
-    a misconfigured value.
-
-    A valid checkpoint is either a HuggingFace repo id (``org/repo`` — contains a
-    ``/``) or an existing local directory. A bare token like ``"omnivoice"`` — a
-    TTS *engine id* that leaked into ``OMNIVOICE_MODEL`` (e.g. a stale pref/env) —
-    is neither, and would crash model load with *"omnivoice is not a local folder
-    and is not a valid model identifier listed on huggingface.co/models"* (#693).
-    Fall back to the default rather than 500 on every launch.
-    """
-    checkpoint = os.environ.get("OMNIVOICE_MODEL", "").strip()
-    if not checkpoint:
-        from services.local_model_paths import get
-        local = get("tts", "omnivoice")
-        if local:
-            # Inventory must remain accessible to repair missing local folders.
-            # The actual load path validates before opening weights.
-            return local
-        checkpoint = _DEFAULT_OMNIVOICE_CHECKPOINT
-    if not checkpoint:
-        return _DEFAULT_OMNIVOICE_CHECKPOINT
-    if checkpoint == "test":
-        # Test-suite sentinel (tests/conftest.py sets OMNIVOICE_MODEL=test):
-        # return it verbatim. Self-healing it to the real default — "test"
-        # is a bare token like the #693 engine-id leak — would hand every
-        # app-booting test the real 2.3 GB k2-fsa/OmniVoice checkpoint,
-        # which is exactly the download the sentinel exists to prevent. A
-        # real load against "test" fails fast with a clear HF error instead.
-        return checkpoint
-    # Honor a HF repo id (org/repo) or an EXPLICIT local path (absolute, or with
-    # a path separator). A bare token like "omnivoice" must NOT be treated as a
-    # local dir even if a cwd-relative folder happens to share its name — that
-    # is exactly the engine-id leak (#693), so self-heal to the default.
-    if "/" in checkpoint or "\\" in checkpoint or os.path.isabs(checkpoint):
-        return checkpoint
-    logger.warning(
-        "OMNIVOICE_MODEL=%r is not a HuggingFace repo id (org/repo) or a local "
-        "path — falling back to %s (#693).",
-        checkpoint, _DEFAULT_OMNIVOICE_CHECKPOINT,
-    )
-    return _DEFAULT_OMNIVOICE_CHECKPOINT
+# Re-exported: callers and tests reach it through model_manager.
+resolve_omnivoice_checkpoint = _omnivoice_checkpoint.resolve_omnivoice_checkpoint
+omnivoice_pin_kwargs = _omnivoice_checkpoint.omnivoice_pin_kwargs
+omnivoice_asr_pin_kwargs = _omnivoice_checkpoint.omnivoice_asr_pin_kwargs
 
 
 #: CPython's exact executor-rejection message once interpreter shutdown began
@@ -2742,6 +2708,8 @@ def _load_model_sync():
             return VoiceStudio.from_pretrained(
                 checkpoint, device_map=device,
                 dtype=getattr(torch, tts_dtype_name(device)), load_asr=False,
+                tokenizer_fallback_guard=_guard_tokenizer_fallback,
+                **omnivoice_pin_kwargs(checkpoint),
             )
 
         def _recover_corrupt_weights(exc: BaseException):
@@ -2755,6 +2723,9 @@ def _load_model_sync():
             for nested_exc in _exception_chain(exc):
                 repository_id = getattr(nested_exc, "repository_id", None)
                 if repository_id == "eustlb/higgs-audio-v2-tokenizer":
+                    # Never download an unaccepted repo, even to repair it.
+                    from services.model_acceptance import ensure_accepted
+                    ensure_accepted([repository_id])
                     repair_checkpoint = repository_id
                     break
             asset_label = (
@@ -2915,7 +2886,7 @@ def _load_model_sync():
             # corrupt, it must never be mistaken for the TTS checkpoint and
             # trigger a second multi-GB TTS load/re-download (CodeRabbit).
             try:
-                _model.load_asr_model()
+                _model.load_asr_model(**omnivoice_asr_pin_kwargs())
             except Exception as asr_exc:
                 if not _is_corrupt_model_file_error(asr_exc):
                     raise
@@ -3326,6 +3297,13 @@ async def _load_model_with_timeout():
             "stall downloading the model (proxy, firewall, or antivirus). Check "
             "your connection or set a Hugging Face mirror in Settings, then retry."
         ) from exc
+
+
+def _guard_tokenizer_fallback(repo_id: str) -> None:
+    """Loader hook: the Hub tokenizer fallback needs its own licence accepted."""
+    from services.model_acceptance import ensure_accepted
+
+    ensure_accepted([repo_id])
 
 
 def _ensure_omnivoice_licence() -> None:
@@ -4040,6 +4018,11 @@ def unload_shared_model() -> bool:
     model = None
     _ram_offload = None
     release_tts_side_caches()
+    # Cached OmniVoiceBackend adapters hold their own strong ref to the model
+    # (#4355); without this the weights survive the unload.
+    _mod = sys.modules.get("services.tts_backend")
+    if _mod is not None:
+        _mod.drop_omnivoice_instance_refs()
     free_vram()
     return True
 

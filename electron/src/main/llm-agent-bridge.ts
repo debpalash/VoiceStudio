@@ -134,6 +134,7 @@ export async function startLlmAgentBridge(
               {
                 AgentAuthenticationError: 401,
                 AgentRateLimitError: 429,
+                AgentBusyError: 429,
                 AgentModelError: 404,
               } as Record<string, number>
             )[error.name]

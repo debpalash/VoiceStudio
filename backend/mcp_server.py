@@ -930,8 +930,14 @@ def create_mcp_server(app=None):
         speed: float = 1.0,
         steps: int = 16,
         format: str = "wav",
+        paragraph_gap_ms: int = 0,
+        trim_engine_silence: bool = False,
     ) -> str:
         """Generate speech audio from text.
+
+        Inline markup: ``[pause 800ms]`` inserts silence; ``[slow]…[/slow]``,
+        ``[fast]…[/fast]``, ``[emphasis]…[/emphasis]`` change the pace of a run
+        and ``[spell]…[/spell]`` spells it out. Tags are never spoken.
 
         Args:
             text: The text to synthesize into speech.
@@ -945,6 +951,10 @@ def create_mcp_server(app=None):
             steps: Diffusion steps (8=fast/draft, 16=balanced, 32=quality).
             format: File and URL format: wav (default), ogg or opus. Both
                 ogg and opus carry Opus in Ogg; requires files/both mode and ffmpeg.
+            paragraph_gap_ms: Silence at each blank line (0–5000 ms, default 0
+                = off). Narration usually wants 600–1000.
+            trim_engine_silence: Strip the engine's own lead-in/tail silence from
+                every chunk so the gaps are exactly as long as asked.
 
         Returns:
             JSON with audio_id, generation_time_s, audio_duration_s and the
@@ -983,6 +993,11 @@ def create_mcp_server(app=None):
             form["profile_id"] = profile_id
         if instruct:
             form["instruct"] = instruct
+        # Sent only when set, so the request stays identical for old backends.
+        if paragraph_gap_ms:
+            form["paragraph_gap_ms"] = str(int(paragraph_gap_ms))
+        if trim_engine_silence:
+            form["trim_engine_silence"] = "true"
 
         r = await _api_post_form(
             "/generate", data=form, timeout=_post_timeout_s("generate", text)

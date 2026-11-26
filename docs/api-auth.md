@@ -99,8 +99,12 @@ share-PIN guests. Anonymous remote callers are rejected. Recording an export
 only stores metadata; `/export` and `/export/reveal` still require native local
 access, and deleting history retains its administrator boundary. Explicit server
 mode without a configured key or PIN keeps its existing open consumption policy
-for export metadata, with destination paths redacted from anonymous responses;
-the operator's port mapping controls access in that mode.
+for export metadata, with destination paths returned only to the principals the
+desktop itself uses — loopback, an API key, or an admin session — so a browser on
+the trusted network or a PIN guest gets an empty string; a remote caller holding
+one of those credentials is treated the same as the desktop, because the
+credential is what identifies it. The operator's port mapping controls access in
+that mode.
 
 The API key is the backend's durable root credential for a GPU box, Docker
 container, or reverse-proxied host. Direct API clients may send it on each
@@ -124,6 +128,7 @@ compatibility accepts:
 | Where | How |
 |---|---|
 | Header | `Authorization: Bearer <key>` — **preferred** for scripts and SDKs |
+| Header (ElevenLabs routes) | `xi-api-key: <key>` — accepted only on `/elevenlabs` routes, for [ElevenLabs SDKs](elevenlabs-api.md) |
 | Legacy cookie | `ov_key=<key>` — accepted only for compatibility and migrated by the first-party UI; the backend no longer creates it |
 | Legacy query param | `?api_key=<key>` — compatibility only. **A key in a URL leaks into proxy/access logs and browser history** |
 

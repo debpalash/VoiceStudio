@@ -232,6 +232,7 @@ def process_init(rank_queue, model_checkpoint, warmup=0):
         model_checkpoint,
         device_map=worker_device,
         dtype=getattr(torch, tts_dtype_name(worker_device)),
+        allow_tokenizer_fallback=True,
     )
 
     if warmup > 0:

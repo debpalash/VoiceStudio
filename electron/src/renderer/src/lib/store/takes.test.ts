@@ -199,6 +199,8 @@ describe('take metadata', () => {
       denoise: false,
       postprocess: false,
       duration: '12',
+      paragraphGapMs: 900,
+      trimEngineSilence: true,
       showOverrides: true,
       selectedProfileId: 'ignored',
       autoPlay: true,

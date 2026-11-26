@@ -191,7 +191,11 @@ jobs:
       - name: Run bandit
         continue-on-error: true
         run: |
-          pipx run --spec 'bandit[sarif]' bandit -r backend/ -ll -ii -f sarif -o bandit.sarif
+          # Pinned deliberately: `pipx run` resolves the analyser from PyPI at run
+          # time, so an unpinned spec lets a newer (or compromised) bandit release
+          # change the findings silently, or execute in a job that holds
+          # security-events: write. Bump the pin in a reviewed PR.
+          pipx run --spec 'bandit[sarif]==1.9.4' bandit -r backend/ -ll -ii -f sarif -o bandit.sarif
 
       # continue-on-error: this job is reporting-only. If bandit can't write a
       # SARIF for any reason (no findings dir, pipx hiccup), don't fail the job.
@@ -215,7 +219,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"

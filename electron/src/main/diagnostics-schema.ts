@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { types } from 'node:util';
 import rawSchema from '../../../config/diagnostics.json';
 import type { DiagnosticCategory, DiagnosticStage } from '../preload/diagnostics';
 
@@ -112,6 +113,16 @@ export const MAX_QUEUE_BYTES = Math.min(
   diagnosticLimit('main_queue_bytes', 256 * 1024),
 );
 export const TTL_MS = Math.min(7 * 86400_000, diagnosticLimit('ttl_ms', 7 * 86400_000));
+
+/**
+ * How many queue slots one repeating failure may hold.
+ *
+ * Eviction is arrival-ordered, so a crash that repeats often enough pushes
+ * unrelated still-valid evidence out of the outbox long before its own TTL
+ * expires: the operator then sees one loud failure and none of the others.
+ * Budget per fingerprint keeps a repeat recycling its own slots.
+ */
+export const MAX_PER_FINGERPRINT = 8;
 
 export function enumValue(field: string, value: unknown): string | undefined {
   const allowed = enums.get(field);
@@ -255,11 +266,25 @@ export function sanitizeRecord(
     : null;
 }
 
+/** Subclasses (`class FetchError extends TypeError`) report their nearest known built-in base. */
+function knownErrorType(error: { name: string }): string {
+  const named = enums.get('error_type')?.has(error.name) ? error.name : undefined;
+  if (named && named !== 'Error') return named;
+  let proto: unknown = Object.getPrototypeOf(error);
+  for (let depth = 0; proto && depth < 16; depth++) {
+    const ctor = (proto as { constructor?: { name?: unknown } }).constructor;
+    const name = ctor && typeof ctor.name === 'string' ? ctor.name : '';
+    if (name !== 'Error' && enums.get('error_type')?.has(name) && name !== 'OtherError') return name;
+    proto = Object.getPrototypeOf(proto);
+  }
+  return named ?? 'OtherError';
+}
+
 /** Error messages and the first stack line are intentionally never inspected. */
 export function projectException(error: unknown): Pick<DiagnosticEvent, 'error_type' | 'frames'> {
   try {
-    if (!(error instanceof Error)) return { error_type: 'OtherError' };
-    const error_type = enumValue('error_type', error.name) ?? 'OtherError';
+    if (!(error instanceof Error) && !types.isNativeError(error)) return { error_type: 'OtherError' };
+    const error_type = knownErrorType(error);
     const frames: string[] = [];
     for (const line of String(error.stack ?? '')
       .slice(0, 32_768)

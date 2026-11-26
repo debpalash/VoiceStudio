@@ -32,8 +32,20 @@ export function storageShare(plan: Plan): number {
     : 0;
 }
 
+/**
+ * Whether the signed-in account has Pro: the one rule every Pro surface uses.
+ * `pro.desktop` decides when the entitlements were read (true or false). When they
+ * could not be read (null), a Pro or lifetime plan code (`pro`, `pro_yearly`,
+ * `pro_lifetime`, …) still counts, so a paid Pro account is never shown as Free (#4264).
+ */
+export function isProPlan(plan: Plan | null | undefined): boolean {
+  if (!plan) return false;
+  if (typeof plan.proDesktop === 'boolean') return plan.proDesktop;
+  return /^pro(?:$|[_-])|lifetime/.test(plan.planCode.trim().toLowerCase());
+}
+
 /** Whether the plan is Pro, and the icon its badge shows. */
 export function planLook(plan: Plan | null) {
-  const pro = plan?.proDesktop === true;
+  const pro = isProPlan(plan);
   return { pro, PlanIcon: pro ? CrownIcon : SproutIcon };
 }

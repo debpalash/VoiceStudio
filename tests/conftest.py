@@ -446,7 +446,8 @@ def neutral_asr_host(monkeypatch, request):
     monkeypatch.setattr(hip, "hip_ct2_available", lambda: False)
     targets = _asr_backend_targets(request)
     for mod in targets:
-        for name in ("_mps_available", "_cuda_reported_available", "_rocm_torch"):
+        for name in ("_mps_available", "_cuda_reported_available", "_rocm_torch",
+                     "_gpu_probe_skipped"):
             monkeypatch.setattr(mod, name, lambda: False)
         mod.release_transcription_backend(0.0, now=float("inf"))
     yield

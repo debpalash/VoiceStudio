@@ -26,18 +26,41 @@
       # and stops git metadata from churning the hash.
       src = lib.cleanSourceWith {
         src = lib.cleanSource self;
-        # cleanSource already drops .git and result; node_modules and .venv are
-        # gitignored but `nix build path:.` would otherwise copy them.
+        # cleanSource already drops .git and Nix result symlinks, not regular
+        # result-* source modules. node_modules and .venv are gitignored but
+        # `nix build path:.` would otherwise copy them.
         filter =
           path: type:
           let
             name = baseNameOf (toString path);
           in
           name != "node_modules"
-          && name != ".venv"
-          && name != "result"
-          && !(lib.hasPrefix "result-" name);
+          && name != ".venv";
       };
+
+      # Compare real regular modules in the unfiltered tree with the exact
+      # source consumed by the app build. Skip dependencies before recursion
+      # and never follow symlinks, including Nix result links.
+      sourceModules =
+        let
+          collect = relative:
+            lib.concatLists (lib.mapAttrsToList (name: type:
+              let
+                child = if relative == "" then name else "${relative}/${name}";
+              in
+              if lib.elem name [ ".git" ".svn" "CVS" ".hg" ".jj" ".pijul" "_darcs" "node_modules" ".venv" ] then [ ]
+              else if type == "directory" then collect child
+              else lib.optional (
+                type == "regular"
+                && lib.any (extension: lib.hasSuffix extension name)
+                  [ ".js" ".jsx" ".mjs" ".cjs" ".ts" ".tsx" ".mts" ".cts" ]
+              ) child
+            ) (builtins.readDir "${self}/${relative}"));
+        in
+        collect "";
+      missingSourceModules = lib.filter (
+        relative: !(builtins.pathExists "${src}/${relative}")
+      ) sourceModules;
 
       # Only what `bun install` reads: the root manifest and lockfile, each
       # workspace's package.json, the patches named in patchedDependencies and
@@ -342,7 +365,7 @@
               pkgs.nodejs_22
             ];
             outputHashMode = "recursive";
-            outputHash = "sha256-bqxnoXhbM2HK+xW+pBOy71WjSuAhsbjbr429b+uT6WU=";
+            outputHash = "sha256-wyyCEEMFBR82IvoPeTH4IpdDR8EjmZ6QgXMVjVQBK2g=";
             sourceProvenance = null;
           } ''
           export HOME=$TMPDIR
@@ -854,6 +877,10 @@
 
             install -Dm644 pyproject.toml "$resources/pyproject.toml"
             install -Dm644 uv.lock "$resources/uv.lock"
+            # uv.lock points source-only deps at these wheels (#4253).
+            mkdir -p "$resources/vendor/wheels"
+            install -m644 vendor/wheels/*.whl "$resources/vendor/wheels/"
+            install -m644 vendor/wheels/LICENSE-*.txt "$resources/vendor/wheels/"
             install -Dm644 README.md "$resources/README.md"
             install -Dm644 LICENSE "$resources/LICENSE"
             install -Dm644 LICENSE-NOTICE.md "$resources/LICENSE-NOTICE.md"
@@ -1059,6 +1086,15 @@
           nodeDepsDev = nodeDeps { inherit pkgs; };
         in
         {
+          # The assertion runs during `flake check --no-build`, before any
+          # expensive app build, using the actual cleanSourceWith output.
+          sourceModules =
+            assert lib.assertMsg (missingSourceModules == [ ])
+              "flake.nix: source filter removed JS/TS modules: ${lib.concatStringsSep ", " missingSourceModules}";
+            pkgs.runCommand "voicestudio-check-source-modules" { } ''
+              touch $out
+            '';
+
           # Every NEEDED entry must resolve inside the Nix store. A missing
           # libxdo surfaces here as "not found" rather than as a runtime
           # failure in the packaged app.
@@ -1104,6 +1140,7 @@
               frontend/dist/index.html \
               pyproject.toml \
               uv.lock \
+              vendor/wheels \
               README.md \
               LICENSE \
               LICENSE-NOTICE.md \

@@ -69,6 +69,14 @@ _URL_SECRET_RE = re.compile(
 # scans on malformed query text; matched values are consumed only once.
 _MAX_QUERY_NAME_CHARS = 3 * max(map(len, _URL_SECRET_NAMES))
 
+# Inline URL credentials: ``https://user:token@host``. http(s) only — see
+# ``_scrub_url_userinfo`` for why an SSH-style identity is left alone.
+# Userinfo ends at the last ``@`` before the host, so the class is greedy over
+# ``@`` itself (an unencoded ``@`` in a password still redacts whole) and over
+# ``'``/``&``/``=``, which RFC 3986 allows in userinfo. ``/ ? #`` end the
+# authority, and whitespace/quotes end the URL in free text.
+_URL_USERINFO = re.compile(r"(?P<scheme>https?://)(?P<userinfo>[^\s/?#\"\\]+)@", re.IGNORECASE)
+
 
 def _raw_quote_end(text: str, start: int, limit: int | None = None) -> int:
     quote = text[start]
@@ -200,13 +208,26 @@ def _scrub_url_queries(text: str) -> str:
 # IGNORECASE because Windows is case-insensitive and tools routinely emit the
 # lowercase `c:\users\<name>` form, which the CLAUDE.md redaction spec still
 # requires to become `~`. `Users`/`users`, `Home`/`home` all match.
+# A home-directory name. It may contain spaces (`C:\Users\Mary Jane Smith`), but
+# only when a separator or a closing quote follows (`'C:\\Users\\Mary Jane'` in an
+# OSError), so the match cannot run into the sentence after a path:
+# `/home/bob: Permission denied` keeps its words and redacts `/home/bob`. Only
+# spaces, tabs and non-breaking spaces join words: a line break always ends the
+# name. An apostrophe followed by more name stays inside it (`O'Brien`).
+_WORD = r"[^\\/\s\"':]+(?:'[^\\/\s\"':]+)*"  # an apostrophe inside a word: O'Brien
+_HOME_NAME = rf"(?:{_WORD}(?:[ \t\u00a0\u2007\u202f]{_WORD})*(?=[\\/\"'])|{_WORD})"
+
 _HOME_PATTERNS = (
+    # repr() and JSON escape the separators, so an OSError or a log line can carry
+    # `C:\\Users\\<name>`. Those doubled forms must be matched before the single
+    # one, which does not match them anyway: the extra backslash breaks its shape.
+    re.compile(r"[A-Za-z]:\\\\Users\\\\" + _HOME_NAME, re.IGNORECASE),  # repr-escaped
     # Windows-with-forward-slashes must run BEFORE the bare macOS shape, or
     # `/Users/<name>` inside `C:/Users/<name>` gets eaten first, leaving `C:~`.
-    re.compile(r"[A-Za-z]:/Users/[^/\s\"']+", re.IGNORECASE),   # Windows, forward slashes
-    re.compile(r"/Users/[^/\s\"']+", re.IGNORECASE),           # macOS
-    re.compile(r"/home/[^/\s\"']+", re.IGNORECASE),            # Linux
-    re.compile(r"[A-Za-z]:\\Users\\[^\\\s\"']+", re.IGNORECASE),  # Windows, backslashes
+    re.compile(r"[A-Za-z]:/Users/" + _HOME_NAME, re.IGNORECASE),   # Windows, forward slashes
+    re.compile(r"/Users/" + _HOME_NAME, re.IGNORECASE),           # macOS
+    re.compile(r"/home/" + _HOME_NAME, re.IGNORECASE),            # Linux
+    re.compile(r"[A-Za-z]:\\Users\\" + _HOME_NAME, re.IGNORECASE),  # Windows, backslashes
 )
 
 # Lookahead that ends this machine's home path: the next character must not
@@ -231,6 +252,23 @@ def _env_secret_values() -> list[str]:
     return sorted(vals, key=len, reverse=True)
 
 
+def _scrub_url_userinfo(text: str) -> str:
+    """Redact ``scheme://credential@host`` userinfo from http(s) URLs.
+
+    An index, mirror or proxy URL can carry its credential inline
+    (``https://user:token@mirror.example/simple/``), which is a sanctioned
+    configuration for restricted networks. Unlike a query parameter it is not
+    covered by ``_scrub_url_queries``, so uv, pip or git echo it verbatim into a
+    log.
+
+    Only ``http(s)`` is matched: there, userinfo is a credential by definition.
+    SSH-style identities (``ssh://git@host``, ``git@host:owner/repo``) carry no
+    secret and are deliberately left readable, and ``https://host/@handle`` is a
+    path, not userinfo, because the host cannot contain ``/``.
+    """
+    return _URL_USERINFO.sub(lambda m: m.group("scheme") + REDACTED + "@", text)
+
+
 def scrub_text(text: str | None) -> str:
     """Return ``text`` with secrets and home paths redacted.
 
@@ -249,7 +287,7 @@ def scrub_text(text: str | None) -> str:
     except Exception:
         return REDACTED
 
-    # 2. Credential-shaped substrings + URL query secrets.
+    # 2. Credential-shaped substrings + URL query secrets + URL userinfo.
     for pat in _TOKEN_PATTERNS:
         try:
             s = pat.sub(REDACTED, s)
@@ -258,6 +296,10 @@ def scrub_text(text: str | None) -> str:
     try:
         # Preserve quote delimiters for the scanner before free-text matching
         # can replace a long escaped prefix while leaving its value visible.
+        # Userinfo first: a credential such as ``user:pw&token=x@host`` would
+        # otherwise be consumed through its ``@`` by the query scanner, leaving
+        # the password prefix visible with nothing left for this pass to match.
+        s = _scrub_url_userinfo(s)
         s = _scrub_url_queries(s)
         s = _URL_SECRET_RE.sub(lambda m: m.group(1) + REDACTED, s)
     except Exception:

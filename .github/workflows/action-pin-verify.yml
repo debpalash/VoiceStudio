@@ -1,0 +1,36 @@
+name: Action pin verification
+
+# The pin tests in tests/test_workflow_action_pins.py prove every `uses:` is a full
+# SHA and carries a version label. They cannot prove the SHA *is* the commit that
+# label names — that needs the GitHub API, which PR CI must not depend on — so a
+# pin swapped for a well-formed SHA of a different commit would pass review.
+# This weekly run resolves each distinct action/label pair and compares it to the
+# pinned SHA (scripts/verify_action_pins.py). `workflow_dispatch` covers a manual
+# check after a bump.
+
+on:
+  schedule:
+    # Monday 05:41 UTC, off the hour so it does not queue behind the release runs.
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Install checker deps
+        run: pip install "pyyaml==6.0.3"
+      - name: Resolve every pinned SHA against the version it names
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/verify_action_pins.py

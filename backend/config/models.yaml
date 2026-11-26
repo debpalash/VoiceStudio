@@ -30,6 +30,13 @@
 #                            rocm | cpu (cpu = no GPU acceleration on this host).
 #                            Unlike `platforms` this never hides a model — it
 #                            only drives recommendations.
+#   known_files (optional) — files a finished install always holds (weights and
+#                            the configs needed to load them; the older name
+#                            known_weights is still read). Not a strict list like
+#                            required_files: it only backs the best-effort
+#                            completeness proof used when the Hub file list is
+#                            unavailable, so an install is never judged finished
+#                            with one of them missing.
 #   note       (optional) — shown in the UI as a tooltip/footnote
 #   config_only (optional) — true for pipeline repos that ship no weight file of
 #                            their own (weights live in referenced sub-repos). Such
@@ -49,6 +56,13 @@ models:
     engines: [omnivoice, omnivoice-subprocess]
     size_gb: 2.4
     required: true
+    known_files:
+      - config.json
+      - tokenizer.json
+      - model.safetensors
+      - audio_tokenizer/config.json
+      - audio_tokenizer/model.safetensors
+      - audio_tokenizer/preprocessor_config.json
     curated_on: [all]
 
   - repo_id: "audio-cpp/audio.cpp-gguf"
@@ -78,6 +92,17 @@ models:
     allow_patterns:
       - "DotTTS-SOAR-GGUF/dots-tts-soar-q8_0.gguf"
     note: "dots.tts on the native audio.cpp runtime, including Windows. Apache-2.0 weights."
+
+  - repo_id: "Jmica/Drama-3-GGUF"
+    label: "audio.cpp Fish Audio Drama 3 (Q3_K_S, 35B MoE multilingual, 24 GB+ GPU)"
+    role: TTS
+    engines: [audiocpp-drama3]
+    size_gb: 18.93
+    required_files:
+      - "drama-3-backbone-8bit-experts-Q3_K_S.gguf"
+    allow_patterns:
+      - "drama-3-backbone-8bit-experts-Q3_K_S.gguf"
+    note: "Built with Fish Audio. Fish Audio Drama 3 (35B-A3B MoE) Q3_K_S GGUF on the native audio.cpp v0.9.4 runtime; 24 GB+ GPU recommended. Fish Audio Community License v1.0 — review terms before commercial use."
 
   # ── ASR (optional — curated per platform) ─────────────────────────────
   # No ASR model is required to boot: TTS-only installs work. Dubbing,
@@ -118,6 +143,15 @@ models:
     platforms: [cuda, rocm]
     curated_on: [rocm]
     note: "CTranslate2 has no ROCm backend, so on AMD GPUs this PyTorch build is the accelerated route."
+
+  - repo_id: "openai/whisper-large-v3-turbo"
+    label: "Whisper large-v3 Turbo (PyTorch — GPU path for 4 GB AMD/ROCm cards)"
+    role: ASR
+    engines: [pytorch-whisper]
+    size_gb: 1.6
+    platforms: [cuda, rocm]
+    curated_on: [rocm]
+    note: "Smaller PyTorch build for AMD GPUs whose VRAM cannot hold large-v3; dictation picks it automatically when it is the one installed and fits."
 
   - repo_id: "mlx-community/whisper-tiny-mlx"
     label: "Whisper tiny (MLX ASR — fast fallback)"

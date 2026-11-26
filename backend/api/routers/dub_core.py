@@ -1,4 +1,5 @@
 import os
+import posixpath
 import re
 import errno
 import functools
@@ -12,7 +13,7 @@ from urllib.parse import urlsplit
 import soundfile as sf
 import torch
 from typing import Optional
-from fastapi import Request, Depends
+from fastapi import Request, Depends, Query
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 
@@ -59,6 +60,7 @@ from services.segmentation import (
 from services.onset_align import snap_segment_starts, trim_segment_ends
 from services import dub_pipeline
 from core.browser_guard import reject_cross_site_get
+from core.scrub import scrub_text
 
 router = APIRouter()
 logger = logging.getLogger("omnivoice.api")
@@ -169,6 +171,10 @@ def _safe_lang_or_400(lang: str | None) -> str | None:
 # and still cheap to regex — past that we refuse rather than let a stray
 # paste (or a mis-aimed binary) burn CPU in the parser.
 _MAX_SUBTITLE_PASTE_CHARS = 2_000_000
+# A subtitle-only job takes its whole timeline from the cues, and the dub mix
+# is sized from that duration: one cue at "100:00:00,000" would allocate a mix
+# file tens of gigabytes long. 24 hours covers any real subtitle file.
+_MAX_SUBTITLE_TIMELINE_S = 24 * 3600
 
 # The imported cue syntax belongs to the new cue. A prior segment's would
 # restore stale markup on an unchanged export; dropping the new one loses it.
@@ -294,6 +300,80 @@ def dub_parse_subtitle_text(req: ParseSubtitleTextRequest):
     }
 
 
+async def _read_subtitle_upload(file: UploadFile):
+    from services.text_upload import decode_text_upload
+    from services.srt_parser import parse_srt
+
+    raw = await file.read(_MAX_SUBTITLE_PASTE_CHARS + 1)
+    if len(raw) > _MAX_SUBTITLE_PASTE_CHARS:
+        raise HTTPException(status_code=413, detail="Subtitle file exceeds 2 MB.")
+    result = parse_srt(decode_text_upload(raw))
+    if not result.segments:
+        raise HTTPException(status_code=400, detail="No valid subtitle cues found.")
+    if max(seg["end"] for seg in result.segments) > _MAX_SUBTITLE_TIMELINE_S:
+        raise HTTPException(
+            status_code=400,
+            detail="A subtitle cue ends after 24 hours. Check the file's timestamps.",
+        )
+    return result
+
+
+@router.post("/dub/validate-srt", dependencies=[Depends(require_admin)])
+async def dub_validate_srt(file: UploadFile = File(...)):
+    """Validate a selected subtitle file without starting or changing a job."""
+    try:
+        result = await _read_subtitle_upload(file)
+        return {"imported": len(result.segments)}
+    finally:
+        await file.close()
+
+
+@router.post("/dub/from-srt", dependencies=[Depends(require_admin)])
+async def dub_from_srt(file: UploadFile = File(...), source_lang: Optional[str] = Form(None)):
+    """Create a speech-only project, with no media preparation or ASR."""
+    source = _source_lang_override(source_lang)
+    if not source:
+        raise HTTPException(status_code=400, detail="Choose the subtitle source language.")
+    try:
+        result = await _read_subtitle_upload(file)
+    finally:
+        await file.close()
+    segments = [{**seg, "id": str(i), "text_original": seg["text"]}
+                for i, seg in enumerate(result.segments)]
+    job_id = str(uuid.uuid4())
+    job = {
+        # Either separator, with POSIX semantics on every OS: os.path.basename
+        # keeps a Windows client path whole on POSIX and splits on ':' on
+        # Windows, and a home path must never be persisted.
+        "filename": posixpath.basename((file.filename or "").replace("\\", "/")) or "subtitles.srt",
+        "duration": max(seg["end"] for seg in segments),
+        "input_type": "audio", "subtitle_only": True,
+        "source_lang": source, "source_lang_override": source,
+        "segments": [], "dubbed_tracks": {},
+    }
+    replace_source_segments(job, segments)
+    # Exports, the per-segment speech cache and history deletion all expect a
+    # job directory; a subtitle-only job has no media to create it.
+    job_dir = _safe_job_dir(job_id)
+    if not job_dir:
+        raise HTTPException(status_code=400, detail="Invalid job id")
+    os.makedirs(job_dir, exist_ok=True)
+    try:
+        with dub_pipeline._dub_jobs_lock:
+            _save_job(job_id, job, strict=True)
+            _dub_jobs[job_id] = job
+    except BaseException:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise
+    return {
+        "job_id": job_id, "filename": job["filename"],
+        "duration": job["duration"], "source_lang": source,
+        "segments": segments,
+        "stats": {"imported": len(segments), "skipped_malformed": result.skipped_cues,
+                  "dropped_overlap": result.dropped_overlaps, "clamped_to_duration": 0},
+    }
+
+
 @router.post("/dub/import-srt/{job_id}", dependencies=[Depends(require_admin)])
 async def dub_import_srt(job_id: str, file: UploadFile = File(...)):
     """Replace `job["segments"]` with timestamps + text parsed from an SRT
@@ -310,7 +390,7 @@ async def dub_import_srt(job_id: str, file: UploadFile = File(...)):
     try:
         raw_bytes = await file.read()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {scrub_text(str(e))}") from e
     if not raw_bytes:
         raise HTTPException(status_code=400, detail="Uploaded SRT file is empty.")
     # Most SRT files are UTF-8, but Windows subtitle tools also save UTF-16
@@ -650,9 +730,18 @@ def dub_abort(job_id: str):
 
 
 @router.get("/dub/history")
-def list_dub_history():
+def list_dub_history(full: bool = Query(False, description="Include each row's full `job_data` blob (large).")):
+    """Recent dub rows. The list omits ``job_data`` (every segment and path of
+    each job, often megabytes) unless ``?full=1``; nothing in the apps reads it
+    from here — a single job loads through its own routes."""
     with db_conn() as conn:
-        rows = conn.execute("SELECT * FROM dub_history ORDER BY created_at DESC LIMIT 30").fetchall()
+        if full:
+            rows = conn.execute("SELECT * FROM dub_history ORDER BY created_at DESC LIMIT 30").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, filename, duration, segments_count, language, language_code, tracks,"
+                " content_hash, created_at FROM dub_history ORDER BY created_at DESC LIMIT 30"
+            ).fetchall()
     return [dict(r) for r in rows]
 
 @router.delete("/dub/history", dependencies=[Depends(require_admin)])
@@ -841,6 +930,7 @@ async def dub_upload(
     job_id: Optional[str] = Form(None),
     input_type: str = Form("video"),
     source_lang: Optional[str] = Form(None),
+    separate_background: bool = Form(True),
 ):
     """Accept a media upload, write to disk, queue background prep task.
 
@@ -973,6 +1063,7 @@ async def dub_upload(
             "path": video_path,
             "input_type": input_type,
             "source_lang": source_lang_override,
+            "separate_background": separate_background,
         },
         filename,
     )
@@ -2793,6 +2884,13 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
     job = _get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    # A job with no source audio (e.g. a subtitle-only job from /dub/from-srt)
+    # has nothing to transcribe: refuse it plainly, as the SSE route does,
+    # instead of handing None to the ASR backend (a 500),
+    # and before any optional model preload.
+    _audio = [job.get("vocals_path"), job.get("audio_path")]
+    if not any(p and os.path.exists(p) for p in _audio):
+        raise HTTPException(status_code=409, detail="No audio available for transcription.")
     # Subtitles imported or a dub published while this pass runs win over its
     # result.
     start_rev = segments_revision(job)

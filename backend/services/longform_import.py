@@ -652,8 +652,12 @@ def pdf_to_chapter_script(data: bytes, *, max_pages: int = _PDF_MAX_PAGES) -> st
         except (NotImplementedError, PdfReadError) as e:
             raise ValueError(f"can't read this encrypted PDF: {e}") from e
 
-    pages = reader.pages
-    if len(pages) > max_pages:
+    try:
+        pages = reader.pages
+        page_count = len(pages)
+    except (PdfReadError, OSError, ValueError) as e:
+        raise ValueError(f"not a valid PDF file: {e}") from e
+    if page_count > max_pages:
         raise ValueError(f"PDF has too many pages (max {max_pages})")
 
     parts: list[str] = []

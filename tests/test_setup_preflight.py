@@ -35,6 +35,19 @@ def _isolated_prefs(monkeypatch, tmp_path):
 
 # ── Shape ────────────────────────────────────────────────────────────────
 
+def _cpu_torch(monkeypatch):
+    """Pin a CPU-only torch so a real CUDA build on the test host cannot claim the
+    GPU before the probe under test (the CUDA build wins on a hybrid host, #4279)."""
+    from types import SimpleNamespace
+
+    stub = SimpleNamespace(
+        version=SimpleNamespace(cuda=None, hip=None),
+        cuda=SimpleNamespace(is_available=lambda: False),
+        backends=SimpleNamespace(),
+    )
+    monkeypatch.setitem(sys.modules, "torch", stub)
+
+
 def test_preflight_returns_expected_shape(client):
     """Endpoint always returns {ok, has_warnings, checks[], device}."""
     r = client.get("/setup/preflight")
@@ -194,8 +207,9 @@ def test_preflight_detects_apple_silicon():
         assert info["backend"] == "mps"
 
 
-def test_preflight_handles_missing_nvidia_smi():
-    """When nvidia-smi is absent, vendor falls through (not nvidia)."""
+def test_preflight_handles_missing_nvidia_smi(monkeypatch):
+    """When nvidia-smi is absent and no CUDA build drives a GPU, vendor falls through (not nvidia)."""
+    _cpu_torch(monkeypatch)
     from api.routers.setup.wizard import _detect_gpu, _run_cmd  # noqa
     with patch("api.routers.setup.wizard._run_cmd", return_value=(-1, "")):
         info = _detect_gpu()
@@ -259,8 +273,9 @@ def test_nvidia_driver_floor_is_cuda12_minor_compat(monkeypatch, platform_, driv
     assert any("driver" in n.lower() for n in info["notes"]) is flagged
 
 
-def test_preflight_amd_flags_warn_when_no_rocm_torch():
+def test_preflight_amd_flags_warn_when_no_rocm_torch(monkeypatch):
     """AMD GPU + torch without HIP → warn with ROCm install instructions."""
+    _cpu_torch(monkeypatch)
     import platform as _p
     if sys.platform == "darwin" and _p.machine() == "arm64":
         pytest.skip("apple-silicon branch returns before rocm-smi")
@@ -295,6 +310,7 @@ def test_preflight_sees_a_radeon_without_rocm_smi(monkeypatch, platform_, expect
     from api.routers.setup import wizard as setup_mod
     from types import SimpleNamespace
 
+    _cpu_torch(monkeypatch)
     monkeypatch.setattr(setup_mod, "_run_cmd", lambda args, timeout=2.0: (-1, ""))
     monkeypatch.setattr(
         gpu_inventory, "detect_host_gpus",

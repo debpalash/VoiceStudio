@@ -12,7 +12,7 @@ final class ProductionScreens: XCTestCase {
             // without scrolling can never succeed. reveal() scrolls until it is on screen.
             let card = app.buttons["home."+route]
             app.reveal(card)
-            XCTAssertTrue(card.isHittable,route); card.tap()
+            XCTAssertTrue(card.isHittable,route); card.tapReady()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: uiReadyTimeout),route)
             XCTAssertFalse(app.navigationBars["Connect to VoiceStudio"].exists,route)
             XCTAssertFalse(app.descendants(matching: .any)["error.notice"].exists,route)

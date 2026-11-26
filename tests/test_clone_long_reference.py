@@ -694,7 +694,7 @@ def test_passage_choices_share_the_prompt_cache_lock(
     try:
         first = _wav(tmp_path / "first.wav", 1)
         tts._remember_passage(first, 1, "first window")
-        assert tts._recall_passage(first) == (1, "first window")
+        assert tts._recall_passage(first) == (1, "first window", True)
         for index in range(tts._PASSAGE_CHOICE_MAX):
             tts._remember_passage(_wav(tmp_path / f"w{index}.wav", 1), 0, "x")
         tts.clear_clone_prompt_cache()

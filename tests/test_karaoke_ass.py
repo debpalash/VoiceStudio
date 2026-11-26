@@ -386,3 +386,15 @@ class TestKaraokeBurnEndpoint:
         assert "{\\kf" in res.text
         disposition = res.headers.get("content-disposition", "")
         assert disposition.startswith("attachment;") and ".ass" in disposition
+
+
+@pytest.mark.parametrize("bad_time", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("field", ["start", "end"])
+def test_nonfinite_word_times_use_even_karaoke_timing(bad_time, field):
+    cue = {"text": "Hello world", "start": 0.0, "end": 2.0}
+    words = [
+        {"text": "Hello", "start": 0.5, "end": 1.0},
+        {"text": "world", "start": 1.5, "end": 2.0},
+    ]
+    words[0][field] = bad_time
+    assert build_ass([{**cue, "words": words}]) == build_ass([cue])

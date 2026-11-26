@@ -12,6 +12,8 @@ ignores.
 | You want | Do this | Works on |
 |---|---|---|
 | A pause | Type `[pause]`, `[pause 500ms]`, or `[pause 1.5s]` in the text | Every engine |
+| A pause between paragraphs | **Voice controls → Silence between paragraphs** (or `paragraph_gap_ms` on `/generate` and MCP `generate_speech`). See [Paragraph gaps](#paragraph-gaps) | Every engine |
+| A slower, faster or emphasized phrase | `[slow]…[/slow]`, `[fast]…[/fast]`, `[emphasis]…[/emphasis]`, `[spell]…[/spell]` in the text | Every engine |
 | Laughter or a sigh | ⊕ Insert → `[laughter]` / `[sigh]` | Default engine (VoiceStudio), CosyVoice 3 (`[laughter]`) |
 | An audible breath **on demand** | ⊕ Insert → `[breath]` | CosyVoice 3 only (opt-in) — see [Breaths](#breaths-specifically) |
 | Whispering | Style → `whisper` (the voice-design/style field) | Default engine |
@@ -75,6 +77,32 @@ lists the reaction tags its tokenizer renders.
   longer cuts out at every pause. It is derived from the generated take, needs
   no model, is reproducible, and falls back to silence when the take has no
   usable quiet floor. Long-text chunk joins are not changed.
+- **SSML-lite tags** — `[slow]…[/slow]` (0.85× speed), `[fast]…[/fast]`
+  (1.15×), `[emphasis]…[/emphasis]` (a gentle 0.92× slow-down) and
+  `[spell]…[/spell]` (letter by letter) work on the Voice page, `/generate`,
+  MCP `generate_speech`, Audiobook and Stories. The speed multiplies the take's
+  own speed. A tagged run is its own engine call, joined with no gap, so tag a
+  whole phrase or sentence rather than one word inside it. Tags are never read
+  aloud.
+
+### Paragraph gaps
+
+Long narration in one take can run topic changes together: the engine decides
+the pacing. **Voice controls** (the sliders button beside Synthesize) has
+**Silence between paragraphs** and **Remove engine edge silence**; the API
+fields are `paragraph_gap_ms` (0–5000 ms) and `trim_engine_silence` on
+`/generate` and the MCP `generate_speech` tool.
+
+- A blank line gets the paragraph gap. An explicit `[pause]` replaces the gap
+  at its place, and the end of the text never gets one.
+- With the gap on, each paragraph is its own engine call (like `[pause]`
+  spans), so a long script makes more calls and the live preview arrives as one
+  piece. The gaps can add at most 15 minutes of silence to one take.
+- **Remove engine edge silence** cuts each chunk's own lead-in and tail before
+  joining, so the gap you set is the gap you hear, even with the Raw effect
+  preset.
+- Both are off by default, so existing requests render exactly as before.
+  Around 700–1000 ms between paragraphs suits most narration.
 - **Punctuation** — ellipses, dashes, exclamation marks, and short fragments
   genuinely shape pacing and intonation. Cheap, underrated.
 - **The reference clip is a performance direction.** Zero-shot cloning mirrors
@@ -88,6 +116,8 @@ lists the reaction tags its tokenizer renders.
   expression, but often what a "it says this weirdly" problem actually needs.
 
 **Per-voice dictionaries.** In **Settings → Pronunciation dictionary**, the scope switch (**Language** | **This voice**) picks which dictionary you edit, export or import. A voice's own entries apply only when that saved voice speaks, and win over the language dictionary: global, then language, then the voice, then the voice for one language, with the most specific entry winning. Saved dictionaries apply in Generate, OpenAI-compatible speech, streaming TTS, Dub renders and previews, batch dubbing, and transcript-based voice conversion. OpenAI-compatible requests can select a saved voice by ID or name. Voices never see each other's entries, existing dictionaries stay as they were, and deleting a voice deletes its dictionary. Over the API, `profile_id` on `GET /pronunciation`, `/pronunciation/export`, `/pronunciation/import` and `/pronunciation/test` selects a voice (without it they act on the language dictionary only, and `replace: true` clears only that scope). Audiobook chapters still use the project lexicon only.
+
+**PLS lexicons.** **Export PLS** saves the dictionary's enabled entries as a W3C Pronunciation Lexicon (`.pls`); a lexicon holds one language, so a dictionary with entries for several languages must be exported as JSON. A deletion override (empty replacement) exports as an empty `<alias/>`. **Import** also takes `.pls` and `.xml` lexicons, so pronunciation dictionaries made for ElevenLabs, Azure or Google speech carry over. `<alias>` becomes a respelling, an IPA `<phoneme>` an IPA entry, and a CMU ARPABET `<phoneme>` (`x-cmu`, `cmu-arpabet`) a CMU entry; when a word has several readings, the one marked `prefer="true"` wins across aliases and phonemes, otherwise the first usable one. Entries take the lexicon's `xml:lang` as their language. Phonemes in other alphabets, such as X-SAMPA, or that the dictionary would reject give way to the word's next reading or are left out, and the import says how many. A lexicon with a DOCTYPE or entity declarations is refused. Over the API, `GET /pronunciation/export?format=pls` returns the lexicon, and `POST /pronunciation/parse-pls` with `{"text": ...}` returns entries for `/pronunciation/import` without saving anything.
 
 Spoken text is normalized first, then saved respellings and explicit inline
 overrides are resolved before sentence splitting or synthesis. Respellings are
@@ -179,11 +209,11 @@ read, with a message to lower the gaps or split the chapter. Values around 250 m
 for lines and 350 ms for paragraphs suit most narration, but they are explicit
 choices: the defaults are 0.
 
-**Longform-only tags.** Audiobook and Stories additionally parse SSML-lite —
-`[slow]…[/slow]`, `[fast]…[/fast]`, `[emphasis]…[/emphasis]`, `[spell]` —
-plus `[voice:NAME]` for multi-voice scripts and `[emotion:TEXT]` for per-line
+**Longform-only tags.** Audiobook and Stories additionally parse
+`[voice:NAME]` for multi-voice scripts and `[emotion:TEXT]` for per-line
 emotion (`backend/services/longform_parser.py`). These are not parsed on the
-Voice page.
+Voice page. SSML-lite (`[slow]`, `[fast]`, `[emphasis]`, `[spell]`) works
+everywhere; see [Every engine](#every-engine).
 
 ### Per-line emotion (Audiobook and Stories)
 

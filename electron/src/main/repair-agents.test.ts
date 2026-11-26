@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import {
   agentChildEnv,
+  agentDiagnosticTail,
   agentProviderFailure,
   agentCommandMatchesPlatform,
   dubTranslationPrompt,
@@ -38,6 +39,35 @@ describe('packaged app repair sessions', () => {
       'AgentRateLimitError',
     );
     expect(agentProviderFailure('{"translations":[{"id":"reply","text":"ok"}]}')).toBeNull();
+  });
+  it('classifies plain-text provider failures a CLI prints on stderr (#4356)', () => {
+    const cases: Array<[string, string]> = [
+      ['ERROR: unexpected status 401 Unauthorized: Your login has expired', 'AgentAuthenticationError'],
+      ['stream error: exceeded retry limit, last status: 429 Too Many Requests', 'AgentRateLimitError'],
+      ["error: The 'gpt-x' model is not supported when using Codex with a ChatGPT account.", 'AgentModelError'],
+      ['Error: model_not_found', 'AgentModelError'],
+      ['Not logged in', 'AgentAuthenticationError'],
+      ['Your login has expired. Run `codex login`.', 'AgentAuthenticationError'],
+      ['Usage limit reached for this plan', 'AgentRateLimitError'],
+    ];
+    for (const [stderr, name] of cases) {
+      const failure = agentProviderFailure('', stderr);
+      expect(failure?.name).toBe(name);
+      expect(failure?.message).not.toContain(stderr);
+    }
+    // Translated dialogue mentioning a quota is not a diagnostic line.
+    expect(agentProviderFailure('', 'They said the quota for apples is gone.')).toBeNull();
+    expect(agentProviderFailure('', '')).toBeNull();
+  });
+  it('names the last diagnostic stderr line, scrubbed and bounded', () => {
+    expect(agentDiagnosticTail('starting\nfatal: config file missing\nbye')).toBe(
+      'fatal: config file missing',
+    );
+    expect(agentDiagnosticTail('only progress')).toBe('only progress');
+    expect(agentDiagnosticTail('')).toBe('');
+    expect(agentDiagnosticTail(`error: ${'x'.repeat(400)}`).length).toBeLessThanOrEqual(240);
+    const fakeKey = ['sk', 'a'.repeat(40)].join('-'); // built at runtime: not a real key
+    expect(agentDiagnosticTail(`error: token ${fakeKey} rejected`)).not.toContain(fakeKey);
   });
   it('contains prompt pipe closures instead of raising uncaught process errors', () => {
     const stdin = new EventEmitter();

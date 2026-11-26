@@ -1,8 +1,7 @@
 import './lib/random-uuid';
-import { CaptureWidget } from './features/transcriptions/capture-widget';
 import { SiteBrowserHost } from './features/browser/site-browser-host';
 import { installConsoleCapture } from '@shared/utils/consoleBuffer';
-import { StrictMode } from 'react';
+import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/inter';
 import './styles/globals.css';
@@ -18,9 +17,15 @@ installConsoleCapture();
 installGlobalErrorRecovery();
 installPreloadRecovery();
 
+const CaptureWidget = lazy(() =>
+  import('./features/transcriptions/capture-widget').then((m) => ({ default: m.CaptureWidget })),
+);
+
 createRoot(document.getElementById('root')!).render(
   window.location.hash === '#/capture' ? (
-    <CaptureWidget />
+    <Suspense fallback={null}>
+      <CaptureWidget />
+    </Suspense>
   ) : (
     <StrictMode>
       <SiteBrowserHost>

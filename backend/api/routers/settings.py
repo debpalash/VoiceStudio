@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from core.browser_guard import reject_cross_site_get
 from core.logging_utils import log_safe
+from core.scrub import scrub_text
 from core.nvidia_smi import find_nvidia_smi
 from core.engine_licenses import LICENSE_GATED_ENGINES
 from api.dependencies import require_admin, require_admin_action
@@ -856,7 +857,6 @@ def _scrub_llm_detail(e: Exception, api_key: str | None) -> str:
     home paths — but a STORE-persisted key isn't in the env, and some
     providers echo the key in error bodies, so redact the exact resolved key
     explicitly before the generic pass."""
-    from core.scrub import scrub_text
     detail = f"{type(e).__name__}: {e}"
     if api_key and api_key != "local" and len(api_key) >= 8:
         detail = detail.replace(api_key, "•••")
@@ -1219,7 +1219,13 @@ def set_models_dir(body: _ModelsDirBody):
         with open(probe, "w", encoding="utf-8") as f:
             f.write("ok")
     except OSError as e:
-        raise HTTPException(status_code=400, detail=f"Directory is not writable: {e}") from e
+        # A fixed message: the OS error carries the folder, and on Windows it
+        # escapes the separators (`C:\\Users\\...`), which is exactly the shape
+        # scrub_text does not match, so the account name would reach the toast.
+        raise HTTPException(
+            status_code=400,
+            detail="That folder is not writable. Choose one you can write to, then try again.",
+        ) from e
     finally:
         # Best-effort cleanup; a failed remove (concurrent process, perm change)
         # must not leave the request hanging or mask the real error.

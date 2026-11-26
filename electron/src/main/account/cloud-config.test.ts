@@ -73,6 +73,7 @@ it('lands on the dashboard after sign-in and links to its profile and plan pages
   expect(dashboardLinks(resolveCloudEnvironment({ packaged: true }))).toEqual({
     profile: 'https://app.voicestudio.sh/settings/profile',
     deletion: 'https://app.voicestudio.sh/settings/deletion-review',
+    proDownload: 'https://app.voicestudio.sh/pro/download',
     plan: 'https://app.voicestudio.sh/settings/plan',
   });
 });

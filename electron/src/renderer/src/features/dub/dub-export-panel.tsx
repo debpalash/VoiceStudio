@@ -9,7 +9,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { getBridge } from '@/components/bridge';
 import { PipelineFailure } from '@/components/pipeline-failure';
-import { apiPath, describeError, errorFromResponse } from '@/lib/api/client';
+import { apiPath, describeError } from '@/lib/api/client';
 import { saveExport } from '@/lib/export-history';
 import {
   BED_LEVEL_MAX,
@@ -114,30 +114,13 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
         bitrate,
       });
       const url = apiPath(request.path);
-      const bridge = getBridge();
-      if (bridge) {
-        const saved = await saveExport(url, request.name);
-        if (saved && !saved.canceled && saved.path) recordDubSavedFile(session, saved.path);
+      const saved = await saveExport(url, request.name);
+      if (saved && !saved.canceled && saved.path) {
+        recordDubSavedFile(session, saved.path);
         const code = translationTargetCode(session.target);
-        if (
-          saved &&
-          !saved.canceled &&
-          saved.path &&
-          code &&
-          !subtitles &&
-          (format === 'mp4' ? selected.includes(code) : track === code)
-        ) {
+        if (code && !subtitles && (format === 'mp4' ? selected.includes(code) : track === code)) {
           recordDubExport(session, code);
         }
-      } else {
-        const response = await fetch(url);
-        if (!response.ok) throw await errorFromResponse(response);
-        const objectUrl = URL.createObjectURL(await response.blob());
-        const anchor = document.createElement('a');
-        anchor.href = objectUrl;
-        anchor.download = request.name;
-        anchor.click();
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
       }
     } catch (error) {
       setError(describeError(error));

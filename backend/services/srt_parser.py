@@ -25,8 +25,8 @@ import secrets
 from dataclasses import dataclass
 
 
-# Captures: HH MM SS sep(`,` or `.`) ms (1-3 digits)
-_TS = r"(?:(\d+):)?([0-5]?\d):([0-5]?\d)[,.](\d{1,3})"
+# Captures: HH MM SS sep(`,` or `.`) ms (validated during conversion)
+_TS = r"(?:(\d+):)?([0-5]?\d):([0-5]?\d)[,.](\d+)"
 # Horizontal whitespace only — NEVER plain `\s`, which matches newlines.
 # A timing line lives on ONE line, so `\s*` bought nothing but catastrophic
 # backtracking: under re.MULTILINE the engine restarts at every line start,
@@ -42,7 +42,15 @@ _TIMING_RE = re.compile(rf"^{_H}{_TS}{_H}-->{_H}{_TS}.*$", re.MULTILINE)
 
 def _ts_to_seconds(h: str, m: str, s: str, ms: str) -> float:
     # The final field is a millisecond count: "5" -> 0.005, "50" -> 0.050.
+    if len(ms) > 3:
+        raise ValueError("Timestamp milliseconds must have at most three digits")
     return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+
+
+def _is_valid_timing_line(line: str) -> bool:
+    """A timing line whose millisecond fields fit the three-digit format."""
+    match = _TIMING_RE.match(line)
+    return bool(match) and len(match.group(4)) <= 3 and len(match.group(8)) <= 3
 
 
 def _is_index_line(line: str) -> bool:
@@ -82,7 +90,7 @@ def webvtt_content_blocks(text: str, *, strict_blank: bool = False) -> list[str]
         # WebVTT's block parser gives a timing line in position two
         # precedence over the identifier, so STYLE/REGION can name a real
         # cue (https://www.w3.org/TR/webvtt1/#file-parsing).
-        identifies_cue = len(lines) > 1 and _TIMING_RE.match(lines[1])
+        identifies_cue = len(lines) > 1 and _is_valid_timing_line(lines[1])
         if re.match(r"NOTE(?:[ \t]|$)", first):
             continue
         if first in {"STYLE", "REGION"} and not identifies_cue:

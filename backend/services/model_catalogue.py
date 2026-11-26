@@ -170,6 +170,19 @@ def _snapshot_dirs(repo_id: str) -> list[str]:
     return dirs
 
 
+def _install_pending(snapshot_path: str) -> bool:
+    """True while an install of this snapshot's own revision has not finished.
+
+    The weight-presence check accepts any one plausible weight file, so a repo
+    with several (OmniVoice's model plus ``audio_tokenizer/``) looked installed
+    as soon as the smaller file landed: mid-download, or after a failed install.
+    """
+    from services.hf_revisions import install_pending_revision
+
+    repo_dir = os.path.dirname(os.path.dirname(snapshot_path))
+    return install_pending_revision(repo_dir) == os.path.basename(snapshot_path)
+
+
 def snapshot_is_complete(model: dict, snapshot_path: str) -> bool:
     """Apply the same catalogue requirements during installation and listing."""
     config_only = bool(model.get("config_only"))
@@ -186,7 +199,15 @@ def snapshot_is_complete(model: dict, snapshot_path: str) -> bool:
             )
             for name in required
         )
-        return present and (config_only or snapshot_has_weights(snapshot_path))
+        if not present:
+            return False
+        if config_only:
+            return True
+        # Declared required files are already an exact check; the any-weight
+        # heuristic also needs the install of this revision to have finished.
+        return snapshot_has_weights(snapshot_path) and (
+            bool(required) or not _install_pending(snapshot_path)
+        )
     except OSError:
         return False
 

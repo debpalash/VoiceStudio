@@ -319,14 +319,17 @@
     "test_global_hint": "Anteprima solo con le voci globali — scegli una lingua per includere le voci specifiche per lingua.",
     "test_error": "Anteprima non disponibile — impossibile raggiungere il backend.",
     "backup_title": "Backup e ripristino",
-    "backup_hint": "Scarica il dizionario come file JSON oppure importa voci da un'esportazione precedente.",
+    "backup_hint": "Scarica il dizionario come JSON o come lessico PLS, oppure importa uno dei due. Funzionano anche i lessici PLS di altri servizi vocali.",
     "export": "Esporta JSON",
+    "export_pls": "Esporta PLS",
     "import": "Importa JSON",
-    "import_error": "Impossibile importare il file — è atteso il JSON di un'esportazione della pronuncia.",
+    "import_error": "Impossibile importare il file — è attesa un'esportazione della pronuncia (JSON) o un lessico PLS.",
     "import_replace_prompt_one": "Sostituire {{count}} voce esistente con il file importato? Scegli No per aggiungere le voci importate accanto.",
     "import_replace_prompt_other": "Sostituire le {{count}} voci esistenti con il file importato? Scegli No per aggiungere le voci importate accanto.",
     "import_done_one": "{{count}} voce importata.",
     "import_done_other": "{{count}} voci importate.",
+    "import_skipped_one": "{{count}} voce esclusa: la sua trascrizione fonetica non è supportata.",
+    "import_skipped_other": "{{count}} voci escluse: la loro trascrizione fonetica non è supportata.",
     "entries_count_one": "{{count}} voce",
     "entries_count_other": "{{count}} voci",
     "scope_language": "Lingua",
@@ -1057,7 +1060,8 @@
     "retry": "Riprova",
     "confirm": "Conferma",
     "details": "Dettagli",
-    "unknown": "sconosciuto"
+    "unknown": "sconosciuto",
+    "link_blocked": "Impossibile aprire questo link. Sono consentiti solo link web e e-mail."
   },
   "dubWorkspace": {
     "transcriptIssues": "Problemi della trascrizione",
@@ -1449,6 +1453,9 @@
     "terminal_command_added": "Aggiunto. Apri una nuova finestra del terminale per usare voicestudio.",
     "terminal_command_failed": "Impossibile aggiungere voicestudio al terminale. Verifica che la cartella home non sia di sola lettura, poi riprova.",
     "terminal_command_conflict": "{{path}} appartiene a un'altra installazione, quindi VoiceStudio non l'ha modificato.",
+    "close_to_tray": "Continua in esecuzione nell’area di notifica alla chiusura",
+    "close_to_tray_desc": "Chiudendo la finestra VoiceStudio si nasconde nell’area di notifica invece di uscire, quindi le attività in corso continuano. Riaprilo dall’icona nell’area di notifica e scegli Esci da lì per chiuderlo. Su alcuni desktop Linux l’icona richiede il supporto AppIndicator; riavviare VoiceStudio riapre comunque la finestra.",
+    "close_to_tray_failed": "Impossibile salvare questa impostazione. Riprova.",
     "review_mode_on": "Recensione",
     "review_mode_off": "Fuoco rapido",
     "translate_agent": "Agente in forma",
@@ -1476,6 +1483,7 @@
     "gpu_report_state_nvidia_rocm_build": "È stata trovata {{gpu}}, ma questo PyTorch è una build AMD ROCm e non può pilotare le GPU NVIDIA.",
     "gpu_report_state_intel_unsupported": "È stata trovata {{gpu}}, ma nessun motore installato può usare le GPU Intel, quindi tutto viene eseguito sulla CPU.",
     "gpu_report_state_kernels_missing": "È stata trovata {{gpu}}, ma questa build di PyTorch ({{torch}}) non ha kernel per la sua architettura di calcolo, quindi i motori vengono eseguiti sulla CPU.",
+    "gpu_report_torch_fallback": "La configurazione ha provato la build PyTorch CUDA 12.6 per questa GPU, ma non è riuscita a usare la scheda, quindi i motori PyTorch restano sulla CPU. Motivo: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} è una GPU NVIDIA datata (serie GTX 900 / 1000 o precedente). Questa build di PyTorch ({{torch}}) non supporta più quella generazione, quindi i motori PyTorch girano sulla CPU. I motori con un proprio runtime Vulkan possono ancora usare la GPU.",
     "gpu_report_state_unknown": "Impossibile determinare lo stato della GPU.",
     "gpu_report_option_vulkan_engines": "Usa un motore con un proprio runtime GPU: audio.cpp funziona sulle GPU AMD Radeon tramite Vulkan (Impostazioni → Modelli → installa il runtime).",
@@ -1731,7 +1739,8 @@
     "open": "Aprire “{{name}}” e sostituire la bozza attuale? Salva prima il tuo lavoro.",
     "save_copy": "Salva una copia",
     "new": "Nuovo progetto",
-    "new_confirm": "Iniziare un nuovo progetto vuoto? I progetti salvati restano invariati; le modifiche non salvate alla bozza attuale andranno perse."
+    "new_confirm": "Iniziare un nuovo progetto vuoto? I progetti salvati restano invariati; le modifiche non salvate alla bozza attuale andranno perse.",
+    "delete_hint": "Viene rimosso solo il progetto salvato dalla lista. I file multimediali e le voci vengono conservati."
   },
   "sidebar": {
     "save_project": "Salva progetto doppiato",
@@ -1982,7 +1991,12 @@
     "cast_note_other": "{{names}} non hanno ancora una voce, quindi vengono letti con la voce principale. Scegli le voci in Cast.",
     "line_gap": "Intervallo tra le righe",
     "paragraph_gap": "Intervallo tra i paragrafi",
-    "trim_edges": "Taglia i silenzi del motore"
+    "trim_edges": "Taglia i silenzi del motore",
+    "result_other_connection": "Questo audio salvato appartiene a un’altra connessione VoiceStudio. Torna a quella connessione per riprodurlo.",
+    "result_connection_unknown": "Collega il motore locale o il computer remoto per visualizzare l’audio salvato.",
+    "result_legacy": "Questo vecchio risultato salvato non contiene informazioni sulla connessione. Cerca il suo nome file su questa connessione; potrebbe trattarsi di un file diverso.",
+    "result_check_audio": "Verifica l’audio salvato su questa connessione",
+    "result_recovery_failed": "L’audio salvato non è disponibile su questa connessione. Torna alla connessione originale oppure generalo di nuovo."
   },
   "credentials": {
     "microsoft_key": "Chiave del traduttore Microsoft",
@@ -2132,6 +2146,7 @@
     "setup_wrong_architecture": "Chiudi VoiceStudio, sostituiscilo con il DMG Apple Silicon (arm64), quindi riaprilo. Al momento è in uso l’edizione Intel tramite Rosetta; il cambio abilita l’IA locale senza cancellare voci o progetti.",
     "setup_missing_system_library": "Questo sistema Windows non ha il Microsoft Visual C++ 2015-2022 Redistributable (x64), necessario all’estensione audio di PyTorch. Installalo da Microsoft, poi premi Riprova.",
     "setup_outdated_system_library": "Il Microsoft Visual C++ Redistributable (x64) di questo sistema Windows è troppo vecchio, quindi una libreria vocale si arresta al caricamento. Installa la versione più recente da Microsoft, poi premi Riprova.",
+    "setup_torch_dll_init_failed": "Impossibile caricare PyTorch e la causa non è stata stabilita. Installa l'ultimo Microsoft Visual C++ Redistributable (x64), poi aggiorna il driver della scheda video e premi Riprova. Se continua a fallire, usa «Pulisci e riprova» in «Altre soluzioni».",
     "setup_files_locked": "Un altro programma sta usando i file di VoiceStudio (OneDrive o un’altra app di sincronizzazione, l’antivirus o un backend VoiceStudio ancora in esecuzione). Chiudilo o metti in pausa la sincronizzazione, poi premi Riprova.",
     "download_apple_silicon": "Scarica la versione Apple Silicon",
     "retry": "Riprova",
@@ -2351,6 +2366,10 @@
     "dubbing_cta": "Eseguilo sul tuo video →",
     "dubbing_loading": "Caricamento demo del doppiaggio…",
     "dubbing_dismiss": "Ignora la demo del doppiaggio",
+    "dubbing_download": "Scarica i video demo (~10 MB)",
+    "dubbing_downloading": "Download in corso…",
+    "dubbing_download_failed": "Download non riuscito. Controlla la connessione.",
+    "dubbing_retry": "Riprova",
     "original_tag": "originale",
     "dubbed_tag": "doppiato",
     "script_conversational": "Conversazionale",
@@ -2580,7 +2599,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Visualizza i dettagli dell'incidente",
-    "field_exit": "Uscita",
+    "field_exit": "Stato di uscita",
     "field_when": "Quando",
     "field_uptime": "Tempo di attività prima dell'arresto anomalo",
     "field_version": "Versione back-end",
@@ -2985,6 +3004,7 @@
     "source_language_required": "Il riconoscimento vocale non ha indicato in quale lingua è parlato questo video, quindi non può essere tradotto qui. Apri il video in Doppiaggio e scegli la lingua di origine, oppure seleziona un modello di riconoscimento vocale che rileva la lingua.",
     "transcription_media_tool": "La trascrizione richiede ffmpeg, che VoiceStudio non ha trovato o non è riuscito a eseguire. Apri Impostazioni → Strumenti audio e usa Scarica/Ripara, oppure installa ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: il tuo gestore di pacchetti) e riavvia VoiceStudio. Puoi anche puntare FFMPEG_PATH a un binario ffmpeg.",
     "transcription_pipe_lost": "Il backend ha perso il canale di output verso l'app durante la trascrizione (broken pipe). Riavvia VoiceStudio e riprova.",
+    "reference_transcript_required": "La clip di riferimento di questa voce non ha una trascrizione, di cui questo motore ha bisogno per clonarla. Aggiungi la trascrizione al profilo vocale oppure installa un modello di riconoscimento vocale per trascriverla automaticamente.",
     "gpu_oom": "La GPU ha esaurito la memoria. Chiudi le altre app che usano molto la GPU o scarica i modelli, poi riprova. Puoi anche scegliere la CPU in Impostazioni → Prestazioni e dispositivo o selezionare un motore TTS più piccolo.",
     "host_memory_exhausted": "Il computer ha esaurito la memoria. Chiudi le altre app e le schede del browser che usano molta memoria, scarica i modelli inutilizzati, genera un brano più breve o scegli un motore TTS più leggero.",
     "disk_full": "Il disco è pieno. Libera spazio sull'unità che contiene i dati, la cache dei modelli o la cartella temporanea di VoiceStudio, poi riprova. Impostazioni → Archiviazione mostra l'uso del disco e può cancellare i file temporanei.",
@@ -3037,7 +3057,8 @@
     "missingSpeech": "Il parlato manca o non è leggibile. Rigenera il segmento interessato prima di esportare.",
     "timingOverflow": "Il parlato supera il tempo disponibile. Accorcia la traduzione oppure scegli uno slot rigoroso o estendi il video.",
     "sourceChanged": "I sottotitoli sono cambiati durante la generazione di questo doppiaggio. La traccia precedente è stata mantenuta; genera di nuovo per usare i nuovi sottotitoli.",
-    "backgroundUnavailable": "Impossibile preservare il suono originale. Controlla la separazione del sottofondo e i tempi del dialogo, poi riprova, oppure esporta esplicitamente solo la voce."
+    "backgroundUnavailable": "Impossibile preservare il suono originale. Controlla la separazione del sottofondo e i tempi del dialogo, poi riprova, oppure esporta esplicitamente solo la voce.",
+    "untranslated": "Questa traccia non ha ancora una traduzione: tutte le righe sono ancora uguali al testo originale. Traducila o scegli la lingua di origine, poi genera di nuovo."
   },
   "dubStyle": {
     "label": "Istruzioni sullo stile di traduzione",
@@ -3056,6 +3077,8 @@
     "free": "Gratis",
     "pro": "Pro",
     "get_pro": "Ottieni Pro",
+    "upgrade_pro": "Passa a Pro",
+    "get_pro_app": "Scarica l'app Pro",
     "sponsor_bar": "Barra sponsor",
     "visible": "Visibile",
     "hideable": "Può essere nascosta",
@@ -3100,6 +3123,7 @@
       "speechCurl": "Sintesi vocale (curl)",
       "transcriptionCurl": "Trascrizione (curl)",
       "openaiPython": "Python (SDK OpenAI)",
+      "elevenlabsPython": "Python (SDK ElevenLabs)",
       "dockerRun": "Avvia il container",
       "dockerCompose": "Docker Compose",
       "workflow": "Workflow n8n",
@@ -3452,7 +3476,8 @@
     "denoise": "Rimuovi rumore dal riferimento",
     "polish": "Rifinisci l’audio generato",
     "basics": "1× è la velocità normale. Lascia vuota la durata per un ritmo naturale.",
-    "hint": "Di solito vanno bene i valori predefiniti. La guida regola l’influenza del prompt; gli altri controlli cambiano come il modello costruisce il suono. Modificane uno alla volta."
+    "hint": "Di solito vanno bene i valori predefiniti. La guida regola l’influenza del prompt; gli altri controlli cambiano come il modello costruisce il suono. Modificane uno alla volta.",
+    "pauses_hint": "Aggiunge silenzio alle righe vuote. 0 mantiene il ritmo proprio del motore."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} ha un solo modello ({{language}}), quindi l’accento segue la voce di riferimento.",
@@ -4439,5 +4464,12 @@
     "unavailable": "Le segnalazioni automatiche non sono disponibili o sono disattivate per questa app.",
     "managed": "Gestisci questa scelta nell’app desktop collegata a questo browser.",
     "save_failed": "Impossibile salvare questa scelta. Riprova."
+  },
+  "tray": {
+    "open": "Apri {{app}}",
+    "start_dictation": "Avvia dettatura",
+    "stop_dictation": "Interrompi dettatura",
+    "settings": "Impostazioni",
+    "quit": "Esci"
   }
 }

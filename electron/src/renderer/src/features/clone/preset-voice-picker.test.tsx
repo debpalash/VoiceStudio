@@ -29,6 +29,9 @@ it('lists the engine presets and stores the pick (#2938)', () => {
   const options = screen.getAllByRole('option');
   expect(options.map((o) => o.textContent?.trim())).toEqual(['M1', 'F3']);
   fireEvent.mouseDown(options[1]);
+  expect(options[1]).toBeVisible();
+  expect(cloneSettingsStore.state.presetVoice).toBe('');
+  fireEvent.click(options[1]);
   expect(cloneSettingsStore.state.presetVoice).toBe('F3');
 });
 

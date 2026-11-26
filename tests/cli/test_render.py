@@ -89,3 +89,8 @@ def test_unit_suffixes_move_from_the_name_to_the_value():
     assert 'Disk free:        71.8 GB' in text
     assert 'Generate timeout: 300 s' in text
     assert 'Latency:          12.5 ms' in text
+
+
+def test_piped_rows_flatten_windows_and_legacy_line_endings():
+    text = render([{"id": "one", "text": "a\r\nb\rc\td"}, {"id": "two", "text": "end"}], tty=False)
+    assert text.splitlines() == ["one\ta b c d", "two\tend"]

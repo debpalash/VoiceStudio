@@ -1,2 +1,5 @@
-export function splitSSEBuffer(buffer: string): { lines: string[]; rest: string };
+export function splitSSEBuffer(
+  buffer: string,
+  afterCR?: boolean,
+): { lines: string[]; rest: string; endsWithCR: boolean };
 export function parseSSELine(line: string): unknown;

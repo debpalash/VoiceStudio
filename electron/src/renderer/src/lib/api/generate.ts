@@ -171,6 +171,9 @@ export function toGenerateForm(
   form.append('class_temperature', String(input.classTemp));
   form.append('layer_penalty_factor', String(input.layerPenalty));
   form.append('postprocess_output', String(input.postprocess));
+  // Join options go out only when set, so a default request is unchanged.
+  if (input.paragraphGapMs) form.append('paragraph_gap_ms', String(input.paragraphGapMs));
+  if (input.trimEngineSilence) form.append('trim_engine_silence', 'true');
   const duration = Number.parseFloat(input.duration);
   if (input.duration && Number.isFinite(duration)) form.append('duration', String(duration));
 

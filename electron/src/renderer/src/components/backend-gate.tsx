@@ -407,7 +407,10 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                   {t('backend.setup_unsupported_platform')}
                 </p>
               ) : null}
-              {running ? (
+              {/* Only while the Python environment is actually being prepared (first
+                  run or repair). Ordinary launches also pass through `starting` and
+                  `attaching`; the long-wait wording is false there (#4228). */}
+              {installing ? (
                 <p className="text-sm text-foreground/65">{t('backend.first_run_hint')}</p>
               ) : null}
               {cause ? (

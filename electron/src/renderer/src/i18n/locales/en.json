@@ -308,14 +308,17 @@
     "test_global_hint": "Previewing Global entries only — pick a language to include language-scoped entries.",
     "test_error": "Preview unavailable — couldn't reach the backend.",
     "backup_title": "Backup & restore",
-    "backup_hint": "Download the dictionary as a JSON file, or import entries from a previous export.",
+    "backup_hint": "Download the dictionary as JSON or as a PLS lexicon, or import either. PLS lexicons from other speech services work too.",
     "export": "Export JSON",
+    "export_pls": "Export PLS",
     "import": "Import JSON",
-    "import_error": "Couldn't import that file — expected JSON from a pronunciation export.",
+    "import_error": "Couldn't import that file — expected a pronunciation export (JSON) or a PLS lexicon.",
     "import_replace_prompt_one": "Replace the {{count}} existing entry with the imported file? Choose No to add the imported entries alongside it.",
     "import_replace_prompt_other": "Replace the {{count}} existing entries with the imported file? Choose No to add the imported entries alongside them.",
     "import_done_one": "Imported {{count}} entry.",
     "import_done_other": "Imported {{count}} entries.",
+    "import_skipped_one": "{{count}} entry was left out: its phonemes aren't supported.",
+    "import_skipped_other": "{{count}} entries were left out: their phonemes aren't supported.",
     "entries_count_one": "{{count}} entry",
     "entries_count_other": "{{count}} entries",
     "scope_language": "Language",
@@ -383,7 +386,8 @@
     "setup_unsupported_platform": "Connect this app to a remote backend below. PyTorch is not released for Intel macOS, so this Mac needs no local backend installation.",
     "setup_wrong_architecture": "Quit VoiceStudio, replace it with the Apple Silicon (arm64) DMG, then open it again. You are running the Intel build through Rosetta; switching builds enables local AI without removing voices or projects.",
     "setup_missing_system_library": "This Windows system is missing the Microsoft Visual C++ 2015-2022 Redistributable (x64), which the PyTorch audio extension needs. Install it from Microsoft, then press Retry.",
-    "setup_outdated_system_library": "This Windows system's Microsoft Visual C++ Redistributable (x64) is too old, so a speech library crashes when it loads. Install the latest version from Microsoft, then press Retry.",
+    "setup_outdated_system_library": "This Windows system's Microsoft Visual C++ Redistributable (x64) is too old or damaged, so PyTorch or a speech library fails to load. Install the latest version from Microsoft, then press Retry.",
+    "setup_torch_dll_init_failed": "PyTorch could not load, and the cause is not established. Try installing the latest Microsoft Visual C++ Redistributable (x64), then updating your graphics driver, then press Retry. If it still fails, use \"Clean & Retry\" under \"More fixes\".",
     "setup_files_locked": "Another program is using VoiceStudio's files (OneDrive or another sync app, antivirus, or a VoiceStudio backend that is still running). Close it or pause syncing, then press Retry.",
     "download_apple_silicon": "Download the Apple Silicon build",
     "proxy_bypass_help": "Fully quit VoiceStudio, set HTTP_PROXY/HTTPS_PROXY to your proxy URL and NO_PROXY to excluded hosts in a terminal, then launch VoiceStudio from that terminal. Retrying in the current app cannot load new environment variables.",
@@ -683,6 +687,7 @@
     "source_language_required": "Speech recognition did not report which language this video is spoken in, so it can't be translated here. Open the video in Dubbing and choose its source language, or pick a speech recognition model that detects the language.",
     "transcription_media_tool": "Transcription needs ffmpeg, which VoiceStudio could not find or run. Open Settings → Audio tools and use Download/Repair, or install ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: your package manager) and restart VoiceStudio. You can also point FFMPEG_PATH at an ffmpeg binary.",
     "transcription_pipe_lost": "The backend lost its output pipe to the app while transcribing (broken pipe). Restart VoiceStudio and try again.",
+    "reference_transcript_required": "This voice's reference clip has no transcript, which this engine needs to clone it. Add the transcript to the voice profile, or install a speech-to-text model so it can be transcribed automatically.",
     "gpu_oom": "The GPU ran out of memory. Close other GPU-heavy apps or unload models, then retry. You can also choose CPU in Settings → Performance & Device or select a smaller TTS engine.",
     "host_memory_exhausted": "The computer ran out of memory. Close other memory-heavy apps and browser tabs, flush models you are not using, render a shorter passage, or select a lighter TTS engine.",
     "disk_full": "The disk is full. Free space on the drive that holds VoiceStudio's data, model cache or temp folder, then try again. Settings → Storage shows disk usage and can clear temporary files.",
@@ -751,7 +756,8 @@
     "unknown": "unknown",
     "remove": "Remove {{term}}",
     "not_set": "Not set",
-    "details": "Details"
+    "details": "Details",
+    "link_blocked": "This link can't be opened. Only web and email links are allowed."
   },
   "preferences": {
     "title": "Settings",
@@ -1638,6 +1644,9 @@
     "terminal_command_added": "Added. Open a new terminal window to use voicestudio.",
     "terminal_command_failed": "Couldn't add voicestudio to your terminal. Check that your home folder isn't read-only, then try again.",
     "terminal_command_conflict": "{{path}} belongs to another installation, so VoiceStudio left it unchanged.",
+    "close_to_tray": "Keep running in the tray when closed",
+    "close_to_tray_desc": "Closing the window hides VoiceStudio to the tray instead of quitting, so running jobs keep going. Reopen it from the tray icon and choose Quit there to exit. On some Linux desktops the tray icon needs AppIndicator support; opening VoiceStudio again also reopens the window.",
+    "close_to_tray_failed": "Couldn't save this setting. Try again.",
     "review_mode_on": "Pause for review",
     "review_mode_off": "Run straight through",
     "translate_agent": "Agent fit",
@@ -1665,6 +1674,7 @@
     "gpu_report_state_nvidia_rocm_build": "{{gpu}} was found, but this PyTorch is an AMD ROCm build and cannot drive NVIDIA GPUs.",
     "gpu_report_state_intel_unsupported": "{{gpu}} was found, but no installed engine can use Intel GPUs, so everything runs on the CPU.",
     "gpu_report_state_kernels_missing": "{{gpu}} was found, but this PyTorch build ({{torch}}) has no kernels for its compute architecture, so engines run on the CPU.",
+    "gpu_report_torch_fallback": "Setup tried the CUDA 12.6 PyTorch build for this GPU, but it could not use the card, so PyTorch engines stay on the CPU. Reason: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} is an older NVIDIA GPU (GTX 900 / 1000 series or older). This PyTorch build ({{torch}}) no longer supports that generation, so PyTorch engines run on the CPU. Engines with their own Vulkan runtime can still use the GPU.",
     "gpu_report_state_unknown": "GPU status could not be determined.",
     "gpu_report_option_vulkan_engines": "Use an engine with its own GPU runtime: audio.cpp runs on AMD Radeon GPUs through Vulkan (Settings → Models → install the runtime).",
@@ -1920,7 +1930,8 @@
     "open": "Open “{{name}}” and replace the current draft? Save your current work first.",
     "save_copy": "Save a copy",
     "new": "New project",
-    "new_confirm": "Start a new, empty project? Saved projects stay as they are; unsaved changes to the current draft are lost."
+    "new_confirm": "Start a new, empty project? Saved projects stay as they are; unsaved changes to the current draft are lost.",
+    "delete_hint": "Only the saved project is removed from the list. Media files and voices are kept."
   },
   "sidebar": {
     "save_project": "Save Dubbing Project",
@@ -2158,7 +2169,12 @@
     "untitled": "No title",
     "recovery_busy": "Another render is running. Resume when it finishes.",
     "cast_note_one": "{{names}} isn’t cast yet, so it reads in the main voice. Pick a voice for it under Cast.",
-    "cast_note_other": "{{names}} aren’t cast yet, so they read in the main voice. Pick voices for them under Cast."
+    "cast_note_other": "{{names}} aren’t cast yet, so they read in the main voice. Pick voices for them under Cast.",
+    "result_other_connection": "This saved audio belongs to another VoiceStudio connection. Switch back to that connection to play it.",
+    "result_connection_unknown": "Connect your local engine or remote computer to show saved audio.",
+    "result_legacy": "This older saved result has no connection record. Check for its filename on this connection; it may be a different file.",
+    "result_check_audio": "Check saved audio on this connection",
+    "result_recovery_failed": "The saved audio is not available on this connection. Switch back to its original connection or generate it again."
   },
   "credentials": {
     "microsoft_key": "Microsoft Translator key",
@@ -2435,6 +2451,10 @@
     "dubbing_cta": "Run this on your own video →",
     "dubbing_loading": "Loading dubbing demo…",
     "dubbing_dismiss": "Dismiss dubbing demo",
+    "dubbing_download": "Download demo videos (~10 MB)",
+    "dubbing_downloading": "Downloading…",
+    "dubbing_download_failed": "Download failed. Check your connection.",
+    "dubbing_retry": "Retry",
     "original_tag": "original",
     "dubbed_tag": "dubbed",
     "script_conversational": "Conversational",
@@ -2663,7 +2683,7 @@
   },
   "crash": {
     "view": "View crash details",
-    "field_exit": "Exit",
+    "field_exit": "Exit status",
     "field_when": "When",
     "field_uptime": "Uptime before crash",
     "field_version": "Backend version",
@@ -3035,7 +3055,8 @@
     "missingSpeech": "Speech is missing or unreadable. Regenerate the affected segment before exporting.",
     "timingOverflow": "Speech exceeds its time slot. Shorten the translation or choose Strict Slot or Stretch Video.",
     "sourceChanged": "The subtitles changed while this dub was rendering. The previous track was kept; generate again to use the new subtitles.",
-    "backgroundUnavailable": "Original sound could not be preserved. Check background separation and dialogue timing, then retry, or explicitly export speech only."
+    "backgroundUnavailable": "Original sound could not be preserved. Check background separation and dialogue timing, then retry, or explicitly export speech only.",
+    "untranslated": "This track has no translation yet: every line still matches the source text. Translate it or choose the source language, then generate again."
   },
   "dubStyle": {
     "label": "Translation style prompt",
@@ -3054,6 +3075,8 @@
     "free": "Free",
     "pro": "Pro",
     "get_pro": "Get Pro",
+    "upgrade_pro": "Upgrade to Pro",
+    "get_pro_app": "Get Pro app",
     "sponsor_bar": "Sponsor bar",
     "visible": "Visible",
     "hideable": "Can be hidden",
@@ -3098,6 +3121,7 @@
       "speechCurl": "Text to speech (curl)",
       "transcriptionCurl": "Transcription (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Run the container",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n workflow",
@@ -3450,7 +3474,8 @@
     "denoise": "Clean reference noise",
     "polish": "Polish generated audio",
     "basics": "1× is normal speed. Leave duration blank for natural timing.",
-    "hint": "Usually leave these at defaults. Guidance adjusts prompt influence; the other controls change how the model builds the sound. Change one at a time."
+    "hint": "Usually leave these at defaults. Guidance adjusts prompt influence; the other controls change how the model builds the sound. Change one at a time.",
+    "pauses_hint": "Adds silence at blank lines. 0 keeps the engine's own pacing."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} has one {{language}} model, so the accent follows the reference voice.",
@@ -4437,5 +4462,12 @@
     "unavailable": "Automatic reports are unavailable or disabled for this app.",
     "managed": "Manage this choice in the desktop app connected to this browser.",
     "save_failed": "Could not save this choice. Please try again."
+  },
+  "tray": {
+    "open": "Open {{app}}",
+    "start_dictation": "Start dictation",
+    "stop_dictation": "Stop dictation",
+    "settings": "Settings",
+    "quit": "Quit"
   }
 }

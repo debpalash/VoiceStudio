@@ -381,3 +381,46 @@ def test_pin_pairing_can_list_and_create_profiles_but_cannot_edit_or_delete_them
     assert creation.status_code == 422
     assert rename.status_code == 403
     assert deletion.status_code == 403
+
+
+@pytest.mark.parametrize("blank", ["\t\n", " \n ", "\t"])
+def test_lazy_sample_fills_a_whitespace_only_transcript(iso, monkeypatch, blank):
+    """The renderer speaks the fallback for any blank transcript (str.strip),
+    so publishing records that script even when the blank is tabs or newlines,
+    which SQLite TRIM would keep."""
+    _, db, prof = iso
+    _model_unavailable(monkeypatch)
+    from api.routers import archetypes as arch
+
+    result = asyncio.run(
+        prof.create_profile(
+            name="Blank line", ref_audio=None, ref_text=blank,
+            instruct="female, calm", language="English", seed=None,
+            personality="", kind="design", vd_states=json.dumps(_VD),
+            design_recipe=None, engine=None,
+        )
+    )
+    pid = result["id"]
+    with db.db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET ref_text=? WHERE id=?", (blank, pid))
+        conn.commit()
+
+    async def _ok(a, out_path):
+        import wave
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(out_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(24_000)
+            wav.writeframes(b"\x00\x01" * 64)
+
+    monkeypatch.setattr(arch, "_render_archetype_wav", _ok)
+    resp = asyncio.run(prof.get_profile_audio(pid, _media_request()))
+    assert getattr(resp, "status_code", 200) == 200
+    with db.db_conn() as conn:
+        row = conn.execute(
+            "SELECT ref_audio_path, ref_text FROM voice_profiles WHERE id=?", (pid,)
+        ).fetchone()
+    assert row["ref_audio_path"]
+    assert row["ref_text"] == arch._FALLBACK_SCRIPT

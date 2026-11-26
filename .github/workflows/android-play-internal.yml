@@ -51,7 +51,7 @@ jobs:
             test -n "${!name}" || { echo "Missing $name; see docs/mobile.md → Play internal testing"; exit 1; }
           done
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: "21"
@@ -79,8 +79,8 @@ jobs:
 
       - name: Build signed bundle
         env:
-          SUPERMETRY_APP_ID: ${{ vars.SUPERMETRY_APP_ID || secrets.SUPERMETRY_APP_ID }}
-          SUPERMETRY_INGEST_KEY: ${{ vars.SUPERMETRY_INGEST_KEY || secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
           SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
           VOICESTUDIO_ANDROID_KEYSTORE: ${{ runner.temp }}/upload.jks
           VOICESTUDIO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
@@ -112,7 +112,7 @@ jobs:
           fi
 
       # Kept for the Play Console's one-time manual first upload.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: VoiceStudio-android-play
           path: mobile/android/app/build/outputs/bundle/release/app-release.aab

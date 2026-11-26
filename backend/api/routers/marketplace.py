@@ -506,5 +506,10 @@ def remove_from_marketplace(filename: str):
     try:
         os.unlink(bundle_path)
     except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete: {e}")
+        # Fixed text: an OS error names the path, and Windows escapes its
+        # separators, the one shape scrub_text does not match.
+        raise HTTPException(
+            status_code=500,
+            detail="The bundle could not be deleted. Close anything using it and try again.",
+        ) from e
     return {"success": True, "deleted": filename}

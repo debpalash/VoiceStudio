@@ -152,13 +152,9 @@ def test_exhausted_budget_skips_the_retry(monkeypatch):
     assert len(timeouts) == 1
 
 
-def test_ingest_falls_back_with_a_clear_notice_and_status():
-    import inspect
-
-    src = inspect.getsource(dp.ingest_pipeline)
-    assert "_separate_background(" in src
-    assert "_BACKGROUND_LOST_NOTICE" in src
-    assert '"background_separation": "ok" if has_bg else "failed"' in src
+def test_background_lost_notice_names_the_speech_only_outcome():
+    # Status values ("ok"/"failed"/"skipped") are covered behaviourally by
+    # test_dub_optional_background.test_ingest_respects_background_choice.
     assert "speech only" in dp._BACKGROUND_LOST_NOTICE
 
 
@@ -173,13 +169,14 @@ def test_failed_separation_job_is_not_a_cache_hit(tmp_path, monkeypatch):
     d.mkdir()
     (d / "vocals.wav").write_bytes(b"RIFF")
     (d / "audio_hq.wav").write_bytes(b"RIFF")
+    (d / "no_vocals.wav").write_bytes(b"RIFF")
 
     def seed(extra):
         with db_conn() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO dub_history (id, job_data, content_hash, created_at)"
                 " VALUES (?, ?, ?, datetime('now'))",
-                ("job_failed", _json.dumps({"vocals_path": str(d / "vocals.wav"), **extra}), "hash_f"),
+                ("job_failed", _json.dumps({"vocals_path": str(d / "vocals.wav"), "no_vocals_path": str(d / "no_vocals.wav"), **extra}), "hash_f"),
             )
             conn.commit()
 
@@ -271,3 +268,50 @@ def test_job_aborted_while_queued_never_spawns_the_retry(monkeypatch):
 
     events = asyncio.run(go())
     assert events[0][0] == "done" and events[0][1] == -1
+
+
+def _seed_cache(tmp_path, monkeypatch, name, chash, extra, files):
+    import json as _json
+    from core.db import db_conn, init_db
+
+    init_db()
+    d = tmp_path / name
+    d.mkdir()
+    for f in files:
+        (d / f).write_bytes(b"RIFF")
+    with db_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO dub_history (id, job_data, content_hash, created_at)"
+            " VALUES (?, ?, ?, datetime('now'))",
+            (name, _json.dumps({"vocals_path": str(d / "vocals.wav"), **extra}), chash),
+        )
+        conn.commit()
+    monkeypatch.setattr(dp, "safe_job_dir", lambda jid: str(tmp_path / jid))
+
+
+def test_skipped_separation_job_is_reusable_but_failed_and_pre_marker_are_not(tmp_path, monkeypatch):
+    # Deliberate skip: no bed, no audio_hq.wav, still a cache hit.
+    _seed_cache(tmp_path, monkeypatch, "job_skip", "h_skip:voice-only",
+                {"background_separation": "skipped", "no_vocals_path": None}, ["vocals.wav"])
+    hit = dp.find_cached_job("h_skip:voice-only", "other")
+    assert hit and hit["job_id"] == "job_skip" and hit["no_vocals_path"] is None
+    # Failed separation keeps being rejected.
+    _seed_cache(tmp_path, monkeypatch, "job_fail", "h_fail",
+                {"background_separation": "failed", "no_vocals_path": None}, ["vocals.wav", "audio_hq.wav"])
+    assert dp.find_cached_job("h_fail", "other") is None
+    # Pre-marker job (no flag, no bed on disk) keeps being rejected.
+    _seed_cache(tmp_path, monkeypatch, "job_old", "h_old", {"no_vocals_path": None}, ["vocals.wav", "audio_hq.wav"])
+    assert dp.find_cached_job("h_old", "other") is None
+
+
+def test_skipped_job_exports_speech_only_without_a_warning(caplog):
+    import logging
+    from api.routers import dub_export
+
+    with caplog.at_level(logging.INFO, logger="omnivoice.api"):
+        assert asyncio.run(dub_export._preserved_background(
+            {"background_separation": "skipped", "no_vocals_path": None}, "j", "pt")) is None
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert asyncio.run(dub_export._preserved_background(
+            {"background_separation": "failed", "no_vocals_path": None}, "j", "pt")) is None
+        assert [r for r in caplog.records if r.levelno == logging.WARNING]

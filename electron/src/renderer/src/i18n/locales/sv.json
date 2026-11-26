@@ -317,14 +317,17 @@
     "test_global_hint": "Förhandsvisar endast globala poster — välj ett språk för att ta med språkbundna poster.",
     "test_error": "Förhandsvisning otillgänglig — backend kunde inte nås.",
     "backup_title": "Säkerhetskopiera & återställ",
-    "backup_hint": "Ladda ner ordboken som en JSON-fil, eller importera poster från en tidigare export.",
+    "backup_hint": "Ladda ned ordlistan som JSON eller som PLS-lexikon, eller importera någon av dem. PLS-lexikon från andra taltjänster fungerar också.",
     "export": "Exportera JSON",
+    "export_pls": "Exportera PLS",
     "import": "Importera JSON",
-    "import_error": "Kunde inte importera filen — JSON från en uttalsexport förväntades.",
+    "import_error": "Kunde inte importera filen — en uttalsexport (JSON) eller ett PLS-lexikon förväntades.",
     "import_replace_prompt_one": "Ersätta {{count}} befintlig post med den importerade filen? Välj Nej för att lägga till de importerade posterna bredvid.",
     "import_replace_prompt_other": "Ersätta de {{count}} befintliga posterna med den importerade filen? Välj Nej för att lägga till de importerade posterna bredvid.",
     "import_done_one": "{{count}} post importerad.",
     "import_done_other": "{{count}} poster importerade.",
+    "import_skipped_one": "{{count}} post hoppades över: dess fonetiska skrift stöds inte.",
+    "import_skipped_other": "{{count}} poster hoppades över: deras fonetiska skrift stöds inte.",
     "entries_count_one": "{{count}} post",
     "entries_count_other": "{{count}} poster",
     "scope_language": "Språk",
@@ -1055,7 +1058,8 @@
     "retry": "Försök igen",
     "confirm": "Bekräfta",
     "details": "Detaljer",
-    "unknown": "okänd"
+    "unknown": "okänd",
+    "link_blocked": "Länken kan inte öppnas. Endast webb- och e-postlänkar är tillåtna."
   },
   "dubWorkspace": {
     "transcriptIssues": "Problem i transkriptionen",
@@ -1447,6 +1451,9 @@
     "terminal_command_added": "Tillagt. Öppna ett nytt terminalfönster för att använda voicestudio.",
     "terminal_command_failed": "Det gick inte att lägga till voicestudio i terminalen. Kontrollera att din hemmapp inte är skrivskyddad och försök igen.",
     "terminal_command_conflict": "{{path}} tillhör en annan installation, så VoiceStudio lämnade det oförändrat.",
+    "close_to_tray": "Fortsätt köra i systemfältet när fönstret stängs",
+    "close_to_tray_desc": "När du stänger fönstret döljs VoiceStudio i systemfältet i stället för att avslutas, så pågående jobb fortsätter. Öppna det igen från ikonen i systemfältet och välj Avsluta där för att stänga. På vissa Linux-skrivbord kräver ikonen AppIndicator-stöd; att starta VoiceStudio igen öppnar också fönstret.",
+    "close_to_tray_failed": "Det gick inte att spara inställningen. Försök igen.",
     "review_mode_on": "Granska",
     "review_mode_off": "Snabb eld",
     "translate_agent": "Agent passar",
@@ -1474,6 +1481,7 @@
     "gpu_report_state_nvidia_rocm_build": "{{gpu}} hittades, men den här PyTorch är ett AMD ROCm-bygge och kan inte styra NVIDIA-GPU:er.",
     "gpu_report_state_intel_unsupported": "{{gpu}} hittades, men ingen installerad motor kan använda Intel-GPU:er, så allt körs på CPU:n.",
     "gpu_report_state_kernels_missing": "{{gpu}} hittades, men den här PyTorch-byggnaden ({{torch}}) har inga kärnor för sin beräkningsarkitektur, så motorerna körs på CPU:n.",
+    "gpu_report_torch_fallback": "Installationen provade PyTorch-bygget med CUDA 12.6 för det här grafikkortet men kunde inte använda det, så PyTorch-motorer körs kvar på CPU:n. Orsak: {{reason}}",
     "gpu_report_state_kernels_missing_legacy": "{{gpu}} är ett äldre NVIDIA-grafikkort (GTX 900-/1000-serien eller äldre). Den här PyTorch-versionen ({{torch}}) stöder inte längre den generationen, så PyTorch-motorer körs på CPU:n. Motorer med egen Vulkan-körmiljö kan fortfarande använda grafikkortet.",
     "gpu_report_state_unknown": "GPU-statusen kunde inte fastställas.",
     "gpu_report_option_vulkan_engines": "Använd en motor med egen GPU-runtime: audio.cpp körs på AMD Radeon-GPU:er via Vulkan (Inställningar → Modeller → installera runtime).",
@@ -1729,7 +1737,8 @@
     "open": "Öppna ”{{name}}” och ersätta det aktuella utkastet? Spara ditt arbete först.",
     "save_copy": "Spara en kopia",
     "new": "Nytt projekt",
-    "new_confirm": "Starta ett nytt, tomt projekt? Sparade projekt förblir oförändrade; osparade ändringar i det aktuella utkastet går förlorade."
+    "new_confirm": "Starta ett nytt, tomt projekt? Sparade projekt förblir oförändrade; osparade ändringar i det aktuella utkastet går förlorade.",
+    "delete_hint": "Bara det sparade projektet tas bort från listan. Mediefiler och röster behålls."
   },
   "sidebar": {
     "save_project": "Spara Dub Project",
@@ -1980,7 +1989,12 @@
     "cast_note_other": "{{names}} har inga röster än och läses med huvudrösten. Välj röster under Rollbesättning.",
     "line_gap": "Tystnad mellan rader",
     "paragraph_gap": "Tystnad mellan stycken",
-    "trim_edges": "Ta bort tystnad som motorn skapar"
+    "trim_edges": "Ta bort tystnad som motorn skapar",
+    "result_other_connection": "Det här sparade ljudet hör till en annan VoiceStudio-anslutning. Byt tillbaka till den anslutningen för att spela upp det.",
+    "result_connection_unknown": "Anslut till din lokala motor eller fjärrdator för att visa sparat ljud.",
+    "result_legacy": "Det här äldre sparade resultatet saknar anslutningsinformation. Leta efter filnamnet på den här anslutningen; det kan vara en annan fil.",
+    "result_check_audio": "Kontrollera sparat ljud på den här anslutningen",
+    "result_recovery_failed": "Det sparade ljudet är inte tillgängligt på den här anslutningen. Byt tillbaka till den ursprungliga anslutningen eller generera ljudet igen."
   },
   "credentials": {
     "microsoft_key": "Microsoft Translator-nyckel",
@@ -2130,6 +2144,7 @@
     "setup_wrong_architecture": "Det här är Intel-versionen (x64) av VoiceStudio som körs via Rosetta på en Mac med Apple Silicon, så den lokala AI-backenden kan inte installeras. Avsluta appen, installera Apple Silicon-DMG:n (arm64) ovanpå och öppna den igen – dina röster och projekt finns kvar.",
     "setup_missing_system_library": "Det här Windows-systemet saknar Microsoft Visual C++ 2015-2022 Redistributable (x64), som PyTorch ljudextensionen behöver. Installera det från Microsoft och tryck sedan på Försök igen.",
     "setup_outdated_system_library": "Microsoft Visual C++ Redistributable (x64) på det här Windows-systemet är för gammalt, så ett talbibliotek kraschar när det läses in. Installera den senaste versionen från Microsoft och tryck sedan på Försök igen.",
+    "setup_torch_dll_init_failed": "PyTorch kunde inte läsas in och orsaken är inte fastställd. Installera den senaste Microsoft Visual C++ Redistributable (x64), uppdatera sedan grafikdrivrutinen och tryck på Försök igen. Om det fortfarande misslyckas, använd \"Rensa & Försök igen\" under \"Fler lösningar\".",
     "setup_files_locked": "Ett annat program använder VoiceStudios filer (OneDrive eller en annan synkapp, antivirus eller en VoiceStudio-backend som fortfarande körs). Stäng det eller pausa synkroniseringen och tryck sedan på Försök igen.",
     "download_apple_silicon": "Ladda ned Apple Silicon-versionen",
     "retry": "Försök igen",
@@ -2349,6 +2364,10 @@
     "dubbing_cta": "Kör detta på din egen video →",
     "dubbing_loading": "Laddar dubbningsdemo...",
     "dubbing_dismiss": "Avvisa dubbningsdemon",
+    "dubbing_download": "Ladda ner demovideor (~10 MB)",
+    "dubbing_downloading": "Laddar ner…",
+    "dubbing_download_failed": "Nedladdningen misslyckades. Kontrollera anslutningen.",
+    "dubbing_retry": "Försök igen",
     "original_tag": "original",
     "dubbed_tag": "dubbat",
     "script_conversational": "Konversation",
@@ -2577,7 +2596,7 @@
   },
   "crash": {
     "uptime_value": "{{count}} s",
-    "field_exit": "Utgång",
+    "field_exit": "Avslutningsstatus",
     "field_when": "När",
     "field_uptime": "Drifttid före krasch",
     "field_version": "Backend-version",
@@ -2983,6 +3002,7 @@
     "source_language_required": "Taligenkänningen rapporterade inte vilket språk som talas i videon, så den kan inte översättas här. Öppna videon i Dubbning och välj källspråket, eller välj en taligenkänningsmodell som identifierar språket.",
     "transcription_media_tool": "Transkribering kräver ffmpeg, som VoiceStudio inte kunde hitta eller köra. Öppna Inställningar → Ljudverktyg och använd Ladda ned/Reparera, eller installera ffmpeg (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg; Linux: din pakethanterare) och starta om VoiceStudio. Du kan också peka FFMPEG_PATH mot en ffmpeg-fil.",
     "transcription_pipe_lost": "Backend förlorade sin utdatakanal till appen under transkriberingen (broken pipe). Starta om VoiceStudio och försök igen.",
+    "reference_transcript_required": "Referensklippet för den här rösten saknar transkription, vilket den här motorn behöver för att klona den. Lägg till transkriptionen i röstprofilen eller installera en taligenkänningsmodell så att den kan transkriberas automatiskt.",
     "gpu_oom": "GPU:n fick slut på minne. Stäng andra GPU-tunga appar eller avlasta modeller och försök igen. Du kan också välja CPU under Inställningar → Prestanda och enhet eller välja en mindre TTS-motor.",
     "host_memory_exhausted": "Datorn fick slut på minne. Stäng andra minnestunga appar och webbläsarflikar, avlasta modeller du inte använder, generera ett kortare stycke eller välj en lättare TTS-motor.",
     "disk_full": "Disken är full. Frigör utrymme på enheten som innehåller VoiceStudios data, modellcache eller tillfälliga mapp och försök igen. Inställningar → Lagring visar diskanvändningen och kan rensa tillfälliga filer.",
@@ -3035,7 +3055,8 @@
     "missingSpeech": "Tal saknas eller kan inte läsas. Generera det berörda segmentet på nytt före export.",
     "timingOverflow": "Talet överskrider sin tidslucka. Korta översättningen eller välj strikt tidslucka eller sträck ut videon.",
     "sourceChanged": "Undertexterna ändrades medan dubbningen skapades. Det tidigare spåret behölls; generera igen för att använda de nya undertexterna.",
-    "backgroundUnavailable": "Originalljudet kunde inte bevaras. Kontrollera bakgrundssepareringen och dialogens tider och försök igen, eller välj att endast exportera tal."
+    "backgroundUnavailable": "Originalljudet kunde inte bevaras. Kontrollera bakgrundssepareringen och dialogens tider och försök igen, eller välj att endast exportera tal.",
+    "untranslated": "Det här spåret har ingen översättning än: alla rader är fortfarande lika med källtexten. Översätt det eller välj källspråket och generera igen."
   },
   "dubStyle": {
     "label": "Instruktioner för översättningsstil",
@@ -3054,6 +3075,8 @@
     "free": "Gratis",
     "pro": "Pro",
     "get_pro": "Skaffa Pro",
+    "upgrade_pro": "Uppgradera till Pro",
+    "get_pro_app": "Hämta Pro-appen",
     "sponsor_bar": "Sponsorfält",
     "visible": "Synligt",
     "hideable": "Kan döljas",
@@ -3098,6 +3121,7 @@
       "speechCurl": "Text till tal (curl)",
       "transcriptionCurl": "Transkribering (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Kör containern",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n-arbetsflöde",
@@ -3450,7 +3474,8 @@
     "denoise": "Ta bort brus från referensen",
     "polish": "Förfina genererat ljud",
     "basics": "1× är normal hastighet. Lämna längden tom för naturlig timing.",
-    "hint": "Behåll vanligtvis standardvärdena. Vägledning styr instruktionens påverkan; övriga reglage ändrar hur modellen bygger ljudet. Ändra ett i taget."
+    "hint": "Behåll vanligtvis standardvärdena. Vägledning styr instruktionens påverkan; övriga reglage ändrar hur modellen bygger ljudet. Ändra ett i taget.",
+    "pauses_hint": "Lägger till tystnad vid tomma rader. 0 behåller motorns eget tempo."
   },
   "languagePicker": {
     "dialectFollowsVoice": "{{model}} har en enda modell för {{language}}, så accenten följer referensrösten.",
@@ -4437,5 +4462,12 @@
     "unavailable": "Automatiska rapporter är inte tillgängliga eller är avstängda för den här appen.",
     "managed": "Hantera det här valet i datorappen som är ansluten till den här webbläsaren.",
     "save_failed": "Det gick inte att spara valet. Försök igen."
+  },
+  "tray": {
+    "open": "Öppna {{app}}",
+    "start_dictation": "Starta diktering",
+    "stop_dictation": "Stoppa diktering",
+    "settings": "Inställningar",
+    "quit": "Avsluta"
   }
 }

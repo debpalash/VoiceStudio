@@ -283,6 +283,12 @@ def _ensure_reaper_running() -> None:
 _RESOLVE_HEARTBEAT_S = 5.0
 
 
+#: Progress stages that only re-arm the recv watchdog. They prove the child is
+#: alive, not that a cold load advanced, so they never extend the pool job's
+#: execution budget (#2435, #4228).
+_UNCREDITED_PROGRESS_STAGES = frozenset({"generating", "reference_asr"})
+
+
 @contextlib.contextmanager
 def _heartbeat_while_resolving(engine_id: str):
     """Report progress while a slow engine-venv resolution runs (#1414).
@@ -525,6 +531,19 @@ class SubprocessBackend(TTSBackend):
 
     # ── lifecycle ──────────────────────────────────────────────────────────
 
+    def extra_spawn_env(self) -> dict[str, str]:
+        """Engine-specific environment for this sidecar process (default none)."""
+        return {}
+
+    #: Variables only the parent may set for the child (e.g. an acceptance
+    #: signal): an inherited value from the user's shell is dropped first.
+    parent_owned_env: tuple[str, ...] = ()
+
+    def _apply_engine_env(self, env: dict) -> None:
+        for key in self.parent_owned_env:
+            env.pop(key, None)
+        env.update(self.extra_spawn_env())
+
     def _spawn(self) -> None:
         """Launch the sidecar if not already running. Blocks on the ready
         handshake. Caller must hold self._lock."""
@@ -561,6 +580,7 @@ class SubprocessBackend(TTSBackend):
         endpoint = endpoint_race.download_endpoint(gated=self.requires_hf_auth)
         if endpoint:
             env["HF_ENDPOINT"] = endpoint
+        self._apply_engine_env(env)
         if not env_allows_token(env):
             env.pop("HF_TOKEN", None)
             env.pop("YOUR_HF_TOKEN", None)
@@ -978,7 +998,7 @@ class SubprocessBackend(TTSBackend):
                             # timer thread proves nothing about synthesis progress:
                             # crediting it would let a stalled native generate hold
                             # its GPU worker past the execution budget (#2435).
-                            if running_on_gpu_pool() and reply.get("stage") != "generating":
+                            if running_on_gpu_pool() and reply.get("stage") not in _UNCREDITED_PROGRESS_STAGES:
                                 report_model_load_activity()
                         except Exception:
                             pass  # the heartbeat is best-effort; never fail a synth over it

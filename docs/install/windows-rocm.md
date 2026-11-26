@@ -306,9 +306,21 @@ Related upstream reports describe [hybrid-device enumeration/crashes](https://gi
 and [a HIP availability crash](https://github.com/ROCm/TheRock/issues/9181);
 the same exit status does not establish the same cause on another host.
 
-VoiceStudio does not automatically preload or copy a different system HIP DLL,
-modify installed wheels, or hide an integrated GPU. A newer file version alone
-does not prove compatibility with the pinned runtime. Keep explicit device
-selection unchanged and retain the probe code plus Windows Error Reporting's
-faulting-module/version details when reporting a failure; redact personal paths.
-The clearer diagnostic does not resolve the underlying native crash.
+When the installed `_rocm_sdk_core` wheel bundles an `amdhip64_*.dll`, VoiceStudio
+compares it with the same-named DLL in `%SystemRoot%\System32` (shipped with the
+Adrenalin driver). Only when the driver copy has a strictly newer file version does
+the Windows ROCm runtime load it by full path before Torch, so it takes the place of
+the bundled copy for that process. Installed wheels are never modified, and nothing
+changes for CUDA, CPU, macOS or Linux. Fallbacks, each logged with its reason:
+
+- Missing, older, equal or unreadable driver DLL: the bundled runtime is used.
+- Driver DLL fails to load: the bundled runtime is used.
+- The verification probe dies natively with the driver runtime preloaded: it is
+  retried once with the bundled runtime.
+- Set `OMNIVOICE_ROCM_DRIVER_HIP=0` to always use the bundled runtime.
+
+VoiceStudio does not hide an integrated GPU; the iGPU may drive your display.
+Keep explicit device selection (for example `HIP_VISIBLE_DEVICES`) unchanged and
+retain the probe code plus Windows Error Reporting's faulting-module/version
+details when reporting a failure; redact personal paths. If the probe still
+crashes after the retry, update the AMD Adrenalin driver and report it.

@@ -277,6 +277,7 @@ export const DEFAULT_FIXTURES = {
     source: { code: 'en', label: 'English', video: 'source.mp4', script: 'source.txt' },
     dubbed: [],
   },
+  '/demo/dubbing/status': { state: 'idle', total_bytes: 0, downloaded_bytes: 0, files: {}, error: null },
   '/openapi.json': {},
   '/stats/usage': {},
   '/sysinfo': {

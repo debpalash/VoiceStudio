@@ -55,11 +55,13 @@ export function dashboardLinks(env: CloudEnvironment): {
   profile: string;
   plan: string;
   deletion: string;
+  proDownload: string;
 } {
   return {
     profile: `${env.dashboard}/settings/profile`,
     plan: `${env.dashboard}/settings/plan`,
     deletion: `${env.dashboard}/settings/deletion-review`,
+    proDownload: `${env.dashboard}/pro/download`,
   };
 }
 

@@ -1177,6 +1177,25 @@ async def create_speech(req: SpeechRequest):
 # ── STT: POST /v1/audio/transcriptions and /v1/audio/translations ──────────
 
 _TRANSCRIPT_FORMATS = ("json", "text", "srt", "verbose_json", "vtt")
+#: Uploads for transcription are staged in chunks under this cap.
+MAX_TRANSCRIPTION_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+def _discard(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass  # already gone, or still held open; staging cleanup is best-effort
+
+
+def _close_and_discard(staged, path: str) -> None:
+    try:
+        staged.close()
+    except OSError:
+        pass  # the partial file is discarded either way
+    finally:
+        _discard(path)
 
 
 class _TaskUnsupported(Exception):
@@ -1324,14 +1343,40 @@ async def _transcribe_request(
 
     # Write uploaded file to a temp location
     # Content is probed by ffmpeg, so an unusable extension just gets ".wav".
+    # Streamed to disk in chunks under a cap, never read whole into memory.
     suffix = upload_suffix(file.filename, ".wav") or ".wav"
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await file.read()
-            tmp.write(content)
-            tmp_path = tmp.name
+        fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    except OSError as e:
+        raise OpenAIError(500, f"Could not stage the audio file: {e}", param="file") from None
+    tmp = os.fdopen(fd, "wb")
+    total = 0
+    try:
+        while chunk := await file.read(_UPLOAD_CHUNK_BYTES):
+            total += len(chunk)
+            if total > MAX_TRANSCRIPTION_UPLOAD_BYTES:
+                raise OpenAIError(
+                    413, "The audio file is larger than 2 GB. Split it, or transcribe "
+                    "it in the app's Transcriptions page.",
+                    param="file", code="file_too_large",
+                )
+            await asyncio.to_thread(tmp.write, chunk)
+        tmp.close()
+    except OpenAIError:
+        _close_and_discard(tmp, tmp_path)
+        raise
+    except asyncio.CancelledError:
+        # Cancellation mid-upload: drop the partial file, keep the cancellation.
+        # The interrupted write may still be running on its worker thread, and
+        # closing the file waits for it: do that off the event loop.
+        asyncio.get_running_loop().run_in_executor(None, _close_and_discard, tmp, tmp_path)
+        raise
     except Exception as e:
+        _close_and_discard(tmp, tmp_path)
         raise OpenAIError(400, f"Could not read audio file: {e}", param="file")
+    except BaseException:
+        _close_and_discard(tmp, tmp_path)
+        raise
 
     options = {
         "language": language or None,

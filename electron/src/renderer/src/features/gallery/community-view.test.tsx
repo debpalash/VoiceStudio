@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   patch: vi.fn(),
   external: vi.fn(),
 }));
-vi.mock('@/lib/api/client', () => ({
+vi.mock('@/lib/api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/client')>()),
   apiJson: mocks.api,
   apiPath: (path: string) => '/api' + path,
 }));

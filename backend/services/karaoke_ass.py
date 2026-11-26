@@ -22,6 +22,7 @@ must fall back to the line (SRT) burn when the dual layout is requested.
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Optional, Sequence
 
@@ -125,6 +126,8 @@ def scale_words(
             we = float(w["end"])
         except (KeyError, TypeError, ValueError):
             return None
+        if not math.isfinite(ws) or not math.isfinite(we):
+            return None
         out.append({
             **w,
             "start": round(float(new_start) + (ws - float(orig_start)) * ratio, 3),
@@ -147,6 +150,8 @@ def _usable_words(cue: dict, text: str) -> Optional[list[tuple[str, float, float
             ws = float(w["start"])
             we = float(w["end"])
         except (KeyError, TypeError, ValueError):
+            return None
+        if not math.isfinite(ws) or not math.isfinite(we):
             return None
         if wtext:
             clean.append((wtext, ws, we))

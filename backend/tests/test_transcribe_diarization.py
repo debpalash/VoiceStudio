@@ -204,3 +204,37 @@ def test_timed_out_diarization_keeps_the_upload_until_the_worker_exits(transcrip
     while os.path.exists(seen["path"]) and time.monotonic() < deadline:
         time.sleep(0.05)
     assert not os.path.exists(seen["path"])  # and is cleaned up afterwards
+
+
+def test_an_m4a_upload_is_decoded_to_wav_for_the_pipeline(fakes, tmp_path):
+    """#4337: libsndfile cannot open M4A/AAC, so diarizing an M4A upload failed
+    even though transcription (which decodes through ffmpeg) succeeded."""
+    import shutil
+    import subprocess
+
+    import numpy as np
+    import soundfile as sf
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        pytest.skip("ffmpeg is needed to build the M4A fixture")
+    wav = tmp_path / "source.wav"
+    sf.write(wav, (np.sin(np.linspace(0, 400, 16000)) * 0.2).astype("float32"), 16000)
+    m4a = tmp_path / "upload.m4a"
+    subprocess.run([ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", str(wav), "-c:a", "aac", str(m4a)], check=True)
+    with pytest.raises(Exception):
+        sf.info(str(m4a))  # the precondition: libsndfile cannot read it
+
+    seen = {}
+
+    def pipeline(path, num_speakers=None):
+        seen["path"] = path
+        seen["readable"] = sf.info(path).samplerate > 0
+        return "diar"
+
+    fakes["pipeline"] = pipeline
+    labels, error = td.diarize_segments(str(m4a), SEGMENTS)
+    assert error is None and labels[0] == "Speaker 1"
+    assert seen["path"] != str(m4a) and seen["path"].endswith(".wav")
+    assert seen["readable"] is True
+    assert not os.path.exists(seen["path"])  # the temporary WAV is removed

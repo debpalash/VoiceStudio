@@ -61,6 +61,12 @@ HF_MODEL_REPO = "audio-cpp/audio.cpp-gguf"
 # the model exercised by this backend.
 HF_MODEL_REVISION = "dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c"
 
+#: Community GGUF repo serving self-contained Fish Audio Drama 3 packages (#3129).
+DRAMA3_HF_MODEL_REPO = "Jmica/Drama-3-GGUF"
+
+#: Pinned immutable revision for the Drama 3 GGUF package (#3129).
+DRAMA3_HF_MODEL_REVISION = "060acc8e5d9e5d16baf647c775dfe1a1438f5f35"
+
 #: Model id used in the generated ``server.json`` and in speech requests.
 MODEL_ID = "breeze-tts-2"
 
@@ -114,6 +120,9 @@ class ModelPackage:
     port_env: str
     model_env: str
     workdir: str
+    repo_id: str = HF_MODEL_REPO
+    revision: str = HF_MODEL_REVISION
+    min_vram_gb: float = 6.0
 
 
 #: Breeze-TTS-2 — the original package. Its constants stay as above so
@@ -145,6 +154,25 @@ DOTS = ModelPackage(
     port_env="OMNIVOICE_AUDIOCPP_DOTS_PORT",
     model_env="OMNIVOICE_AUDIOCPP_DOTS_MODEL",
     workdir="audiocpp-dots",
+)
+
+#: Fish Audio Drama 3 (35B-A3B MoE, multilingual, inline/scoped direction tags).
+#: Requires audio.cpp >= v0.9.3 (pinned v0.9.4) and a 24 GB+ GPU for the Q3_K_S
+#: GGUF (~18.93 GiB, self-contained with tokenizer + Fish DAC codec) (#3129).
+DRAMA3 = ModelPackage(
+    family="fish_drama3",
+    model_id="drama-3",
+    package_dir="",
+    default_package="drama-3-backbone-8bit-experts-Q3_K_S.gguf",
+    label="Drama 3",
+    default_port=DEFAULT_PORT + 2,
+    package_env="OMNIVOICE_AUDIOCPP_DRAMA3_PACKAGE",
+    port_env="OMNIVOICE_AUDIOCPP_DRAMA3_PORT",
+    model_env="OMNIVOICE_AUDIOCPP_DRAMA3_MODEL",
+    workdir="audiocpp-drama3",
+    repo_id=DRAMA3_HF_MODEL_REPO,
+    revision=DRAMA3_HF_MODEL_REVISION,
+    min_vram_gb=20.0,
 )
 
 
@@ -708,7 +736,7 @@ def package_filename(package: ModelPackage = BREEZE) -> str:
     return os.environ.get(package.package_env, "").strip() or package.default_package
 
 
-def _materialize_gguf_cache_path(model_file: Path) -> Path:
+def _materialize_gguf_cache_path(model_file: Path, revision: str = HF_MODEL_REVISION) -> Path:
     """Return a real ``.gguf`` path when the HF snapshot is a symlink.
 
     audio.cpp canonicalizes model paths before inspecting the suffix. The
@@ -745,7 +773,7 @@ def _materialize_gguf_cache_path(model_file: Path) -> Path:
         raise RuntimeError(f"audio.cpp model alias could not be created: {alias}")
 
     alias = model_file.with_name(
-        f".{model_file.stem}-{HF_MODEL_REVISION[:12]}.audiocpp.gguf"
+        f".{model_file.stem}-{revision[:12]}.audiocpp.gguf"
     )
     try:
         return _link(alias)
@@ -755,7 +783,7 @@ def _materialize_gguf_cache_path(model_file: Path) -> Path:
             # target. Put the suffix-preserving hard link beside the resolved
             # file so no multi-gigabyte copy is needed.
             target_alias = resolved.with_name(
-                f".{resolved.name}-{HF_MODEL_REVISION[:12]}.audiocpp.gguf"
+                f".{resolved.name}-{revision[:12]}.audiocpp.gguf"
             )
             try:
                 return _link(target_alias)
@@ -781,11 +809,11 @@ def resolve_model_file(package: ModelPackage = BREEZE) -> Path:
     if override:
         cand = Path(override)
         if cand.is_file():
-            return _materialize_gguf_cache_path(cand)
+            return _materialize_gguf_cache_path(cand, revision=package.revision)
         if cand.is_dir():
             inner = cand / filename
             if inner.is_file():
-                return _materialize_gguf_cache_path(inner)
+                return _materialize_gguf_cache_path(inner, revision=package.revision)
         raise RuntimeError(
             f"{package.model_env}={override} is not a GGUF file or a "
             "directory containing one."
@@ -794,14 +822,15 @@ def resolve_model_file(package: ModelPackage = BREEZE) -> Path:
     from huggingface_hub import snapshot_download
     from huggingface_hub.utils import LocalEntryNotFoundError
 
+    rel_path = f"{package.package_dir}/{filename}" if package.package_dir else filename
     try:
         cached = Path(
             snapshot_download(
-                repo_id=HF_MODEL_REPO,
-                # Full immutable commit SHA declared above; Bandit cannot follow
-                # the module constant through this call.
-                revision=HF_MODEL_REVISION,  # nosec B615
-                allow_patterns=[f"{package.package_dir}/{filename}"],
+                repo_id=package.repo_id,
+                # Full immutable commit SHA declared on the package; Bandit
+                # cannot follow the constant through this call.
+                revision=package.revision,  # nosec B615
+                allow_patterns=[rel_path],
                 local_files_only=True,
             )
         )
@@ -811,18 +840,21 @@ def resolve_model_file(package: ModelPackage = BREEZE) -> Path:
             f"{package.label} model from the engine's Weights list in Model "
             f"Catalogue, or set {package.model_env} to an existing GGUF file."
         ) from exc
-    model_file = cached / package.package_dir / filename
+    model_file = cached / rel_path
     if not model_file.is_file():
         raise RuntimeError(
             f"{package.label} package {filename} is not completely "
             "installed. Reinstall it from the engine's Weights list in Model Catalogue."
         )
-    return _materialize_gguf_cache_path(model_file)
+    return _materialize_gguf_cache_path(model_file, revision=package.revision)
 
 
 __all__ = [
     "BREEZE",
     "DOTS",
+    "DRAMA3",
+    "DRAMA3_HF_MODEL_REPO",
+    "DRAMA3_HF_MODEL_REVISION",
     "ModelPackage",
     "AudioCPPDevice",
     "AudioCPPSelection",

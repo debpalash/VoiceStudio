@@ -187,6 +187,240 @@ def test_repair_removes_only_broken_and_redownloads(tmp_path, monkeypatch):
     assert (repo_dir / "blobs" / "blob-config").exists()
 
 
+def test_repair_restores_through_the_selected_endpoint(tmp_path, monkeypatch):
+    """The restore follows the endpoint selection every download already uses.
+
+    Explicit ``HF_ENDPOINT`` still wins. When it is unset and the automatic
+    selection's cached decision picked a mirror, the parallel repair path
+    (``model_manager._repair_model_cache``) re-downloads from that mirror —
+    this path always fell back to huggingface.co, which is unreachable for
+    exactly the users a mirror exists for, so a healed cache failed to
+    restore there. Built without symlinks so the case runs on every host.
+    """
+    import huggingface_hub
+
+    # huggingface_hub fixes its default endpoint from the environment at import
+    # time; a dev shell that exported HF_ENDPOINT=... must not leak into the
+    # assertions that exercise the "no endpoint picked" path.
+    from huggingface_hub import constants as hf_constants
+
+    monkeypatch.setattr(hf_constants, "ENDPOINT", "https://huggingface.co")
+
+    repo_dir = tmp_path / "models--k2-fsa--OmniVoice"
+    snap = repo_dir / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    (snap / "tokenizer.json").write_bytes(b'{"tok": 1}')  # healthy regular file
+    calls = []
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    from services.hf_revisions import CURATED_REVISIONS
+    monkeypatch.setitem(CURATED_REVISIONS, "k2-fsa/OmniVoice", "a" * 40)
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+    from services import endpoint_race
+    monkeypatch.setattr(endpoint_race, "effective_endpoint",
+                        lambda: "https://hf-mirror.com")
+
+    (snap / "model.safetensors").write_bytes(b"")  # zero-byte weight = broken
+    summary = hf_cache_repair.repair_repo_cache("k2-fsa/OmniVoice")
+    assert summary["ok"] is True
+    assert calls == [{
+        "repo_id": "k2-fsa/OmniVoice",
+        "revision": "a" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://hf-mirror.com",
+        "token": False,  # a mirror never receives the HF token
+    }]
+    assert not os.path.lexists(snap / "model.safetensors")
+    # The canonical endpoint is never forced on an auto host without a pick.
+    monkeypatch.setattr(endpoint_race, "effective_endpoint", lambda: None)
+    calls.clear()
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+    (snap / "model.safetensors").write_bytes(b"")
+    summary = hf_cache_repair.repair_repo_cache("k2-fsa/OmniVoice")
+    assert summary["ok"] is True
+    assert calls == [{"repo_id": "k2-fsa/OmniVoice", "revision": "a" * 40,
+                      "cache_dir": str(tmp_path)}]
+
+
+def test_repair_of_an_unmatched_repo_defaults_to_the_canonical_endpoint(
+    tmp_path, monkeypatch
+):
+    """When the catalogue cannot confirm a repository is ungated (empty or
+    unreadable catalog), the restore stays on the canonical endpoint, which is
+    where it ran before the automatic selection was consulted. A genuinely
+    gated repository whose entry failed to load must therefore never reach an
+    automatically picked mirror, because the mirror gets no token."""
+    import huggingface_hub
+
+    from services import endpoint_race
+    from services import model_catalogue
+    from services.hf_revisions import CURATED_REVISIONS
+
+    from huggingface_hub import constants as hf_constants
+
+    monkeypatch.setattr(hf_constants, "ENDPOINT", "https://huggingface.co")
+    monkeypatch.setattr(model_catalogue, "KNOWN_MODELS", [])
+    monkeypatch.setattr(
+        endpoint_race, "effective_endpoint", lambda: "https://hf-mirror.com"
+    )
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+
+    repo_dir = tmp_path / "models--pyannote--speaker-diarization-3.1"
+    snap = repo_dir / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setitem(
+        CURATED_REVISIONS, "pyannote/speaker-diarization-3.1", "b" * 40
+    )
+    calls = []
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+
+    (snap / "pipeline_config.json").write_bytes(b"")  # zero-byte JSON = broken
+    summary = hf_cache_repair.repair_repo_cache("pyannote/speaker-diarization-3.1")
+    assert summary["ok"] is True
+    assert calls == [{
+        "repo_id": "pyannote/speaker-diarization-3.1",
+        "revision": "b" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://huggingface.co",
+    }]
+
+
+def test_repair_of_a_gated_repo_restores_through_the_canonical_endpoint(
+    tmp_path, monkeypatch
+):
+    """A gated repository cannot be restored through an automatically picked
+    mirror: mirrors never receive the HF token. The restore falls back to the
+    canonical endpoint unless the user explicitly configured a mirror, the
+    same rule ``endpoint_race.download_endpoint(gated=True)`` applies to
+    downloads. The synthetic catalogue carries an ungated entry that lists the
+    gated repo as a dependency, so if the direct gated match were skipped the
+    dependency edge alone would classify the repo as ungated and this test
+    would fail (the mirror would be selected)."""
+    import huggingface_hub
+
+    from services import endpoint_race
+    from services import model_catalogue
+    from services.hf_revisions import CURATED_REVISIONS
+
+    from huggingface_hub import constants as hf_constants
+
+    monkeypatch.setattr(hf_constants, "ENDPOINT", "https://huggingface.co")
+    monkeypatch.setattr(model_catalogue, "KNOWN_MODELS", [
+        {
+            "repo_id": "pyannote/speaker-diarization-3.1",
+            "gated": True,
+            "requires_hf_token": True,
+            "dependencies": [{"repo_id": "pyannote/segmentation-3.0"}],
+        },
+        {
+            "repo_id": "other-public-model",
+            "dependencies": [{"repo_id": "pyannote/speaker-diarization-3.1"}],
+        },
+    ])
+    real_effective_endpoint = endpoint_race.effective_endpoint
+    monkeypatch.setattr(
+        endpoint_race, "effective_endpoint", lambda: "https://hf-mirror.com"
+    )
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+
+    repo_dir = tmp_path / "models--pyannote--speaker-diarization-3.1"
+    snap = repo_dir / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    (snap / "pipeline_config.json").write_bytes(b"pipeline: init\n")
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setitem(
+        CURATED_REVISIONS, "pyannote/speaker-diarization-3.1", "b" * 40
+    )
+    calls = []
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+
+    (snap / "pipeline_config.json").write_bytes(b"")  # zero-byte JSON = broken
+    summary = hf_cache_repair.repair_repo_cache("pyannote/speaker-diarization-3.1")
+    assert summary["ok"] is True
+    # The automatic mirror is ignored for a gated repo; the canonical
+    # endpoint restores it and the token policy adds no explicit token (the
+    # library's own lookup applies on huggingface.co).
+    assert calls == [{
+        "repo_id": "pyannote/speaker-diarization-3.1",
+        "revision": "b" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://huggingface.co",
+    }]
+    # An explicit user mirror still wins, gating included: the user chose it.
+    # Restore the real effective_endpoint so the explicit configuration flows
+    # through exactly as production resolves it.
+    monkeypatch.setenv("HF_ENDPOINT", "https://user-chosen.example/mirror")
+    monkeypatch.setattr(endpoint_race, "effective_endpoint", real_effective_endpoint)
+    calls.clear()
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+    (snap / "pipeline_config.json").write_bytes(b"")
+    summary = hf_cache_repair.repair_repo_cache("pyannote/speaker-diarization-3.1")
+    assert summary["ok"] is True
+    assert calls == [{
+        "repo_id": "pyannote/speaker-diarization-3.1",
+        "revision": "b" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://user-chosen.example/mirror",
+        "token": False,
+    }]
+
+
+def test_repair_of_a_gated_dependency_also_avoids_the_mirror(tmp_path, monkeypatch):
+    """pyannote/segmentation-3.0 is not its own catalogue entry; it ships as a
+    dependency of the gated diarisation entry, so the gating lookup must see
+    it through that edge. The synthetic catalogue also carries an ungated
+    direct entry for the dependency repo, so if the dependency edge were
+    ignored the repo would classify as ungated and this test would fail (the
+    mirror would be selected)."""
+    import huggingface_hub
+
+    from services import endpoint_race
+    from services import model_catalogue
+    from services.hf_revisions import CURATED_REVISIONS
+
+    from huggingface_hub import constants as hf_constants
+
+    monkeypatch.setattr(hf_constants, "ENDPOINT", "https://huggingface.co")
+    monkeypatch.setattr(model_catalogue, "KNOWN_MODELS", [
+        {
+            "repo_id": "pyannote/speaker-diarization-3.1",
+            "gated": True,
+            "requires_hf_token": True,
+            "dependencies": [{"repo_id": "pyannote/segmentation-3.0"}],
+        },
+        {"repo_id": "pyannote/segmentation-3.0"},
+    ])
+    monkeypatch.setattr(
+        endpoint_race, "effective_endpoint", lambda: "https://hf-mirror.com"
+    )
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+
+    repo_dir = tmp_path / "models--pyannote--segmentation-3.0"
+    snap = repo_dir / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setitem(CURATED_REVISIONS, "pyannote/segmentation-3.0", "c" * 40)
+    calls = []
+    monkeypatch.setattr(huggingface_hub, "snapshot_download",
+                        lambda **k: calls.append(k))
+
+    (snap / "pytorch_model.bin").write_bytes(b"")
+    summary = hf_cache_repair.repair_repo_cache("pyannote/segmentation-3.0")
+    assert summary["ok"] is True
+    assert calls == [{
+        "repo_id": "pyannote/segmentation-3.0",
+        "revision": "c" * 40,
+        "cache_dir": str(tmp_path),
+        "endpoint": "https://huggingface.co",
+    }]
+
+
 def test_repair_noop_on_healthy_cache_skips_download(tmp_path, monkeypatch):
     import huggingface_hub
 
