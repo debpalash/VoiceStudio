@@ -50,7 +50,11 @@ export function DubTimeline({
   selectedId,
   onSelect,
   onPreviewSegment,
+  readyIds,
+  issueSeverities,
 }: {
+  readyIds?: ReadonlySet<string>;
+  issueSeverities?: ReadonlyMap<string, 'error' | 'warning'>;
   segments: DubSegment[];
   disabled: boolean;
   mediaDuration?: number;
@@ -412,6 +416,9 @@ export function DubTimeline({
                 focusId === segment.id &&
                   editMode &&
                   'ring-2 ring-primary ring-offset-1 ring-offset-background',
+                readyIds?.has(segment.id) && 'bg-emerald-500/35',
+                issueSeverities?.get(segment.id) === 'warning' && 'bg-warning/60',
+                issueSeverities?.get(segment.id) === 'error' && 'bg-destructive/60',
                 overlaps.has(segment.id) && 'border-destructive bg-destructive/20',
               )}
               style={{

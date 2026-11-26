@@ -50,6 +50,34 @@ for (const file of [...await sourceFiles(sourceDirectory), ...sharedControls]) {
   }
 }
 
+// Keys chosen by a condition, t(done ? 'ns.a' : 'ns.b'), are literals too;
+// the first-argument pattern above sees none of them (#4221 shipped a deleted
+// key this way). Scan each such call's balanced arguments for quoted keys.
+const branchLiteral = /(['"])([A-Za-z][A-Za-z0-9_-]*\.[A-Za-z0-9_.:-]+)\1/g;
+for (const file of await sourceFiles(sourceDirectory)) {
+  const source = await readFile(file, 'utf8');
+  for (const call of source.matchAll(/\b(?:t|tr)\(/g)) {
+    let depth = 1;
+    let end = call.index + call[0].length;
+    while (end < source.length && depth > 0) {
+      const char = source[end++];
+      if (char === '(') depth++;
+      else if (char === ')') depth--;
+    }
+    const args = source.slice(call.index + call[0].length, end - 1);
+    // Only the call's own condition: skip arguments that hold nested calls or options.
+    if (!args.includes('?') || /[({]/.test(args)) continue;
+    for (const match of args.matchAll(branchLiteral)) {
+      const key = match[2];
+      if (/[._:]$/.test(key)) continue;
+      const line = source.slice(0, call.index).split('\n').length;
+      const locations = used.get(key) ?? [];
+      locations.push(`${file.pathname.split('/src/renderer/src/')[1] ?? file.pathname}:${line}`);
+      used.set(key, locations);
+    }
+  }
+}
+
 const missing = [...used].filter(
   ([key]) => !catalog.has(key) && !(catalog.has(`${key}_one`) && catalog.has(`${key}_other`)),
 );

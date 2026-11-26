@@ -158,26 +158,46 @@ def test_non_module_models_pass_through(pristine_loader):
     assert _sidecar()._restore_non_persistent_buffers(model) is model
 
 
-@pytest.mark.parametrize("version", ["4.57.1", "5.8.0"])
-def test_the_shim_stays_off_where_patterns_are_still_lists(
-    pristine_loader, monkeypatch, version, runtime_transformers,
-):
-    """transformers 4 and 5 through 5.8 concatenate the patterns with `+`, so a
-    set on the left fails every load with `set + list` (#4063). The engine
-    venv pins transformers 4.57.1, so the shim must only install on the
-    set-semantics side (>= 5.9)."""
-    sidecar = _sidecar()
-    monkeypatch.setattr(runtime_transformers, "__version__", version)
-    sidecar._accept_list_ignore_patterns()
-    method = _Base._adjust_missing_and_unexpected_keys
-    assert not hasattr(method, "_voicestudio_accepts_lists")
+def _fake_adjust(combine):
+    def adjust(self, *args, **kwargs):
+        return combine(self._keys_to_ignore_on_load_unexpected or [], ["extra"])
+
+    return adjust
 
 
-@pytest.mark.parametrize("version", ["5.9.0", "5.20.2"])
-def test_the_shim_installs_where_patterns_are_sets(
+@pytest.mark.parametrize("version", ["4.57.1", "5.8.0", "5.9.0", "5.20.2"])
+def test_patterns_load_whichever_container_transformers_combines(
     pristine_loader, monkeypatch, version, runtime_transformers,
 ):
+    """The shim must not depend on the version number (#4484): a release that
+    concatenates with `+` and one that unions with `|` both load."""
     sidecar = _sidecar()
     monkeypatch.setattr(runtime_transformers, "__version__", version)
+    for combine in (lambda a, b: a + b, lambda a, b: a | set(b)):
+        monkeypatch.setattr(_Base, "_adjust_missing_and_unexpected_keys", _fake_adjust(combine))
+        sidecar._accept_list_ignore_patterns()
+
+        class Model:
+            _keys_to_ignore_on_load_unexpected = ["a"]
+
+        model = Model()
+        result = _Base._adjust_missing_and_unexpected_keys(model)
+        assert list(result) == ["a", "extra"] or set(result) == {"a", "extra"}
+
+
+def test_a_failing_load_keeps_the_declared_lists(pristine_loader, monkeypatch):
+    sidecar = _sidecar()
+
+    def broken(self, *args, **kwargs):
+        raise TypeError("unrelated")
+
+    monkeypatch.setattr(_Base, "_adjust_missing_and_unexpected_keys", broken)
     sidecar._accept_list_ignore_patterns()
-    assert getattr(_Base._adjust_missing_and_unexpected_keys, "_voicestudio_accepts_lists", False)
+
+    class Model:
+        _keys_to_ignore_on_load_unexpected = ["a"]
+
+    model = Model()
+    with pytest.raises(TypeError, match="unrelated"):
+        _Base._adjust_missing_and_unexpected_keys(model)
+    assert model._keys_to_ignore_on_load_unexpected == ["a"]

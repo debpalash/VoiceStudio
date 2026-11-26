@@ -7,9 +7,12 @@ import time
 import asyncio
 import contextlib
 import shutil
+import string
 import tempfile
+import uuid
 import torch
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 
 from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from core import voice_leases
@@ -40,11 +43,16 @@ from services.ffmpeg_utils import (
 )
 from services.rvc import apply_rvc, is_enabled as rvc_is_enabled
 from services.incremental import segment_fingerprint, fit_fingerprint
+from services.dub_speech_checkpoints import SpeechCheckpoints
+from services.dub_speech_preview import preview_path, prune_previews, save_preview
+from services.dub_issues import (
+    MIN_SPOKEN_SEGMENT_S, cue_issues, describe_issues, segment_id_issues, uses_fixed_windows,
+)
 from services.fit_planner import FitParams, plan_fit
 from services.watermark import mark_synthetic, mark_synthetic_async, will_mark
 from services import dub_pipeline, dub_resume
 from services.speaker_clone import auto_profile_id
-from api.routers.dub_core import _get_job, _safe_lang_or_400, _save_job
+from api.routers.dub_core import _get_job, _save_job
 from services.dub_pipeline import (
     _dub_jobs_lock,
     publish_rendered_segments,
@@ -54,14 +62,19 @@ from omnivoice.utils.voice_design import heal_design_instruct
 
 logger = logging.getLogger("omnivoice.dub")
 
-def _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts):
-    """Validate the final local render set, including repaired cache misses."""
+def _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts, min_spoken_s=None):
+    """Validate the final local render set, including repaired cache misses.
+
+    ``min_spoken_s`` is the shortest cue that is spoken rather than silenced;
+    fixed-window timing speaks every cue, however short.
+    """
     check = getattr(backend, "_check_language", None)
     if not callable(check):
         return
+    floor = MIN_SPOKEN_SEGMENT_S if min_spoken_s is None else min_spoken_s
     for index, segment in enumerate(req.segments):
         sid = seg_ids[index] if index < len(seg_ids) else f"seg_{index}"
-        if segment.end - segment.start <= MIN_SPOKEN_SEGMENT_S or not spoken_texts[index].strip() or (regen_only is not None and sid not in regen_only):
+        if segment.end - segment.start <= floor or not spoken_texts[index].strip() or (regen_only is not None and sid not in regen_only):
             continue
         check(segment.target_lang or req.language)
 
@@ -164,8 +177,7 @@ def _underrun_min_rate() -> float:
 # colliding with the next speaker's onset.
 GAP_OVERFLOW_MAX_S = 0.25
 GAP_OVERFLOW_BUFFER_S = 0.05
-# A row this short is rendered as silence, so it never counts as speech.
-MIN_SPOKEN_SEGMENT_S = 0.05
+# A row of MIN_SPOKEN_SEGMENT_S or less (services.dub_issues) is rendered as silence.
 
 
 # Second-pass ASR annotations (/dub/qc) describe one rendered track. They are
@@ -232,6 +244,21 @@ def _sync_job_segments(job: dict, req: DubRequest) -> None:
     source-language text so dual-subtitle layouts can still stack it under the
     translation.
     """
+    if req.timing_strategy == "narration":
+        captions = req.model_copy(update={"segments": req.caption_segments, "segment_ids": req.caption_segment_ids, "timing_strategy": "concise"})
+        _sync_job_segments(job, captions)
+        originals = {str(row.get("id")): row for row in job.get("segments", [])}
+        blocks = []
+        for index, segment in enumerate(req.segments):
+            row = segment.model_dump()
+            row["id"] = req.segment_ids[index]
+            sources = segment.source_ids or []
+            source = originals.get(sources[0], {}) if sources else {}
+            row["speaker_id"] = source.get("speaker_id", "Speaker 1")
+            blocks.append(row)
+        job.setdefault("narration_scripts", {})[req.language_code] = {"version": 2, "blocks": blocks}
+        return
+    job.get("narration_scripts", {}).pop(req.language_code, None)
     if not req.segments:
         return
     existing = [s for s in (job.get("segments") or []) if isinstance(s, dict)]
@@ -428,7 +455,8 @@ def warn_if_ref_missing(ref_audio, *, job_id: str = "", seg_id="", where: str = 
             "and the job outlives them, so a saved dub regenerated after "
             "cleanup loses them — re-running the full dub re-extracts the "
             "clips, which is why that appears to fix it (#1331).",
-            where, seg_id, ref_audio,
+            # File name only: the full path is under the user's home.
+            where, log_safe(seg_id), log_safe(os.path.basename(str(ref_audio))),
         )
     return ref_audio
 
@@ -526,6 +554,19 @@ def _render_staging(job_id: str):
         shutil.rmtree(stage_dir, ignore_errors=True)
 
 
+def _track_path(job_id: str, lang_code: str) -> str:
+    """``DUB_DIR/<job>/dubbed_<lang>.wav``, proven to stay inside DUB_DIR.
+
+    Both parts come from the request. Normalized, then prefix-checked: the
+    containment proof static analysis recognizes (py/path-injection).
+    """
+    root = os.path.abspath(DUB_DIR)
+    path = os.path.abspath(os.path.join(root, str(job_id), f"dubbed_{lang_code}.wav"))
+    if not path.startswith(root + os.sep):
+        raise ValueError("dub track path escapes DUB_DIR")
+    return path
+
+
 def _resume_journal_root(job_id: str, lang_code: str) -> str:
     """Where this job's finished-segment recovery copies for one track live.
 
@@ -567,14 +608,59 @@ async def _run_journal_io(operation, *args):
         raise
 
 
+# Job ids and track languages name folders and files, and those paths reach
+# ffmpeg. Each request value is rebuilt character by character from this
+# exact allowlist, so what continues is a known-safe string, not the input.
+_REQUEST_TOKEN_CHARS = {ch: ch for ch in string.ascii_letters + string.digits + "_-"}
+
+
+def _request_token(value: object, *, limit: int, what: str) -> str:
+    text = value if isinstance(value, str) else ""
+    if not 0 < len(text) <= limit or any(ch not in _REQUEST_TOKEN_CHARS for ch in text):
+        raise HTTPException(status_code=400, detail=f"Invalid {what}")
+    return "".join(_REQUEST_TOKEN_CHARS[ch] for ch in text)
+
+
+@router.get(
+    "/dub/speech-preview/{job_id}/{render_id}/{token}",
+    response_class=FileResponse,
+    responses={200: {"description": "The completed take as WAV audio.",
+                     "content": {"audio/wav": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+def dub_speech_preview(job_id: str, render_id: str, token: str):
+    job_id = _request_token(job_id, limit=64, what="job id")
+    if not _get_job(job_id):
+        raise HTTPException(status_code=404, detail="Dub job not found")
+    try:
+        path = preview_path(os.path.dirname(dub_seg_path(job_id, "preview")), render_id, token)
+    except (ValueError, OSError):
+        raise HTTPException(status_code=404, detail="Speech preview not found")
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Speech preview not found")
+    return FileResponse(path, media_type="audio/wav", headers={"Cache-Control": "private, max-age=31536000, immutable"})
+
+
 @router.post("/dub/generate/{job_id}")
 @consumer_generation
 async def dub_generate(job_id: str, req: DubRequest):
     """Adds a dub generation job to the async batch task pool."""
-    # The track language names files under the job dir (dubbed_{lang}.wav,
-    # seg_{lang}_{id}.wav), so reject anything that is not a plain code
-    # before the job is touched.
-    lang_code = _safe_lang_or_400(req.language_code or "und")
+    return await _run_dub(job_id, req)
+
+
+@router.post("/dub/plan/{job_id}")
+@consumer_generation
+async def dub_generation_plan(job_id: str, req: DubRequest):
+    """Inspect the exact render inputs and saved speech without running TTS."""
+    return await _run_dub(job_id, req, planning=True)
+
+
+async def _run_dub(requested_job_id: str, req: DubRequest, *, planning: bool = False):
+    # The job id and track language name files under the job dir
+    # (dubbed_{lang}.wav, seg_{lang}_{id}.wav), so reject anything that is not
+    # a plain token before the job is touched. Only the rebuilt values are
+    # used from here on, including by every closure below.
+    job_id = _request_token(requested_job_id, limit=64, what="job id")
+    lang_code = _request_token(req.language_code or "und", limit=32, what="language code")
     job = _get_job(job_id)
     if not job:
         raise HTTPException(
@@ -585,6 +671,45 @@ async def dub_generate(job_id: str, req: DubRequest):
     # subtitles are replaced before this render publishes, its result belongs
     # to subtitles the user no longer has.
     admitted_rev = source_segments_revision(job)
+    # Fixed-window timing (narration, opted-in SRT-only rescue) cannot place
+    # overlapping or out-of-range cues; name them before any synthesis. Other
+    # renders keep their timing; a tiny cue that holds words would only fail
+    # after the whole render (dub_speech_missing), so it is refused up front.
+    _narration = (req.timing_strategy or "concise").lower() == "narration"
+    _fixed_windows = uses_fixed_windows(req, subtitle_only=bool(job.get("subtitle_only")))
+    id_issues = segment_id_issues(req.segment_ids or [], len(req.segments))
+    if id_issues and not planning:
+        raise HTTPException(status_code=422, detail={
+            "code": "dub_segment_ids_collide", "issues": id_issues,
+            "message": describe_issues(id_issues),
+        })
+    issues = cue_issues(req.segments, req.segment_ids or [], fixed_windows=_fixed_windows,
+                        source_duration=float(job.get("duration") or 0.0),
+                        rescue=bool(req.auto_fit_overflow))
+    short = [issue for issue in issues if issue["code"] == "dub_cue_too_short"]
+    if short:
+        # A line that pronunciation rules remove entirely is intended silence,
+        # exactly as the renderer treats it: judge the text it would speak.
+        from services.pronunciation import speech_text_preparer
+
+        def _spoken(rows):
+            prepare_text = speech_text_preparer()
+            return {issue["segment"] for issue in rows
+                    if prepare_text(req.segments[issue["segment"]].text,
+                                    req.segments[issue["segment"]].target_lang or req.language,
+                                    profile_id=req.segments[issue["segment"]].profile_id or None).strip()}
+
+        spoken = await asyncio.to_thread(_spoken, short)
+        issues = [issue for issue in issues
+                  if issue["code"] != "dub_cue_too_short" or issue["segment"] in spoken]
+    issues = id_issues + issues
+    if issues and not planning:
+        raise HTTPException(status_code=422, detail={
+            "code": "dub_cue_windows_invalid" if _fixed_windows or any(
+                issue["code"] != "dub_cue_too_short" for issue in issues) else "dub_cue_too_short",
+            "issues": issues,
+            "message": describe_issues(issues, rescue=bool(req.auto_fit_overflow) and not _narration, noun="narration block" if _narration else "subtitle"),
+        })
 
     if _untranslated_track_error(job, req, lang_code):
         logger.warning(
@@ -627,6 +752,8 @@ async def dub_generate(job_id: str, req: DubRequest):
     _job_num_step = req.num_step if req.num_step is not None else _profile_defaults.get("num_step", 16)
     _job_postprocess = _profile_defaults.get("postprocess_output", True)
 
+    checkpoint_state = {}
+
     async def _stream(task_id):
         # Every reference take the render resolves stays held until it ends,
         # so the retired-voice sweep never deletes one mid-dub (#2535).
@@ -634,6 +761,15 @@ async def dub_generate(job_id: str, req: DubRequest):
             with voice_leases.VoiceFileLease() as voice_lease, _render_staging(job_id) as stage_dir:
                 async with contextlib.aclosing(_render(task_id, voice_lease, stage_dir)) as events:
                     async for event in events:
+                        cache = checkpoint_state.get("cache")
+                        if cache is not None and event.startswith("data: "):
+                            payload = json.loads(event[6:])
+                            if payload.get("type") in ("error", "cancelled", "done", "assembling"):
+                                payload.update(speech_saved=cache.saved, speech_reused=cache.reused)
+                                from core import diagnostic_reports
+                                event = diagnostic_reports.carry_failure_identity(
+                                    event, f"data: {json.dumps(payload)}\n\n",
+                                )
                         yield event
         finally:
             await _run_journal_io(_drop_resume_journal_if_withdrawn, job_id, lang_code)
@@ -653,6 +789,31 @@ async def dub_generate(job_id: str, req: DubRequest):
         # One saved-row snapshot and one preparation per original input. Keys,
         # timeout budgets, batches, retries and silence checks share these bytes.
         spoken_texts = await asyncio.to_thread(_prepare_segments)
+        preview_render = uuid.uuid4().hex
+        if not planning:
+            try:
+                await asyncio.to_thread(prune_previews, os.path.dirname(dub_seg_path(job_id, "preview")))
+            except Exception as err:  # noqa: BLE001
+                logger.debug("speech preview pruning skipped: %s", type(err).__name__)
+
+        def _save_ready(sid, path):
+            with _dub_jobs_lock:
+                if task_manager.is_cancelled(task_id) or source_segments_revision(job) != admitted_rev:
+                    return None
+                return save_preview(os.path.dirname(dub_seg_path(job_id, "preview")), preview_render, str(sid), path)
+
+        async def _ready(index, sid, path):
+            # Independent, immutable files remain playable after failure/cancel;
+            # they do not claim that the assembled track has been published.
+            # Where hard links are unavailable the take is copied: off the loop.
+            try:
+                token = await asyncio.to_thread(_save_ready, sid, path)
+                if token is None:
+                    return None
+                return f"data: {json.dumps({'type': 'segment_ready', 'current': index + 1, 'total': total, 'segment': index, 'segment_id': str(sid), 'language_code': lang_code, 'preview_url': f'/dub/speech-preview/{job_id}/{preview_render}/{token}'})}\n\n"
+            except OSError as error:
+                logger.warning("could not save speech preview: %s", type(error).__name__)
+                return None
         all_segment_wavs = []
         sync_scores = []
 
@@ -844,12 +1005,40 @@ async def dub_generate(job_id: str, req: DubRequest):
         # on segments whose id is in that set; the others reuse their existing
         # `seg_i.wav` on disk and slot into the final mix unchanged.
         regen_only = set(req.regen_only or []) if req.regen_only is not None else None
+        forced_speech_ids = set(req.regen_only or [])
+        # Pronunciation is already applied to prepared text. Immutable model
+        # proof and resolved synthesis inputs account for output-affecting
+        # preferences without invalidating every voice for unrelated DB edits.
+        checkpoint_context = {"track_language": lang_code, "voice_match": req.voice_match}
+        checkpoints = SpeechCheckpoints(os.path.dirname(dub_seg_path(job_id, "checkpoint")),
+                                        engine_id, backend.sample_rate, checkpoint_context)
+        checkpoint_state["cache"] = checkpoints
+        if not planning:
+            try:
+                await asyncio.to_thread(checkpoints.prune)
+            except Exception as err:  # noqa: BLE001
+                logger.debug("speech checkpoint pruning skipped: %s", type(err).__name__)
+        # Fresh takes are checkpointed only after the single provenance mark
+        # at the persist point, so a reused checkpoint is never marked again.
+        # Keyed by segment id: the checkpoint path (model proof taken right
+        # after synthesis) and the takes that came from a checkpoint.
+        _fresh_takes: dict[str, object] = {}
+        _checkpoint_hits: set[str] = set()
+
         seg_ids = req.segment_ids or []
+        subtitle_only = bool(job.get("subtitle_only"))
         strategy = (req.timing_strategy or "concise").lower()
+        # Fixed SRT windows with pitch-preserving compression: always for the
+        # narration strategy; for SRT-only projects only once overflow rescue
+        # is opted in. Otherwise they keep the requested strategy and its
+        # blocking timing error, as before.
+        flexible_timing = uses_fixed_windows(req, subtitle_only=subtitle_only)
+        if flexible_timing and strategy != "narration":
+            strategy = "concise"
         # Voice-identity mode (see DubRequest.voice_match). The memo makes the
         # "consistent" pick once per speaker and hands the SAME reference to
         # every segment of that speaker for the whole run.
-        voice_match = (req.voice_match or "per_line").lower()
+        voice_match = "consistent" if strategy == "narration" else (req.voice_match or "per_line").lower()
         _consistent_ref_memo: dict = {}
         # Strategy-transition guard: concise, stretch_video and smart_fit all
         # re-mix *natural-rate* per-segment WAVs. If the previous run used
@@ -889,7 +1078,8 @@ async def dub_generate(job_id: str, req: DubRequest):
                     intact = False
                 if not intact:
                     regen_only.add(sid)
-        _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts)
+        _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts,
+                                   min_spoken_s=0.0 if flexible_timing else None)
         # Manifest: stable segment id per current index. Per-segment WAVs are
         # named by stable id (dub_seg_path) so regen reuses the right audio after
         # reorder; index-keyed readers (preview/export) resolve via this manifest.
@@ -909,10 +1099,16 @@ async def dub_generate(job_id: str, req: DubRequest):
                 journal = await _run_journal_io(
                     dub_resume.DubResumeJournal, _resume_journal_root(job_id, lang_code),
                 )
-                await _run_journal_io(journal.prune, {str(sid) for sid in seg_order})
+                if not planning:
+                    await _run_journal_io(journal.prune, {str(sid) for sid in seg_order})
             except Exception as err:  # noqa: BLE001
                 logger.info("dub resume unavailable, rendering normally: %s", type(err).__name__)
                 journal = None
+        # Existing interrupted-render evidence takes precedence. Never mask a
+        # corrupt journal entry with another private copy, or bypass explicit
+        # partial regeneration with provisional audio.
+        resume_active = os.path.isdir(_resume_journal_root(job_id, lang_code))
+        reuse_checkpoints = req.regen_only is None and not resume_active
         _ref_hash_memo: dict = {}
         _oom_degraded: set[str] = set()
         _used_recovery = False
@@ -1009,6 +1205,20 @@ async def dub_generate(job_id: str, req: DubRequest):
                 },
             })
 
+        async def _recovery_key(prepared, sid):
+            # A complete natural take can be remixed into a strict slot. A
+            # duration-constrained take cannot stand in for natural speech.
+            if journal is not None and prepared.get("duration") is not None:
+                natural = dict(prepared, duration=None)
+                natural_key = await _run_journal_io(_resume_key_for, natural)
+                if natural_key and await _run_journal_io(journal.has, sid, natural_key):
+                    return natural_key
+            return await _run_journal_io(_resume_key_for, prepared)
+
+        # Both recovery mechanisms require upstream's immutable model proof.
+        # An unidentifiable model renders normally, without trusting old speech.
+        checkpoints.key_proof = _resume_key_for
+
         def _recovered_intact(path: str) -> bool:
             info = audio_info(path)
             return (
@@ -1103,7 +1313,10 @@ async def dub_generate(job_id: str, req: DubRequest):
             yield f"data: {json.dumps({'type': 'progress', 'current': i, 'total': total, 'text': seg.text[:50]})}\n\n"
 
             seg_duration = seg.end - seg.start
-            if seg_duration <= MIN_SPOKEN_SEGMENT_S or not spoken_texts[i].strip():
+            if (seg_duration <= MIN_SPOKEN_SEGMENT_S and not flexible_timing) or not spoken_texts[i].strip():
+                if planning:
+                    yield f"data: {json.dumps({'type': 'plan_segment', 'segment_id': str(seg_id), 'action': 'silence'})}\n\n"
+                    continue
                 silence = torch.zeros(
                     (1, max(0, int(seg_duration * backend.sample_rate)))
                 )
@@ -1155,6 +1368,21 @@ async def dub_generate(job_id: str, req: DubRequest):
                             seg_wav_path = _legacy
                             break
                 if os.path.exists(seg_wav_path):
+                    if planning:
+                        # Generation refuses a spoken row whose saved take is
+                        # silent (dub_speech_missing); report it the same way.
+                        def _silent_take(path=seg_wav_path):
+                            from services.audio_io import load_audio
+                            try:
+                                return _speech_unusable(load_audio(path)[0])
+                            except Exception:  # noqa: BLE001
+                                return True
+                        unusable = bool(spoken_texts[i].strip()) and await asyncio.to_thread(_silent_take)
+                        row = {'type': 'plan_segment', 'segment_id': str(seg_id), 'action': 'reuse'}
+                        if unusable:
+                            row.update(issue='dub_speech_missing', segment=i)
+                        yield f"data: {json.dumps(row)}\n\n"
+                        continue
                     _t_reuse = time.perf_counter()
                     try:
                         from services.audio_io import load_audio
@@ -1177,6 +1405,10 @@ async def dub_generate(job_id: str, req: DubRequest):
                                     round(info.num_frames / info.sample_rate / max(seg_duration, 0.01), 3)
                                 )
                                 _t_cache += time.perf_counter() - _t_reuse
+                                checkpoints.reused += 1
+                                ready = await _ready(i, seg_id, seg_wav_path)
+                                if ready:
+                                    yield ready
                                 continue
                         cached, cached_sr = load_audio(seg_wav_path)
                         if cached_sr != backend.sample_rate:
@@ -1196,6 +1428,10 @@ async def dub_generate(job_id: str, req: DubRequest):
                         _release_audio_tensors()
                         sync_scores.append(ratio)
                         _t_cache += time.perf_counter() - _t_reuse
+                        checkpoints.reused += 1
+                        ready = await _ready(i, seg_id, all_segment_wavs[-1][2])
+                        if ready:
+                            yield ready
                         continue
                     except Exception as err:  # noqa: BLE001
                         logger.warning("cached speech for %s unreadable: %s", seg_id, err)
@@ -1352,8 +1588,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     ref_audio, job_id=job_id, seg_id=effective_seg_id, where="dub render",
                 ))
 
-                if prepare_only:
-                    return {
+                prepared = {
                         "text": text,
                         "language": lang if lang != "Auto" else None,
                         "ref_audio": ref_audio,
@@ -1369,6 +1604,18 @@ async def dub_generate(job_id: str, req: DubRequest):
                         "effect_preset": effect_preset or "broadcast",
                         "seed": used_seed,
                     }
+                if prepare_only:
+                    return prepared
+                if reuse_checkpoints and str(effective_seg_id) not in forced_speech_ids:
+                    recovered = checkpoints.read(prepared)
+                    if recovered is not None:
+                        _checkpoint_hits.add(str(effective_seg_id))
+                        return recovered
+
+                def keep(audio):
+                    # Checkpointed once marked, at the persist point below.
+                    _fresh_takes[str(effective_seg_id)] = (bool(will_mark()), checkpoints.path_for(prepared))
+                    return audio
 
                 try:
                     # The profile's seed reaches engines that take one, so
@@ -1387,7 +1634,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     # Apply per-segment DSP effect preset (default: broadcast)
                     seg_effect_preset = effect_preset or "broadcast"
                     if seg_effect_preset == "raw":
-                        return audio_out
+                        return keep(audio_out)
 
                     mastered_audio = audio_out
                     if not getattr(backend, "applies_own_mastering", False):
@@ -1399,7 +1646,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                             sample_rate=sr,
                             chain=effect_chain,
                         )
-                    return normalize_audio(mastered_audio, target_dBFS=-2.0)
+                    return keep(normalize_audio(mastered_audio, target_dBFS=-2.0))
                 except Exception as e:
                     if not _prepare_oom_retry(e):
                         raise
@@ -1407,9 +1654,12 @@ async def dub_generate(job_id: str, req: DubRequest):
                     retry_steps = min(nstep, 8)
                     # Rendered below its keyed step count: never kept for resume.
                     _oom_degraded.add(str(effective_seg_id))
+                    prepared["num_step"] = retry_steps
+                    # The step count arrives in the request body: log it
+                    # through the CR/LF-safe renderer (py/log-injection).
                     logger.warning(
-                        "OOM on segment (nstep=%d), retrying with %d steps after cache flush",
-                        nstep, retry_steps,
+                        "OOM on segment (nstep=%s), retrying with %s steps after cache flush",
+                        log_safe(nstep), log_safe(retry_steps),
                     )
                     try:
                         # An OOM retry on a single-use ref pays the reference
@@ -1430,7 +1680,7 @@ async def dub_generate(job_id: str, req: DubRequest):
 
                         seg_effect_preset = effect_preset or "broadcast"
                         if seg_effect_preset == "raw":
-                            return audio_out
+                            return keep(audio_out)
 
                         mastered_audio = audio_out
                         if not getattr(backend, "applies_own_mastering", False):
@@ -1442,7 +1692,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                                 sample_rate=sr,
                                 chain=effect_chain,
                             )
-                        return normalize_audio(mastered_audio, target_dBFS=-2.0)
+                        return keep(normalize_audio(mastered_audio, target_dBFS=-2.0))
                     except Exception as retry_err:
                         raise RuntimeError(
                             f"Ran out of GPU memory generating this segment. "
@@ -1451,6 +1701,32 @@ async def dub_generate(job_id: str, req: DubRequest):
                             f"or switch to CPU in Settings. "
                             f"Underlying error: {retry_err}"
                         ) from retry_err
+
+            if planning:
+                args = _segment_generation_args(i, seg)
+                prepared = _gen(args["text"], args["language"], args["instruct"],
+                                args["duration"], args["num_step"], args["guidance_scale"],
+                                args["speed"], args["profile_id"], args["effect_preset"],
+                                prepare_only=True)
+                # Verifying a take reads and hashes the whole WAV: off the loop.
+                recovered = (await _run_journal_io(checkpoints.read, prepared)
+                             if reuse_checkpoints and str(seg_id) not in forced_speech_ids else None)
+                action = "reuse" if recovered is not None else "synthesize"
+                del recovered
+                if action == "synthesize" and journal is not None:
+                    key = await _recovery_key(prepared, seg_id)
+                    if key:
+                        candidate = await _run_journal_io(lambda: journal.recover(
+                            str(seg_id), key, backend.sample_rate, _recovered_intact,
+                            discard_invalid=False,
+                        ))
+                        if candidate is not None:
+                            action = "reuse"
+                yield f"data: {json.dumps({'type': 'plan_segment', 'segment_id': str(seg_id), 'action': action})}\n\n"
+                # Long projects stay responsive while scanning saved audio.
+                if i % 16 == 0:
+                    await asyncio.sleep(0)
+                continue
 
             async def _prefetch_native_batch(first_index: int) -> None:
                 """Render one bounded batch and retain only its small output window."""
@@ -1467,7 +1743,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     )
                     if (
                         candidate_index in _batched_audio
-                        or candidate.end - candidate.start <= 0.05
+                        or (candidate.end - candidate.start <= MIN_SPOKEN_SEGMENT_S and not flexible_timing)
                         or not spoken_texts[candidate_index].strip()
                         or (
                             regen_only is not None
@@ -1494,12 +1770,23 @@ async def dub_generate(job_id: str, req: DubRequest):
                         if candidate_index == first_index:
                             raise
                         break
+                    if reuse_checkpoints and str(candidate_id) not in forced_speech_ids:
+                        # A saved take is not batched; its own row reads it
+                        # when consumed, so prefetch never holds decoded hits.
+                        if await _run_journal_io(checkpoints.has, prepared):
+                            # Its own row reads the take; scanning ahead from
+                            # every hit would make long reused runs quadratic.
+                            if candidate_index == first_index:
+                                return
+                            continue
                     # A finished segment recovered from an earlier run is not
                     # re-rendered; the main loop reuses it.
                     if journal is not None:
                         try:
                             recoverable_key = await _run_journal_io(_resume_key_for, prepared)
                             if recoverable_key and await _run_journal_io(journal.has, candidate_id, recoverable_key):
+                                if candidate_index == first_index:
+                                    return
                                 continue
                         except Exception as err:  # noqa: BLE001
                             logger.debug("dub resume lookup skipped: %s", type(err).__name__)
@@ -1548,7 +1835,8 @@ async def dub_generate(job_id: str, req: DubRequest):
                             f"{len(prepared_rows)} segments"
                         )
                     rendered = []
-                    for output, prepared in zip(outputs, prepared_rows):
+                    for (row_index, _), output, prepared in zip(batch, outputs, prepared_rows):
+                        _fresh_takes[str(seg_order[row_index])] = (bool(will_mark()), checkpoints.path_for(prepared))
                         preset = prepared["effect_preset"]
                         if preset == "raw":
                             rendered.append(output)
@@ -1623,7 +1911,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                         # the director asked for without the chipmunk side-
                         # effect that overshooting the slot would otherwise
                         # cause.
-                        if (req.timing_strategy or "concise") == "strict_slot":
+                        if strategy == "strict_slot":
                             seg_speed = (seg_speed or 1.0) * bias
                 except Exception as e:
                     logger.debug("direction parse skipped for %s: %s", getattr(seg, 'id', '?'), e)
@@ -1669,7 +1957,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                             _rargs["speed"], _rargs["profile_id"], _rargs["effect_preset"],
                             prepare_only=True, current_seg_id=_rargs["seg_id"],
                         )
-                        _resume_key = await _run_journal_io(_resume_key_for, _prepared)
+                        _resume_key = await _recovery_key(_prepared, seg_id)
                         if _resume_key:
                             _recovered_wav = await _run_journal_io(
                                 journal.recover_into, seg_id, _resume_key, backend.sample_rate,
@@ -1694,6 +1982,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     audio_tensor = _recovered_audio
                     _recovered_audio = None
                     _used_recovery = True
+                    checkpoints.reused += 1
                 elif i in _batched_audio:
                     audio_tensor = _batched_audio.pop(i)
                 else:
@@ -1761,7 +2050,16 @@ async def dub_generate(job_id: str, req: DubRequest):
 
                 # RVC needs the WAV on disk, so write it immediately only
                 # when RVC is active (uncommon path).
-                if rvc_is_enabled():
+                _rvc_converted = False
+                _rvc_on = rvc_is_enabled()
+                _from_checkpoint = str(seg_id) in _checkpoint_hits
+                _checkpoint_hits.discard(str(seg_id))
+                if _from_checkpoint:
+                    # Saved takes are keyed by the same model proof as the
+                    # journal, so they share its mixed-weights guard below.
+                    _used_recovery = True
+                _fresh_checkpoint = _fresh_takes.pop(str(seg_id), None)
+                if _rvc_on:
                     seg_wav_path = _staged_seg_path(seg_id)
                     atomic_save_wav(seg_wav_path, audio_tensor, backend.sample_rate)
                     try:
@@ -1770,6 +2068,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                         rvc_wav, rvc_sr = load_audio(seg_wav_path)
                         if rvc_sr == backend.sample_rate:
                             audio_tensor = rvc_wav
+                            _rvc_converted = True
 
                     except Exception as e:
                         yield f"data: {json.dumps({'type': 'warning', 'segment': i, 'message': f'RVC skipped: {str(e)[:120]}'})}\n\n"
@@ -1779,13 +2078,32 @@ async def dub_generate(job_id: str, req: DubRequest):
                 # downloadable segment and the assembly input, so the final
                 # track inherits the mark. Cached reuse is already marked and
                 # silence has nothing to mark, so nothing else marks again.
-                # Recovered audio was marked when it was first rendered.
-                if _recovered_wav is None:
+                # Recovered audio and private checkpoints were marked when
+                # first rendered; only a waveform RVC replaced needs a mark.
+                _unmarked = audio_tensor
+                if (_recovered_wav is None and not _from_checkpoint) or _rvc_converted:
                     audio_tensor = await mark_synthetic_async(
                         audio_tensor, backend.sample_rate, context="dub_generate.segment"
                     )
+                # Checkpoints hold marked TTS output. An RVC waveform is never
+                # kept: reusing it would convert the voice a second time. The
+                # identity records whether marking was on; when the mark was
+                # skipped anyway (preference changed mid-render, pool draining)
+                # or applied unexpectedly, the take is used but never kept, so
+                # a later render cannot reuse it under the wrong provenance.
+                _was_marked = audio_tensor is not _unmarked
+                if (_fresh_checkpoint is not None and not _rvc_on
+                        and _fresh_checkpoint[0] != _was_marked):
+                    logger.info("speech checkpoint skipped for %s: provenance mark state changed",
+                                log_safe(seg_id))
+                elif _fresh_checkpoint is not None and not _rvc_on:
+                    try:
+                        await _run_journal_io(checkpoints.write_at, _fresh_checkpoint[1], audio_tensor)
+                    except Exception as err:  # noqa: BLE001
+                        # A cache failure never discards usable speech.
+                        logger.warning("speech checkpoint skipped for %s: %s", log_safe(seg_id), type(err).__name__)
 
-                if journal is not None and _used_recovery:
+                if _used_recovery:
                     _, _validated_model_fp, _ = await _run_journal_io(_model_folder_fingerprint)
                     if _validated_model_fp is None:
                         # A cold model can load after earlier segments were
@@ -1821,6 +2139,21 @@ async def dub_generate(job_id: str, req: DubRequest):
                     all_segment_wavs.append(
                         _store_mix_wav(seg.start, seg.end, audio_tensor, backend.sample_rate, f"mix_{seg_id}")
                     )
+                ready = await _ready(i, seg_id, all_segment_wavs[-1][2])
+                if ready:
+                    yield ready
+                # Check natural speech immediately, before synthesizing the rest
+                # of a long video. The valid take is already checkpointed.
+                if strategy == "concise" and not flexible_timing and not req.auto_fit_overflow:
+                    effective_end = seg.end + max(0.0, float(req.overflow_budget_s or 0.0))
+                    if i + 1 < total:
+                        gap = req.segments[i + 1].start - seg.end
+                        if gap > GAP_OVERFLOW_BUFFER_S:
+                            effective_end += min(gap - GAP_OVERFLOW_BUFFER_S, GAP_OVERFLOW_MAX_S)
+                    spoken = trim_speech_padding(audio_tensor, backend.sample_rate)
+                    if spoken.shape[-1] > int(max(0, effective_end - seg.start) * backend.sample_rate):
+                        yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_id, 'error_code': 'dub_timing_overflow', 'error': 'The speech does not fit its time slot. Shorten the text or adjust the timing.'})}\n\n"
+                        return
                 try:
                     del audio_tensor
                 except Exception:  # noqa: BLE001
@@ -1858,9 +2191,11 @@ async def dub_generate(job_id: str, req: DubRequest):
                 )
                 return
 
+        if planning:
+            return
         _t_loop_end = time.perf_counter()
 
-        yield f"data: {json.dumps({'type': 'assembling'})}\n\n"
+        yield f"data: {json.dumps({'type': 'assembling', 'speech_saved': checkpoints.saved, 'speech_reused': checkpoints.reused})}\n\n"
 
         # ── Batch metadata phase ──
         # Per-segment WAVs were staged during the loop to keep RAM bounded and
@@ -1895,7 +2230,17 @@ async def dub_generate(job_id: str, req: DubRequest):
         fit_plan = None  # smart_fit only — services.fit_planner.FitPlan
         orig_total_dur = float(job.get("duration") or 0.0)
 
-        if strategy == "stretch_video":
+        subtitle_layout = []
+        if flexible_timing:
+            from services.subtitle_audio import bounded_audio_layout
+            # Validate windows before allocating the mix. Durations are measured
+            # after trimming speech padding in the mix loop, never from raw WAV sizes.
+            subtitle_layout, total_duration = bounded_audio_layout(
+                [(e[0], e[1]) for e in all_segment_wavs], [0.0] * len(all_segment_wavs), orig_total_dur,
+            )
+            import math
+            total_samples = int(math.ceil(total_duration * sr))
+        elif strategy == "stretch_video":
             cursor = 0.0
             # Pull each slot's sample count first, then lay the slots end to end.
             counts = [_entry_num_samples(e) for e in all_segment_wavs]
@@ -1959,14 +2304,20 @@ async def dub_generate(job_id: str, req: DubRequest):
             fit_plan = plan_fit(plan_segments, natural_durations, orig_total_dur, fit_params)
             total_samples = int(fit_plan.total_duration * sr)
         else:
-            total_samples = int(orig_total_dur * sr)
+            timeline = orig_total_dur
+            if timeline <= 0:
+                # No recorded duration: never publish an empty track. Speech
+                # may use the per-job slip budget after the last cue.
+                timeline = max((float(e[1]) for e in all_segment_wavs), default=0.0) + max(
+                    0.0, float(req.overflow_budget_s or 0.0))
+            total_samples = int(timeline * sr)
 
         # smart_fit: cue times for the fitted timeline, computed from the
         # ACTUAL stretched/trimmed sample positions in the mix loop below —
         # not from the plan — so subtitles land exactly on the audio.
         fitted_cues: list[dict] = []
 
-        track_path = os.path.join(DUB_DIR, job_id, f"dubbed_{lang_code}.wav")
+        track_path = _track_path(job_id, lang_code)
         import gc
 
         import numpy as np
@@ -1999,12 +2350,12 @@ async def dub_generate(job_id: str, req: DubRequest):
                     wav = _load_entry_wav((start, end, wav_path, sr), sr)
                 except Exception as err:  # noqa: BLE001
                     logger.error("could not read speech for segment %s: %s", i, err)
-                    yield f"data: {json.dumps({'type': 'error', 'segment': i, 'error_code': 'dub_speech_missing', 'error': 'A speech segment could not be read. Regenerate it and try again.'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_order[i], 'error_code': 'dub_speech_missing', 'error': 'A speech segment could not be read. Regenerate it and try again.'})}\n\n"
                     return
 
                 if seg_req is not None and spoken_texts[i].strip():
                     if _speech_unusable(wav):
-                        yield f"data: {json.dumps({'type': 'error', 'segment': i, 'error_code': 'dub_speech_missing', 'error': 'A speech segment is empty or silent. Regenerate it and try again.'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_order[i], 'error_code': 'dub_speech_missing', 'error': 'A speech segment is empty or silent. Regenerate it and try again.'})}\n\n"
                         return
                     wav = trim_speech_padding(wav, sr)
 
@@ -2015,7 +2366,26 @@ async def dub_generate(job_id: str, req: DubRequest):
                 natural_dur = wl / sr if wl else 0.0
                 orig_dur = max(0, end - start)
 
-                if strategy == "stretch_video":
+                if flexible_timing:
+                    # Every block owns its original SRT window. Speed fitting
+                    # cannot borrow the following gap or move the next onset.
+                    place_at = start
+                    slot_samples = max(1, int(end * sr) - int(start * sr))
+                    target_samples = min(wl, slot_samples)
+                    rate = wl / target_samples if target_samples else 1.0
+                    if wl > slot_samples:
+                        adjusted = await _pitch_preserving_stretch(adjusted, slot_samples, sr)
+                        wl = int(adjusted.shape[-1])
+                    if wl > slot_samples:
+                        yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_order[i], 'error_code': 'dub_timing_overflow', 'error': 'Audio fitting exceeded its subtitle window. Regenerate only this block.'})}\n\n"
+                        return
+                    speech_end = place_at + wl / sr
+                    fit_status.append({"status": "fits", "overflow_s": 0.0,
+                                       "audio_rate": round(rate, 6), "auto_adjusted": rate > 1.0,
+                                       "placed_start": round(place_at, 4), "placed_end": round(speech_end, 4),
+                                       "drift_s": 0.0, "timing_version": 2,
+                                       "window_start": start, "window_end": end})
+                elif strategy == "stretch_video":
                     place_at, _ = new_layout[i]
                     fit_status.append({
                         "status": "video_stretched",
@@ -2024,25 +2394,35 @@ async def dub_generate(job_id: str, req: DubRequest):
                 elif strategy == "smart_fit":
                     planned = fit_plan.segments[i]
                     place_at = planned.new_start
-                    if abs(planned.audio_rate - 1.0) > 1e-6 and wl > 0:
-                        target = max(1, round(wl / planned.audio_rate))
-                        try:
-                            adjusted = await _pitch_preserving_stretch(adjusted, target, sr)
-                        except Exception as err:  # noqa: BLE001
-                            logger.warning("pitch-preserving stretch failed (%s); using linear resize", err)
-                            adjusted = _linear_resize(adjusted, target)
-                        wl = adjusted.shape[-1]
                     planned_slot = int(max(0, planned.new_end - planned.new_start) * sr)
+                    target = max(1, round(wl / planned.audio_rate)) if wl else 0
+                    auto_adjusted = bool(req.auto_fit_overflow and planned_slot > 0 and target > planned_slot + int(sr * 0.02))
+                    if auto_adjusted:
+                        target = planned_slot
+                    actual_rate = wl / target if target else 1.0
+                    if target > 0 and target != wl:
+                        if auto_adjusted:
+                            # Fit once from the full take; never resample twice
+                            # or discard its tail to rescue a timing overflow.
+                            adjusted = await _pitch_preserving_stretch(adjusted, target, sr)
+                        else:
+                            try:
+                                adjusted = await _pitch_preserving_stretch(adjusted, target, sr)
+                            except Exception as err:  # noqa: BLE001
+                                logger.warning("pitch-preserving stretch failed (%s); using linear resize", err)
+                                adjusted = _linear_resize(adjusted, target)
+                        wl = adjusted.shape[-1]
                     if planned_slot > 0 and wl > planned_slot + int(sr * 0.02):
-                        yield f"data: {json.dumps({'type': 'error', 'segment': i, 'error_code': 'dub_timing_overflow', 'error': 'The speech is longer than the fitting limits allow. Shorten the translation or relax the caps.'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_order[i], 'error_code': 'dub_timing_overflow', 'error': 'The speech is longer than the fitting limits allow. Shorten the translation or relax the caps.'})}\n\n"
                         return
                     extras = (
-                        ("audio_rate", planned.audio_rate, abs(planned.audio_rate - 1.0) > 1e-6),
+                        ("audio_rate", actual_rate, abs(actual_rate - 1.0) > 1e-6),
                         ("video_ratio", planned.video_ratio, planned.video_ratio > 1.0 + 1e-6),
                         ("overflow_s", planned.overflow_s, planned.overflow_s > 0),
                     )
                     fit_status.append(
-                        {"status": planned.status,
+                        {"status": "fits" if auto_adjusted else planned.status,
+                         "auto_adjusted": auto_adjusted,
                          **{key: round(val, 3) for key, val, wanted in extras if wanted}}
                     )
                     fitted_cues.append({
@@ -2058,11 +2438,36 @@ async def dub_generate(job_id: str, req: DubRequest):
                         if gap > GAP_OVERFLOW_BUFFER_S:
                             effective_end += min(gap - GAP_OVERFLOW_BUFFER_S, GAP_OVERFLOW_MAX_S)
                     effective_end += overflow_budget_s
+                    if req.auto_fit_overflow:
+                        # Rescue stops at the source end and the next onset,
+                        # but always keeps at least this cue's own window:
+                        # an unknown duration or an overlapping next cue must
+                        # never leave an empty slot that skips the fit.
+                        if i + 1 < len(all_segment_wavs):
+                            effective_end = min(effective_end, all_segment_wavs[i + 1][0])
+                        effective_end = max(effective_end, end)
+                        # Nothing past a known source end is played: fit
+                        # there (cues starting after it are refused upfront).
+                        if orig_total_dur > 0:
+                            effective_end = min(effective_end, orig_total_dur)
                     slot_samples = int(max(0, effective_end - start) * sr)
-                    if slot_samples > 0 and wl > slot_samples:
-                        yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_order[i], 'error_code': 'dub_timing_overflow', 'error': 'The speech does not fit its time slot. Shorten the text or adjust the timing.'})}\n\n"
+                    if wl > 0 and slot_samples <= 0:
+                        # No playable sample to fit into: never report "fits"
+                        # and then mix the unfitted speech.
+                        yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_order[i], 'error_code': 'dub_timing_overflow', 'error': 'This line has no time to play in. Lengthen its subtitle or move it earlier.'})}\n\n"
                         return
-                    fit_status.append({"status": "fits"})
+                    if slot_samples > 0 and wl > slot_samples:
+                        if req.auto_fit_overflow:
+                            rate = wl / slot_samples
+                            adjusted = await _pitch_preserving_stretch(adjusted, slot_samples, sr)
+                            wl = adjusted.shape[-1]
+                            fit_status.append({"status": "fits", "auto_adjusted": True,
+                                               "audio_rate": round(rate, 3), "compression_applied": True})
+                        else:
+                            yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_order[i], 'error_code': 'dub_timing_overflow', 'error': 'The speech does not fit its time slot. Shorten the text or adjust the timing.'})}\n\n"
+                            return
+                    else:
+                        fit_status.append({"status": "fits"})
                 else:
                     place_at = start
                     slot_samples = int(max(0, end - start) * sr)
@@ -2224,6 +2629,10 @@ async def dub_generate(job_id: str, req: DubRequest):
                 job.setdefault("seg_wav_kind_by_lang", {})[lang_code] = _kind
                 job["seg_wav_kind"] = _kind
                 job["seg_order"] = seg_order
+                job.setdefault("seg_order_by_lang", {})[lang_code] = seg_order
+                if strategy == "narration":
+                    for row, status in zip(job["narration_scripts"][lang_code]["blocks"], fit_status):
+                        row["fit_status"] = status
                 _save_job(job_id, job)
         if blocked is not None:
             yield blocked
@@ -2240,7 +2649,29 @@ async def dub_generate(job_id: str, req: DubRequest):
             f" regen={len(regen_only)}" if regen_only is not None else "",
         )
 
-        yield f"data: {json.dumps({'type': 'done', 'segments_processed': total, 'language_code': lang_code, 'tracks': list(job['dubbed_tracks'].keys()), 'sync_scores': sync_scores, 'fit_status': fit_status, 'timing_strategy': strategy, 'seg_hashes': job.get('seg_hashes', {}), 'seg_num_step': job.get('seg_num_step', {})})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'source_duration': orig_total_dur, 'segments_processed': total, 'language_code': lang_code, 'tracks': list(job['dubbed_tracks'].keys()), 'sync_scores': sync_scores, 'fit_status': fit_status, 'timing_strategy': strategy, 'seg_hashes': job.get('seg_hashes', {}), 'seg_num_step': job.get('seg_num_step', {})})}\n\n"
+
+    if planning:
+        rows = []
+        # Read-only inspection uses scratch space outside the job and never
+        # submits a synthesis task, publishes speech, or writes job metadata.
+        with voice_leases.VoiceFileLease() as lease, tempfile.TemporaryDirectory(prefix="dub-plan-") as scratch:
+            async with contextlib.aclosing(_render("plan_" + uuid.uuid4().hex, lease, scratch)) as events:
+                async for event in events:
+                    payload = json.loads(event[6:])
+                    if payload.get("type") == "error":
+                        raise HTTPException(status_code=409, detail=payload.get("error", "Could not inspect saved audio"))
+                    if payload.get("type") == "plan_segment":
+                        rows.append({"id": payload["segment_id"], "action": payload["action"]})
+                        if payload.get("issue"):
+                            issues.append({"code": payload["issue"], "segment": payload["segment"],
+                                           "cue": payload["segment"] + 1, "segment_id": payload["segment_id"]})
+        if source_segments_revision(job) != admitted_rev:
+            raise HTTPException(status_code=409, detail=_SOURCE_CHANGED_MESSAGE)
+        return {"total": len(req.segments), "synthesize": sum(row["action"] == "synthesize" for row in rows),
+                "reuse": sum(row["action"] == "reuse" for row in rows),
+                "silence": sum(row["action"] == "silence" for row in rows), "segments": rows,
+                "forced": len(req.regen_only or []), "language_code": lang_code, "issues": issues}
 
     task_id = f"dub_{job_id}_{int(time.time())}"
     await task_manager.add_task(task_id, "dub_generate", _stream, task_id)

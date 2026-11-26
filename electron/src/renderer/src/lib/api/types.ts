@@ -41,6 +41,8 @@ export interface Profile {
 export interface HistoryItem {
   id: string;
   text: string;
+  /** The list response cut `text`; fetch `/history/{id}` for the whole script. */
+  text_truncated?: boolean;
   mode: string; // 'clone' | 'design' | ...
   language: string | null;
   instruct: string | null;

@@ -1,5 +1,6 @@
 import { SaveTakeProfile } from './save-take-profile';
 import { LockVoice } from './lock-voice';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AudioLinesIcon,
@@ -15,6 +16,7 @@ import { ProfileAvatar } from '@/components/profile-avatar';
 import { SaveAudioButton } from '@/components/save-audio-button';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { audioMp3Url, audioUrl } from '@/lib/api/client';
+import { fullTake, getHistoryItem } from '@/lib/api/history';
 import type { HistoryItem } from '@/lib/api/types';
 import { reuseTake, takeSettings } from '@/lib/store/takes';
 import { useGenerateClone } from '@/hooks/use-generate';
@@ -24,6 +26,7 @@ import { openTake } from '@/lib/store/takes';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { languageOptions } from '@/lib/language-options';
 import { formatRelative, formatSeconds } from './format';
+import { reuseWithFeedback } from './reuse-feedback';
 
 const NUMERIC_SETTINGS = [
   ['steps', 'clone.steps'],
@@ -47,6 +50,22 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
   const navigate = useNavigate();
   const { isGenerating } = useGenerateClone();
   const settings = takeSettings(item);
+  // The list clips book-length scripts; the detail view loads the whole one (#4483).
+  const [fullText, setFullText] = useState<string | null>(null);
+  const [fullTextFailed, setFullTextFailed] = useState(false);
+  const [fullTextAttempt, setFullTextAttempt] = useState(0);
+  useEffect(() => {
+    setFullText(null);
+    setFullTextFailed(false);
+    if (!item.text_truncated) return;
+    let live = true;
+    getHistoryItem(item.id)
+      .then((full) => live && setFullText(full.text))
+      .catch(() => live && setFullTextFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [item.id, item.text_truncated, fullTextAttempt]);
   // The composer's language drives the next take; this take keeps the one it used.
   const composerLanguage = useCloneSetting('language');
   const languageLabel = (value: string | null | undefined) =>
@@ -62,16 +81,16 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
     settings.duration !== undefined ||
     settings.denoise !== undefined ||
     settings.postprocess !== undefined;
-  const reuse = async () => {
+  const reuse = () => reuseWithFeedback(reuseNow, t);
+  const reuseNow = async () => {
     if (isDesign) {
-      writeDraft(designDraftFromTake(item));
+      writeDraft(designDraftFromTake(await fullTake(item)));
       setCloneSetting('language', item.language || 'Auto');
       openTake(null);
       await navigate({ to: '/design' });
       return;
     }
-    await reuseTake(item);
-    await navigate({ to: '/clone' });
+    if (await reuseTake(item)) await navigate({ to: '/clone' });
   };
   return (
     <div className="flex flex-col gap-5">
@@ -107,8 +126,16 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">{t('clone.text_label')}</h3>
         <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
-          {item.text}
+          {fullText ?? item.text}
         </p>
+        {fullTextFailed ? (
+          <div role="alert" className="flex items-center justify-between gap-3 text-sm text-destructive">
+            <span>{t('clone.history_full_text_failed')}</span>
+            <Button size="sm" variant="outline" onClick={() => setFullTextAttempt((n) => n + 1)}>
+              {t('common.retry')}
+            </Button>
+          </div>
+        ) : null}
       </div>
       <dl className="space-y-2 text-sm">
         <div className="flex items-start justify-between gap-4">

@@ -106,13 +106,16 @@ def test_full_dub_uses_one_saved_dictionary_snapshot_for_keys_and_inference(
 
         monkeypatch.setattr(backend, "generate", generate_one)
 
+    # Distinct inputs require both inferences even with content-addressed
+    # speech reuse, so the second still proves the dictionary snapshot is fixed.
+    texts = ["cats [[cats|cats]]", "cats again"]
     segments = [dict(start=i * 2, end=(i + 1) * 2,
-                     text="cats [[cats|cats]]", profile_id="pron-voice") for i in range(2)]
+                     text=text, profile_id="pron-voice") for i, text in enumerate(texts)]
     events = dub.run(segments=segments, segment_ids=["a", "b"], language="English")
     assert any(event["type"] == "done" for event in events), events
     actual = batches[0] if native else [text for text, _ in fake_engine.calls]
-    assert actual == ["felines cats"] * 2
-    assert keyed_texts and set(keyed_texts) == {"felines cats"}
+    assert actual == ["felines cats", "felines again"]
+    assert keyed_texts and set(keyed_texts) == {"felines cats", "felines again"}
     assert len(loaded_on) == 1 and loaded_on[0] != threading.get_ident()
     if native:
         assert not fake_engine.calls  # no single-row fallback hidden by silence
@@ -124,8 +127,8 @@ def test_full_dub_uses_one_saved_dictionary_snapshot_for_keys_and_inference(
     assert any(event["type"] == "done" for event in events), events
     assert len(loaded_on) == 2  # the next render sees the edited saved rows
     actual = batches[0] if native else [text for text, _ in fake_engine.calls]
-    assert actual == ["puppies cats"] * 2
-    assert keyed_texts and set(keyed_texts) == {"puppies cats"}
+    assert actual == ["puppies cats", "puppies again"]
+    assert keyed_texts and set(keyed_texts) == {"puppies cats", "puppies again"}
 
 
 def test_dub_preview_uses_saved_voice_entries_and_inline_precedence(
