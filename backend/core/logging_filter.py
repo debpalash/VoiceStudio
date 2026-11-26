@@ -28,9 +28,10 @@ _HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
 _TRACEBACK_FORMATTER = logging.Formatter()
 
 # Uvicorn logs an unhandled request exception, with its traceback, on
-# `uvicorn.error`, whose handlers it configures itself and which does not
-# propagate to the root handlers. A filter on the logger survives that config.
-_UVICORN_ERROR_LOGGERS = ("uvicorn.error",)
+# `uvicorn.error`, and every request line, query string included, on
+# `uvicorn.access`. It configures their handlers itself and they do not
+# propagate to the root handlers; a filter on the logger survives that config.
+_UVICORN_ERROR_LOGGERS = ("uvicorn.error", "uvicorn.access")
 
 
 def _redact(text: str) -> str:
@@ -43,25 +44,12 @@ class HFTokenRedactor(logging.Filter):
     the formatted traceback before the formatter sees them."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        # Rewrite the format string itself if it's a str.
         try:
-            if isinstance(record.msg, str):
-                record.msg = _redact(record.msg)
-
-            # Rewrite per-argument so the formatted final message also
-            # comes out clean. logger.info("token=%s", tok).
-            if record.args:
-                if isinstance(record.args, tuple):
-                    new_args = tuple(
-                        _redact(a) if isinstance(a, str) else a
-                        for a in record.args
-                    )
-                    record.args = new_args
-                elif isinstance(record.args, dict):
-                    record.args = {
-                        k: (_redact(v) if isinstance(v, str) else v)
-                        for k, v in record.args.items()
-                    }
+            if not record.args:
+                if isinstance(record.msg, str):
+                    record.msg = _redact(record.msg)
+            else:
+                self._redact_args(record)
 
             # A traceback embeds the exception message, which can carry the
             # request URL (`RuntimeError(str(request.url))`). Formatters reuse
@@ -77,6 +65,36 @@ class HFTokenRedactor(logging.Filter):
             # erring on the side of the log being noisy, not silent.
             pass
         return True
+
+
+    @staticmethod
+    def _redact_args(record: logging.LogRecord) -> None:
+        """Scrub a record that is formatted from a template and arguments.
+
+        Redacting the template itself could turn a placeholder into the marker
+        (`?token=%(tok)s`) and break formatting, so the arguments are scrubbed
+        one by one, which keeps them for formatters that read them (Uvicorn's
+        access line, the routine-health filter). If the rendered line still
+        carries a credential, because the template held one (`?pin=%s` with
+        the PIN as the argument), the record collapses to the scrubbed line.
+        A record that cannot be rendered never keeps its raw arguments.
+        """
+        if isinstance(record.args, tuple):
+            record.args = tuple(_redact(a) if isinstance(a, str) else a for a in record.args)
+        elif isinstance(record.args, dict):
+            record.args = {
+                k: (_redact(v) if isinstance(v, str) else v) for k, v in record.args.items()
+            }
+        if isinstance(record.msg, str):
+            record.msg = _HF_TOKEN_RE.sub(REDACTED, record.msg)
+        try:
+            rendered = record.getMessage()
+        except Exception:
+            record.msg, record.args = _redact(str(record.msg)), None
+            return
+        cleaned = _redact(rendered)
+        if cleaned != rendered:
+            record.msg, record.args = cleaned, None
 
 
 class RoutineHealthAccessFilter(logging.Filter):
