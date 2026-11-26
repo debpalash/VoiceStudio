@@ -10,7 +10,8 @@ const PREFERENCES_KEY = 'voicestudio.dub.input-options.v1';
 function readPreferences(): DubInputOptions {
   try {
     const saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY) || '{}');
-    return { separateBackground: saved.separateBackground === true };
+    // Keep the background unless the user chose voice only (the backend default too).
+    return { separateBackground: saved.separateBackground !== false };
   } catch {
     return {};
   }
@@ -65,7 +66,7 @@ export async function submitDubInput(
   try {
     const accepted = selected.media
       ? await onFile(selected.media, selected.captions, selected.profileId, {
-          separateBackground: selected.separateBackground === true,
+          separateBackground: selected.separateBackground !== false,
           subtitlesInTarget: selected.subtitlesInTarget === true,
           narrationWanted: selected.narrationWanted === true,
         })

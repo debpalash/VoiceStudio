@@ -2,8 +2,9 @@
 
 ## Prepare media and subtitles before starting
 
-Local-file preparation offers **Keep music and ambience**, initially off and
-remembered for later uploads. Off skips both Demucs and its HQ stereo extraction;
+Local-file preparation offers **Keep music and ambience**, initially on (as
+before) and remembered for later uploads. Choosing voice only skips both Demucs
+and its HQ stereo extraction;
 the dub replaces the original voice without a background bed. API callers that
 omit `separate_background` keep the existing separation default. Cache identity
 includes the separation choice so stems cannot leak between modes. URL ingest

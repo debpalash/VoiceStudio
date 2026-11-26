@@ -194,7 +194,11 @@ export function DubSourcePanel({
       <div>
         <dt className="text-muted-foreground">{t('dub.keep_background')}</dt>
         <dd>
-          {t(media && separateBackground ? 'dub.flow_background_yes' : 'dub.flow_background_no')}
+          {t(
+            media && separateBackground !== false
+              ? 'dub.flow_background_yes'
+              : 'dub.flow_background_no',
+          )}
         </dd>
       </div>
       <div>
@@ -386,7 +390,7 @@ export function DubSourcePanel({
               {option(
                 'background',
                 false,
-                !separateBackground,
+                separateBackground === false,
                 t('dub.flow_background_no'),
                 t('dub.keep_background_hint'),
                 () => setDubInputSelection({ separateBackground: false }),
@@ -394,7 +398,7 @@ export function DubSourcePanel({
               {option(
                 'background',
                 true,
-                separateBackground === true,
+                separateBackground !== false,
                 t('dub.flow_background_yes'),
                 t('dub.flow_background_cost'),
                 () => setDubInputSelection({ separateBackground: true }),
@@ -460,7 +464,7 @@ export function DubSourcePanel({
               {submitting && <CheckIcon />}
               {t(
                 step === 5
-                  ? captions && !separateBackground
+                  ? captions && (!media || separateBackground === false)
                     ? 'dub.flow_import'
                     : 'dub.prepare_project'
                   : step === 4

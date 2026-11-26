@@ -62,16 +62,39 @@ it('stages video and target SRT, explains skipped work, then imports without req
   toSummary();
   expect(screen.getByText('dub.skip_asr_hint')).toBeTruthy();
   expect(screen.getByText('dub.srt_target_hint')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'dub.flow_import' }));
+  // Media keeps its music and ambience unless the user explicitly chooses voice only.
+  expect(screen.getByText('dub.flow_background_yes')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'dub.prepare_project' }));
   await waitFor(() =>
     expect(onFile).toHaveBeenCalledWith(media, srt, '', {
-      separateBackground: false,
+      separateBackground: true,
       subtitlesInTarget: true,
       narrationWanted: false,
     }),
   );
   expect(dubInputSelection.state.media).toBe(media);
   expect(dubInputSelection.state.captions).toBe(srt);
+});
+it('skips background separation only after an explicit voice-only choice', async () => {
+  const { container, onFile } = setup();
+  const media = pick(container, 'media');
+  const srt = pick(container, 'srt');
+  fireEvent.click(screen.getByRole('radio', { name: /dub.flow_srt_original/ }));
+  next();
+  expect(
+    (screen.getByRole('radio', { name: /dub.flow_background_yes/ }) as HTMLInputElement).checked,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('radio', { name: /dub.flow_background_no/ }));
+  next();
+  fireEvent.click(screen.getByRole('button', { name: 'dub.flow_summary' }));
+  fireEvent.click(screen.getByRole('button', { name: 'dub.flow_import' }));
+  await waitFor(() =>
+    expect(onFile).toHaveBeenCalledWith(media, srt, '', {
+      separateBackground: false,
+      subtitlesInTarget: false,
+      narrationWanted: false,
+    }),
+  );
 });
 it('requires an explicit SRT decision before preparation', () => {
   const { container, onFile } = setup();
