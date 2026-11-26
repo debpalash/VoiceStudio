@@ -1612,7 +1612,9 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                                 args["duration"], args["num_step"], args["guidance_scale"],
                                 args["speed"], args["profile_id"], args["effect_preset"],
                                 prepare_only=True)
-                recovered = checkpoints.read(prepared) if reuse_checkpoints and str(seg_id) not in forced_speech_ids else None
+                # Verifying a take reads and hashes the whole WAV: off the loop.
+                recovered = (await _run_journal_io(checkpoints.read, prepared)
+                             if reuse_checkpoints and str(seg_id) not in forced_speech_ids else None)
                 action = "reuse" if recovered is not None else "synthesize"
                 del recovered
                 if action == "synthesize" and journal is not None:
