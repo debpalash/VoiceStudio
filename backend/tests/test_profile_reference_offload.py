@@ -165,3 +165,17 @@ def test_clone_reference_timeout_does_not_restore_while_asr_still_runs(
     assert result == ""
     assert "restore" not in snapshot
     assert calls == ["offload", "transcribe-start", "transcribe-end", "restore"]
+
+
+def test_clone_reference_skips_asr_when_release_refused(monkeypatch, tmp_path):
+    audio = str(tmp_path / "reference.wav")
+    calls = []
+
+    monkeypatch.setattr(mm, "offload_tts_for_asr", lambda **k: False)
+    monkeypatch.setattr(mm, "restore_tts_after_asr", lambda: calls.append("restore"))
+    _patch_transcribe(
+        monkeypatch, lambda p, **k: calls.append("transcribe") or "x"
+    )
+
+    assert asyncio.run(profiles._auto_transcribe_reference(audio)) == ""
+    assert calls == []

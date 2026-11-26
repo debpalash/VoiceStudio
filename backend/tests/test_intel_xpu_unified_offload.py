@@ -282,7 +282,7 @@ def test_integrated_intel_arc_offload_waits_for_exclusive_placement(monkeypatch)
         mm, "_offload_unified_memory", lambda **_k: events.append("unload") or True
     )
 
-    mm.offload_tts_for_asr(force_unified_release=True)
+    mm.offload_tts_for_asr(force_unified_release=False)
 
     assert events == ["acquire", "unload", "release"]
 
@@ -359,3 +359,62 @@ def test_forced_release_does_not_force_on_non_integrated_unified(monkeypatch):
 
     assert seen == [{"force": False}]
 
+
+
+# ── Forced release holds placement for the whole reference ASR ───────
+
+
+@pytest.fixture
+def _clean_hold(monkeypatch):
+    monkeypatch.setattr(mm, "_unified_asr_hold", False)
+    yield
+    mm._end_unified_asr_hold() if mm._unified_asr_hold else None
+
+
+def test_forced_release_holds_placement_until_restore(monkeypatch, _clean_hold):
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", object())
+    events = []
+    monkeypatch.setattr(
+        mm, "_acquire_exclusive_placement", lambda _w: events.append("acquire") or True
+    )
+    monkeypatch.setattr(
+        mm, "_release_exclusive_placement", lambda: events.append("release")
+    )
+    monkeypatch.setattr(
+        mm, "_offload_unified_memory", lambda **_k: events.append("unload") or True
+    )
+
+    assert mm.offload_tts_for_asr(force_unified_release=True) is True
+    assert events == ["acquire", "unload"]  # still held during ASR
+    monkeypatch.setattr(mm, "model", None)  # the release unloaded it
+    mm.restore_tts_after_asr()
+    assert events == ["acquire", "unload", "release"]
+
+
+def test_refused_forced_release_returns_false(monkeypatch, _clean_hold):
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", object())
+    monkeypatch.setattr(mm, "_acquire_exclusive_placement", lambda _w: False)
+    assert mm.offload_tts_for_asr(force_unified_release=True) is False
+
+
+def test_cold_tts_load_waits_for_reference_asr(monkeypatch, _clean_hold):
+    import threading, time
+
+    monkeypatch.setattr(mm, "_unified_asr_hold", True)
+    done = threading.Event()
+    t = threading.Thread(target=lambda: (mm._wait_unified_asr_hold(5), done.set()))
+    t.start()
+    time.sleep(0.2)
+    assert not done.is_set()  # load is blocked behind the ASR hold
+    monkeypatch.setattr(mm, "_placement_exclusive", True)
+    mm._end_unified_asr_hold()
+    t.join(2)
+    assert done.is_set()
+    assert mm._placement_exclusive is False
+
+
+def test_wait_is_bounded(monkeypatch, _clean_hold):
+    monkeypatch.setattr(mm, "_unified_asr_hold", True)
+    mm._wait_unified_asr_hold(0.05)  # returns instead of hanging

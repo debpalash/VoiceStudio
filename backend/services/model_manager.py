@@ -3368,11 +3368,15 @@ async def get_model(*, allow_load: bool = True):
         # with the preload/`_model_lock` route, so a generate cannot enter the
         # native load while a background preload still owns it.
         if model is None:
+            _wait_unified_asr_hold()
+        if model is None:
             from core.run_sentinel import touch_activity
             touch_activity("model_load", "omnivoice-tts")
             model = _load_model_exclusive()
         return model
 
+    if _unified_asr_hold:
+        await asyncio.get_running_loop().run_in_executor(None, _wait_unified_asr_hold)
     async with _model_lock:
         if model is None:
             # Crash forensics (#1164): a cold TTS model load is where memory
@@ -4104,7 +4108,7 @@ def _offload_unified_memory(*, force: bool = False) -> bool:
         return False
 
 
-def offload_tts_for_asr(*, force_unified_release: bool = False):
+def offload_tts_for_asr(*, force_unified_release: bool = False) -> bool:
     """Move TTS model to CPU to free VRAM for ASR (WhisperX large-v3).
 
     On a 7-8 GB laptop GPU the TTS model (~2.4 GB) and WhisperX large-v3
@@ -4116,11 +4120,16 @@ def offload_tts_for_asr(*, force_unified_release: bool = False):
     releases the model even when the unified-memory headroom would normally
     keep it warm; callers such as the clone-reference path use it when the
     cold ASR load is itself the risk (a trace-less host reset), not just OOM.
+
+    Returns False only when a unified-memory release was refused because a
+    generation is still using the model; callers doing optional ASR should skip
+    it then. A forced release on integrated Arc holds exclusive placement until
+    ``restore_tts_after_asr()`` runs, so callers must always pair the two.
     """
     global model
     torch = _lazy_torch()
     if model is None:
-        return
+        return True
     if not _has_dedicated_vram():
         # UNIFIED MEMORY (Apple Silicon / CPU). Moving the model "to CPU" frees
         # nothing here — it is the same physical RAM — which is why this used to
@@ -4137,31 +4146,44 @@ def offload_tts_for_asr(*, force_unified_release: bool = False):
         # because those machines are not the host-reset case this guards.
         if not _xpu_is_unified_memory():
             _offload_unified_memory(force=False)
-            return
+            return True
         # Integrated Arc: like the dedicated branch, wait for active
         # tts_inference() slots before releasing the model under them.
         if not _acquire_exclusive_placement(_ASR_PLACEMENT_WAIT_S):
             logger.warning(
-                "TTS release for ASR skipped: a generation is still using the model."
+                "TTS release for ASR refused: a generation is still using the model."
             )
-            return
+            return False
+        if not force_unified_release:
+            try:
+                _offload_unified_memory(force=False)
+            finally:
+                _release_exclusive_placement()
+            return True
+        # Forced (clone-reference ASR): keep placement held for the whole ASR
+        # lifetime. restore_tts_after_asr() ends the hold, so a concurrent
+        # generate's cold TTS load waits instead of loading beside WhisperX.
+        global _unified_asr_hold
         try:
-            _offload_unified_memory(force=force_unified_release)
-        finally:
+            _offload_unified_memory(force=True)
+        except BaseException:
             _release_exclusive_placement()
-        return
+            raise
+        with _placement_cond:
+            _unified_asr_hold = True
+        return True
     try:
         # Check if there's enough free VRAM to skip offloading
         if torch.cuda.is_available():
             free_mem = torch.cuda.mem_get_info()[0]
             if free_mem > 8 * 1024 ** 3:  # > 8 GB free → skip offload
-                return
+                return True
     except Exception:
         pass
     m = model
     if not _acquire_exclusive_placement(_ASR_PLACEMENT_WAIT_S):
         logger.warning("TTS offload for ASR skipped: a generation is still using the model.")
-        return
+        return True
     try:
         logger.info("Offloading TTS model to CPU to free VRAM for ASR...")
         _relocate_shared_model(m, "cpu")
@@ -4170,12 +4192,16 @@ def offload_tts_for_asr(*, force_unified_release: bool = False):
         logger.warning("TTS offload failed: %s", e)
     finally:
         _release_exclusive_placement()
+    return True
 
 
 def restore_tts_after_asr():
     """Move TTS model back to the GPU after ASR completes."""
     global model, _ram_offload
     torch = _lazy_torch()
+    # End a forced integrated-Arc reference-ASR hold first: the model is None
+    # after that release, so the early return below would otherwise skip it.
+    _end_unified_asr_hold()
     if model is None:
         return
     if not _has_dedicated_vram():
@@ -4375,6 +4401,35 @@ def _acquire_exclusive_placement(wait_s: float) -> bool:
             _placement_cond.wait(remaining)
         _placement_exclusive = True
         return True
+
+
+# True while a forced integrated-Arc release holds exclusive placement for the
+# lifetime of a reference ASR (see offload_tts_for_asr). Guarded by
+# _placement_cond.
+_unified_asr_hold = False
+# Bound on how long a cold TTS load waits for that ASR to finish.
+_UNIFIED_ASR_HOLD_WAIT_S = 300.0
+
+
+def _end_unified_asr_hold() -> None:
+    global _unified_asr_hold
+    with _placement_cond:
+        held, _unified_asr_hold = _unified_asr_hold, False
+    if held:
+        _release_exclusive_placement()
+
+
+def _wait_unified_asr_hold(timeout: float = _UNIFIED_ASR_HOLD_WAIT_S) -> None:
+    """Block a cold TTS load while a forced reference ASR holds the device.
+    Bounded; on timeout the load proceeds as it did before the hold existed."""
+    deadline = time.monotonic() + timeout
+    with _placement_cond:
+        while _unified_asr_hold:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                logger.warning("TTS load proceeding: reference ASR hold timed out.")
+                return
+            _placement_cond.wait(remaining)
 
 
 def _release_exclusive_placement() -> None:

@@ -168,6 +168,11 @@ Whisper ASR run on the card. Engines that install their own PyTorch (CosyVoice,
 VoxCPM2, IndexTTS and similar) still run on the CPU. Two Windows driver quirks
 are handled for you:
 
+- Integrated Arc (Lunar Lake 130V/140V) is detected through the device
+  property `is_integrated_gpu`, which PyTorch documents from 2.13 (absent from
+  the 2.12 docs). Older `+xpu` builds do not expose it, so VoiceStudio keeps the
+  dedicated-GPU memory path there; upgrade PyTorch to get the unified-memory
+  handling.
 - The Arc driver cannot report free GPU memory. VoiceStudio estimates it as total
   memory minus what PyTorch has reserved, so model loads no longer fail with
   "doesn't support querying the available free memory".

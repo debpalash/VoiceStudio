@@ -98,7 +98,12 @@ async def _auto_transcribe_reference(audio_path: str) -> str:
             # timeout (which only cancels the awaiting task, never the
             # thread) cannot restore TTS to the GPU while ASR still holds
             # memory: the restore runs when transcription actually ends.
-            offload_tts_for_asr(force_unified_release=True)
+            if offload_tts_for_asr(force_unified_release=True) is False:
+                logger.warning(
+                    "reference transcription skipped: the TTS model is in use "
+                    "and could not be released; saving without a transcript"
+                )
+                return ""
             try:
                 return transcribe_reference(audio_path)
             finally:
