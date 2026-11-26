@@ -721,14 +721,20 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
             except Exception as err:  # noqa: BLE001
                 logger.debug("speech preview pruning skipped: %s", type(err).__name__)
 
-        def _ready(index, sid, path):
+        def _save_ready(sid, path):
+            with _dub_jobs_lock:
+                if task_manager.is_cancelled(task_id) or source_segments_revision(job) != admitted_rev:
+                    return None
+                return save_preview(os.path.dirname(dub_seg_path(job_id, "preview")), preview_render, str(sid), path)
+
+        async def _ready(index, sid, path):
             # Independent, immutable files remain playable after failure/cancel;
             # they do not claim that the assembled track has been published.
+            # Where hard links are unavailable the take is copied: off the loop.
             try:
-                with _dub_jobs_lock:
-                    if task_manager.is_cancelled(task_id) or source_segments_revision(job) != admitted_rev:
-                        return None
-                    token = save_preview(os.path.dirname(dub_seg_path(job_id, "preview")), preview_render, str(sid), path)
+                token = await asyncio.to_thread(_save_ready, sid, path)
+                if token is None:
+                    return None
                 return f"data: {json.dumps({'type': 'segment_ready', 'current': index + 1, 'total': total, 'segment': index, 'segment_id': str(sid), 'language_code': lang_code, 'preview_url': f'/dub/speech-preview/{job_id}/{preview_render}/{token}'})}\n\n"
             except OSError as error:
                 logger.warning("could not save speech preview: %s", type(error).__name__)
@@ -1312,7 +1318,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                                 )
                                 _t_cache += time.perf_counter() - _t_reuse
                                 checkpoints.reused += 1
-                                ready = _ready(i, seg_id, seg_wav_path)
+                                ready = await _ready(i, seg_id, seg_wav_path)
                                 if ready:
                                     yield ready
                                 continue
@@ -1335,7 +1341,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                         sync_scores.append(ratio)
                         _t_cache += time.perf_counter() - _t_reuse
                         checkpoints.reused += 1
-                        ready = _ready(i, seg_id, all_segment_wavs[-1][2])
+                        ready = await _ready(i, seg_id, all_segment_wavs[-1][2])
                         if ready:
                             yield ready
                         continue
@@ -2024,7 +2030,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                     all_segment_wavs.append(
                         _store_mix_wav(seg.start, seg.end, audio_tensor, backend.sample_rate, f"mix_{seg_id}")
                     )
-                ready = _ready(i, seg_id, all_segment_wavs[-1][2])
+                ready = await _ready(i, seg_id, all_segment_wavs[-1][2])
                 if ready:
                     yield ready
                 # Check natural speech immediately, before synthesizing the rest
