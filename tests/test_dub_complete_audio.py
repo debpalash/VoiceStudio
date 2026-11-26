@@ -923,3 +923,14 @@ def test_mux_keeps_shortest_unless_a_mapped_track_is_narration():
     tracks = {'fr': {'timing_strategy': 'narration'}, 'es': {'timing_strategy': 'concise'}}
     assert not de._has_narration_audio([tracks['es']])
     assert de._has_narration_audio([tracks['es'], tracks['fr']])
+
+
+def test_fixed_window_shorter_than_a_sample_is_refused(render_dub):
+    from fastapi import HTTPException
+    render_dub.job['subtitle_only'] = True
+    render_dub.job['duration'] = 2.0
+    with pytest.raises(HTTPException) as error:
+        render_dub.run(segments=[dict(start=0, end=1, text='one'), dict(start=1.5, end=1.50001, text='two')],
+                       segment_ids=['a', 'b'], auto_fit_overflow=True)
+    assert [i['code'] for i in error.value.detail['issues']] == ['dub_cue_invalid_window']
+    assert not render_dub.generated

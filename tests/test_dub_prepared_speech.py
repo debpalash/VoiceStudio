@@ -144,3 +144,34 @@ def test_intentional_silence_staging_warning_redacts_error_paths(
     assert "intentional silence for delete" in caplog.text
     assert private_path not in caplog.text
     assert "OSError" in caplog.text
+
+
+def test_saved_takes_do_not_rescan_ahead_for_every_row(
+    spoken_dub, client, fake_engine, saved_pronunciations, monkeypatch,
+):
+    """Each checkpoint hit used to start a prefetch scan over every later row,
+    so a long fully reused dub made quadratically many lookups."""
+    dub, _backend = spoken_dub
+    checkpoints = importlib.import_module("services.dub_speech_checkpoints")
+
+    def generate_batch(_self, texts, **_kwargs):
+        return [torch.ones(1, 24000) * 0.1 for _ in texts]
+
+    monkeypatch.setattr(fake_engine, "generate_batch", generate_batch)
+    rows = 8
+    segments = [dict(start=i, end=i + 1, text=f"line {i}") for i in range(rows)]
+    ids = [f"s{i}" for i in range(rows)]
+    assert any(e["type"] == "done" for e in dub.run(segments=segments, segment_ids=ids, language="English"))
+    for wav in dub.path.glob("seg_en_*.wav"):
+        wav.unlink()
+    lookups = []
+    has = checkpoints.SpeechCheckpoints.has
+
+    def counted(self, prepared):
+        lookups.append(prepared["text"])
+        return has(self, prepared)
+
+    monkeypatch.setattr(checkpoints.SpeechCheckpoints, "has", counted)
+    events = dub.run(segments=segments, segment_ids=ids, language="English")
+    assert any(e["type"] == "done" for e in events), events
+    assert 0 < len(lookups) <= rows

@@ -1774,6 +1774,10 @@ async def _run_dub(requested_job_id: str, req: DubRequest, *, planning: bool = F
                         # A saved take is not batched; its own row reads it
                         # when consumed, so prefetch never holds decoded hits.
                         if await _run_journal_io(checkpoints.has, prepared):
+                            # Its own row reads the take; scanning ahead from
+                            # every hit would make long reused runs quadratic.
+                            if candidate_index == first_index:
+                                return
                             continue
                     # A finished segment recovered from an earlier run is not
                     # re-rendered; the main loop reuses it.
@@ -1781,6 +1785,8 @@ async def _run_dub(requested_job_id: str, req: DubRequest, *, planning: bool = F
                         try:
                             recoverable_key = await _run_journal_io(_resume_key_for, prepared)
                             if recoverable_key and await _run_journal_io(journal.has, candidate_id, recoverable_key):
+                                if candidate_index == first_index:
+                                    return
                                 continue
                         except Exception as err:  # noqa: BLE001
                             logger.debug("dub resume lookup skipped: %s", type(err).__name__)
@@ -2048,6 +2054,10 @@ async def _run_dub(requested_job_id: str, req: DubRequest, *, planning: bool = F
                 _rvc_on = rvc_is_enabled()
                 _from_checkpoint = str(seg_id) in _checkpoint_hits
                 _checkpoint_hits.discard(str(seg_id))
+                if _from_checkpoint:
+                    # Saved takes are keyed by the same model proof as the
+                    # journal, so they share its mixed-weights guard below.
+                    _used_recovery = True
                 _fresh_checkpoint = _fresh_takes.pop(str(seg_id), None)
                 if _rvc_on:
                     seg_wav_path = _staged_seg_path(seg_id)
@@ -2093,7 +2103,7 @@ async def _run_dub(requested_job_id: str, req: DubRequest, *, planning: bool = F
                         # A cache failure never discards usable speech.
                         logger.warning("speech checkpoint skipped for %s: %s", log_safe(seg_id), type(err).__name__)
 
-                if journal is not None and _used_recovery:
+                if _used_recovery:
                     _, _validated_model_fp, _ = await _run_journal_io(_model_folder_fingerprint)
                     if _validated_model_fp is None:
                         # A cold model can load after earlier segments were
@@ -2441,6 +2451,11 @@ async def _run_dub(requested_job_id: str, req: DubRequest, *, planning: bool = F
                         if orig_total_dur > 0:
                             effective_end = min(effective_end, orig_total_dur)
                     slot_samples = int(max(0, effective_end - start) * sr)
+                    if wl > 0 and slot_samples <= 0:
+                        # No playable sample to fit into: never report "fits"
+                        # and then mix the unfitted speech.
+                        yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_order[i], 'error_code': 'dub_timing_overflow', 'error': 'This line has no time to play in. Lengthen its subtitle or move it earlier.'})}\n\n"
+                        return
                     if slot_samples > 0 and wl > slot_samples:
                         if req.auto_fit_overflow:
                             rate = wl / slot_samples

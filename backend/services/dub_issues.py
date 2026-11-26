@@ -15,6 +15,8 @@ import re
 # reported here first, by number.
 _OVERLAP_EPS = 1e-6
 _SOURCE_EPS = 1e-3
+#: A fixed window shorter than this holds no playable sample at any engine rate.
+_MIN_WINDOW_S = 1e-3
 
 
 def uses_fixed_windows(req, *, subtitle_only: bool) -> bool:
@@ -82,6 +84,8 @@ def cue_issues(segments, segment_ids, *, fixed_windows: bool, source_duration: f
             issues.append({**row, "code": "dub_cue_overlap", "overlaps_cue": previous + 1})
         elif source_duration > 0 and (end > source_duration + _SOURCE_EPS or start >= source_duration):
             issues.append({**row, "code": "dub_cue_beyond_media", "media_duration": source_duration})
+        elif end - start < _MIN_WINDOW_S:
+            issues.append({**row, "code": "dub_cue_invalid_window"})
         previous = index
     return issues
 
