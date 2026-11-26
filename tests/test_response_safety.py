@@ -210,7 +210,10 @@ def test_tailscale_command_exception_stays_in_local_log(monkeypatch, caplog):
         result = tailscale._run(["tailscale", "serve"])
 
     assert result == {"ok": False, "error": "tailscale command failed"}
-    assert private in caplog.text
+    # The local log keeps the detail; once the backend's log redactor is
+    # installed, its credentials (the HF token, `TOKEN=`) are scrubbed there too.
+    assert "/home/alice/private/project.py" in caplog.text
+    assert "private-value" not in str(result)
     assert private not in str(result)
 
 
@@ -235,7 +238,8 @@ def test_tailscale_nonzero_output_stays_in_local_log(monkeypatch, caplog):
 
     assert result == {"ok": False, "error": "tailscale command failed"}
     assert "/home/alice" in caplog.text
-    assert "TOKEN=private-value" in caplog.text
+    assert "TOKEN=" in caplog.text
+    assert "private-value" not in str(result)
     assert private not in str(result)
 
 

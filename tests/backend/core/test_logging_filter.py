@@ -169,7 +169,17 @@ def test_redacts_url_credentials_in_message_args_and_traceback(redactor_logger, 
 def test_install_attaches_to_uvicorn_error_logger():
     from core.logging_filter import HFTokenRedactor, install_redaction_filter
 
-    install_redaction_filter()
-    install_redaction_filter()
-    filters = [f for f in logging.getLogger("uvicorn.error").filters if isinstance(f, HFTokenRedactor)]
-    assert len(filters) == 1
+    # install_redaction_filter() also touches the root handlers, which include
+    # pytest's session-wide capture handlers: restore them so the filter does
+    # not leak into later tests' caplog output.
+    owners = [logging.getLogger(), logging.getLogger("uvicorn.error"), *logging.getLogger().handlers]
+    saved = [(owner, list(owner.filters)) for owner in owners]
+    try:
+        install_redaction_filter()
+        install_redaction_filter()
+        uvicorn_error = logging.getLogger("uvicorn.error")
+        filters = [f for f in uvicorn_error.filters if isinstance(f, HFTokenRedactor)]
+        assert len(filters) == 1
+    finally:
+        for owner, filters in saved:
+            owner.filters[:] = filters
