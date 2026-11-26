@@ -73,7 +73,8 @@ def test_a_missing_reference_is_logged(dg, tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="omnivoice.dub"):
         dg.warn_if_ref_missing(gone, job_id="job7", seg_id=42)
     assert "segment 42" in caplog.text, caplog.text
-    assert gone in caplog.text, "the log must name the path that vanished"
+    assert "(speaker1.wav)" in caplog.text, "the log must name the file that vanished"
+    assert str(tmp_path) not in caplog.text, "the log must not carry the user's folders"
     assert "DEFAULT voice" in caplog.text, (
         "the log has to say what the user will actually hear, or it reads as "
         "housekeeping rather than as the explanation for their bug"
@@ -161,10 +162,11 @@ def test_distinct_paths_each_warn_even_under_one_segment_key(dg, tmp_path, caplo
     """
     a = str(tmp_path / "speaker1.wav")
     b = str(tmp_path / "speaker2.wav")
+    # Only the file name is logged; the full path stays the de-duplication key.
     with caplog.at_level(logging.WARNING, logger="omnivoice.dub"):
         dg.warn_if_ref_missing(a, job_id="job7", seg_id="preview")
         dg.warn_if_ref_missing(b, job_id="job7", seg_id="preview")
-    assert a in caplog.text and b in caplog.text, (
+    assert "(speaker1.wav)" in caplog.text and "(speaker2.wav)" in caplog.text, (
         "a second missing reference under the same key was swallowed:\n" + caplog.text
     )
 
@@ -175,7 +177,7 @@ def test_the_same_path_under_one_key_still_warns_once(dg, tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="omnivoice.dub"):
         for _ in range(4):
             dg.warn_if_ref_missing(same, job_id="job7", seg_id="preview")
-    assert caplog.text.count(same) == 1
+    assert caplog.text.count("(speaker1.wav)") == 1
 
 
 def test_the_preview_request_can_carry_a_segment_id(dg):
