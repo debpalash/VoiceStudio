@@ -1149,6 +1149,7 @@
     "guide_complete": "Complete",
     "guide_now": "Now",
     "guide_running": "In progress",
+    "guide_pending": "Pending",
     "guide_continue": "Continue",
     "guide_source": "Prepare source",
     "guide_voice": "Language and voice",

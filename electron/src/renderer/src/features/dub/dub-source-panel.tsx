@@ -63,6 +63,8 @@ export function DubSourcePanel({
   const step = selected.step || 0;
   const [dragging, setDragging] = useState(false);
   const [linkModeJob, setLinkModeJob] = useState<string | null>(null);
+  // A link form opened for one project closes once another project replaces it.
+  const linkMode = Boolean(session.jobId) && linkModeJob === session.jobId;
   const locked = busy || submitting || Boolean(session.recovery);
   const staging = !session.jobId || Boolean(media || captions);
   const sourceName =
@@ -101,7 +103,7 @@ export function DubSourcePanel({
   const linkForm = (
     <DubUrlForm
       disabled={locked || cancelling}
-      autoFocus={Boolean(linkModeJob)}
+      autoFocus={linkMode}
       onCancel={() => setLinkModeJob(null)}
       onSubmit={(url, cookies, fetchSubs) => {
         onUrl(url, cookies, fetchSubs);
@@ -207,6 +209,25 @@ export function DubSourcePanel({
       </div>
     </dl>
   );
+  // Transcription reads the speaker count as it starts, so it is chosen with the
+  // file, before Prepare project, as well as afterwards under source tools.
+  const speakersRow = (
+    <DubFieldRow label={t('dub.num_speakers_label')}>
+      <Input
+        type="number"
+        aria-label={t('dub.num_speakers_label')}
+        min={1}
+        max={20}
+        placeholder={t('dub.num_speakers_auto')}
+        value={session.numSpeakers ?? ''}
+        disabled={locked}
+        onChange={(e) => {
+          const n = Number(e.target.value);
+          setDubProduction({ numSpeakers: n >= 1 && n <= 20 ? n : undefined });
+        }}
+      />
+    </DubFieldRow>
+  );
   return (
     <section
       className={cn(DUB_CARD, 'space-y-3', dragging && 'border-primary/60 bg-primary/5')}
@@ -270,7 +291,7 @@ export function DubSourcePanel({
               </li>
             ))}
           </ol>
-          <hr className="border-border/40" />
+          <hr role="presentation" className="border-border/40" />
           {step === 0 && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">{t('dub.flow_no_processing')}</p>
@@ -358,6 +379,7 @@ export function DubSourcePanel({
                   }}
                 />
               </DubFieldRow>
+              {selected.srtChoice === false && speakersRow}
             </div>
           )}
           {step === 2 && (
@@ -507,14 +529,14 @@ export function DubSourcePanel({
             issue={session.inputIssue}
             disabled={locked}
             removable={removable}
-            linkMode={linkModeJob === session.jobId}
+            linkMode={linkMode}
             confirmRemove={confirmRemove}
             recovering={Boolean(session.recovery)}
             onChangeFile={() => inputRef.current?.click()}
-            onToggleLink={() => setLinkModeJob(linkModeJob ? null : session.jobId)}
+            onToggleLink={() => setLinkModeJob(linkMode ? null : session.jobId)}
             onRemove={onRemove}
           />
-          {linkModeJob && linkForm}
+          {linkMode && linkForm}
           <dl className="space-y-2 text-xs">
             <div>
               <dt className="text-muted-foreground">{t('dub.source_language')}</dt>
@@ -561,20 +583,7 @@ export function DubSourcePanel({
             <div className="mt-3 space-y-2">
               <p className="text-xs text-warning">{t('dub.flow_replace_srt')}</p>
               {subtitleControl}
-              <DubFieldRow label={t('dub.num_speakers_label')}>
-                <Input
-                  type="number"
-                  min={1}
-                  max={20}
-                  placeholder={t('dub.num_speakers_auto')}
-                  value={session.numSpeakers ?? ''}
-                  disabled={locked}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    setDubProduction({ numSpeakers: n >= 1 && n <= 20 ? n : undefined });
-                  }}
-                />
-              </DubFieldRow>
+              {speakersRow}
             </div>
           </details>
         </>

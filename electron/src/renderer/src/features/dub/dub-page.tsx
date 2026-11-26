@@ -1384,133 +1384,137 @@ export function DubPage() {
           </div>
         </SecondarySidebar>
         <section data-slot="dub-transcript" className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <DubProjectGuide
-            session={session}
-            code={code}
-            disabled={busy || Boolean(session.recovery)}
-            audioBlocked={ttsBlocker}
-            staleIds={session.phase === 'done' ? incrementalPlan?.stale : undefined}
-            onSelect={selectGuideStep}
-          />
-          {guide.nextStep === 'text' && code && !busy && (
-            <section
-              data-slot="dub-translation-next"
-              className="shrink-0 border-b bg-primary/5 px-4 py-3 space-y-2"
-            >
-              <p className="text-sm font-medium">
-                {t('dub.guide_text')} · {target}
-              </p>
-              <p className="text-xs text-muted-foreground">{t('dub.narration_need_text')}</p>
-              <Button
-                disabled={
-                  Boolean(session.recovery) || (!translationReady && !selectedTranslationAgent)
-                }
-                onClick={() => void translateTargets()}
+          {/* The guide, its next-step panels and the issue list scroll inside one band
+              that shrinks first, so a short window keeps the timeline and transcript. */}
+          <div data-slot="dub-flow-panels" className="max-h-[45%] min-h-0 shrink overflow-y-auto">
+            <DubProjectGuide
+              session={session}
+              code={code}
+              disabled={busy || Boolean(session.recovery)}
+              audioBlocked={ttsBlocker}
+              staleIds={session.phase === 'done' ? incrementalPlan?.stale : undefined}
+              onSelect={selectGuideStep}
+            />
+            {guide.nextStep === 'text' && code && !busy && (
+              <section
+                data-slot="dub-translation-next"
+                className="shrink-0 border-b bg-primary/5 px-4 py-3 space-y-2"
               >
-                {t('dub.translate_all')} · {target}
-              </Button>
-            </section>
-          )}
-          <DubNarrationPanel
-            onLocate={(id) => {
-              setExpandedSegmentId(id);
-              selectTranscriptSegment(id);
-            }}
-            session={session}
-            code={code}
-            disabled={busy || Boolean(session.recovery)}
-          />
-          {guide.nextStep === 'audio' &&
-            code &&
-            !busy &&
-            !session.recovery &&
-            batchTargets.length <= 1 && (
-              <DubGenerationReview
-                inline
-                open
-                session={session}
-                targets={[{ lang: target, code }]}
-                options={{}}
-                onClose={() => {}}
-                onConfirm={() => void executeGeneration()}
-              />
-            )}
-          {code && guide.audioReady && previewTracks.includes(code) && (
-            <section className="shrink-0 border-b border-emerald-500/20 bg-emerald-500/5 px-4 py-3 space-y-2">
-              <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-                {t('dub.flow_ready')}
-              </p>
-              <p className="text-xs text-muted-foreground">{t('dub.listen_saved_hint')}</p>
-              <Button
-                size="sm"
-                variant={listenComplete ? 'secondary' : 'default'}
-                onClick={() => {
-                  setListenComplete(true);
-                  void completeAudio.current
-                    ?.play()
-                    .catch((error) => toast.error(describeError(error)));
-                }}
-                aria-expanded={listenComplete}
-              >
-                <HeadphonesIcon />
-                {t('dub.listen_complete')} · {code.toUpperCase()}
-              </Button>
-              <Button size="sm" variant="outline" onClick={openExport}>
-                {t('dub.flow_save')}
-              </Button>
-              {(listenComplete || guide.audioReady) && (
-                <>
-                  <DubMediaPreview
-                    playerRef={completeAudio}
-                    kind="audio"
-                    sourceKey="dub-complete"
-                    onCanPlay={applyCompleteSeek}
-                    src={apiPath(
-                      `/dub/download-audio/${job}?lang=${encodeURIComponent(code)}${previewMix}${previewRevision ? `&v=${previewRevision}` : ''}`,
-                    )}
-                  />
-                </>
-              )}
-              {guide.audioReady && (
-                <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={
-                      session.listenedRequestKeys?.[code] ===
-                      dubGenerationKey(session, session.target, code)
-                    }
-                    onChange={(event) => recordDubListened(session, code, event.target.checked)}
-                  />
-                  {t('dub.flow_listened')}
-                </label>
-              )}
-            </section>
-          )}
-          <DubIssuesPanel
-            session={session}
-            disabled={busy || Boolean(session.recovery)}
-            onFocus={(id) => {
-              setExpandedSegmentId(id);
-              selectTranscriptSegment(id);
-            }}
-            onRegenerate={(id) => generateTargets([id])}
-            onListen={
-              code && guide.audioReady && previewTracks.includes(code)
-                ? (id) => {
-                    const row = session.segments.find((s) => s.id === id);
-                    if (row) {
-                      setListenComplete(true);
-                      setCompleteSeek(row.fit_status?.placed_start ?? row.start);
-                    }
+                <p className="text-sm font-medium">
+                  {t('dub.guide_text')} · {target}
+                </p>
+                <p className="text-xs text-muted-foreground">{t('dub.narration_need_text')}</p>
+                <Button
+                  disabled={
+                    Boolean(session.recovery) || (!translationReady && !selectedTranslationAgent)
                   }
-                : undefined
-            }
-            onMerge={(id, direction) => {
-              mergeDubSegment(id, direction);
-              setExpandedSegmentId(id);
-              selectTranscriptSegment(id);
-            }}
-          />
+                  onClick={() => void translateTargets()}
+                >
+                  {t('dub.translate_all')} · {target}
+                </Button>
+              </section>
+            )}
+            <DubNarrationPanel
+              onLocate={(id) => {
+                setExpandedSegmentId(id);
+                selectTranscriptSegment(id);
+              }}
+              session={session}
+              code={code}
+              disabled={busy || Boolean(session.recovery)}
+            />
+            {guide.nextStep === 'audio' &&
+              code &&
+              !busy &&
+              !session.recovery &&
+              batchTargets.length <= 1 && (
+                <DubGenerationReview
+                  inline
+                  open
+                  session={session}
+                  targets={[{ lang: target, code }]}
+                  options={{}}
+                  onClose={() => {}}
+                  onConfirm={() => void executeGeneration()}
+                />
+              )}
+            {code && guide.audioReady && previewTracks.includes(code) && (
+              <section className="shrink-0 border-b border-emerald-500/20 bg-emerald-500/5 px-4 py-3 space-y-2">
+                <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                  {t('dub.flow_ready')}
+                </p>
+                <p className="text-xs text-muted-foreground">{t('dub.listen_saved_hint')}</p>
+                <Button
+                  size="sm"
+                  variant={listenComplete ? 'secondary' : 'default'}
+                  onClick={() => {
+                    setListenComplete(true);
+                    void completeAudio.current
+                      ?.play()
+                      .catch((error) => toast.error(describeError(error)));
+                  }}
+                  aria-expanded={listenComplete}
+                >
+                  <HeadphonesIcon />
+                  {t('dub.listen_complete')} · {code.toUpperCase()}
+                </Button>
+                <Button size="sm" variant="outline" onClick={openExport}>
+                  {t('dub.flow_save')}
+                </Button>
+                {(listenComplete || guide.audioReady) && (
+                  <>
+                    <DubMediaPreview
+                      playerRef={completeAudio}
+                      kind="audio"
+                      sourceKey="dub-complete"
+                      onCanPlay={applyCompleteSeek}
+                      src={apiPath(
+                        `/dub/download-audio/${job}?lang=${encodeURIComponent(code)}${previewMix}${previewRevision ? `&v=${previewRevision}` : ''}`,
+                      )}
+                    />
+                  </>
+                )}
+                {guide.audioReady && (
+                  <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={
+                        session.listenedRequestKeys?.[code] ===
+                        dubGenerationKey(session, session.target, code)
+                      }
+                      onChange={(event) => recordDubListened(session, code, event.target.checked)}
+                    />
+                    {t('dub.flow_listened')}
+                  </label>
+                )}
+              </section>
+            )}
+            <DubIssuesPanel
+              session={session}
+              disabled={busy || Boolean(session.recovery)}
+              onFocus={(id) => {
+                setExpandedSegmentId(id);
+                selectTranscriptSegment(id);
+              }}
+              onRegenerate={(id) => generateTargets([id])}
+              onListen={
+                code && guide.audioReady && previewTracks.includes(code)
+                  ? (id) => {
+                      const row = session.segments.find((s) => s.id === id);
+                      if (row) {
+                        setListenComplete(true);
+                        setCompleteSeek(row.fit_status?.placed_start ?? row.start);
+                      }
+                    }
+                  : undefined
+              }
+              onMerge={(id, direction) => {
+                mergeDubSegment(id, direction);
+                setExpandedSegmentId(id);
+                selectTranscriptSegment(id);
+              }}
+            />
+          </div>
           <DubGenerationReview
             open={generationReview !== null}
             session={session}
@@ -2885,7 +2889,7 @@ export function DubPage() {
                           })}
                     </span>
                   )}
-                  {!session.narration?.enabled && !guide.textReady && (
+                  {!session.narration?.enabled && (
                     <>
                       {session.quality !== 'agent' && (
                         <DisabledReason

@@ -176,7 +176,7 @@ export function DubProjectGuide({
                           ? state.running
                             ? 'dub.guide_running'
                             : 'dub.guide_now'
-                          : 'dub.languages_pending',
+                          : 'dub.guide_pending',
                     )}
                   </span>
                 </span>
