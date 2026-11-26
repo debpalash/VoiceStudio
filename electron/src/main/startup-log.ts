@@ -1,9 +1,9 @@
 // Dependency-free startup evidence. Imported first by index.ts so even a failure
 // while loading the remaining modules, or an exit before userData exists, leaves a
 // line somewhere a user can find (see docs/install/macos.md).
-import { closeSync, fstatSync, ftruncateSync, mkdirSync, openSync, writeSync } from 'node:fs';
-import { homedir, release, tmpdir } from 'node:os';
-import { join, posix } from 'node:path';
+import { closeSync, constants, fstatSync, ftruncateSync, mkdirSync, openSync, writeSync } from 'node:fs';
+import { homedir, release } from 'node:os';
+import { join, posix, win32 } from 'node:path';
 
 const MAX_BYTES = 256 * 1024;
 const FILE_NAME = 'VoiceStudio-startup.log';
@@ -16,46 +16,51 @@ function safeHome(): string {
   }
 }
 
-/** Candidate directories, most discoverable first; the temp dir is the last resort. */
+/**
+ * Per-user log directories, most discoverable first. Never the shared temp
+ * folder: a predictable name there could be pre-created or linked by another
+ * local user.
+ */
 export function startupLogDirs(
   platform: string = process.platform,
   home: string = safeHome(),
-  temp: string = tmpdir(),
+  env: NodeJS.ProcessEnv = process.env,
 ): string[] {
-  const dirs: string[] = [];
-  if (platform === 'darwin' && home) dirs.push(posix.join(home, 'Library', 'Logs', 'VoiceStudio'));
-  dirs.push(temp);
-  return dirs;
+  if (platform === 'darwin') return home ? [posix.join(home, 'Library', 'Logs', 'VoiceStudio')] : [];
+  if (platform === 'win32') {
+    const base = env.LOCALAPPDATA || (home ? win32.join(home, 'AppData', 'Local') : '');
+    return base ? [win32.join(base, 'VoiceStudio', 'Logs')] : [];
+  }
+  const state = env.XDG_STATE_HOME || (home ? posix.join(home, '.local', 'state') : '');
+  return state ? [posix.join(state, 'VoiceStudio')] : [];
 }
 
-/** Path of the startup log: the first candidate directory that can be created. */
-export function startupLogPath(dirs: string[] = startupLogDirs()): string {
+/** Path of the startup log in the first directory that can be created, or null. */
+export function startupLogPath(dirs: string[] = startupLogDirs()): string | null {
   for (const dir of dirs) {
     try {
-      mkdirSync(dir, { recursive: true });
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
       return join(dir, FILE_NAME);
     } catch {
       /* try the next location */
     }
   }
-  return join(tmpdir(), FILE_NAME);
+  return null;
 }
 
-let defaultFile: string | null = null;
+// Read-write and created if missing, in one call; never follows a symlink where
+// the platform supports refusing one. Not append mode: Windows refuses to
+// truncate an append-only handle.
+const OPEN_FLAGS = constants.O_RDWR | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0);
+
+let defaultFile: string | null | undefined;
 
 /** Append one timestamped line. Never throws: logging must not cause or mask an exit. */
 export function logStartup(message: string, file?: string): void {
   try {
     const target = file ?? (defaultFile ??= startupLogPath());
-    // One descriptor for the size check and the write, so nothing can swap the
-    // file in between; an oversized log starts over rather than growing forever.
-    // Read-write, not append: Windows refuses to truncate an append-only handle.
-    let fd: number;
-    try {
-      fd = openSync(target, 'r+');
-    } catch {
-      fd = openSync(target, 'a');
-    }
+    if (!target) return;
+    const fd = openSync(target, OPEN_FLAGS, 0o600);
     try {
       let end = fstatSync(fd).size;
       if (end > MAX_BYTES) {

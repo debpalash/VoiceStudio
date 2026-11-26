@@ -246,8 +246,8 @@ deeplinks back into this docs tree at the right section for the error class.
 ### The app closes right after launch (no window)
 
 VoiceStudio appends one line per launch and per early exit to
-`~/Library/Logs/VoiceStudio/VoiceStudio-startup.log` (the system temp folder on
-other platforms). It is written before the app data folder exists, so it is the
+`~/Library/Logs/VoiceStudio/VoiceStudio-startup.log` (on Windows
+`%LOCALAPPDATA%\VoiceStudio\Logs`, on Linux `~/.local/state/VoiceStudio`). It is written before the app data folder exists, so it is the
 first place to look. To capture more, run the app from Terminal and attach the output:
 
 ```bash

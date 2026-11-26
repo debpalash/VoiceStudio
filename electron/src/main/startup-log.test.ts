@@ -20,19 +20,22 @@ describe('main entry wiring', () => {
 });
 
 describe('startup log', () => {
-  it('uses ~/Library/Logs on macOS, then the temp dir', () => {
-    expect(startupLogDirs('darwin', '/Users/a', '/t')).toEqual([
-      '/Users/a/Library/Logs/VoiceStudio',
-      '/t',
+  it('uses a per-user log folder on every platform, never the shared temp folder', () => {
+    expect(startupLogDirs('darwin', '/Users/a', {})).toEqual(['/Users/a/Library/Logs/VoiceStudio']);
+    expect(startupLogDirs('linux', '/home/a', {})).toEqual(['/home/a/.local/state/VoiceStudio']);
+    expect(startupLogDirs('linux', '/home/a', { XDG_STATE_HOME: '/s' })).toEqual(['/s/VoiceStudio']);
+    expect(startupLogDirs('win32', 'C:\\Users\\a', { LOCALAPPDATA: 'C:\\L' })).toEqual([
+      'C:\\L\\VoiceStudio\\Logs',
     ]);
-    expect(startupLogDirs('linux', '/home/a', '/t')).toEqual(['/t']);
+    expect(startupLogDirs('linux', '', {})).toEqual([]);
   });
 
-  it('falls back when a directory cannot be created', () => {
+  it('falls back when a directory cannot be created, and gives up without one', () => {
     const dir = tmp();
     const blocker = join(dir, 'file');
     writeFileSync(blocker, 'x');
     expect(startupLogPath([join(blocker, 'sub'), dir])).toBe(join(dir, 'VoiceStudio-startup.log'));
+    expect(startupLogPath([join(blocker, 'sub')])).toBeNull();
   });
 
   it('appends lines and never throws on an unwritable path', () => {

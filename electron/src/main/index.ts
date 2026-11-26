@@ -717,7 +717,13 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
         try {
           dialog.showErrorBox(
             `${PRODUCT_NAME} could not start`,
-            `Startup failed. Details were saved to ${startupLogPath()}`,
+            (() => {
+              const log = startupLogPath();
+              const detail = error instanceof Error ? error.message : String(error);
+              return log
+                ? `Startup failed. Details were saved to ${log}`
+                : `Startup failed: ${detail.slice(0, 500)}`;
+            })(),
           );
         } catch {
           /* no UI available */
