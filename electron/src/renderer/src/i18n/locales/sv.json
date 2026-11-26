@@ -703,6 +703,7 @@
     "history_star": "Stjärna",
     "history_unstar": "Avstjärna",
     "history_reuse": "Återanvänd skript",
+    "history_full_text_failed": "Det gick inte att läsa in hela manuset för den här tagningen. Kontrollera att VoiceStudio körs och försök igen.",
     "characters_one": "{{count}} tecken",
     "cancel_generation": "Avbryt generering",
     "duration_seconds": "{{seconds}}s",

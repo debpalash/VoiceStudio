@@ -714,6 +714,7 @@
     "history_delete": "Видалити дубль",
     "history_unstar": "Зняти зірочку",
     "history_reuse": "Повторне використання сценарію",
+    "history_full_text_failed": "Не вдалося завантажити повний текст цього дубля. Переконайтеся, що VoiceStudio запущено, і спробуйте ще раз.",
     "characters_one": "Символ {{count}}",
     "cancel_generation": "Скасувати генерацію",
     "duration_seconds": "{{seconds}}s",

@@ -704,6 +704,7 @@
     "history_star": "Estrela",
     "history_unstar": "Remover estrela",
     "history_reuse": "Reutilizar script",
+    "history_full_text_failed": "Não foi possível carregar o roteiro completo desta tomada. Verifique se o VoiceStudio está em execução e tente novamente.",
     "characters_one": "Caractere {{count}}",
     "cancel_generation": "Cancelar geração",
     "duration_seconds": "{{seconds}}s",

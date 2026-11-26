@@ -1,3 +1,4 @@
+import { logStartup } from './startup-log';
 import {
   decideTerminalStop,
   decideWindowClose,
@@ -14,7 +15,7 @@ import { isTrustedRenderer } from './trusted-renderer';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, shell, Tray } from 'electron';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import { BackendSupervisor, backendRoot, setBackendOnlyEnv } from './backend';
 import { DiagnosticReports } from './diagnostics';
@@ -79,6 +80,7 @@ const RENDERER_DIR = join(here, '../renderer');
 const BACKGROUND = '#0a0a0a';
 const OVERLAY = { color: '#00000000', symbolColor: '#737373', height: 52 };
 
+logStartup('main module loaded');
 installAppIdentity(app);
 registerAppScheme();
 
@@ -494,9 +496,11 @@ const devInstance =
   singleInstance && !app.isPackaged ? devInstanceFile(app.getPath('userData')) : null;
 if (devInstance) waitForPreviousDevInstance({ file: devInstance });
 if (singleInstance && !app.requestSingleInstanceLock()) {
+  logStartup('exiting: another VoiceStudio instance holds the single-instance lock');
   app.quit();
 } else if (launchIntent.stop) {
   // `--stop` with nothing running: there is nothing to stop or start.
+  logStartup('exiting: --stop with no running instance');
   app.exit(0);
 } else {
   if (devInstance) recordDevInstance(devInstance);
@@ -706,6 +710,24 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
       // while retaining durable evidence for the next launch and repair agent.
       mainErrors.record(error, 'unhandledRejection');
       console.error('[startup] Electron initialization failed', error);
+      const savedTo = logStartup(
+        `exiting: initialization failed: ${error instanceof Error ? error.stack : String(error)}`,
+      );
+      if (!headlessOwner) {
+        try {
+          dialog.showErrorBox(
+            `${PRODUCT_NAME} could not start`,
+            (() => {
+              const detail = error instanceof Error ? error.message : String(error);
+              return savedTo
+                ? `Startup failed. Details were saved to ${savedTo}`
+                : `Startup failed: ${detail.slice(0, 500)}`;
+            })(),
+          );
+        } catch {
+          /* no UI available */
+        }
+      }
       app.exit(1);
     });
 

@@ -691,6 +691,7 @@
     "history_star": "星星",
     "history_unstar": "取消星标",
     "history_reuse": "重用脚本",
+    "history_full_text_failed": "无法加载此条录音的完整脚本。请确认 VoiceStudio 正在运行，然后重试。",
     "characters_one": "{{count}} 字符",
     "cancel_generation": "取消生成",
     "duration_seconds": "{{seconds}}s",

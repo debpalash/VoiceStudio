@@ -704,6 +704,7 @@
     "history_star": "Stella",
     "history_unstar": "Elimina stella",
     "history_reuse": "Riutilizzare la sceneggiatura",
+    "history_full_text_failed": "Impossibile caricare lo script completo di questa ripresa. Verifica che VoiceStudio sia in esecuzione, poi riprova.",
     "characters_one": "Carattere {{count}}",
     "cancel_generation": "Annulla la generazione",
     "duration_seconds": "{{seconds}}s",

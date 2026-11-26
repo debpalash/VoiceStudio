@@ -552,6 +552,7 @@
     "history_star": "Star",
     "history_unstar": "Unstar",
     "history_reuse": "Reuse script",
+    "history_full_text_failed": "Couldn't load this take's full script. Check that VoiceStudio is running, then try again.",
     "history_starred": "Starred",
     "history_all": "All",
     "characters_one": "{{count}} character",

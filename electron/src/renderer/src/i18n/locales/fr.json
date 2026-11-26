@@ -704,6 +704,7 @@
     "history_star": "Étoile",
     "history_unstar": "Supprimer la star",
     "history_reuse": "Réutiliser le script",
+    "history_full_text_failed": "Impossible de charger le script complet de cette prise. Vérifiez que VoiceStudio est lancé, puis réessayez.",
     "characters_one": "Caractère {{count}}",
     "cancel_generation": "Annuler la génération",
     "duration_seconds": "{{seconds}}s",

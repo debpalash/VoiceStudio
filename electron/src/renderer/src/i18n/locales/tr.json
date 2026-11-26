@@ -703,6 +703,7 @@
     "history_star": "Yıldız",
     "history_unstar": "Yıldızı kaldır",
     "history_reuse": "Komut dosyasını yeniden kullan",
+    "history_full_text_failed": "Bu çekimin tam metni yüklenemedi. VoiceStudio'nun çalıştığından emin olun ve tekrar deneyin.",
     "characters_one": "{{count}} karakteri",
     "cancel_generation": "Oluşturmayı iptal et",
     "duration_seconds": "{{seconds}}'ler",

@@ -703,6 +703,7 @@
     "history_star": "Ngôi sao",
     "history_unstar": "Bỏ dấu sao",
     "history_reuse": "Tái sử dụng tập lệnh",
+    "history_full_text_failed": "Không tải được toàn bộ kịch bản của bản thu này. Hãy kiểm tra VoiceStudio đang chạy rồi thử lại.",
     "characters_one": "Ký tự {{count}}",
     "cancel_generation": "Hủy tạo",
     "duration_seconds": "{{seconds}} giây",

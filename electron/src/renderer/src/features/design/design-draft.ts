@@ -262,6 +262,26 @@ export function designRecipe(draft: Pick<DesignDraft, 'description' | 'picks'>):
   return { description: draft.description.trim(), picks: pickValues(draft.picks) };
 }
 
+/**
+ * The POST /profiles form for saving this draft as a voice. It carries the
+ * recipe and authoring engine so the description survives, not just the tags.
+ */
+export function designProfileForm(
+  draft: Pick<DesignDraft, 'attrs' | 'description' | 'picks' | 'seed'>,
+  fields: { name: string; language: string; engineId?: string | null },
+): FormData {
+  const body = new FormData();
+  body.set('name', fields.name.trim());
+  body.set('kind', 'design');
+  body.set('seed', String(draft.seed));
+  body.set('vd_states', JSON.stringify(draft.attrs));
+  body.set('instruct', buildDesignInstruct(draft.attrs, '').instruct);
+  body.set('language', fields.language);
+  body.set('design_recipe', JSON.stringify(designRecipe(draft)));
+  if (fields.engineId) body.set('engine', fields.engineId);
+  return body;
+}
+
 interface StoredRecipe {
   description: string;
   picks: Record<string, string>;

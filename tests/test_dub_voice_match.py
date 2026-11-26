@@ -355,12 +355,12 @@ def test_consistent_heuristic_job_all_lines_share_one_ref(patched_generate):
 def test_consistent_pick_is_deterministic_across_runs(patched_generate):
     """Same job, two runs → byte-identical reference choice."""
     first = list(
-        patched_generate(_HEURISTIC_JOB, _heuristic_body(voice_match="consistent")).refs
+        patched_generate(_HEURISTIC_JOB, _heuristic_body(voice_match="consistent", regen_only=["0", "1", "2", "3"])).refs
     )
     second = list(
-        patched_generate(_HEURISTIC_JOB, _heuristic_body(voice_match="consistent")).refs
+        patched_generate(_HEURISTIC_JOB, _heuristic_body(voice_match="consistent", regen_only=["0", "1", "2", "3"])).refs
     )
-    assert first == second
+    assert first and first == second
 
 
 def test_consistent_auto_binding_uses_speaker_clone_not_segment_clip(patched_generate):

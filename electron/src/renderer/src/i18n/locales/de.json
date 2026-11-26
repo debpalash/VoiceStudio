@@ -703,6 +703,7 @@
     "history_star": "Stern",
     "history_unstar": "Unstar",
     "history_reuse": "Skript wiederverwenden",
+    "history_full_text_failed": "Das vollständige Skript dieser Aufnahme konnte nicht geladen werden. Prüfe, ob VoiceStudio läuft, und versuche es erneut.",
     "characters_one": "{{count}}-Zeichen",
     "cancel_generation": "Generierung abbrechen",
     "download_failed": "Die Datei konnte nicht gespeichert werden: {{message}}",
