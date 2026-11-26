@@ -44,7 +44,7 @@ from services.rvc import apply_rvc, is_enabled as rvc_is_enabled
 from services.incremental import segment_fingerprint, fit_fingerprint
 from services.dub_speech_checkpoints import SpeechCheckpoints
 from services.dub_speech_preview import preview_path, prune_previews, save_preview
-from services.dub_issues import cue_issues
+from services.dub_issues import MIN_SPOKEN_SEGMENT_S, cue_issues, describe_issues, uses_fixed_windows
 from services.fit_planner import FitParams, plan_fit
 from services.watermark import mark_synthetic, mark_synthetic_async, will_mark
 from services import dub_pipeline, dub_resume
@@ -174,8 +174,7 @@ def _underrun_min_rate() -> float:
 # colliding with the next speaker's onset.
 GAP_OVERFLOW_MAX_S = 0.25
 GAP_OVERFLOW_BUFFER_S = 0.05
-# A row this short is rendered as silence, so it never counts as speech.
-MIN_SPOKEN_SEGMENT_S = 0.05
+# A row of MIN_SPOKEN_SEGMENT_S or less (services.dub_issues) is rendered as silence.
 
 
 # Second-pass ASR annotations (/dub/qc) describe one rendered track. They are
@@ -634,11 +633,18 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
     # subtitles are replaced before this render publishes, its result belongs
     # to subtitles the user no longer has.
     admitted_rev = source_segments_revision(job)
-    issues = cue_issues(req.segments, req.segment_ids or [], subtitle_only=bool(job.get("subtitle_only")) or req.timing_strategy == "narration")
-    if issues and not planning:
+    # Fixed-window timing (narration, opted-in SRT-only rescue) cannot place
+    # overlapping or out-of-range cues; name them before any synthesis. Other
+    # renders keep their existing behaviour: the plan only reports tiny spoken
+    # cues, and generation is never refused for them here.
+    _narration = (req.timing_strategy or "concise").lower() == "narration"
+    _fixed_windows = uses_fixed_windows(req, subtitle_only=bool(job.get("subtitle_only")))
+    issues = cue_issues(req.segments, req.segment_ids or [], fixed_windows=_fixed_windows,
+                        source_duration=float(job.get("duration") or 0.0))
+    if issues and _fixed_windows and not planning:
         raise HTTPException(status_code=422, detail={
-            "code": "dub_cue_too_short", "issues": issues,
-            "message": "A subtitle containing speech has only 0.05 seconds or less. Adjust its timing or combine it with a neighbouring cue before generation.",
+            "code": "dub_cue_windows_invalid", "issues": issues,
+            "message": describe_issues(issues, rescue=not _narration, noun="narration block" if _narration else "subtitle"),
         })
 
     if _untranslated_track_error(job, req, lang_code):
@@ -962,7 +968,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
         # narration strategy; for SRT-only projects only once overflow rescue
         # is opted in. Otherwise they keep the requested strategy and its
         # blocking timing error, as before.
-        flexible_timing = strategy == "narration" or (subtitle_only and bool(req.auto_fit_overflow))
+        flexible_timing = uses_fixed_windows(req, subtitle_only=subtitle_only)
         if flexible_timing and strategy != "narration":
             strategy = "concise"
         # Voice-identity mode (see DubRequest.voice_match). The memo makes the

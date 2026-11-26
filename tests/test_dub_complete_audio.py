@@ -590,18 +590,63 @@ def test_preflight_detects_a_corrupt_checkpoint_and_preserves_old_track(render_d
     assert (render_dub.path/'dubbed_en.wav').read_bytes()==track
 
 
-def test_tiny_spoken_cue_is_identified_before_any_synthesis(render_dub):
-    from fastapi import HTTPException
+def test_tiny_spoken_cue_on_a_media_job_keeps_mains_generation_behaviour(render_dub):
+    """No new 422 on media jobs: generation runs exactly as on main.
+
+    Main renders the cue's slot as silence and then refuses to publish a
+    spoken line with no speech (dub_speech_missing). The read-only plan
+    names the cue first so it can be fixed before a long render.
+    """
     body=dict(segments=[dict(start=0,end=1,text='Hello'),dict(start=1,end=1.049,text='Right?')],segment_ids=['first','short'])
     plan=_generation_plan(**body)
-    assert plan['issues'][0]['segment_id']=='short'
-    assert plan['issues'][0]['segment']==1
-    assert plan['issues'][0]['code']=='dub_cue_too_short'
+    assert [(i['code'], i['cue'], i['segment_id']) for i in plan['issues']]==[('dub_cue_too_short', 2, 'short')]
+    assert plan['synthesize']==1 and plan['silence']==1
+    events=render_dub.run(**body)
+    assert [g['text'] for g in render_dub.generated]==['Hello']
+    assert events[-1]['error_code']=='dub_speech_missing' and events[-1]['segment_id']=='short'
+    assert not render_dub.job['dubbed_tracks']
+
+
+def test_empty_tiny_cue_on_a_media_job_is_silence(render_dub):
+    body=dict(segments=[dict(start=0,end=1,text='Hello'),dict(start=1,end=1.049,text='')],segment_ids=['first','short'])
+    assert _generation_plan(**body)['issues']==[]
+    assert render_dub.run(**body)[-1]['type']=='done'
+
+
+def _stretch_linear(monkeypatch):
+    import api.routers.dub_generate as dg
+    async def stretch(wav, target, sr):
+        return torch.nn.functional.interpolate(wav.unsqueeze(0), size=target, mode='linear').squeeze(0)
+    monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
+
+
+@pytest.mark.parametrize('segments,code,message', [
+    ([dict(start=0,end=2,text='one'),dict(start=1.5,end=3,text='two')],
+     'dub_cue_overlap', 'subtitle 2 starts before subtitle 1 ends'),
+    ([dict(start=0,end=1,text='one'),dict(start=1,end=5,text='two')],
+     'dub_cue_beyond_media', 'subtitle 2 ends at 5.00 s, past the end of the source (4.00 s)'),
+])
+def test_rescued_srt_windows_name_the_cues_to_fix(render_dub, monkeypatch, segments, code, message):
+    from fastapi import HTTPException
+    render_dub.job['subtitle_only'] = True
+    _stretch_linear(monkeypatch)
+    body=dict(segments=segments, segment_ids=['a','b'], auto_fit_overflow=True)
+    plan=_generation_plan(**body)
+    assert [(i['code'], i['cue'], i['segment_id']) for i in plan['issues']]==[(code, 2, 'b')]
     with pytest.raises(HTTPException) as error:
         render_dub.run(**body)
     assert error.value.status_code==422
+    assert error.value.detail['code']=='dub_cue_windows_invalid'
+    assert message in error.value.detail['message']
+    assert 'turn off automatic overflow fitting' in error.value.detail['message']
     assert not render_dub.generated
     assert not render_dub.job['dubbed_tracks']
+
+
+def test_overlapping_srt_cues_without_rescue_keep_mains_timing(render_dub):
+    render_dub.job['subtitle_only'] = True
+    events=render_dub.run(segments=[dict(start=0,end=2,text='one'),dict(start=1.5,end=3,text='two')], segment_ids=['a','b'])
+    assert events[-1]['type']=='done'
 
 
 def test_combining_a_tiny_cue_only_generates_the_combined_speech(render_dub):

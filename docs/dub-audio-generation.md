@@ -2,7 +2,10 @@
 
 POST /dub/plan/{job_id} resolves the same inputs as generation and counts new,
 reusable and silent segments without synthesis, publication or recovery-file
-mutation. Invalid tiny spoken media cues are identified before a long render.
+mutation. It names tiny spoken media cues before a long render; generation of
+media jobs is not refused for them (their existing behaviour is kept). Under
+fixed windows, overlapping cues and cues past the end of the source are refused
+before synthesis with a message naming each cue number.
 Explicit regeneration takes precedence over reuse.
 
 Completed natural takes are retained privately with integrity checks. Both
