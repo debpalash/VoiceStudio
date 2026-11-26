@@ -366,9 +366,10 @@ def test_forced_release_does_not_force_on_non_integrated_unified(monkeypatch):
 
 @pytest.fixture
 def _clean_hold(monkeypatch):
-    monkeypatch.setattr(mm, "_unified_asr_hold", False)
+    monkeypatch.setattr(mm, "_unified_asr_holds", 0)
+    monkeypatch.setattr(mm, "_placement_exclusive", False)
+    mm._asr_hold_tls.tokens = 0
     yield
-    mm._end_unified_asr_hold() if mm._unified_asr_hold else None
 
 
 def test_forced_release_holds_placement_until_restore(monkeypatch, _clean_hold):
@@ -399,22 +400,71 @@ def test_refused_forced_release_returns_false(monkeypatch, _clean_hold):
     assert mm.offload_tts_for_asr(force_unified_release=True) is False
 
 
-def test_cold_tts_load_waits_for_reference_asr(monkeypatch, _clean_hold):
+def _run_in_thread(fn):
+    import threading
+
+    t = threading.Thread(target=fn)
+    t.start()
+    t.join(5)
+    assert not t.is_alive()
+
+
+@pytest.mark.parametrize("first_ends", ["a", "b"])
+def test_overlapping_ops_hold_until_both_end(monkeypatch, _clean_hold, first_ends):
     import threading, time
 
-    monkeypatch.setattr(mm, "_unified_asr_hold", True)
-    done = threading.Event()
-    t = threading.Thread(target=lambda: (mm._wait_unified_asr_hold(5), done.set()))
-    t.start()
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", object())
+    monkeypatch.setattr(mm, "_offload_unified_memory", lambda **_k: True)
+    # op b is admitted while the model is already unloaded
+    ops = {}
+
+    def admit(name, model):
+        monkeypatch.setattr(mm, "model", model)
+        ops[name] = threading.Event()
+        res = []
+
+        def run():
+            res.append(mm.offload_tts_for_asr(force_unified_release=True))
+            ops[name].wait(5)
+            mm.restore_tts_after_asr()
+
+        th = threading.Thread(target=run)
+        th.start()
+        time.sleep(0.1)
+        assert res == [True]
+        return th
+
+    ta = admit("a", object())
+    tb = admit("b", None)
+    assert mm._unified_asr_holds == 2
+
+    woke = threading.Event()
+    waiter = threading.Thread(
+        target=lambda: (mm._wait_unified_asr_hold(5), woke.set())
+    )
+    waiter.start()
+
+    ops[first_ends].set()
     time.sleep(0.2)
-    assert not done.is_set()  # load is blocked behind the ASR hold
+    assert mm._unified_asr_holds == 1
+    assert not woke.is_set() and mm._placement_exclusive is True
+
+    ops["b" if first_ends == "a" else "a"].set()
+    ta.join(2); tb.join(2); waiter.join(2)
+    assert woke.is_set()
+    assert mm._unified_asr_holds == 0 and mm._placement_exclusive is False
+
+
+def test_restore_without_token_is_a_noop(monkeypatch, _clean_hold):
+    _patch_torch(monkeypatch, _integrated_intel_arc_torch())
+    monkeypatch.setattr(mm, "model", None)
+    monkeypatch.setattr(mm, "_unified_asr_holds", 1)
     monkeypatch.setattr(mm, "_placement_exclusive", True)
-    mm._end_unified_asr_hold()
-    t.join(2)
-    assert done.is_set()
-    assert mm._placement_exclusive is False
+    mm.restore_tts_after_asr()
+    assert mm._unified_asr_holds == 1 and mm._placement_exclusive is True
 
 
 def test_wait_is_bounded(monkeypatch, _clean_hold):
-    monkeypatch.setattr(mm, "_unified_asr_hold", True)
+    monkeypatch.setattr(mm, "_unified_asr_holds", 1)
     mm._wait_unified_asr_hold(0.05)  # returns instead of hanging

@@ -3375,7 +3375,7 @@ async def get_model(*, allow_load: bool = True):
             model = _load_model_exclusive()
         return model
 
-    if _unified_asr_hold:
+    if _unified_asr_holds:
         await asyncio.get_running_loop().run_in_executor(None, _wait_unified_asr_hold)
     async with _model_lock:
         if model is None:
@@ -4129,6 +4129,10 @@ def offload_tts_for_asr(*, force_unified_release: bool = False) -> bool:
     global model
     torch = _lazy_torch()
     if model is None:
+        if force_unified_release and not _has_dedicated_vram() and _xpu_is_unified_memory():
+            # Nothing to unload, but a cold TTS load must still wait through
+            # this reference ASR (joins an active hold or starts one).
+            return _join_unified_asr_hold(_ASR_PLACEMENT_WAIT_S)
         return True
     if not _has_dedicated_vram():
         # UNIFIED MEMORY (Apple Silicon / CPU). Moving the model "to CPU" frees
@@ -4149,28 +4153,31 @@ def offload_tts_for_asr(*, force_unified_release: bool = False) -> bool:
             return True
         # Integrated Arc: like the dedicated branch, wait for active
         # tts_inference() slots before releasing the model under them.
-        if not _acquire_exclusive_placement(_ASR_PLACEMENT_WAIT_S):
-            logger.warning(
-                "TTS release for ASR refused: a generation is still using the model."
-            )
-            return False
         if not force_unified_release:
+            if not _acquire_exclusive_placement(_ASR_PLACEMENT_WAIT_S):
+                logger.warning(
+                    "TTS release for ASR refused: a generation is still using the model."
+                )
+                return False
             try:
                 _offload_unified_memory(force=False)
             finally:
                 _release_exclusive_placement()
             return True
-        # Forced (clone-reference ASR): keep placement held for the whole ASR
-        # lifetime. restore_tts_after_asr() ends the hold, so a concurrent
-        # generate's cold TTS load waits instead of loading beside WhisperX.
-        global _unified_asr_hold
+        # Forced (clone-reference ASR): join the reference-counted hold that
+        # keeps placement exclusive until every such op has called
+        # restore_tts_after_asr(), so a concurrent generate's cold TTS load
+        # waits instead of loading beside WhisperX.
+        if not _join_unified_asr_hold(_ASR_PLACEMENT_WAIT_S):
+            logger.warning(
+                "TTS release for ASR refused: a generation is still using the model."
+            )
+            return False
         try:
             _offload_unified_memory(force=True)
         except BaseException:
-            _release_exclusive_placement()
+            _leave_unified_asr_hold()
             raise
-        with _placement_cond:
-            _unified_asr_hold = True
         return True
     try:
         # Check if there's enough free VRAM to skip offloading
@@ -4201,7 +4208,7 @@ def restore_tts_after_asr():
     torch = _lazy_torch()
     # End a forced integrated-Arc reference-ASR hold first: the model is None
     # after that release, so the early return below would otherwise skip it.
-    _end_unified_asr_hold()
+    _leave_unified_asr_hold()
     if model is None:
         return
     if not _has_dedicated_vram():
@@ -4403,28 +4410,47 @@ def _acquire_exclusive_placement(wait_s: float) -> bool:
         return True
 
 
-# True while a forced integrated-Arc release holds exclusive placement for the
-# lifetime of a reference ASR (see offload_tts_for_asr). Guarded by
-# _placement_cond.
-_unified_asr_hold = False
-# Bound on how long a cold TTS load waits for that ASR to finish.
+# Reference count of forced integrated-Arc reference-ASR ops holding exclusive
+# placement (see offload_tts_for_asr). Guarded by _placement_cond. Each op's
+# join is recorded on its thread, so restore_tts_after_asr() releases only its
+# own hold; placement is freed and waiters woken when the count reaches 0.
+_unified_asr_holds = 0
+_asr_hold_tls = threading.local()
+# Bound on how long a cold TTS load waits for those ASR ops to finish.
 _UNIFIED_ASR_HOLD_WAIT_S = 300.0
 
 
-def _end_unified_asr_hold() -> None:
-    global _unified_asr_hold
+def _join_unified_asr_hold(wait_s: float) -> bool:
+    """Join the hold, starting it (exclusive placement) if none is active.
+    False when placement could not be acquired within ``wait_s``."""
+    global _unified_asr_holds
+    with _placement_cond:  # reentrant: lets acquire+count be one atomic step
+        if _unified_asr_holds == 0 and not _acquire_exclusive_placement(wait_s):
+            return False
+        _unified_asr_holds += 1
+    _asr_hold_tls.tokens = getattr(_asr_hold_tls, "tokens", 0) + 1
+    return True
+
+
+def _leave_unified_asr_hold() -> None:
+    """Release this thread's own hold, if any (no-op without one)."""
+    global _unified_asr_holds
+    if getattr(_asr_hold_tls, "tokens", 0) <= 0:
+        return
+    _asr_hold_tls.tokens -= 1
     with _placement_cond:
-        held, _unified_asr_hold = _unified_asr_hold, False
-    if held:
-        _release_exclusive_placement()
+        _unified_asr_holds -= 1
+        last = _unified_asr_holds == 0
+    if last:
+        _release_exclusive_placement()  # notify_all wakes load waiters
 
 
 def _wait_unified_asr_hold(timeout: float = _UNIFIED_ASR_HOLD_WAIT_S) -> None:
-    """Block a cold TTS load while a forced reference ASR holds the device.
+    """Block a cold TTS load while forced reference ASR ops hold the device.
     Bounded; on timeout the load proceeds as it did before the hold existed."""
     deadline = time.monotonic() + timeout
     with _placement_cond:
-        while _unified_asr_hold:
+        while _unified_asr_holds > 0:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 logger.warning("TTS load proceeding: reference ASR hold timed out.")
