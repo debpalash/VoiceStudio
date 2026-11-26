@@ -7,6 +7,7 @@ import time
 import asyncio
 import contextlib
 import shutil
+import string
 import tempfile
 import uuid
 import torch
@@ -49,7 +50,7 @@ from services.fit_planner import FitParams, plan_fit
 from services.watermark import mark_synthetic, mark_synthetic_async, will_mark
 from services import dub_pipeline, dub_resume
 from services.speaker_clone import auto_profile_id
-from api.routers.dub_core import _get_job, _safe_lang_or_400, _save_job
+from api.routers.dub_core import _get_job, _save_job
 from services.dub_pipeline import (
     _dub_jobs_lock,
     publish_rendered_segments,
@@ -604,8 +605,22 @@ async def _run_journal_io(operation, *args):
         raise
 
 
+# Job ids and track languages name folders and files, and those paths reach
+# ffmpeg. Each request value is rebuilt character by character from this
+# exact allowlist, so what continues is a known-safe string, not the input.
+_REQUEST_TOKEN_CHARS = {ch: ch for ch in string.ascii_letters + string.digits + "_-"}
+
+
+def _request_token(value: object, *, limit: int, what: str) -> str:
+    text = value if isinstance(value, str) else ""
+    if not 0 < len(text) <= limit or any(ch not in _REQUEST_TOKEN_CHARS for ch in text):
+        raise HTTPException(status_code=400, detail=f"Invalid {what}")
+    return "".join(_REQUEST_TOKEN_CHARS[ch] for ch in text)
+
+
 @router.get("/dub/speech-preview/{job_id}/{render_id}/{token}")
 def dub_speech_preview(job_id: str, render_id: str, token: str):
+    job_id = _request_token(job_id, limit=64, what="job id")
     if not _get_job(job_id):
         raise HTTPException(status_code=404, detail="Dub job not found")
     try:
@@ -631,11 +646,13 @@ async def dub_generation_plan(job_id: str, req: DubRequest):
     return await _run_dub(job_id, req, planning=True)
 
 
-async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
-    # The track language names files under the job dir (dubbed_{lang}.wav,
-    # seg_{lang}_{id}.wav), so reject anything that is not a plain code
-    # before the job is touched.
-    lang_code = _safe_lang_or_400(req.language_code or "und")
+async def _run_dub(requested_job_id: str, req: DubRequest, *, planning: bool = False):
+    # The job id and track language name files under the job dir
+    # (dubbed_{lang}.wav, seg_{lang}_{id}.wav), so reject anything that is not
+    # a plain token before the job is touched. Only the rebuilt values are
+    # used from here on, including by every closure below.
+    job_id = _request_token(requested_job_id, limit=64, what="job id")
+    lang_code = _request_token(req.language_code or "und", limit=32, what="language code")
     job = _get_job(job_id)
     if not job:
         raise HTTPException(

@@ -96,3 +96,25 @@ def test_request_ids_cannot_escape_the_dub_folder(tmp_path, monkeypatch):
     for render_id, token in (('..', 'b' * 64), ('a' * 32, '../' + 'b' * 61), ('A' * 32, 'b' * 64)):
         with pytest.raises(ValueError):
             preview_path(job_dir, render_id, token)
+
+
+def test_render_ids_are_rebuilt_from_an_exact_allowlist():
+    import asyncio
+    import pytest
+    from fastapi import HTTPException
+    import api.routers.dub_generate as dg
+    from schemas.requests import DubRequest
+    token = dg._request_token('3f2b-Job_1', limit=64, what='job id')
+    assert token == '3f2b-Job_1'
+    for bad in ('', '..', 'a/b', 'a\\b', 'a.b', '-' * 65, 'job\n', None):
+        with pytest.raises(HTTPException) as error:
+            dg._request_token(bad, limit=64, what='job id')
+        assert error.value.status_code == 400
+    body = dict(segments=[dict(start=0, end=1, text='hello')], segment_ids=['a'])
+    for job_id, lang in (('../x', 'en'), ('job', '../en'), ('job', 'e.n')):
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(dg.dub_generation_plan(job_id, DubRequest(**body, language_code=lang)))
+        assert error.value.status_code == 400
+    with pytest.raises(HTTPException) as error:
+        dg.dub_speech_preview('..', 'a' * 32, 'b' * 64)
+    assert error.value.status_code == 400
