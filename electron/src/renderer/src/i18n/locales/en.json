@@ -1862,6 +1862,7 @@
     "compact_title": "Compact overlay",
     "compact_row_title": "Compact overlay for press-and-hold dictation",
     "compact_description": "While you hold the shortcut, show only a live level meter and a timer instead of the full recorder and transcript. Text is still inserted when you release.",
+    "compact_save_failed": "Couldn't save this setting. Please try again.",
     "cleanup_title": "Text cleanup",
     "spoken_punctuation": "Spoken punctuation",
     "spoken_punctuation_desc": "Say “comma”, “period”, “question mark”, “new line” to type it. English only."

@@ -1685,6 +1685,7 @@
     "compact_title": "Kompaktowa nakładka",
     "compact_row_title": "Kompaktowa nakładka dla dyktowania z przytrzymaniem",
     "compact_description": "Gdy przytrzymujesz skrót, pokazuje tylko wskaźnik poziomu na żywo i licznik czasu zamiast pełnego rejestratora i transkrypcji. Po puszczeniu tekst jest nadal wstawiany.",
+    "compact_save_failed": "Nie udało się zapisać tego ustawienia. Spróbuj ponownie.",
     "cleanup_title": "Porządkowanie tekstu",
     "spoken_punctuation": "Dyktowana interpunkcja",
     "spoken_punctuation_desc": "Powiedz “comma”, “period”, “question mark”, “new line”, aby to wpisać. Tylko po angielsku."

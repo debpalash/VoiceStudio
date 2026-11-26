@@ -1671,6 +1671,7 @@
     "compact_title": "Surimpression compacte",
     "compact_row_title": "Surimpression compacte pour la dictée maintenue",
     "compact_description": "Tant que vous maintenez le raccourci, affiche seulement un indicateur de niveau en direct et un minuteur au lieu de l'enregistreur complet et de la transcription. Le texte est toujours inséré au relâchement.",
+    "compact_save_failed": "Impossible d'enregistrer ce réglage. Veuillez réessayer.",
     "cleanup_title": "Nettoyage du texte",
     "spoken_punctuation": "Ponctuation dictée",
     "spoken_punctuation_desc": "Dites “comma”, “period”, “question mark”, “new line” pour la saisir. Anglais uniquement."

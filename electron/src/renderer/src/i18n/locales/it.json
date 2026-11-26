@@ -1671,6 +1671,7 @@
     "compact_title": "Overlay compatto",
     "compact_row_title": "Overlay compatto per la dettatura a pressione",
     "compact_description": "Mentre tieni premuta la scorciatoia, mostra solo un indicatore di livello in tempo reale e un timer invece del registratore completo e della trascrizione. Il testo viene comunque inserito al rilascio.",
+    "compact_save_failed": "Impossibile salvare questa impostazione. Riprova.",
     "cleanup_title": "Pulizia del testo",
     "spoken_punctuation": "Punteggiatura dettata",
     "spoken_punctuation_desc": "Di’ “comma”, “period”, “question mark”, “new line” per scriverla. Solo in inglese."

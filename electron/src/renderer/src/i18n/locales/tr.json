@@ -1669,6 +1669,7 @@
     "compact_title": "Kompakt katman",
     "compact_row_title": "Basılı tutarak yazdırma için kompakt katman",
     "compact_description": "Kısayolu basılı tuttuğunuz sürece tam kaydedici ve transkript yerine yalnızca canlı bir seviye göstergesi ve bir zamanlayıcı gösterilir. Bıraktığınızda metin yine eklenir.",
+    "compact_save_failed": "Bu ayar kaydedilemedi. Lütfen tekrar deneyin.",
     "cleanup_title": "Metin temizliği",
     "spoken_punctuation": "Sesli noktalama",
     "spoken_punctuation_desc": "Yazmak için “comma”, “period”, “question mark”, “new line” deyin. Yalnızca İngilizce."

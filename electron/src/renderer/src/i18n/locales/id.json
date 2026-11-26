@@ -1669,6 +1669,7 @@
     "compact_title": "Overlay ringkas",
     "compact_row_title": "Overlay ringkas untuk dikte tekan-dan-tahan",
     "compact_description": "Selama Anda menahan pintasan, hanya tampilkan meter level langsung dan timer, bukan perekam lengkap dan transkrip. Teks tetap disisipkan saat Anda melepaskan.",
+    "compact_save_failed": "Pengaturan ini tidak dapat disimpan. Silakan coba lagi.",
     "cleanup_title": "Pembersihan teks",
     "spoken_punctuation": "Tanda baca lisan",
     "spoken_punctuation_desc": "Ucapkan “comma”, “period”, “question mark”, “new line” untuk mengetiknya. Hanya bahasa Inggris."

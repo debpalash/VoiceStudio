@@ -33,29 +33,35 @@ function read(): DictationSettings {
   }
 }
 
-function update(patch: Partial<DictationSettings>): void {
+/** Persists first; on a storage failure the last confirmed value stays and false is returned. */
+function update(patch: Partial<DictationSettings>): boolean {
   const next = { ...settings, ...patch };
-  if (same(next, settings)) return;
-  settings = next;
+  if (same(next, settings)) return true;
   // The compact flag is only stored when on, so the shape older builds wrote is unchanged.
   if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        aecEnabled: next.aecEnabled,
-        ...(next.compactOverlay ? { compactOverlay: true } : {}),
-      }),
-    );
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          aecEnabled: next.aecEnabled,
+          ...(next.compactOverlay ? { compactOverlay: true } : {}),
+        }),
+      );
+    } catch {
+      return false;
+    }
   }
+  settings = next;
   listeners.forEach((listener) => listener());
+  return true;
 }
 
 export function getAecEnabled(): boolean {
   return settings.aecEnabled;
 }
 
-export function setAecEnabled(value: boolean): void {
-  update({ aecEnabled: value });
+export function setAecEnabled(value: boolean): boolean {
+  return update({ aecEnabled: value });
 }
 
 export function getCompactOverlay(): boolean {
@@ -63,8 +69,8 @@ export function getCompactOverlay(): boolean {
 }
 
 /** Press-and-hold dictation shows only a level meter and timer instead of the full recorder. */
-export function setCompactOverlay(value: boolean): void {
-  update({ compactOverlay: value });
+export function setCompactOverlay(value: boolean): boolean {
+  return update({ compactOverlay: value });
 }
 
 function subscribe(listener: () => void): () => void {

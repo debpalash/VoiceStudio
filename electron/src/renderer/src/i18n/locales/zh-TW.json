@@ -1669,6 +1669,7 @@
     "compact_title": "精簡浮層",
     "compact_row_title": "按住聽寫的精簡浮層",
     "compact_description": "按住快捷鍵期間，只顯示即時音量表與計時器，而不顯示完整的錄音器與逐字稿。放開後文字仍會照常插入。",
+    "compact_save_failed": "無法儲存此設定，請重試。",
     "cleanup_title": "文字整理",
     "spoken_punctuation": "語音標點",
     "spoken_punctuation_desc": "說 “comma”, “period”, “question mark”, “new line” 即可輸入。僅支援英語。"

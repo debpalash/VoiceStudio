@@ -1671,6 +1671,7 @@
     "compact_title": "Superposición compacta",
     "compact_row_title": "Superposición compacta para dictado mantenido",
     "compact_description": "Mientras mantienes el atajo, muestra solo un medidor de nivel en vivo y un temporizador en lugar de la grabadora completa y la transcripción. El texto se inserta igualmente al soltarlo.",
+    "compact_save_failed": "No se pudo guardar este ajuste. Inténtalo de nuevo.",
     "cleanup_title": "Limpieza del texto",
     "spoken_punctuation": "Puntuación dictada",
     "spoken_punctuation_desc": "Di “comma”, “period”, “question mark”, “new line” para escribirlo. Solo en inglés."

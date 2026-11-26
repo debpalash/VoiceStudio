@@ -1669,6 +1669,7 @@
     "compact_title": "Compacte overlay",
     "compact_row_title": "Compacte overlay voor dicteren met ingedrukt houden",
     "compact_description": "Zolang je de sneltoets ingedrukt houdt, zie je alleen een live niveaumeter en een timer in plaats van de volledige recorder en transcriptie. De tekst wordt bij loslaten nog steeds ingevoegd.",
+    "compact_save_failed": "Deze instelling kon niet worden opgeslagen. Probeer het opnieuw.",
     "cleanup_title": "Tekst opschonen",
     "spoken_punctuation": "Gesproken leestekens",
     "spoken_punctuation_desc": "Zeg “comma”, “period”, “question mark”, “new line” om het te typen. Alleen Engels."

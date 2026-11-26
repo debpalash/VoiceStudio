@@ -1669,6 +1669,7 @@
     "compact_title": "Lớp phủ gọn",
     "compact_row_title": "Lớp phủ gọn cho đọc chính tả nhấn giữ",
     "compact_description": "Khi bạn giữ phím tắt, chỉ hiển thị thanh đo mức âm thanh trực tiếp và đồng hồ thay vì trình ghi âm đầy đủ và bản chép lời. Văn bản vẫn được chèn khi bạn thả phím.",
+    "compact_save_failed": "Không thể lưu cài đặt này. Vui lòng thử lại.",
     "cleanup_title": "Làm sạch văn bản",
     "spoken_punctuation": "Dấu câu bằng giọng nói",
     "spoken_punctuation_desc": "Nói “comma”, “period”, “question mark”, “new line” để gõ. Chỉ tiếng Anh."

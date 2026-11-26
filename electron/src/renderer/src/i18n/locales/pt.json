@@ -1671,6 +1671,7 @@
     "compact_title": "Sobreposição compacta",
     "compact_row_title": "Sobreposição compacta para ditado com tecla pressionada",
     "compact_description": "Enquanto você mantém o atalho pressionado, mostra apenas um medidor de nível ao vivo e um cronômetro em vez do gravador completo e da transcrição. O texto continua sendo inserido ao soltar.",
+    "compact_save_failed": "Não foi possível salvar esta configuração. Tente novamente.",
     "cleanup_title": "Limpeza do texto",
     "spoken_punctuation": "Pontuação ditada",
     "spoken_punctuation_desc": "Diga “comma”, “period”, “question mark”, “new line” para digitar. Apenas em inglês."

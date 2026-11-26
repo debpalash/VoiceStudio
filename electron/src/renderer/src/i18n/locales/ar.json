@@ -1701,6 +1701,7 @@
     "compact_title": "نافذة مصغرة",
     "compact_row_title": "نافذة مصغرة للإملاء بالضغط المستمر",
     "compact_description": "أثناء الضغط على الاختصار، يعرض مقياس مستوى مباشر ومؤقتًا فقط بدلًا من المسجل الكامل والنص. يُدرج النص عند تحرير الاختصار كالمعتاد.",
+    "compact_save_failed": "تعذّر حفظ هذا الإعداد. يُرجى المحاولة مرة أخرى.",
     "cleanup_title": "تنظيف النص",
     "spoken_punctuation": "علامات الترقيم المنطوقة",
     "spoken_punctuation_desc": "قل “comma”, “period”, “question mark”, “new line” لكتابتها. بالإنجليزية فقط."

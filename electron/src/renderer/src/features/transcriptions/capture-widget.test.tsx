@@ -56,6 +56,7 @@ const dictation = vi.hoisted(() => {
   // one stable object — a fresh literal per call loops React forever.
   const snapshot = { stage: 'recording', text: '', paused: false };
   return {
+    snapshot,
     cancel: vi.fn(),
     pause: vi.fn(),
     start: vi.fn(async () => {}),
@@ -93,6 +94,8 @@ async function mountAndStartSession(compact?: boolean): Promise<void> {
 
 beforeEach(() => {
   backendStore.reset();
+  dictation.snapshot.stage = 'recording';
+  dictation.snapshot.text = '';
   for (const target of [capture, dictation]) {
     for (const value of Object.values(target)) {
       if (typeof value === 'function' && 'mockClear' in value) value.mockClear();
@@ -159,6 +162,15 @@ describe('compact push-to-talk overlay', () => {
     expect(screen.getByTestId('compact-overlay')).toBeTruthy();
     expect(screen.queryByRole('status')).toBeNull();
     expect(capture.expand).not.toHaveBeenCalled();
+  });
+
+  it('restores the full recorder when dictation ends with no speech', async () => {
+    dictation.snapshot.stage = 'done';
+    render(<CaptureWidget />);
+    await mountAndStartSession(true);
+    expect(screen.queryByTestId('compact-overlay')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('capture.no_speech');
+    expect(capture.expand).toHaveBeenCalled();
   });
 
   it('keeps the full recorder when the session is not compact', async () => {

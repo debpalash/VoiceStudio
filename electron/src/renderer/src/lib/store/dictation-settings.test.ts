@@ -32,3 +32,16 @@ it('reads a stored value written by an older build', async () => {
   expect(store.getAecEnabled()).toBe(true);
   expect(store.getCompactOverlay()).toBe(false);
 });
+
+it('keeps the last confirmed value and allows a retry when storage fails', async () => {
+  const store = await import('./dictation-settings');
+  const failing = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new Error('quota');
+  });
+  expect(store.setCompactOverlay(true)).toBe(false);
+  expect(store.getCompactOverlay()).toBe(false);
+  failing.mockRestore();
+  expect(store.setCompactOverlay(true)).toBe(true);
+  expect(store.getCompactOverlay()).toBe(true);
+  expect(JSON.parse(localStorage.getItem(KEY)!)).toMatchObject({ compactOverlay: true });
+});

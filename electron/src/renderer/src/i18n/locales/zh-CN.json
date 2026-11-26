@@ -1669,6 +1669,7 @@
     "compact_title": "紧凑浮层",
     "compact_row_title": "按住听写的紧凑浮层",
     "compact_description": "按住快捷键期间，只显示实时音量表和计时器，而不显示完整的录音器和转写文本。松开后文本仍会照常插入。",
+    "compact_save_failed": "无法保存此设置，请重试。",
     "cleanup_title": "文本整理",
     "spoken_punctuation": "语音标点",
     "spoken_punctuation_desc": "说 “comma”, “period”, “question mark”, “new line” 即可输入。仅支持英语。"

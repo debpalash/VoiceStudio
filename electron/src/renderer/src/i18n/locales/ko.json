@@ -1668,6 +1668,7 @@
     "compact_title": "간단 오버레이",
     "compact_row_title": "누르고 있는 받아쓰기용 간단 오버레이",
     "compact_description": "단축키를 누르고 있는 동안 전체 녹음기와 전사 대신 실시간 레벨 미터와 타이머만 표시합니다. 키를 놓으면 텍스트가 평소처럼 입력됩니다.",
+    "compact_save_failed": "이 설정을 저장하지 못했습니다. 다시 시도해 주세요.",
     "cleanup_title": "텍스트 정리",
     "spoken_punctuation": "음성 문장 부호",
     "spoken_punctuation_desc": "“comma”, “period”, “question mark”, “new line”라고 말하면 입력됩니다. 영어만 지원합니다.",

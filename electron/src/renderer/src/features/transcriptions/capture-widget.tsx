@@ -150,7 +150,12 @@ export function CaptureWidget() {
   };
   // Compact hides the transcript, so anything the user must read (a failure or
   // clipboard-only delivery) restores the full recorder at its normal size.
-  const showCompact = compact && delivery === null && state.stage !== 'error';
+  // An empty final (no speech) never finishes the session, so it needs the full view too.
+  const showCompact =
+    compact &&
+    delivery === null &&
+    state.stage !== 'error' &&
+    !(state.stage === 'done' && !state.text);
   useEffect(() => {
     if (compact && !showCompact) void api?.expand().catch(() => {});
   }, [api, compact, showCompact]);
