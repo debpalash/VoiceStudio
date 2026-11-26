@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { apiJson } from '@/lib/api/client';
+import { ApiError, apiJson } from '@/lib/api/client';
 import { DubGenerationReview, type DubGenerationPlan } from './dub-generation-review';
 import type { DubSession } from './dub-session';
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -161,4 +161,29 @@ it('blocks a known short cue before a long run and opens the affected row', asyn
   fireEvent.click(screen.getByRole('button', { name: 'dub.issue_locate' }));
   expect(fix).toHaveBeenCalledWith('992');
   expect(screen.queryByText('dub.plan_mix_only')).toBeNull();
+});
+
+it('still lets an older backend without the plan route generate, without inventing counts', async () => {
+  vi.mocked(apiJson).mockRejectedValueOnce(
+    new ApiError(404, 'route missing', { detail: 'Not Found' }),
+  );
+  const start = vi.fn();
+  render(<DubGenerationReview {...props} onConfirm={start} />);
+  const action = await screen.findByRole('button', { name: 'dub.generate_needed' });
+  expect(action.hasAttribute('disabled')).toBe(false);
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByText('dub.plan_mix_only')).toBeNull();
+  fireEvent.click(action);
+  expect(start).toHaveBeenCalledOnce();
+});
+
+it('keeps blocking when the plan route exists but the check fails', async () => {
+  vi.mocked(apiJson).mockRejectedValueOnce(
+    new ApiError(404, 'Job not found', { detail: 'Job not found' }),
+  );
+  render(<DubGenerationReview {...props} />);
+  await screen.findByRole('alert');
+  expect(screen.getByRole('button', { name: /dub\.(flow_|generate_)/ }).hasAttribute('disabled')).toBe(
+    true,
+  );
 });

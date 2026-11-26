@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { apiJson, describeError, isAbortError } from '@/lib/api/client';
+import { ApiError, apiJson, describeError, isAbortError } from '@/lib/api/client';
 import { hasCompleteTranslation } from '@shared/utils/multiLang';
 import type { DubSession } from './dub-session';
 import { dubGenerationRequest, type DubGenerationOptions } from './dub-generation-request';
@@ -23,7 +23,21 @@ export interface DubGenerationPlan {
   forced: number;
   issues?: Array<{ segment_id: string; code: string }>;
 }
-type TargetPlan = { language: string; needsTranslation: boolean; plan?: DubGenerationPlan };
+type TargetPlan = {
+  language: string;
+  needsTranslation: boolean;
+  plan?: DubGenerationPlan;
+  /** The backend predates the plan route: generate as before, without counts. */
+  unplanned?: boolean;
+};
+
+/** Starlette's unrouted reply (or a wrong method): an older backend, not a failed check. */
+function planRouteMissing(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    (error.status === 405 || (error.status === 404 && error.payload?.detail === 'Not Found'))
+  );
+}
 
 export function DubGenerationReview(props: Parameters<typeof OpenDubGenerationReview>[0]) {
   return props.open ? <OpenDubGenerationReview {...props} /> : null;
@@ -89,15 +103,29 @@ function OpenDubGenerationReview({
       }>;
       const plans: TargetPlan[] = [];
       for (const row of rows) {
-        const plan = row.needsTranslation
-          ? undefined
-          : await apiJson<DubGenerationPlan>('/dub/plan/' + encodeURIComponent(jobId), {
+        let plan: DubGenerationPlan | undefined;
+        let unplanned = false;
+        if (!row.needsTranslation) {
+          try {
+            plan = await apiJson<DubGenerationPlan>('/dub/plan/' + encodeURIComponent(jobId), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               signal: controller.signal,
               body: JSON.stringify(row.body),
             });
-        plans.push({ language: row.language, needsTranslation: row.needsTranslation, plan });
+          } catch (error) {
+            if (!planRouteMissing(error)) throw error;
+            // A remote or older backend has no plan route; generating still works there.
+            console.warn('Generation plan unavailable; generating without a preview', error);
+            unplanned = true;
+          }
+        }
+        plans.push({
+          language: row.language,
+          needsTranslation: row.needsTranslation,
+          plan,
+          unplanned,
+        });
       }
       if (!controller.signal.aborted) setResult({ key: encoded, plans });
     })().catch((error) => {
@@ -123,7 +151,11 @@ function OpenDubGenerationReview({
     !current?.error &&
     current?.plans.every((row) => row.plan) &&
     totalNew === 0;
-  const actionLabel = pending ? t('dub.plan_checking') : current?.plans.some(row => row.needsTranslation) ? t('dub.generate_needed') : mixOnly
+  const actionLabel = pending
+    ? t('dub.plan_checking')
+    : current?.plans.some((row) => row.needsTranslation || row.unplanned)
+      ? t('dub.generate_needed')
+      : mixOnly
     ? t('dub.assemble_track')
     : force
       ? t('dub.regen_changed', { count: totalNew })
