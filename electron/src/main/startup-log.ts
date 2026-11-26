@@ -49,10 +49,20 @@ export function logStartup(message: string, file?: string): void {
     const target = file ?? (defaultFile ??= startupLogPath());
     // One descriptor for the size check and the write, so nothing can swap the
     // file in between; an oversized log starts over rather than growing forever.
-    const fd = openSync(target, 'a');
+    // Read-write, not append: Windows refuses to truncate an append-only handle.
+    let fd: number;
     try {
-      if (fstatSync(fd).size > MAX_BYTES) ftruncateSync(fd, 0);
-      writeSync(fd, `${new Date().toISOString()} pid=${process.pid} ${message}\n`);
+      fd = openSync(target, 'r+');
+    } catch {
+      fd = openSync(target, 'a');
+    }
+    try {
+      let end = fstatSync(fd).size;
+      if (end > MAX_BYTES) {
+        ftruncateSync(fd, 0);
+        end = 0;
+      }
+      writeSync(fd, `${new Date().toISOString()} pid=${process.pid} ${message}\n`, end);
     } finally {
       closeSync(fd);
     }
