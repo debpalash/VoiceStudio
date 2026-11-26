@@ -201,7 +201,10 @@ it.each([false, true])(
     // fixture loader, without importing it into the browser TypeScript project.
     const { mkdtempSync, rmSync } = await vi.importActual<{
       mkdtempSync(prefix: string): string;
-      rmSync(path: string, options: { recursive: boolean; force: boolean }): void;
+      rmSync(
+        path: string,
+        options: { recursive: boolean; force: boolean; maxRetries?: number; retryDelay?: number },
+      ): void;
     }>('node:fs');
     const { tmpdir } = await vi.importActual<{ tmpdir(): string }>('node:os');
     const { join } = await vi.importActual<{ join(...parts: string[]): string }>('node:path');
