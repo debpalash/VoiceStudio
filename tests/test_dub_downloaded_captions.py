@@ -250,3 +250,19 @@ def test_downloaded_captions_and_uploaded_parser_agree_on_note_handling(tmp_path
     downloaded = [s["text"] for s in parse_vtt_segments(str(track))]
     uploaded = [" ".join(s["text"].split()) for s in parse_srt(NOTE_VTT).segments]
     assert downloaded == uploaded
+
+
+def test_downloaded_vtt_skips_invalid_timing_without_inventing_zero_start(tmp_path):
+    from services.dub_pipeline import parse_vtt_segments
+
+    track = tmp_path / "t.vtt"
+    track.write_text(
+        "WEBVTT\n\nxx:01.000 --> 00:03.000\nBad timestamp\n\n"
+        "00:04.000 --> 00:03.000\nReversed cue\n\n"
+        "00:04.000 --> 00:04.500oops\nInvalid suffix\n\n"
+        "00:05.5 --> 00:06.000\talign:start\nReal dialogue\n",
+        encoding="utf-8",
+    )
+    assert parse_vtt_segments(str(track)) == [
+        {"start": 5.5, "end": 6.0, "text": "Real dialogue"},
+    ]

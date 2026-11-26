@@ -67,7 +67,9 @@ export function GlossaryPanel({
     void apiJson<GlossaryTerm[]>(`/glossary/${encodeURIComponent(projectId)}`, {
       signal: controller.signal,
     })
-      .then(publish)
+      .then((next) => {
+        if (!controller.signal.aborted) publish(next);
+      })
       .catch((error) => {
         if (!controller.signal.aborted)
           toast.error(t('glossary.load_error', { message: describeError(error) }));
