@@ -32,6 +32,7 @@ import {
 } from '@/hooks/use-history';
 import { useDeleteProfile, useProfiles } from '@/hooks/use-profiles';
 import { audioUrl } from '@/lib/api/client';
+import { fullTake } from '@/lib/api/history';
 import type { HistoryItem, Profile } from '@/lib/api/types';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { selectCloneProfile } from '@/lib/store/reference';
@@ -530,7 +531,7 @@ function RecentTakes({ scrollRef }: RecentTakesProps) {
     onStar: (item) => toggleStarred.mutate({ id: item.id, starred: !item.starred }),
     onReuse: async (item) => {
       if (item.mode === 'design') {
-        writeDraft(designDraftFromTake(item));
+        writeDraft(designDraftFromTake(await fullTake(item)));
         setCloneSetting('language', item.language || 'Auto');
         openTake(null);
         return;

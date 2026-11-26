@@ -1,5 +1,6 @@
 import { SaveTakeProfile } from './save-take-profile';
 import { LockVoice } from './lock-voice';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AudioLinesIcon,
@@ -15,6 +16,7 @@ import { ProfileAvatar } from '@/components/profile-avatar';
 import { SaveAudioButton } from '@/components/save-audio-button';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { audioMp3Url, audioUrl } from '@/lib/api/client';
+import { fullTake, getHistoryItem } from '@/lib/api/history';
 import type { HistoryItem } from '@/lib/api/types';
 import { reuseTake, takeSettings } from '@/lib/store/takes';
 import { useGenerateClone } from '@/hooks/use-generate';
@@ -47,6 +49,19 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
   const navigate = useNavigate();
   const { isGenerating } = useGenerateClone();
   const settings = takeSettings(item);
+  // The list clips book-length scripts; the detail view loads the whole one (#4483).
+  const [fullText, setFullText] = useState<string | null>(null);
+  useEffect(() => {
+    setFullText(null);
+    if (!item.text_truncated) return;
+    let live = true;
+    getHistoryItem(item.id)
+      .then((full) => live && setFullText(full.text))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [item.id, item.text_truncated]);
   // The composer's language drives the next take; this take keeps the one it used.
   const composerLanguage = useCloneSetting('language');
   const languageLabel = (value: string | null | undefined) =>
@@ -64,7 +79,7 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
     settings.postprocess !== undefined;
   const reuse = async () => {
     if (isDesign) {
-      writeDraft(designDraftFromTake(item));
+      writeDraft(designDraftFromTake(await fullTake(item)));
       setCloneSetting('language', item.language || 'Auto');
       openTake(null);
       await navigate({ to: '/design' });
@@ -107,7 +122,7 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">{t('clone.text_label')}</h3>
         <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
-          {item.text}
+          {fullText ?? item.text}
         </p>
       </div>
       <dl className="space-y-2 text-sm">

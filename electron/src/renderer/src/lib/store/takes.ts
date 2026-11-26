@@ -3,6 +3,7 @@ import type { HistoryItem } from '@/lib/api/types';
 import type { CloneSettings } from './clone-settings';
 import { acceptsCloneSetting, DEFAULT_CLONE_SETTINGS, patchCloneSettings } from './clone-settings';
 import { setReferenceFile } from './reference';
+import { fullTake } from '@/lib/api/history';
 
 const listeners = new Set<() => void>();
 let selected: HistoryItem | null = null;
@@ -103,7 +104,8 @@ export function takeSettings(item: HistoryItem): Partial<TakeSettings> {
     return fallback;
   }
 }
-export async function reuseTake(item: HistoryItem) {
+export async function reuseTake(listed: HistoryItem) {
+  const item = await fullTake(listed);
   await setReferenceFile(null);
   patchCloneSettings(takeSettings(item));
   openTake(null);

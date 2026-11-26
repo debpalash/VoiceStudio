@@ -45,7 +45,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useDeleteProfile } from '@/hooks/use-profiles';
-import { deleteHistoryItem } from '@/lib/api/history';
+import { deleteHistoryItem, fullTake } from '@/lib/api/history';
 import { Input } from '@/components/ui/input';
 import { VirtualGrid, VirtualList } from '@/components/virtual-list';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
@@ -433,7 +433,8 @@ export function ProjectsPage() {
     selectCloneProfile(profile);
     await navigate({ to: '/clone' });
   };
-  const reuseTake = async (take: HistoryItem) => {
+  const reuseTake = async (listed: HistoryItem) => {
+    const take = await fullTake(listed);
     patchCloneSettings({
       text: take.text,
       language: take.language || 'Auto',
