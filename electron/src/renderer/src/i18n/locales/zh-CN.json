@@ -1033,6 +1033,9 @@
     "cleaned_other": "已整理 {{count}} 个碎片",
     "dialect_not_applied": "应用所选方言需要 LLM。请将翻译引擎切换为 OpenAI/Ollama，或在“设置 → 凭据 → LLM 端点”中配置 LLM。",
     "imported_cues": "已从 {{file}} 导入 {{count}} 条字幕",
+    "skipped_malformed": "已跳过 {{count}} 个（格式错误）",
+    "dropped_overlap": "已丢弃 {{count}} 个（重叠）",
+    "clamped_to_duration": "{{count}} 个片段已限制到媒体时长内",
     "segments_clean": "片段无需整理",
     "stop_failed": "停止失败"
   },

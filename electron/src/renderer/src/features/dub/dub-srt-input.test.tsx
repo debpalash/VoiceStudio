@@ -157,6 +157,27 @@ it('locks preparation decisions while a job is running', () => {
   setup(true);
   expect(screen.getByRole('radio', { name: /dub.import_srt/ }).hasAttribute('disabled')).toBe(true);
 });
+it('reports skipped, dropped and clamped cues from a lossy subtitle import', () => {
+  const { props, rerender } = setup();
+  rerender(
+    <DubSourcePanel
+      {...props}
+      session={{
+        ...props.session,
+        jobId: 'saved',
+        filename: 'existing.mp4',
+        segments: [],
+        subtitleImport: {
+          file: 'captions.srt',
+          stats: { imported: 4, skipped_malformed: 2, dropped_overlap: 0, clamped_to_duration: 1 },
+        },
+      }}
+    />,
+  );
+  expect(screen.getByText('dub_workflow.skipped_malformed')).toBeTruthy();
+  expect(screen.getByText('dub_workflow.clamped_to_duration')).toBeTruthy();
+  expect(screen.queryByText('dub_workflow.dropped_overlap')).toBeNull();
+});
 it('shows the loaded project summary without next-import switches', () => {
   const { props, rerender } = setup();
   rerender(

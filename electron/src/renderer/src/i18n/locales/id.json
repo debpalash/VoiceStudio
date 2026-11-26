@@ -1006,6 +1006,9 @@
   "dub_workflow": {
     "transcribing_audio": "Mentranskripsikan audio…",
     "imported_cues": "{{count}} isyarat yang diimpor dari {{file}}",
+    "skipped_malformed": "{{count}} dilewati (format salah)",
+    "dropped_overlap": "{{count}} terjatuh (tumpang tindih)",
+    "clamped_to_duration": "{{count}} dijepit sesuai panjang media",
     "cleaned_one": "Membersihkan fragmen {{count}}",
     "cleaned_other": "Membersihkan pecahan {{count}}",
     "segments_clean": "Segmen sudah bersih",

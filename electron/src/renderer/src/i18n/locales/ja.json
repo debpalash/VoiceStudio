@@ -1006,6 +1006,9 @@
   "dub_workflow": {
     "transcribing_audio": "音声を文字に起こしています…",
     "imported_cues": "{{file}} から {{count}} キューをインポートしました",
+    "skipped_malformed": "{{count}} がスキップされました (不正な形式)",
+    "dropped_overlap": "{{count}} が削除されました (重複)",
+    "clamped_to_duration": "{{count}} メディアの長さにクランプ",
     "cleaned_one": "{{count}} フラグメントをクリーンアップしました",
     "cleaned_other": "{{count}} フラグメントをクリーンアップしました",
     "segments_clean": "セグメントはすでにクリーンになっています",

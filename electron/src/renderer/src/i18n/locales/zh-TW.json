@@ -1006,6 +1006,9 @@
   "dub_workflow": {
     "transcribing_audio": "正在轉錄音訊...",
     "imported_cues": "從 {{file}} 導入了 {{count}} 提示",
+    "skipped_malformed": "{{count}} 已跳過（格式錯誤）",
+    "dropped_overlap": "{{count}} 掉落（重疊）",
+    "clamped_to_duration": "{{count}} 夾緊到介質長度",
     "cleaned_one": "已清理的 {{count}} 片段",
     "cleaned_other": "已清理的 {{count}} 碎片",
     "segments_clean": "段已經乾淨",

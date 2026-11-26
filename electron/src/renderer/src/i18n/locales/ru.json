@@ -1022,6 +1022,9 @@
   "dub_workflow": {
     "transcribing_audio": "Расшифровка аудио…",
     "imported_cues": "Импортированы реплики {{count}} из {{file}}.",
+    "skipped_malformed": "{{count}} пропущен (неверный формат)",
+    "dropped_overlap": "{{count}} удалено (перекрытие)",
+    "clamped_to_duration": "{{count}} зафиксирован по длине носителя",
     "cleaned_one": "Очищен фрагмент {{count}}.",
     "cleaned_other": "Очищены фрагменты {{count}}.",
     "segments_clean": "Сегменты уже чистые",

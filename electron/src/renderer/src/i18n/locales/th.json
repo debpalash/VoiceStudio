@@ -1006,6 +1006,9 @@
   "dub_workflow": {
     "transcribing_audio": "กำลังถอดเสียง...",
     "imported_cues": "นำเข้า {{count}} คิวจาก {{file}}",
+    "skipped_malformed": "{{count}} ข้ามไป (มีรูปแบบไม่ถูกต้อง)",
+    "dropped_overlap": "{{count}} ลดลง (ทับซ้อนกัน)",
+    "clamped_to_duration": "{{count}} ถูกหนีบเข้ากับความยาวของสื่อ",
     "cleaned_one": "ทำความสะอาดส่วน {{count}} แล้ว",
     "cleaned_other": "ทำความสะอาด {{count}} แฟรกเมนต์",
     "segments_clean": "ล้างกลุ่มแล้ว",

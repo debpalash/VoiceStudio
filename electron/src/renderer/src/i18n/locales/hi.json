@@ -1006,6 +1006,9 @@
   "dub_workflow": {
     "transcribing_audio": "ऑडियो ट्रांसक्राइब किया जा रहा है...",
     "imported_cues": "{{file}} से आयातित {{count}} संकेत",
+    "skipped_malformed": "{{count}} छोड़ दिया गया (विकृत)",
+    "dropped_overlap": "{{count}} गिरा दिया गया (ओवरलैप)",
+    "clamped_to_duration": "{{count}} मीडिया की लंबाई से जुड़ा हुआ",
     "cleaned_one": "साफ किया गया {{count}} टुकड़ा",
     "cleaned_other": "साफ किये गये {{count}} टुकड़े",
     "segments_clean": "खंड पहले से ही साफ़ हैं",

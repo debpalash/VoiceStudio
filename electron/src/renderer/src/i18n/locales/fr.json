@@ -1008,6 +1008,9 @@
   "dub_workflow": {
     "transcribing_audio": "Transcription audio…",
     "imported_cues": "Cues {{count}} importées de {{file}}",
+    "skipped_malformed": "{{count}} ignoré (mal formé)",
+    "dropped_overlap": "{{count}} supprimé (chevauchement)",
+    "clamped_to_duration": "{{count}} fixé à la longueur du support",
     "cleaned_one": "Fragment {{count}} nettoyé",
     "cleaned_other": "Fragments {{count}} nettoyés",
     "segments_clean": "Segments déjà propres",

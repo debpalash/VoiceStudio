@@ -1006,6 +1006,9 @@
   "dub_workflow": {
     "transcribing_audio": "Transkriberar ljud...",
     "imported_cues": "Importerade {{count}} signal(er) från {{file}}",
+    "skipped_malformed": "{{count}} hoppade över (felformat)",
+    "dropped_overlap": "{{count}} tappade (överlappning)",
+    "clamped_to_duration": "{{count}} fastspänd till medialängden",
     "cleaned_one": "Rensat {{count}} fragment",
     "cleaned_other": "Rensade {{count}} fragment",
     "segments_clean": "Segmenten är redan rena",

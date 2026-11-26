@@ -1006,6 +1006,9 @@
   "dub_workflow": {
     "transcribing_audio": "Audio transcriberen…",
     "imported_cues": "{{count}} cue(s) geïmporteerd uit {{file}}",
+    "skipped_malformed": "{{count}} overgeslagen (misvormd)",
+    "dropped_overlap": "{{count}} weggevallen (overlap)",
+    "clamped_to_duration": "{{count}} geklemd op medialengte",
     "cleaned_one": "{{count}} fragment schoongemaakt",
     "cleaned_other": "{{count}} fragmenten schoongemaakt",
     "segments_clean": "Segmenten zijn al schoon",

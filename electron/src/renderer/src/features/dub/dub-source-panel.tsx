@@ -537,12 +537,21 @@ export function DubSourcePanel({
             )}
           </p>
           {session.subtitleImport && (
-            <p className="break-words text-xs text-emerald-600 dark:text-emerald-400">
+            <p role="status" className="break-words text-xs text-emerald-600 dark:text-emerald-400">
               ✓{' '}
               {t('dub_workflow.imported_cues', {
                 count: session.subtitleImport.stats.imported,
                 file: session.subtitleImport.file,
               })}
+              {/* A lossy import must say what it skipped, dropped or clamped. */}
+              {(['skipped_malformed', 'dropped_overlap', 'clamped_to_duration'] as const).map(
+                (key) =>
+                  session.subtitleImport!.stats[key] ? (
+                    <span key={key} className="block text-muted-foreground">
+                      {t('dub_workflow.' + key, { count: session.subtitleImport!.stats[key] })}
+                    </span>
+                  ) : null,
+              )}
             </p>
           )}
           <details>

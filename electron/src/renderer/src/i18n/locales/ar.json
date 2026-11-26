@@ -1038,6 +1038,9 @@
   "dub_workflow": {
     "transcribing_audio": "جارٍ تحويل الصوت إلى نص…",
     "imported_cues": "تم استيراد {{count}} إشارة (إشارات) من {{file}}",
+    "skipped_malformed": "تم تخطي {{count}} (مشوه)",
+    "dropped_overlap": "تم إسقاط {{count}} (تداخل)",
+    "clamped_to_duration": "{{count}} مثبت بطول الوسائط",
     "cleaned_one": "تم تنظيف جزء {{count}}",
     "cleaned_other": "تنظيف {{count}} شظايا",
     "segments_clean": "قطاعات نظيفة بالفعل",

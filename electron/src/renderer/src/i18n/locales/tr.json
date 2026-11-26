@@ -1006,6 +1006,9 @@
   "dub_workflow": {
     "transcribing_audio": "Ses yazıya aktarılıyor…",
     "imported_cues": "{{file}}'den {{count}} işaret(ler) içe aktarıldı",
+    "skipped_malformed": "{{count}} atlandı (hatalı biçimlendirilmiş)",
+    "dropped_overlap": "{{count}} düştü (örtüşme)",
+    "clamped_to_duration": "{{count}} medya uzunluğuna sabitlendi",
     "cleaned_one": "{{count}} parçası temizlendi",
     "cleaned_other": "{{count}} parça temizlendi",
     "segments_clean": "Segmentler zaten temiz",

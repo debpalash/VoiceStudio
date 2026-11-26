@@ -1006,6 +1006,9 @@
   "dub_workflow": {
     "transcribing_audio": "Phiên âm âm thanh…",
     "imported_cues": "Đã nhập {{count}} tín hiệu từ {{file}}",
+    "skipped_malformed": "{{count}} bị bỏ qua (không đúng định dạng)",
+    "dropped_overlap": "{{count}} bị rơi (chồng chéo)",
+    "clamped_to_duration": "{{count}} được kẹp theo chiều dài phương tiện",
     "cleaned_one": "Đã làm sạch {{count}} đoạn",
     "cleaned_other": "Đã làm sạch {{count}} mảnh vỡ",
     "segments_clean": "Phân khúc đã sạch",
