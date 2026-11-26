@@ -932,6 +932,11 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
         checkpoints = SpeechCheckpoints(os.path.dirname(dub_seg_path(job_id, "checkpoint")),
                                         engine_id, backend.sample_rate, checkpoint_context)
         checkpoint_state["cache"] = checkpoints
+        if not planning:
+            try:
+                await asyncio.to_thread(checkpoints.prune)
+            except Exception as err:  # noqa: BLE001
+                logger.debug("speech checkpoint pruning skipped: %s", type(err).__name__)
         # Fresh takes are checkpointed only after the single provenance mark
         # at the persist point, so a reused checkpoint is never marked again.
         # Keyed by segment id: the checkpoint path (model proof taken right

@@ -58,3 +58,20 @@ def test_cache_write_and_identity_failures_keep_the_working_render(tmp_path, mon
     cache.key_proof = unavailable
     assert cache.read({'text': 'hello'}) is None
     assert torch.equal(cache.write({'text': 'hello'}, speech), speech)
+
+
+def test_checkpoints_stay_within_their_disk_bound(tmp_path):
+    import os
+    cache = SpeechCheckpoints(str(tmp_path), 'engine', 24000, {})
+    speech = torch.ones(1, 2400) * .1
+    for index in range(4):
+        cache.write({'text': f'take {index}'}, speech)
+        path = cache._path({'text': f'take {index}'})
+        os.utime(path, ns=(index * 10**9, index * 10**9))
+    size = cache._path({'text': 'take 0'}).stat().st_size
+    assert cache.prune(max_bytes=2 * size) == 2
+    # The oldest takes go first, with their checksums; recent ones stay usable.
+    assert cache.read({'text': 'take 0'}) is None and cache.read({'text': 'take 1'}) is None
+    assert not cache._path({'text': 'take 0'}).with_suffix('.sha256').exists()
+    assert cache.read({'text': 'take 3'}) is not None
+    assert cache.prune() == 0

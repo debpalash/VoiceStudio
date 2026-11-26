@@ -20,6 +20,9 @@ from services.audio_io import atomic_save_wav, load_audio
 
 logger = logging.getLogger("omnivoice.dub")
 
+#: Per-job bound, matching the interrupted-render journal's default.
+MAX_BYTES = 1 << 30
+
 
 class SpeechCheckpoints:
     def __init__(self, job_dir: str, engine: str, sample_rate: int, context: dict):
@@ -62,6 +65,34 @@ class SpeechCheckpoints:
                        context=self.context, args=args)
         key = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
         return self.root / (key + '.wav')
+
+    def prune(self, max_bytes: int = MAX_BYTES) -> int:
+        """Evict the oldest takes once the job's checkpoints exceed ``max_bytes``.
+
+        Every edited line leaves its previous take behind, so without a bound
+        a long, often re-rendered job grows on disk forever.
+        """
+        try:
+            takes = []
+            for entry in os.scandir(self.root):
+                if entry.name.endswith('.wav') and entry.is_file(follow_symlinks=False):
+                    info = entry.stat(follow_symlinks=False)
+                    takes.append((info.st_mtime_ns, info.st_size, Path(entry.path)))
+        except OSError:
+            return 0
+        total = sum(size for _, size, _ in takes)
+        removed = 0
+        for _, size, path in sorted(takes):
+            if total <= max_bytes:
+                break
+            for stale in (path.with_suffix('.sha256'), path):
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+            total -= size
+            removed += 1
+        return removed
 
     @staticmethod
     def usable(audio) -> bool:
