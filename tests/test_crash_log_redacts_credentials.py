@@ -107,3 +107,45 @@ def test_ws_ticket_is_redacted_like_the_other_query_credentials():
     scrubbed = scrub_text("http://127.0.0.1:3900/ws/events?ws_ticket=vs_ws_abcdef123456")
     assert "vs_ws_abcdef123456" not in scrubbed
     assert "ws_ticket=" in scrubbed
+
+def test_uvicorn_error_log_redacts_a_credential_in_the_reraised_traceback():
+    """Starlette re-raises after the handler's 500, and Uvicorn logs the raw
+    exception on `uvicorn.error` with handlers it configures itself."""
+    import io
+
+    import main  # noqa: F401  (installs the redaction filters)
+
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    uvicorn_error = logging.getLogger("uvicorn.error")
+    uvicorn_error.addHandler(handler)
+    try:
+        try:
+            raise RuntimeError(f"failed for http://127.0.0.1:3900/x?api_key={_API_KEY}&pin={_PIN}")
+        except RuntimeError:
+            uvicorn_error.exception("Exception in ASGI application")
+    finally:
+        uvicorn_error.removeHandler(handler)
+
+    logged = stream.getvalue()
+    assert "Exception in ASGI application" in logged
+    assert "RuntimeError" in logged
+    assert _API_KEY not in logged
+    assert _PIN not in logged
+
+
+def test_json_log_reuses_the_scrubbed_traceback():
+    import main
+
+    record = logging.LogRecord("omnivoice.api", logging.ERROR, __file__, 1, "boom", None, None)
+    try:
+        raise RuntimeError(f"http://127.0.0.1:3900/x?pin={_PIN}")
+    except RuntimeError:
+        import sys
+
+        record.exc_info = sys.exc_info()
+    from core.logging_filter import HFTokenRedactor
+
+    HFTokenRedactor().filter(record)
+    assert _PIN not in main._JsonFormatter().format(record)

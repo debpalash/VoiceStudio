@@ -313,7 +313,9 @@ class _JsonFormatter(logging.Formatter):
             "msg": record.getMessage(),
         }
         if record.exc_info:
-            payload["exc"] = self.formatException(record.exc_info)
+            # The redaction filter leaves a scrubbed `exc_text`; reuse it so the
+            # raw exception message is never formatted again.
+            payload["exc"] = record.exc_text or self.formatException(record.exc_info)
         return _json.dumps(payload, ensure_ascii=False)
 
 

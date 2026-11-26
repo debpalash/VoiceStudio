@@ -17,38 +17,60 @@ from __future__ import annotations
 import logging
 import re
 
+from core.scrub import scrub_url_credentials
+
 REDACTED = "hf_***REDACTED***"
 
 # At least 30 alphanumerics following `hf_` — covers all real HF tokens
 # (typically 36-40 chars total) while leaving short matches like `hf_hub`
 # alone so the log stays useful for debugging.
 _HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
+_TRACEBACK_FORMATTER = logging.Formatter()
+
+# Uvicorn logs an unhandled request exception, with its traceback, on
+# `uvicorn.error`, whose handlers it configures itself and which does not
+# propagate to the root handlers. A filter on the logger survives that config.
+_UVICORN_ERROR_LOGGERS = ("uvicorn.error",)
+
+
+def _redact(text: str) -> str:
+    return scrub_url_credentials(_HF_TOKEN_RE.sub(REDACTED, text))
 
 
 class HFTokenRedactor(logging.Filter):
-    """logging.Filter that rewrites HF token substrings in `record.msg`
-    and `record.args` before the formatter sees them."""
+    """logging.Filter that rewrites HF token substrings and URL credentials
+    (`?api_key=`, `?pin=`, `user:pw@host`) in `record.msg`, `record.args` and
+    the formatted traceback before the formatter sees them."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         # Rewrite the format string itself if it's a str.
         try:
             if isinstance(record.msg, str):
-                record.msg = _HF_TOKEN_RE.sub(REDACTED, record.msg)
+                record.msg = _redact(record.msg)
 
             # Rewrite per-argument so the formatted final message also
             # comes out clean. logger.info("token=%s", tok).
             if record.args:
                 if isinstance(record.args, tuple):
                     new_args = tuple(
-                        _HF_TOKEN_RE.sub(REDACTED, a) if isinstance(a, str) else a
+                        _redact(a) if isinstance(a, str) else a
                         for a in record.args
                     )
                     record.args = new_args
                 elif isinstance(record.args, dict):
                     record.args = {
-                        k: (_HF_TOKEN_RE.sub(REDACTED, v) if isinstance(v, str) else v)
+                        k: (_redact(v) if isinstance(v, str) else v)
                         for k, v in record.args.items()
                     }
+
+            # A traceback embeds the exception message, which can carry the
+            # request URL (`RuntimeError(str(request.url))`). Formatters reuse
+            # a cached `exc_text`, so formatting it once here and scrubbing it
+            # keeps the raw message out of every handler.
+            if record.exc_info and record.exc_info[0] is not None:
+                if not record.exc_text:
+                    record.exc_text = _TRACEBACK_FORMATTER.formatException(record.exc_info)
+                record.exc_text = _redact(record.exc_text)
         except Exception:
             # Never let the filter break the log pipeline. If anything
             # unexpected happens, just let the record pass through —
@@ -111,6 +133,11 @@ def install_redaction_filter(root_logger: logging.Logger | None = None) -> None:
     for handler in list(target.handlers):
         if not any(isinstance(f, HFTokenRedactor) for f in handler.filters):
             handler.addFilter(HFTokenRedactor())
+    if root_logger is None:
+        for name in _UVICORN_ERROR_LOGGERS:
+            uvicorn_logger = logging.getLogger(name)
+            if not any(isinstance(f, HFTokenRedactor) for f in uvicorn_logger.filters):
+                uvicorn_logger.addFilter(HFTokenRedactor())
 
 
 def install_access_log_filter(logger: logging.Logger | None = None) -> None:

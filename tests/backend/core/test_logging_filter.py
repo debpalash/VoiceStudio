@@ -150,3 +150,26 @@ def test_asyncio_transport_filter_drops_routine_socket_send_warning():
         None,
     )
     assert transport_filter.filter(record) is False
+
+
+def test_redacts_url_credentials_in_message_args_and_traceback(redactor_logger, caplog):
+    import sys
+
+    caplog.set_level(logging.DEBUG, logger="omnivoice.test_redactor")
+    try:
+        raise RuntimeError("GET http://u:hunter2secret@host/x?api_key=TOPSECRET99")
+    except RuntimeError:
+        redactor_logger.error("request %s", "/x?pin=424242&ok=1", exc_info=sys.exc_info())
+    text = caplog.text
+    for secret in ("TOPSECRET99", "424242", "hunter2secret"):
+        assert secret not in text
+    assert "pin=" in text and "ok=1" in text and "RuntimeError" in text
+
+
+def test_install_attaches_to_uvicorn_error_logger():
+    from core.logging_filter import HFTokenRedactor, install_redaction_filter
+
+    install_redaction_filter()
+    install_redaction_filter()
+    filters = [f for f in logging.getLogger("uvicorn.error").filters if isinstance(f, HFTokenRedactor)]
+    assert len(filters) == 1

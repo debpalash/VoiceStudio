@@ -272,6 +272,26 @@ def _scrub_url_userinfo(text: str) -> str:
     return _URL_USERINFO.sub(lambda m: m.group("scheme") + REDACTED + "@", text)
 
 
+def scrub_url_credentials(text: str) -> str:
+    """Redact credentials a URL carries (query values and ``user:pw@`` userinfo).
+
+    The cheap subset of ``scrub_text`` for ``core.logging_filter``: it runs on
+    every log record, so it skips the env-var sweep and home paths, and only
+    scans text that can hold a query or userinfo at all. Never raises.
+    """
+    if not isinstance(text, str) or "=" not in text and "@" not in text:
+        return text
+    try:
+        if "@" in text and "://" in text:
+            text = _scrub_url_userinfo(text)
+        if "=" in text:
+            text = _scrub_url_queries(text)
+            text = _URL_SECRET_RE.sub(lambda m: m.group(1) + REDACTED, text)
+    except Exception:
+        return REDACTED
+    return text
+
+
 def scrub_text(text: str | None) -> str:
     """Return ``text`` with secrets and home paths redacted.
 
