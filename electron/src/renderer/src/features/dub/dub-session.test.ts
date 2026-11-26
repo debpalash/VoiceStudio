@@ -53,6 +53,7 @@ it.each(['transport', 'too-large'] as const)('does not report local cookie %s va
 import {
   applyDubTranslationRows,
   replaceDubSegmentTexts,
+  restoreDubSegments,
   uploadDub,
   setDubProduction,
   setDubFitOptions,
@@ -1260,6 +1261,19 @@ it('echoes an imported cue only while no paste or edit has replaced its words (#
   setDubTarget('English', 'en');
   expect(dubSession.state.segments[0].text).toBe('Hello');
   expect(await generatedCueId()).toBe('imp:0');
+
+  reset();
+  editDubSegment('0', { text: 'Bye' });
+  restoreDubSegments();
+  expect(dubSession.state.segments[0].text).toBe('Hello');
+  expect(await generatedCueId()).toBe('imp:0');
+  // Restore Original also revives a row already edited back to the original.
+  reset();
+  editDubSegment('0', { text: 'Bye' });
+  editDubSegment('0', { text: 'Hello' });
+  expect(await generatedCueId()).toBeUndefined();
+  restoreDubSegments();
+  expect(await generatedCueId()).toBe('imp:0');
 });
 
 it('resetDubSession drops the loaded source but keeps production preferences', () => {
@@ -1515,4 +1529,19 @@ it('warns when a cached job has no background stem (#3751)', async () => {
   await uploadDub(new File(['audio'], 'voice.wav', { type: 'audio/wav' }));
   expect(warning.mock.calls.map((call) => call[0])).toEqual(['dub.bg_separation_failed']);
   warning.mockRestore();
+});
+
+
+it.each([restoreDubSegments, keepDubSourceText])('restores a deliberately blank source cue via %p', (restore) => {
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    segments: [
+      { id: 'blank', start: 0, end: 1, text: 'Added translation', text_original: '' },
+      { id: 'old', start: 1, end: 2, text: 'Legacy cue' } as (typeof current.segments)[number],
+    ],
+  }));
+  restore();
+  expect(dubSession.state.segments.map((cue) => cue.text)).toEqual(['', 'Legacy cue']);
 });

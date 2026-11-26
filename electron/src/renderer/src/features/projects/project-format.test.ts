@@ -69,3 +69,51 @@ it('discards malformed segments without inventing active tasks', () => {
   expect(session.segments).toEqual([]);
   expect(session.recovery).toBeNull();
 });
+
+
+it('reopens audio-only legacy projects without a saved input type or filename', () => {
+  const project = {
+    id: 'audio',
+    name: 'Audio dub',
+    audio_path: '/media/interview.wav',
+    state: { dubJobId: 'audio-job' },
+  };
+  expect(projectSession(project, defaults)).toMatchObject({
+    inputType: 'audio',
+    filename: '/media/interview.wav',
+  });
+  expect(projectSession({ ...project, video_path: '/media/interview.mp4' }, defaults)).toMatchObject({
+    inputType: 'video',
+    filename: '/media/interview.mp4',
+  });
+});
+
+it('saves and restores the full source duration when the last cue ends early', () => {
+  const session: DubSession = {
+    ...defaults,
+    duration: 12,
+    segments: [{ id: 'a', start: 2, end: 5, text: 'Dialogue', text_original: 'Dialogue' }],
+  };
+  const saved = projectPayload(session, 'Clip with a quiet ending');
+  expect(saved.duration).toBe(12);
+  expect(projectSession({ id: 'saved', ...saved }, defaults).duration).toBe(12);
+  expect(projectPayload({ ...session, duration: undefined }, 'Legacy draft').duration).toBe(5);
+});
+
+it('opens projects that only store modern export preferences', () => {
+  const exportOptions = {
+    preserveBg: false,
+    track: 'fr',
+    excluded: ['original'],
+    burn: true,
+    dual: true,
+    karaoke: false,
+  };
+  const session = projectSession(
+    { id: 'saved', name: 'Export setup', state: { exportOptions } },
+    defaults,
+  );
+  expect(session.exportOptions).toMatchObject(exportOptions);
+  const saved = projectPayload(session, 'Updated');
+  expect(projectSession({ id: 'saved', ...saved }, defaults).exportOptions).toMatchObject(exportOptions);
+});
