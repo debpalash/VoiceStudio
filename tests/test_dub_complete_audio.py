@@ -49,6 +49,8 @@ def render_dub(monkeypatch, tmp_path):
     monkeypatch.setattr(dg, 'rvc_is_enabled', lambda: False)
     monkeypatch.setattr(dg, 'mark_synthetic', lambda a, *args, **kw: a)
     monkeypatch.setattr(dg, "mark_synthetic_async", AsyncMock(side_effect=lambda a, *args, **kw: a), raising=False)
+    # The identity mark above embeds nothing, so marking reports as off.
+    monkeypatch.setattr(dg, "will_mark", lambda: False)
     monkeypatch.setattr(dg, 'get_effect_chain', lambda _: None)
     monkeypatch.setattr(dg, 'normalize_audio', lambda a, **kw: a)
 
@@ -572,7 +574,8 @@ def test_preflight_reports_exact_reuse_without_synthesizing_or_publishing(render
     assert not list(render_dub.path.iterdir())
     render_dub.run()
     calls=len(render_dub.generated)
-    before=dict(render_dub.job)
+    import copy
+    before=copy.deepcopy(render_dub.job)
     second=_generation_plan()
     assert second['synthesize']==0 and second['reuse']==1
     assert len(render_dub.generated)==calls and render_dub.job==before
@@ -691,7 +694,7 @@ def test_narration_export_keeps_caption_cues_and_uses_speech_blocks_for_clips(re
     assert len(de._segments_for_lang(job,'en')) == 2
     assert len(de._speech_segments(job,'en')) == 1
     assert de._speech_order(job,'en') == ['block_ab']
-    assert de._has_narration_audio(job)
+    assert de._has_narration_audio(job['dubbed_tracks'].values())
 
 
 def test_bounded_narration_does_not_move_the_following_block_and_reuses_full_takes(render_dub, monkeypatch):
@@ -751,6 +754,7 @@ def test_checkpointed_take_is_marked_once_through_the_watermark_pool(render_dub,
     # Fresh speech goes through main's single async mark, never a second
     # synchronous mark inside the synthesis thread.
     monkeypatch.setattr(dg, 'mark_synthetic_async', mark)
+    monkeypatch.setattr(dg, 'will_mark', lambda: True)
     monkeypatch.setattr(dg, 'mark_synthetic', lambda *a, **k: pytest.fail('marked off the watermark pool'))
     calls = []
     def synthesize():
@@ -764,6 +768,7 @@ def test_checkpointed_take_is_marked_once_through_the_watermark_pool(render_dub,
     assert marks == ['dub_generate.segment']
     # Only the private checkpoint remains (no interrupted-render journal).
     shutil.rmtree(render_dub.path / dub_resume.JOURNAL_DIRNAME, ignore_errors=True)
+    assert list((render_dub.path / '.speech-checkpoints').glob('*.wav'))
     done = render_dub.run(**kwargs)[-1]
     assert done['type'] == 'done' and done['speech_reused'] == 1
     assert marks == ['dub_generate.segment'] * 2
@@ -807,6 +812,10 @@ def test_concise_rescue_never_lets_overflow_through_unfitted(render_dub, monkeyp
     # The take is fitted into at least its own cue, never mixed over the next.
     assert events[-1]['fit_status'][0]['auto_adjusted'] is True
     assert calls[0] == 24000
+    # The published track holds that speech, even with no recorded duration.
+    track, _ = sf.read(render_dub.job['dubbed_tracks']['en']['path'], dtype='float32')
+    assert len(track) >= 24000
+    assert abs(track[:24000]).max() > .05
 
 
 def test_fixed_window_tiny_cue_language_is_validated_before_synthesis(render_dub, monkeypatch):
@@ -826,3 +835,91 @@ def test_fixed_window_tiny_cue_language_is_validated_before_synthesis(render_dub
         render_dub.run(segments=[dict(start=0, end=.02, text='hello')], language='Klingon', auto_fit_overflow=True)
     assert checked == ['Klingon']
     assert not render_dub.generated
+
+
+def test_rescue_fits_inside_a_known_source_end_and_publishes_it(render_dub, monkeypatch):
+    import api.routers.dub_generate as dg
+    render_dub.job['duration'] = 1.0
+    render_dub.output[0] = lambda: torch.ones(1, 72000) * .1
+    calls = []
+    async def stretch(wav, target, sr):
+        calls.append(target)
+        return torch.nn.functional.interpolate(wav.unsqueeze(0), size=target, mode='linear').squeeze(0)
+    monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
+    events = render_dub.run(segments=[dict(start=0, end=2, text='hello')], auto_fit_overflow=True)
+    assert events[-1]['type'] == 'done'
+    assert calls == [24000]
+    track, _ = sf.read(render_dub.job['dubbed_tracks']['en']['path'], dtype='float32')
+    assert len(track) == 24000 and abs(track[-1200:-600]).max() > .05
+
+
+def test_rescue_refuses_a_cue_that_starts_after_the_source(render_dub):
+    from fastapi import HTTPException
+    render_dub.job['duration'] = 1.0
+    with pytest.raises(HTTPException) as error:
+        render_dub.run(segments=[dict(start=0, end=1, text='one'), dict(start=1.5, end=2, text='two')],
+                       segment_ids=['a', 'b'], auto_fit_overflow=True)
+    assert error.value.status_code == 422
+    assert 'subtitle 2 starts at 1.50 s, after the source ends (1.00 s)' in error.value.detail['message']
+    assert not render_dub.generated
+
+
+def test_fixed_window_with_no_playable_time_is_refused(render_dub):
+    from fastapi import HTTPException
+    render_dub.job['subtitle_only'] = True
+    render_dub.job['duration'] = 1.0
+    with pytest.raises(HTTPException) as error:
+        render_dub.run(segments=[dict(start=0, end=1, text='one'), dict(start=1, end=1.0005, text='two')],
+                       segment_ids=['a', 'b'], auto_fit_overflow=True)
+    assert error.value.status_code == 422
+    assert [i['code'] for i in error.value.detail['issues']] == ['dub_cue_beyond_media']
+
+
+@pytest.mark.parametrize('ids', [['a', 'a'], ['part:1', 'part/1'], ['Take', 'take']])
+def test_rows_sharing_one_speech_file_are_refused(render_dub, ids):
+    from fastapi import HTTPException
+    body = dict(segments=[dict(start=0, end=1, text='one'), dict(start=1, end=2, text='two')], segment_ids=ids)
+    assert [i['code'] for i in _generation_plan(**body)['issues']] == ['dub_segment_id_collision']
+    with pytest.raises(HTTPException) as error:
+        render_dub.run(**body)
+    assert error.value.detail['code'] == 'dub_segment_ids_collide'
+    assert 'subtitle 2 has the same id as subtitle 1' in error.value.detail['message']
+    assert not render_dub.generated
+
+
+def test_tiny_cue_removed_by_pronunciation_is_intended_silence(render_dub):
+    body = dict(segments=[dict(start=0, end=1, text='Hello'), dict(start=1, end=1.02, text='[[label|]]')],
+                segment_ids=['first', 'gone'])
+    assert _generation_plan(**body)['issues'] == []
+    assert render_dub.run(**body)[-1]['type'] == 'done'
+
+
+def test_plan_reports_a_silent_saved_take_like_generation(render_dub):
+    render_dub.run()
+    path = render_dub.path / 'seg_en_a.wav'
+    sf.write(path, [0.0] * 24000, 24000)
+    plan = _generation_plan(regen_only=[])
+    assert [(i['code'], i['segment_id']) for i in plan['issues']] == [('dub_speech_missing', 'a')]
+    assert render_dub.run(regen_only=[])[-1]['error_code'] == 'dub_speech_missing'
+
+
+def test_checkpoint_is_not_kept_when_the_promised_mark_was_skipped(render_dub, monkeypatch):
+    import api.routers.dub_generate as dg
+    monkeypatch.setattr(dg, 'will_mark', lambda: True)
+    # The preference flips off (or the pool drains): marking returns the input.
+    monkeypatch.setattr(dg, 'mark_synthetic_async', AsyncMock(side_effect=lambda a, *args, **kw: a))
+    assert render_dub.run()[-1]['type'] == 'done'
+    assert not list((render_dub.path / '.speech-checkpoints').glob('*.wav'))
+
+
+def test_missing_reference_warning_names_no_home_path(caplog):
+    import api.routers.dub_generate as dg
+    dg.warn_if_ref_missing('/Users/someone/private/clip.wav', job_id='j-redact', seg_id='s1')
+    assert 'clip.wav' in caplog.text and '/Users/someone' not in caplog.text
+
+
+def test_mux_keeps_shortest_unless_a_mapped_track_is_narration():
+    from api.routers import dub_export as de
+    tracks = {'fr': {'timing_strategy': 'narration'}, 'es': {'timing_strategy': 'concise'}}
+    assert not de._has_narration_audio([tracks['es']])
+    assert de._has_narration_audio([tracks['es'], tracks['fr']])

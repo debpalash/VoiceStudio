@@ -16,8 +16,9 @@ def preview_path(job_dir: str, render_id: str, token: str) -> str:
     # job's preview folder (abspath + startswith: the containment proof).
     if not _RENDER.fullmatch(render_id) or not _TOKEN.fullmatch(token):
         raise ValueError("Invalid speech preview")
-    root = os.path.abspath(os.path.join(job_dir, ".speech-previews"))
-    path = os.path.abspath(os.path.join(root, render_id, token + ".wav"))
+    # realpath: a symlinked render folder must not lead outside the root.
+    root = os.path.realpath(os.path.join(job_dir, ".speech-previews"))
+    path = os.path.realpath(os.path.join(root, render_id, token + ".wav"))
     if not path.startswith(root + os.sep):
         raise ValueError("Invalid speech preview")
     return path

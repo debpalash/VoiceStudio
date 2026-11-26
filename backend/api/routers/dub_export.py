@@ -1159,7 +1159,9 @@ async def dub_download(
     # can still cut off the trailing frame; let ffmpeg keep both streams.
     # Otherwise keep the legacy `-shortest` so a slightly-overrunning track
     # doesn't extend the mux past the video.
-    if not stretch_entry and retime_decision is None and not _has_narration_audio(job):
+    if not stretch_entry and retime_decision is None and not _has_narration_audio(
+        t["info"] for t in tracks_to_process
+    ):
         cmd += ["-shortest"]
     cmd += [output_path, "-y"]
 
@@ -1480,7 +1482,7 @@ async def dub_preview_video(
         cmd += ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
         # `-shortest` would cut the retimed video at the (slightly different)
         # audio length and lose the trailing frame; only use it on the copy path.
-        if not stretch_entry and retime_decision is None and not _has_narration_audio(job):
+        if not stretch_entry and retime_decision is None and not _has_narration_audio([track_info]):
             cmd += ["-shortest"]
         cmd += [mux_path, "-y"]
 
@@ -1740,8 +1742,9 @@ def _speech_segments(job: dict, lang: str | None) -> list:
     return script["blocks"] if script else _segments_for_lang(job, language)
 
 
-def _has_narration_audio(job: dict) -> bool:
-    return any(track.get("timing_strategy") == "narration" for track in job.get("dubbed_tracks", {}).values())
+def _has_narration_audio(tracks) -> bool:
+    """True when one of the tracks this mux maps was rendered as narration."""
+    return any((track or {}).get("timing_strategy") == "narration" for track in tracks)
 
 
 @router.get("/dub/preview/{job_id}/{segment_index}", dependencies=[Depends(reject_cross_site_get)])

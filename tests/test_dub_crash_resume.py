@@ -64,6 +64,8 @@ def dub(monkeypatch, tmp_path):
     monkeypatch.setattr(dg, "rvc_is_enabled", lambda: False)
     monkeypatch.setattr(dg, "mark_synthetic", lambda a, *args, **kw: a)
     monkeypatch.setattr(dg, "mark_synthetic_async", AsyncMock(side_effect=lambda a, *args, **kw: a))
+    # The identity mark above embeds nothing, so marking reports as off.
+    monkeypatch.setattr(dg, "will_mark", lambda: False)
     monkeypatch.setattr(dg, "get_effect_chain", lambda _: None)
     monkeypatch.setattr(dg, "normalize_audio", lambda a, **kw: a)
 

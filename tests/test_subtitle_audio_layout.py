@@ -1,5 +1,10 @@
 import pytest
-from services.subtitle_audio import subtitle_audio_layout
+
+
+def subtitle_audio_layout(*args):
+    # Resolved at run time, never a collection-time module object.
+    from services.subtitle_audio import subtitle_audio_layout as layout
+    return layout(*args)
 
 
 def test_keeps_leading_and_between_cue_silence():

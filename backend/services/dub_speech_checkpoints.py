@@ -24,12 +24,14 @@ logger = logging.getLogger("omnivoice.dub")
 MAX_BYTES = 1 << 30
 
 
-def _discard(path: Path) -> None:
+def _discard(path: Path) -> bool:
     """Best-effort removal; a leftover file is only a cache miss later."""
     try:
         path.unlink(missing_ok=True)
+        return True
     except OSError as error:
         logger.debug("speech checkpoint file kept: %s", type(error).__name__)
+        return False
 
 
 class SpeechCheckpoints:
@@ -93,8 +95,11 @@ class SpeechCheckpoints:
         for _, size, path in sorted(takes):
             if total <= max_bytes:
                 break
-            for stale in (path.with_suffix('.sha256'), path):
-                _discard(stale)
+            # Only a take actually deleted frees its bytes; keep going so
+            # other candidates can still bring the folder under its bound.
+            if not _discard(path):
+                continue
+            _discard(path.with_suffix('.sha256'))
             total -= size
             removed += 1
         return removed
@@ -102,6 +107,16 @@ class SpeechCheckpoints:
     @staticmethod
     def usable(audio) -> bool:
         return bool(audio.numel() and torch.isfinite(audio).all() and torch.any(audio.abs() > 1e-6))
+
+    def has(self, prepared: dict) -> bool:
+        """Cheap existence check; ``read`` still verifies before any reuse."""
+        candidates = [dict(prepared, duration=None)] if prepared.get('duration') is not None else []
+        candidates.append(prepared)
+        for candidate in candidates:
+            path = self._path(candidate)
+            if path is not None and path.is_file() and path.with_suffix('.sha256').is_file():
+                return True
+        return False
 
     def read(self, prepared: dict):
         # Prefer an unconstrained take when switching timing strategies.

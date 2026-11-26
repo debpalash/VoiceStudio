@@ -14089,11 +14089,14 @@
     "responses": {
      "200": {
       "content": {
-       "application/json": {
-        "schema": {}
+       "audio/wav": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
        }
       },
-      "description": "Successful Response"
+      "description": "The completed take as WAV audio."
      },
      "422": {
       "content": {

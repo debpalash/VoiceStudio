@@ -1,5 +1,11 @@
 import torch
-from services.dub_speech_checkpoints import SpeechCheckpoints
+
+
+def SpeechCheckpoints(*args, **kwargs):
+    # Resolved at run time: a test that swaps the module in sys.modules must
+    # not leave this file holding a stale class.
+    from services.dub_speech_checkpoints import SpeechCheckpoints as cls
+    return cls(*args, **kwargs)
 
 
 def test_recipe_and_voice_content_control_reuse(tmp_path):
@@ -118,3 +124,45 @@ def test_render_ids_are_rebuilt_from_an_exact_allowlist():
     with pytest.raises(HTTPException) as error:
         dg.dub_speech_preview('..', 'a' * 32, 'b' * 64)
     assert error.value.status_code == 400
+
+
+def test_prune_counts_only_takes_it_actually_deleted(tmp_path, monkeypatch):
+    import os
+    import services.dub_speech_checkpoints as module
+    cache = SpeechCheckpoints(str(tmp_path), 'engine', 24000, {})
+    for index in range(3):
+        cache.write({'text': f'take {index}'}, torch.ones(1, 2400) * .1)
+        os.utime(cache._path({'text': f'take {index}'}), ns=(index * 10**9, index * 10**9))
+    stuck = cache._path({'text': 'take 0'})
+    size = stuck.stat().st_size
+    real_discard = module._discard
+    monkeypatch.setattr(module, '_discard', lambda path: False if path == stuck else real_discard(path))
+    # The oldest cannot be deleted: the next one goes instead, and the
+    # undeletable take is not counted as freed.
+    assert cache.prune(max_bytes=2 * size) == 1
+    assert stuck.exists() and not cache._path({'text': 'take 1'}).exists()
+
+
+def test_has_does_not_decode(tmp_path, monkeypatch):
+    import services.dub_speech_checkpoints as module
+    cache = SpeechCheckpoints(str(tmp_path), 'engine', 24000, {})
+    cache.write({'text': 'hello', 'duration': None}, torch.ones(1, 2400) * .1)
+    monkeypatch.setattr(module, 'load_audio', lambda *a: (_ for _ in ()).throw(AssertionError('decoded')))
+    assert cache.has({'text': 'hello', 'duration': 2.0})
+    assert not cache.has({'text': 'other', 'duration': None})
+
+
+def test_symlinked_preview_folder_cannot_lead_outside(tmp_path):
+    import os
+    import pytest
+    from services.dub_speech_preview import preview_path
+    job_dir = tmp_path / 'job'
+    (job_dir / '.speech-previews').mkdir(parents=True)
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    try:
+        os.symlink(outside, job_dir / '.speech-previews' / ('a' * 32))
+    except (OSError, NotImplementedError):
+        pytest.skip('symlinks unavailable')
+    with pytest.raises(ValueError):
+        preview_path(str(job_dir), 'a' * 32, 'b' * 64)
