@@ -52,3 +52,57 @@ def test_out_of_order_stitched_word_cannot_invert_or_delete_a_line():
     assert len(result)==2
     assert result[0]['start']==10
     assert result[0]['end']==11.6
+
+
+def test_chunk_dedup_preserves_unique_words_between_matching_context():
+    earlier = segment('a', words('I think it works', 10))
+    later = segment('b', words('I think this works now', 10))
+    result = deduplicate_chunk_segments([earlier, later])
+    assert result[1]['text'] == 'I think this works now'
+
+
+def test_chunk_dedup_does_not_discard_unmatched_tail_after_a_confirmed_prefix():
+    earlier = segment('a', words('I think it might work', 10))
+    later = segment('b', words('I think it works now', 10))
+    result = deduplicate_chunk_segments([earlier, later])
+    assert result[1]['text'] == 'works now'
+    assert result[1]['start'] == later['words'][3]['start']
+
+
+def test_previous_word_cannot_match_multiple_incoming_words():
+    old = segment("old", words("we are here", 0))
+    incoming = words("we are here here welcome", 0)
+    incoming[3].update(start=0.95, end=1.35)
+    result = deduplicate_chunk_segments([old, segment("new", incoming)])
+    assert result[-1]["text"] == "here welcome"
+
+
+def test_prior_words_are_matched_chronologically_not_by_cue_insertion_order():
+    prior = words('B C D', 10.4)
+    prior.append({'text': 'A', 'start': 10.0, 'end': 10.4})
+    old = {**segment('old', prior), 'start': 10.0, 'end': 11.6}
+    new = segment('new', words('A B C D Welcome', 10))
+    result = deduplicate_chunk_segments([old, new])
+    assert result[-1]['text'] == 'Welcome'
+
+
+def test_prior_window_covers_all_incoming_words_when_they_are_out_of_order():
+    old = segment('old', words('one two three', 10))
+    incoming = words('one two three', 10) + [
+        {'text': 'late', 'start': 13.0, 'end': 13.4},
+        {'text': 'early', 'start': 8.0, 'end': 8.4},
+    ]
+    result = deduplicate_chunk_segments([old, segment('new', incoming)])
+    assert result[-1]['text'] == 'late early'
+    assert (result[-1]['start'], result[-1]['end']) == (8.0, 13.4)
+
+
+def test_trimmed_cue_bounds_stay_ordered_when_remaining_words_are_out_of_order():
+    old = segment('old', words('one two three', 10))
+    incoming = words('one two three', 10) + [
+        {'text': 'late', 'start': 13.0, 'end': 13.4},
+        {'text': 'early', 'start': 12.0, 'end': 12.4},
+    ]
+    result = deduplicate_chunk_segments([old, segment('new', incoming)])
+    assert result[-1]['start'] == 12.0
+    assert result[-1]['end'] == 13.4
