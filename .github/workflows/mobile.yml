@@ -140,41 +140,10 @@ jobs:
 
       # It also resolves every other dependency (Robolectric's native runtime,
       # kotlin-stdlib, ...) so a 429 retries here, not in the build step below.
-      # Only a rate-limit error fails the task; anything else is left to the build.
+      # Only a rate-limit error is retried; anything else is left to the build.
       - name: Resolve dependencies (retry on rate limits)
         if: steps.pass.outputs.hit != 'true'
-        run: |
-          cat > "$RUNNER_TEMP/resolve-all.init.gradle" <<'EOF'
-          allprojects {
-            tasks.register("resolveAllDependencies") {
-              doLast {
-                configurations.matching { it.canBeResolved }.each { c ->
-                  try { c.resolve() } catch (Exception e) {
-                    // Walk every branch: a multi-cause failure exposes only its
-                    // first cause through getCause(), the rest through getCauses().
-                    def msg = ""
-                    def seen = Collections.newSetFromMap(new IdentityHashMap())
-                    def pending = [e]
-                    while (pending) {
-                      def x = pending.remove(pending.size() - 1)
-                      if (x == null || !seen.add(x)) continue
-                      msg += x.message + "\n"
-                      pending << x.cause
-                      if (x.metaClass.respondsTo(x, "getCauses")) pending.addAll(x.causes)
-                    }
-                    if (msg.contains("429") || msg.contains("Too Many Requests")) { throw e }
-                  }
-                }
-              }
-            }
-          }
-          EOF
-          for delay in 0 30 90 180; do
-            sleep "$delay"
-            ./gradlew --no-daemon -I "$RUNNER_TEMP/resolve-all.init.gradle" :app:prepareRobolectricSdk resolveAllDependencies && exit 0
-            echo "::warning::Dependency download failed; retrying"
-          done
-          exit 1
+        run: bash scripts/resolve-dependencies.sh :app:prepareRobolectricSdk
 
       # Saved as soon as the jars resolve, not after a green job: a later test
       # failure must not throw away a download that succeeded.
@@ -552,6 +521,12 @@ jobs:
           path: mobile/native/android/build
           key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
 
+      # Maven Central rate-limits (HTTP 429) shared runner IPs; download every
+      # dependency here, with backoff, rather than inside the emulator run.
+      - name: Resolve dependencies (retry on rate limits)
+        if: steps.pass.outputs.hit != 'true'
+        run: bash scripts/resolve-dependencies.sh
+
       - name: Enable KVM
         if: steps.pass.outputs.hit != 'true'
         run: |
@@ -611,6 +586,11 @@ jobs:
         with:
           path: mobile/native/android/build
           key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
+
+      # Maven Central rate-limits (HTTP 429) shared runner IPs; download every
+      # dependency here, with backoff, rather than inside the emulator run.
+      - name: Resolve dependencies (retry on rate limits)
+        run: bash scripts/resolve-dependencies.sh
 
       - name: Enable KVM
         run: |
