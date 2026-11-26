@@ -317,14 +317,17 @@
     "test_global_hint": "Pratinjau hanya dengan entri Global — pilih bahasa untuk menyertakan entri khusus bahasa.",
     "test_error": "Pratinjau tidak tersedia — backend tidak dapat dihubungi.",
     "backup_title": "Cadangkan & pulihkan",
-    "backup_hint": "Unduh kamus sebagai file JSON, atau impor entri dari ekspor sebelumnya.",
+    "backup_hint": "Unduh kamus sebagai JSON atau leksikon PLS, atau impor salah satunya. Leksikon PLS dari layanan suara lain juga bisa digunakan.",
     "export": "Ekspor JSON",
+    "export_pls": "Ekspor PLS",
     "import": "Impor JSON",
-    "import_error": "File tidak dapat diimpor — diharapkan JSON dari ekspor pelafalan.",
+    "import_error": "File tidak dapat diimpor — diharapkan ekspor pelafalan (JSON) atau leksikon PLS.",
     "import_replace_prompt_one": "Ganti {{count}} entri yang ada dengan berkas impor? Pilih Tidak untuk menambahkan entri impor di sampingnya.",
     "import_replace_prompt_other": "Ganti {{count}} entri yang ada dengan berkas impor? Pilih Tidak untuk menambahkan entri impor di sampingnya.",
     "import_done_one": "{{count}} entri diimpor.",
     "import_done_other": "{{count}} entri diimpor.",
+    "import_skipped_one": "{{count}} entri dilewati: fonemnya tidak didukung.",
+    "import_skipped_other": "{{count}} entri dilewati: fonemnya tidak didukung.",
     "entries_count_one": "{{count}} entri",
     "entries_count_other": "{{count}} entri",
     "scope_language": "Bahasa",
@@ -2484,7 +2487,7 @@
   },
   "crash": {
     "uptime_value": "{{count}} s",
-    "field_exit": "KELUAR",
+    "field_exit": "Status keluar",
     "field_when": "Kapan",
     "field_uptime": "Waktu aktif sebelum crash",
     "no_stderr": "Tidak ada keluaran kesalahan yang ditangkap.",
@@ -3009,6 +3012,7 @@
       "speechCurl": "Teks ke ucapan (curl)",
       "transcriptionCurl": "Transkripsi (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Jalankan kontainer",
       "dockerCompose": "Docker Compose",
       "workflow": "Alur kerja n8n",
@@ -4349,5 +4353,12 @@
     "unavailable": "Laporan otomatis tidak tersedia atau dinonaktifkan untuk aplikasi ini.",
     "managed": "Kelola pilihan ini di aplikasi desktop yang terhubung ke browser ini.",
     "save_failed": "Pilihan ini tidak dapat disimpan. Silakan coba lagi."
+  },
+  "tray": {
+    "open": "Buka {{app}}",
+    "start_dictation": "Mulai dikte",
+    "stop_dictation": "Hentikan dikte",
+    "settings": "Pengaturan",
+    "quit": "Keluar"
   }
 }

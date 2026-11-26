@@ -19,7 +19,8 @@ export function storyChunkBody(
   const id = resolveStoryVoice(draft, profileId, profiles);
   if (id) body.set('profile_id', id);
   for (const [key, value] of Object.entries(overridesToRequest(draft.overrides, draft.language)))
-    body.set(key, String(value));
+    // Auditions and stems use /generate, whose trim field differs from /stories/render.
+    body.set(key === 'trim_edges' ? 'trim_engine_silence' : key, String(value));
   // A line's [emotion:] direction (#3422); the backend applies it as the full render does.
   if (emotion) body.set('emotion', emotion);
   return body;

@@ -317,14 +317,17 @@
     "test_global_hint": "Vorschau nur mit globalen Einträgen — wählen Sie eine Sprache, um sprachspezifische Einträge einzubeziehen.",
     "test_error": "Vorschau nicht verfügbar — das Backend war nicht erreichbar.",
     "backup_title": "Sichern & Wiederherstellen",
-    "backup_hint": "Laden Sie das Wörterbuch als JSON-Datei herunter oder importieren Sie Einträge aus einem früheren Export.",
+    "backup_hint": "Lade das Wörterbuch als JSON oder als PLS-Lexikon herunter oder importiere eines davon – auch PLS-Lexika anderer Sprachdienste funktionieren.",
     "export": "JSON exportieren",
+    "export_pls": "PLS exportieren",
     "import": "JSON importieren",
-    "import_error": "Diese Datei konnte nicht importiert werden — erwartet wird JSON aus einem Aussprache-Export.",
+    "import_error": "Diese Datei konnte nicht importiert werden — erwartet wird ein Aussprache-Export (JSON) oder ein PLS-Lexikon.",
     "import_replace_prompt_one": "Den {{count}} vorhandenen Eintrag durch die importierte Datei ersetzen? Wählen Sie Nein, um die importierten Einträge zusätzlich hinzuzufügen.",
     "import_replace_prompt_other": "Die {{count}} vorhandenen Einträge durch die importierte Datei ersetzen? Wählen Sie Nein, um die importierten Einträge zusätzlich hinzuzufügen.",
     "import_done_one": "{{count}} Eintrag importiert.",
     "import_done_other": "{{count}} Einträge importiert.",
+    "import_skipped_one": "{{count}} Eintrag wurde ausgelassen: Seine Lautschrift wird nicht unterstützt.",
+    "import_skipped_other": "{{count}} Einträge wurden ausgelassen: Ihre Lautschrift wird nicht unterstützt.",
     "entries_count_one": "{{count}} Eintrag",
     "entries_count_other": "{{count}} Einträge",
     "scope_language": "Sprache",
@@ -2485,7 +2488,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Absturzdetails anzeigen",
-    "field_exit": "Ausfahrt",
+    "field_exit": "Exit-Status",
     "field_when": "Wann",
     "field_uptime": "Betriebszeit vor dem Absturz",
     "field_version": "Backend-Version",
@@ -3009,6 +3012,7 @@
       "speechCurl": "Sprachausgabe (curl)",
       "transcriptionCurl": "Transkription (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Container starten",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n-Workflow",
@@ -4349,5 +4353,12 @@
     "unavailable": "Automatische Berichte sind für diese App nicht verfügbar oder deaktiviert.",
     "managed": "Verwalte diese Auswahl in der Desktop-App, die mit diesem Browser verbunden ist.",
     "save_failed": "Diese Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut."
+  },
+  "tray": {
+    "open": "{{app}} öffnen",
+    "start_dictation": "Diktat starten",
+    "stop_dictation": "Diktat beenden",
+    "settings": "Einstellungen",
+    "quit": "Beenden"
   }
 }

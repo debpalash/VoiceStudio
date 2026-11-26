@@ -128,6 +128,7 @@ compatibility accepts:
 | Where | How |
 |---|---|
 | Header | `Authorization: Bearer <key>` — **preferred** for scripts and SDKs |
+| Header (ElevenLabs routes) | `xi-api-key: <key>` — accepted only on `/elevenlabs` routes, for [ElevenLabs SDKs](elevenlabs-api.md) |
 | Legacy cookie | `ov_key=<key>` — accepted only for compatibility and migrated by the first-party UI; the backend no longer creates it |
 | Legacy query param | `?api_key=<key>` — compatibility only. **A key in a URL leaks into proxy/access logs and browser history** |
 

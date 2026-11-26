@@ -319,14 +319,17 @@
     "test_global_hint": "Aperçu avec les entrées globales uniquement — choisissez une langue pour inclure les entrées propres à une langue.",
     "test_error": "Aperçu indisponible — le backend n'a pas répondu.",
     "backup_title": "Sauvegarde et restauration",
-    "backup_hint": "Téléchargez le dictionnaire au format JSON ou importez des entrées d'un export précédent.",
+    "backup_hint": "Téléchargez le dictionnaire en JSON ou en lexique PLS, ou importez l'un ou l'autre. Les lexiques PLS d'autres services vocaux fonctionnent aussi.",
     "export": "Exporter JSON",
+    "export_pls": "Exporter PLS",
     "import": "Importer JSON",
-    "import_error": "Impossible d'importer ce fichier — JSON d'un export de prononciation attendu.",
+    "import_error": "Impossible d'importer ce fichier — un export de prononciation (JSON) ou un lexique PLS est attendu.",
     "import_replace_prompt_one": "Remplacer {{count}} entrée existante par le fichier importé ? Choisissez Non pour ajouter les entrées importées à côté.",
     "import_replace_prompt_other": "Remplacer les {{count}} entrées existantes par le fichier importé ? Choisissez Non pour ajouter les entrées importées à côté.",
     "import_done_one": "{{count}} entrée importée.",
     "import_done_other": "{{count}} entrées importées.",
+    "import_skipped_one": "{{count}} entrée ignorée : sa transcription phonétique n'est pas prise en charge.",
+    "import_skipped_other": "{{count}} entrées ignorées : leur transcription phonétique n'est pas prise en charge.",
     "entries_count_one": "{{count}} entrée",
     "entries_count_other": "{{count}} entrées",
     "scope_language": "Langue",
@@ -2487,7 +2490,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Afficher les détails de l'accident",
-    "field_exit": "Sortie",
+    "field_exit": "Code de sortie",
     "field_when": "Quand",
     "field_uptime": "Disponibilité avant le crash",
     "field_version": "Version back-end",
@@ -3011,6 +3014,7 @@
       "speechCurl": "Synthèse vocale (curl)",
       "transcriptionCurl": "Transcription (curl)",
       "openaiPython": "Python (SDK OpenAI)",
+      "elevenlabsPython": "Python (SDK ElevenLabs)",
       "dockerRun": "Lancer le conteneur",
       "dockerCompose": "Docker Compose",
       "workflow": "Workflow n8n",
@@ -4351,5 +4355,12 @@
     "unavailable": "Les rapports automatiques sont indisponibles ou désactivés pour cette application.",
     "managed": "Gérez ce choix dans l’application de bureau connectée à ce navigateur.",
     "save_failed": "Impossible d’enregistrer ce choix. Veuillez réessayer."
+  },
+  "tray": {
+    "open": "Ouvrir {{app}}",
+    "start_dictation": "Démarrer la dictée",
+    "stop_dictation": "Arrêter la dictée",
+    "settings": "Paramètres",
+    "quit": "Quitter"
   }
 }

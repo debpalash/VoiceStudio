@@ -55,11 +55,13 @@ export function App() {
   useEffect(() => {
     void window.voicestudio?.capture
       ?.labels({
-        show: `${t('common.open')} ${t('app.name')}`,
-        start: t('transcriptions.capture'),
-        stop: t('clone.stop_recording'),
-        settings: t('nav.settings'),
-        exit: t('crash.field_exit'),
+        // Tray-only keys: borrowed strings read wrong out of context (the
+        // crash report's "Exit" status became the Quit command).
+        show: t('tray.open', { app: t('app.name') }),
+        start: t('tray.start_dictation'),
+        stop: t('tray.stop_dictation'),
+        settings: t('tray.settings'),
+        exit: t('tray.quit'),
       })
       .catch(() => {});
   }, [t]);

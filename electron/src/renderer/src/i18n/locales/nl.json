@@ -317,14 +317,17 @@
     "test_global_hint": "Voorbeeld met alleen globale vermeldingen — kies een taal om taalspecifieke vermeldingen mee te nemen.",
     "test_error": "Voorbeeld niet beschikbaar — de backend was niet bereikbaar.",
     "backup_title": "Back-up & herstel",
-    "backup_hint": "Download het woordenboek als JSON-bestand, of importeer vermeldingen uit een eerdere export.",
+    "backup_hint": "Download het woordenboek als JSON of als PLS-lexicon, of importeer een van beide. PLS-lexicons van andere spraakdiensten werken ook.",
     "export": "JSON exporteren",
+    "export_pls": "PLS exporteren",
     "import": "JSON importeren",
-    "import_error": "Kan dat bestand niet importeren — JSON van een uitspraak-export verwacht.",
+    "import_error": "Kan dat bestand niet importeren — een uitspraak-export (JSON) of een PLS-lexicon verwacht.",
     "import_replace_prompt_one": "Het {{count}} bestaande item vervangen door het geïmporteerde bestand? Kies Nee om de geïmporteerde items ernaast toe te voegen.",
     "import_replace_prompt_other": "De {{count}} bestaande items vervangen door het geïmporteerde bestand? Kies Nee om de geïmporteerde items ernaast toe te voegen.",
     "import_done_one": "{{count}} item geïmporteerd.",
     "import_done_other": "{{count}} items geïmporteerd.",
+    "import_skipped_one": "{{count}} item overgeslagen: de fonetische notatie wordt niet ondersteund.",
+    "import_skipped_other": "{{count}} items overgeslagen: de fonetische notatie wordt niet ondersteund.",
     "entries_count_one": "{{count}} item",
     "entries_count_other": "{{count}} items",
     "scope_language": "Taal",
@@ -2485,7 +2488,7 @@
   "crash": {
     "uptime_value": "{{count}} s",
     "view": "Bekijk crashdetails",
-    "field_exit": "Uitgang",
+    "field_exit": "Afsluitstatus",
     "field_when": "Wanneer",
     "field_uptime": "Uptime vóór crash",
     "field_version": "Backend-versie",
@@ -3009,6 +3012,7 @@
       "speechCurl": "Tekst naar spraak (curl)",
       "transcriptionCurl": "Transcriptie (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Container starten",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n-workflow",
@@ -4349,5 +4353,12 @@
     "unavailable": "Automatische rapporten zijn niet beschikbaar of uitgeschakeld voor deze app.",
     "managed": "Beheer deze keuze in de desktopapp die met deze browser is verbonden.",
     "save_failed": "Deze keuze kon niet worden opgeslagen. Probeer het opnieuw."
+  },
+  "tray": {
+    "open": "{{app}} openen",
+    "start_dictation": "Dicteren starten",
+    "stop_dictation": "Dicteren stoppen",
+    "settings": "Instellingen",
+    "quit": "Afsluiten"
   }
 }

@@ -317,14 +317,17 @@
     "test_global_hint": "Förhandsvisar endast globala poster — välj ett språk för att ta med språkbundna poster.",
     "test_error": "Förhandsvisning otillgänglig — backend kunde inte nås.",
     "backup_title": "Säkerhetskopiera & återställ",
-    "backup_hint": "Ladda ner ordboken som en JSON-fil, eller importera poster från en tidigare export.",
+    "backup_hint": "Ladda ned ordlistan som JSON eller som PLS-lexikon, eller importera någon av dem. PLS-lexikon från andra taltjänster fungerar också.",
     "export": "Exportera JSON",
+    "export_pls": "Exportera PLS",
     "import": "Importera JSON",
-    "import_error": "Kunde inte importera filen — JSON från en uttalsexport förväntades.",
+    "import_error": "Kunde inte importera filen — en uttalsexport (JSON) eller ett PLS-lexikon förväntades.",
     "import_replace_prompt_one": "Ersätta {{count}} befintlig post med den importerade filen? Välj Nej för att lägga till de importerade posterna bredvid.",
     "import_replace_prompt_other": "Ersätta de {{count}} befintliga posterna med den importerade filen? Välj Nej för att lägga till de importerade posterna bredvid.",
     "import_done_one": "{{count}} post importerad.",
     "import_done_other": "{{count}} poster importerade.",
+    "import_skipped_one": "{{count}} post hoppades över: dess fonetiska skrift stöds inte.",
+    "import_skipped_other": "{{count}} poster hoppades över: deras fonetiska skrift stöds inte.",
     "entries_count_one": "{{count}} post",
     "entries_count_other": "{{count}} poster",
     "scope_language": "Språk",
@@ -2484,7 +2487,7 @@
   },
   "crash": {
     "uptime_value": "{{count}} s",
-    "field_exit": "Utgång",
+    "field_exit": "Avslutningsstatus",
     "field_when": "När",
     "field_uptime": "Drifttid före krasch",
     "field_version": "Backend-version",
@@ -3009,6 +3012,7 @@
       "speechCurl": "Text till tal (curl)",
       "transcriptionCurl": "Transkribering (curl)",
       "openaiPython": "Python (OpenAI SDK)",
+      "elevenlabsPython": "Python (ElevenLabs SDK)",
       "dockerRun": "Kör containern",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n-arbetsflöde",
@@ -4349,5 +4353,12 @@
     "unavailable": "Automatiska rapporter är inte tillgängliga eller är avstängda för den här appen.",
     "managed": "Hantera det här valet i datorappen som är ansluten till den här webbläsaren.",
     "save_failed": "Det gick inte att spara valet. Försök igen."
+  },
+  "tray": {
+    "open": "Öppna {{app}}",
+    "start_dictation": "Starta diktering",
+    "stop_dictation": "Stoppa diktering",
+    "settings": "Inställningar",
+    "quit": "Avsluta"
   }
 }
