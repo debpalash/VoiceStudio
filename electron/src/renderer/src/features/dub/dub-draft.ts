@@ -208,13 +208,6 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
                   : undefined,
             }
           : undefined,
-      lastExport:
-        value.lastExport &&
-        typeof value.lastExport.path === 'string' &&
-        value.lastExport.path.length < 8192 &&
-        typeof value.lastExport.savedAt === 'number'
-          ? { path: value.lastExport.path, savedAt: value.lastExport.savedAt }
-          : undefined,
       exportedRequestKeys:
         value.exportedRequestKeys && typeof value.exportedRequestKeys === 'object'
           ? Object.fromEntries(

@@ -541,6 +541,12 @@ export function DubPage() {
       preview === 'original' ? '' : fingerprintRevision(session.fingerprintsByLang?.[preview]),
     [preview, session.fingerprintsByLang],
   );
+  // The completed player follows its own track, not the sidebar preview choice,
+  // so switching that preview never reloads (and rewinds) this player.
+  const completeRevision = useMemo(
+    () => (code ? fingerprintRevision(session.fingerprintsByLang?.[code]) : ''),
+    [code, session.fingerprintsByLang],
+  );
   const preservePreviewBg = dubPreservesBackground(session);
   const previewBedLevel = session.exportOptions?.bedLevel ?? 100;
   const previewAudio = session.inputType === 'audio' || audioOnlyPreview;
@@ -912,6 +918,10 @@ export function DubPage() {
     if (step === 'export') {
       setListenComplete(true);
       mainScroll.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      // The completed player lives in the guide band, which scrolls on its own.
+      document
+        .querySelector('[data-slot="dub-complete-audio"]')
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       return;
     }
     setSidebarView('controls');
@@ -1439,7 +1449,10 @@ export function DubPage() {
                 />
               )}
             {code && guide.audioReady && previewTracks.includes(code) && (
-              <section className="shrink-0 border-b border-emerald-500/20 bg-emerald-500/5 px-4 py-3 space-y-2">
+              <section
+                data-slot="dub-complete-audio"
+                className="shrink-0 border-b border-emerald-500/20 bg-emerald-500/5 px-4 py-3 space-y-2"
+              >
                 <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
                   {t('dub.flow_ready')}
                 </p>
@@ -1469,7 +1482,7 @@ export function DubPage() {
                       sourceKey="dub-complete"
                       onCanPlay={applyCompleteSeek}
                       src={apiPath(
-                        `/dub/download-audio/${job}?lang=${encodeURIComponent(code)}${previewMix}${previewRevision ? `&v=${previewRevision}` : ''}`,
+                        `/dub/download-audio/${job}?lang=${encodeURIComponent(code)}${previewMix}${completeRevision ? `&v=${completeRevision}` : ''}`,
                       )}
                     />
                   </>
@@ -1509,9 +1522,10 @@ export function DubPage() {
                   : undefined
               }
               onMerge={(id, direction) => {
-                mergeDubSegment(id, direction);
-                setExpandedSegmentId(id);
-                selectTranscriptSegment(id);
+                // Merge previous keeps the earlier row; follow whichever row survives.
+                const kept = mergeDubSegment(id, direction) ?? id;
+                setExpandedSegmentId(kept);
+                selectTranscriptSegment(kept);
               }}
             />
           </div>

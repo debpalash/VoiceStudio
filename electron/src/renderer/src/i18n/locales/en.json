@@ -1150,6 +1150,7 @@
     "guide_now": "Now",
     "guide_running": "In progress",
     "guide_pending": "Pending",
+    "flow_reselect_srt": "Choose the SRT again to import its lines into this project.",
     "guide_continue": "Continue",
     "guide_source": "Prepare source",
     "guide_voice": "Language and voice",

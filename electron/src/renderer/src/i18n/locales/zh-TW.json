@@ -904,6 +904,7 @@
     "guide_now": "現在",
     "guide_running": "進行中",
     "guide_pending": "待處理",
+    "flow_reselect_srt": "請重新選擇 SRT，將其字幕行匯入此專案。",
     "guide_continue": "繼續",
     "guide_source": "準備來源",
     "guide_voice": "語言與聲音",

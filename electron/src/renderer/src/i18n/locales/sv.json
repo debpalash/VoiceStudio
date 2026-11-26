@@ -904,6 +904,7 @@
     "guide_now": "Nu",
     "guide_running": "Pågår",
     "guide_pending": "Väntar",
+    "flow_reselect_srt": "Välj SRT-filen igen för att importera raderna till det här projektet.",
     "guide_continue": "Fortsätt",
     "guide_source": "Förbered källa",
     "guide_voice": "Språk och röst",

@@ -936,6 +936,7 @@
     "guide_now": "الآن",
     "guide_running": "جارٍ التنفيذ",
     "guide_pending": "قيد الانتظار",
+    "flow_reselect_srt": "اختر ملف SRT مرة أخرى لاستيراد أسطره إلى هذا المشروع.",
     "guide_continue": "متابعة",
     "guide_source": "تحضير المصدر",
     "guide_voice": "اللغة والصوت",

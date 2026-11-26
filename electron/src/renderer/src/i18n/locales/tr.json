@@ -904,6 +904,7 @@
     "guide_now": "Şimdi",
     "guide_running": "Devam ediyor",
     "guide_pending": "Bekliyor",
+    "flow_reselect_srt": "Satırlarını bu projeye aktarmak için SRT dosyasını yeniden seçin.",
     "guide_continue": "Devam et",
     "guide_source": "Kaynağı hazırla",
     "guide_voice": "Dil ve ses",

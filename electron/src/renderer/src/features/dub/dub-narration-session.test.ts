@@ -90,11 +90,33 @@ it('preserves source links when blocks are merged', () => {
   expect(dubSession.state.narration?.captions).toHaveLength(3);
 });
 
-it('restores SRT bounds without changing words, voices or original captions', async()=>{
- const {restoreDubNarrationWindows}=await import('./dub-session');
- const originalCaptions=setup();setDubNarrationEnabled(true);
- const b=dubSession.state.segments[0];editDubSegment(b.id,{start:11,end:18});
- expect(restoreDubNarrationWindows()).toBe(true);
- expect(dubSession.state.segments[0]).toMatchObject({start:10,end:17,text:b.text,profile_id:b.profile_id});
- expect(dubSession.state.narration?.captions).toEqual(originalCaptions);
+it('restores SRT bounds without changing words, voices or original captions', async () => {
+  const { restoreDubNarrationWindows } = await import('./dub-session');
+  const originalCaptions = setup();
+  setDubNarrationEnabled(true);
+  const b = dubSession.state.segments[0];
+  editDubSegment(b.id, { start: 11, end: 18 });
+  expect(restoreDubNarrationWindows()).toBe(true);
+  expect(dubSession.state.segments[0]).toMatchObject({
+    start: 10,
+    end: 17,
+    text: b.text,
+    profile_id: b.profile_id,
+  });
+  expect(dubSession.state.narration?.captions).toEqual(originalCaptions);
+});
+it('turns narration off without a language lookup, and keeps the target when it cannot', () => {
+  const captions = setup();
+  expect(setDubNarrationEnabled(true)).toBe(true);
+  // A restored target label outside the narration list must not trap narration on.
+  dubSession.setState((s) => ({ ...s, target: 'Uyghur ' }));
+  expect(setDubNarrationEnabled(false)).toBe(true);
+  expect(dubSession.state.segments).toEqual(captions);
+
+  dubSession.setState((s) => ({ ...s, target: 'English' }));
+  expect(setDubNarrationEnabled(true)).toBe(true);
+  dubSession.setState((s) => ({ ...s, phase: 'generating' }));
+  setDubTarget('Spanish', 'es');
+  expect(dubSession.state.target).toBe('English');
+  expect(dubSession.state.narration?.enabled).toBe(true);
 });

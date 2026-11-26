@@ -904,6 +904,7 @@
     "guide_now": "지금",
     "guide_running": "진행 중",
     "guide_pending": "대기 중",
+    "flow_reselect_srt": "이 프로젝트에 줄을 가져오려면 SRT를 다시 선택하세요.",
     "guide_continue": "계속",
     "guide_source": "소스 준비",
     "guide_voice": "언어와 목소리",

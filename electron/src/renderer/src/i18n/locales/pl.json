@@ -920,6 +920,7 @@
     "guide_now": "Teraz",
     "guide_running": "W toku",
     "guide_pending": "Oczekujące",
+    "flow_reselect_srt": "Wybierz ponownie plik SRT, aby zaimportować jego wiersze do tego projektu.",
     "guide_continue": "Kontynuuj",
     "guide_source": "Przygotuj źródło",
     "guide_voice": "Język i głos",

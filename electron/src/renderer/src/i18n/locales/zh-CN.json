@@ -918,6 +918,7 @@
     "guide_now": "现在",
     "guide_running": "进行中",
     "guide_pending": "待处理",
+    "flow_reselect_srt": "请重新选择 SRT，将其字幕行导入此项目。",
     "guide_continue": "继续",
     "guide_source": "准备来源",
     "guide_voice": "语言和声音",

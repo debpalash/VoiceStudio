@@ -904,6 +904,7 @@
     "guide_now": "ตอนนี้",
     "guide_running": "กำลังดำเนินการ",
     "guide_pending": "รอดำเนินการ",
+    "flow_reselect_srt": "เลือกไฟล์ SRT อีกครั้งเพื่อนำเข้าบรรทัดลงในโปรเจกต์นี้",
     "guide_continue": "ดำเนินการต่อ",
     "guide_source": "เตรียมต้นฉบับ",
     "guide_voice": "ภาษาและเสียง",

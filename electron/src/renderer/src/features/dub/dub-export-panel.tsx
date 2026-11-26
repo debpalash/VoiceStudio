@@ -119,7 +119,8 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
       if (saved && !saved.canceled && saved.path) {
         recordDubSavedFile(session, saved.path);
         const code = translationTargetCode(session.target);
-        if (code && !subtitles && (format === 'mp4' ? selected.includes(code) : track === code)) {
+        // Only a file that carries the dubbed audio completes the export step.
+        if (code && !transcript && (format === 'mp4' ? selected.includes(code) : track === code)) {
           recordDubExport(session, code);
         }
       }
@@ -204,7 +205,9 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
         {['mp4', 'wav', 'mp3'].includes(format) &&
           !undubbed &&
           toggle(t('exportModal.bg_audio'), preserveBg, setPreserveBg, backgroundUnavailable)}
-        {backgroundUnavailable && !undubbed && <p className="text-xs text-muted-foreground">{t('dub.flow_background_no')}</p>}
+        {backgroundUnavailable && !undubbed && (
+          <p className="text-xs text-muted-foreground">{t('dub.flow_background_no')}</p>
+        )}
         {['mp4', 'wav', 'mp3'].includes(format) && !undubbed && preserveBg && (
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between gap-3">

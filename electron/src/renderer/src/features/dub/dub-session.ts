@@ -310,6 +310,9 @@ const persist = () => {
         error: null,
         failure: null,
         asrModelMissing: null,
+        // The saved file's absolute path can hold the user's home folder:
+        // it stays in memory for Show in folder, never in the draft or project.
+        lastExport: undefined,
       }),
     );
   } catch {
@@ -352,7 +355,6 @@ const unsubscribeDraft = dubSession.subscribe(() => {
     current.autoFitOverflow !== previousDraft.autoFitOverflow ||
     current.generatedRequestKeys !== previousDraft.generatedRequestKeys ||
     current.exportedRequestKeys !== previousDraft.exportedRequestKeys ||
-    current.lastExport !== previousDraft.lastExport ||
     current.narration !== previousDraft.narration ||
     current.narrationWanted !== previousDraft.narrationWanted ||
     current.listenedRequestKeys !== previousDraft.listenedRequestKeys ||
@@ -382,11 +384,10 @@ if (import.meta.hot)
 export function setDubNarrationEnabled(enabled: boolean): boolean {
   if (!editingAllowed()) return false;
   const current = dubSession.state;
-  const language = LANG_CODES.find((item) => item.label === current.target)?.code;
-  if (!language || (enabled && !current.segments.length)) return false;
   if (enabled === Boolean(current.narration?.enabled)) return true;
-  clearDubEditHistory();
+  // Turning narration off restores the captions; it needs no language.
   if (!enabled && current.narration) {
+    clearDubEditHistory();
     patch({
       narrationWanted: false,
       segments: cloneSegments(current.narration.captions),
@@ -395,6 +396,9 @@ export function setDubNarrationEnabled(enabled: boolean): boolean {
     });
     return true;
   }
+  const language = LANG_CODES.find((item) => item.label === current.target)?.code;
+  if (!enabled || !language || !current.segments.length) return false;
+  clearDubEditHistory();
   const captions = cloneSegments(current.segments);
   const sourceKey = narrationSourceKey(captions, language);
   const blocks =
@@ -497,8 +501,13 @@ export const setDubTranslationOptions = (
     patch(value);
 };
 export const setDubTarget = (target: string, code?: string) => {
-  if (dubSession.state.narration?.enabled && target !== dubSession.state.target)
-    setDubNarrationEnabled(false);
+  // Narration belongs to its language: keep the old target if it cannot end.
+  if (
+    dubSession.state.narration?.enabled &&
+    target !== dubSession.state.target &&
+    !setDubNarrationEnabled(false)
+  )
+    return;
   return dubSession.setState((current) => ({
     ...current,
     target,
@@ -1020,11 +1029,16 @@ export function splitDubSegment(id: string, cursorPosition: number) {
   commitSegmentEdit([...segments.slice(0, index), left, right, ...segments.slice(index + 1)]);
 }
 
-export function mergeDubSegment(id: string, direction: 'prev' | 'next' = 'next') {
+/** Merges two neighbours; returns the surviving row's id (the earlier one), or
+ * undefined when the merge is refused. */
+export function mergeDubSegment(
+  id: string,
+  direction: 'prev' | 'next' = 'next',
+): string | undefined {
   const segments = dubSession.state.segments;
   const selected = segments.findIndex((segment) => segment.id === id);
   const index = direction === 'prev' ? selected - 1 : selected;
-  if (selected < 0 || index < 0 || index >= segments.length - 1) return;
+  if (selected < 0 || index < 0 || index >= segments.length - 1) return undefined;
   const first = segments[index];
   const second = segments[index + 1];
   const translations: Record<string, string> = {};
@@ -1049,7 +1063,10 @@ export function mergeDubSegment(id: string, direction: 'prev' | 'next' = 'next')
     merge_parts: mergedParts(first, second),
     merge_parts_original: mergedOriginalParts(first, second),
   });
-  commitSegmentEdit([...segments.slice(0, index), merged, ...segments.slice(index + 2)]);
+  return commitSegmentEdit([...segments.slice(0, index), merged, ...segments.slice(index + 2)]) ===
+    false
+    ? undefined
+    : first.id;
 }
 
 export function moveResizeDubSegment(id: string, timing: { start: number; end: number }) {
@@ -1481,6 +1498,11 @@ async function useDownloadedCaptions(
   });
 }
 
+/** The SRT chosen with a media upload, kept for that job until it imports: a
+ * preparation stream that drops can then resume into the import. A reload
+ * loses the File; the project then asks for the SRT again. */
+let stagedSubtitles: { jobId: string; file: File; profileId?: string } | null = null;
+
 async function finishPreparation(
   jobId: string,
   taskId: string,
@@ -1511,14 +1533,27 @@ async function finishPreparation(
     },
     signal,
   );
-  if (subtitles) {
-    await loadDubSubtitles(subtitles, signal, profileId, {
-      subtitlesInTarget: Boolean(dubSession.state.subtitleTargetLang),
-    }, observeRequest);
+  // The media is prepared: nothing of this task is left to replay, so a later
+  // import failure retries the import, never the finished preparation.
+  patch({ taskId: null, recovery: null });
+  const staged = stagedSubtitles?.jobId === jobId ? stagedSubtitles : null;
+  const pairedSubtitles = subtitles ?? staged?.file;
+  if (pairedSubtitles) {
+    await loadDubSubtitles(
+      pairedSubtitles,
+      signal,
+      profileId ?? staged?.profileId,
+      {
+        subtitlesInTarget: Boolean(dubSession.state.subtitleTargetLang),
+      },
+      observeRequest,
+    );
+    if (stagedSubtitles?.jobId === jobId) stagedSubtitles = null;
     return;
   }
   if (dubSession.state.skipTranscription) {
-    // A resumed upload must never silently transcribe when its SRT File is gone.
+    // A resumed upload must never silently transcribe when its SRT File is gone;
+    // the project asks for the SRT again and imports it without ASR.
     patch({ phase: 'editing', taskId: null, recovery: null });
     return;
   }
@@ -1542,6 +1577,14 @@ export async function uploadDub(
   options?: DubInputOptions,
 ) {
   if (controller || cancelling || dubSession.state.recovery) return false;
+  // Subtitles in the target language need a target that resolves, checked
+  // before the open project is replaced; otherwise they would import as source.
+  const subtitleTarget =
+    subtitles && options?.subtitlesInTarget
+      ? translationTargetCode(dubSession.state.target)
+      : undefined;
+  if (subtitles && options?.subtitlesInTarget && !subtitleTarget)
+    throw new Error(tr('languagePicker.chooseSupported'));
   // Validate replacement subtitles before discarding the open project: a
   // rejected SRT must leave the current work (and its undo history) intact.
   if (subtitles && file.size > 0) {
@@ -1586,10 +1629,7 @@ export async function uploadDub(
     separateBackground: options?.separateBackground !== false,
     narrationWanted: options?.narrationWanted === true,
     exportOptions: { preserveBg: options?.separateBackground !== false, excluded: ['original'] },
-    subtitleTargetLang:
-      subtitles && options?.subtitlesInTarget
-        ? translationTargetCode(current.target)
-        : undefined,
+    subtitleTargetLang: subtitleTarget,
   }));
   // An empty file has nothing to upload; the file row asks for another one.
   if (file.size === 0) return false;
@@ -1607,7 +1647,16 @@ export async function uploadDub(
       signal,
     });
     patch({ jobId: upload.job_id, taskId: upload.task_id });
-    await finishPreparation(upload.job_id, upload.task_id, signal, taskDiagnosticProof(upload.task_id, consent), observeRequest, subtitles, profileId);
+    stagedSubtitles = subtitles ? { jobId: upload.job_id, file: subtitles, profileId } : null;
+    await finishPreparation(
+      upload.job_id,
+      upload.task_id,
+      signal,
+      taskDiagnosticProof(upload.task_id, consent),
+      observeRequest,
+      subtitles,
+      profileId,
+    );
   });
 }
 async function prepareAndTranscribe(
@@ -2013,15 +2062,15 @@ async function watchGeneration(
   signal: AbortSignal,
   segmentIds = dubSession.state.segments.map((segment) => segment.id),
   proof: TaskDiagnosticProof | null = null,
+  // The session the request was built from: a target switched while the POST
+  // was pending must not relabel this task's previews or errors.
+  requested: DubSession = dubSession.state,
 ) {
   const previewKeys = new Map(
-    dubSession.state.segments.map((segment) => [
-      segment.id,
-      speechPreviewKey(segment, dubSession.state),
-    ]),
+    requested.segments.map((segment) => [segment.id, speechPreviewKey(segment, requested)]),
   );
-  const errorLanguage = dubSession.state.target;
-  const errorSnapshot = dubSession.state;
+  const errorLanguage = requested.target;
+  const errorSnapshot = requested;
   const rememberError = (event: TaskEvent) => {
     if (event.type !== 'error') return;
     const id = typeof event.segment_id === 'string' ? event.segment_id : undefined;
@@ -2030,7 +2079,8 @@ async function watchGeneration(
       lastGenerationError: {
         segment_id: id,
         code,
-        reason: typeof event.error === 'string' ? event.error : 'Generation failed',
+        // The same actionable text a failed task shows: known codes, then the event's own words.
+        reason: publicFailureFromEvent(event, 'Generation failed').reason,
         language: errorLanguage,
         revision: id ? dubErrorRevision(errorSnapshot, id, errorLanguage) : '',
       },
@@ -2183,6 +2233,20 @@ export async function generateDub(
             : undefined,
         });
         const segmentIds = current.segments.map((segment) => segment.id);
+        // A partial run reassembles the whole track. When it regenerates every
+        // stale row, that track is the full render's, so it records the full
+        // key and the audio step completes without a needless full rerender.
+        let partialCoversTrack = false;
+        if (regenOnly?.length) {
+          const only = new Set(regenOnly);
+          try {
+            const plan = await planDubIncremental(languageCode, signal, language);
+            partialCoversTrack = Boolean(plan) && plan!.stale.every((id) => only.has(id));
+          } catch (error) {
+            if (signal.aborted) throw error;
+            // Without a plan the partial key stays, so the step simply stays open.
+          }
+        }
         const consent = observeRequest();
         const job = await apiJson<{ task_id: string }>(
           '/dub/generate/' + encodeURIComponent(current.jobId!),
@@ -2202,7 +2266,7 @@ export async function generateDub(
           taskId: job.task_id,
           pendingTiming: current.timingStrategy || 'strict_slot',
           pendingRequestKey: dubGenerationKey(current, language, languageCode, {
-            regenOnly,
+            regenOnly: partialCoversTrack ? undefined : regenOnly,
             preview: options.preview,
           }),
         });
@@ -2212,6 +2276,7 @@ export async function generateDub(
           signal,
           segmentIds,
           taskDiagnosticProof(job.task_id, consent),
+          current,
         );
         if (!agentEnabled || agentPass >= maxAgentPasses) break;
 
@@ -2772,7 +2837,9 @@ export async function importDubSubtitles(
 ) {
   const snapshot = dubSession.state;
   if (snapshot.recovery || controller || cancelling) return false;
-  return run('importing', (signal, observeRequest) => loadDubSubtitles(file, signal, profileId, options, observeRequest));
+  return run('importing', (signal, observeRequest) =>
+    loadDubSubtitles(file, signal, profileId, options, observeRequest),
+  );
 }
 
 /** run() lands on 'editing' after a failure; in-place actions hand the session

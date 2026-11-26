@@ -904,6 +904,7 @@
     "guide_now": "現在",
     "guide_running": "実行中",
     "guide_pending": "保留中",
+    "flow_reselect_srt": "このプロジェクトに行を読み込むには、SRT をもう一度選択してください。",
     "guide_continue": "続ける",
     "guide_source": "入力を準備",
     "guide_voice": "言語と声",

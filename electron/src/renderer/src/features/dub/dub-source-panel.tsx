@@ -537,6 +537,14 @@ export function DubSourcePanel({
             onRemove={onRemove}
           />
           {linkMode && linkForm}
+          {session.skipTranscription && !session.segments.length && session.phase === 'editing' && (
+            // The media is prepared but its SRT did not import (or a reload lost
+            // the file): choosing it again imports into this project, without ASR.
+            <div className="space-y-2" data-slot="dub-reselect-srt">
+              <p className="text-xs text-warning">{t('dub.flow_reselect_srt')}</p>
+              {subtitleControl}
+            </div>
+          )}
           <dl className="space-y-2 text-xs">
             <div>
               <dt className="text-muted-foreground">{t('dub.source_language')}</dt>

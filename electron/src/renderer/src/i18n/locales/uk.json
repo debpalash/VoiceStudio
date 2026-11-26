@@ -920,6 +920,7 @@
     "guide_now": "Зараз",
     "guide_running": "Виконується",
     "guide_pending": "Очікує",
+    "flow_reselect_srt": "Виберіть SRT ще раз, щоб імпортувати його рядки в цей проєкт.",
     "guide_continue": "Продовжити",
     "guide_source": "Підготувати джерело",
     "guide_voice": "Мова й голос",

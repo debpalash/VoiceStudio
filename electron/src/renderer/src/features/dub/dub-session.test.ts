@@ -33,23 +33,30 @@ beforeEach(() => {
   diagnosticCapture.mockClear();
   preparedCapture.mockClear();
 });
-it.each(['transport', 'too-large'] as const)('does not report local cookie %s validation as an operation failure', async (kind) => {
-  const previous = dubSession.state;
-  const text = vi.fn(async () => 'private fixture cookies');
-  const cookieFile = { size: kind === 'too-large' ? 10_000_000 : 1, text } as unknown as File;
-  cookiePolicy.allowed = kind !== 'transport';
-  vi.mocked(apiJson).mockClear();
-  diagnosticGrant.active = true;
-  try {
-    dubSession.setState((current) => ({ ...current, phase: 'idle', recovery: null }));
-    await ingestDubUrl('https://fixture.invalid/video', cookieFile);
-    expect(dubSession.state.error).toBe(kind === 'too-large' ? 'DUB_COOKIE_TOO_LARGE' : 'DUB_COOKIE_TRANSPORT');
-    expect(diagnosticCapture).not.toHaveBeenCalled();
-    expect(preparedCapture).not.toHaveBeenCalled();
-    expect(text).not.toHaveBeenCalled();
-    expect(apiJson).not.toHaveBeenCalled();
-  } finally { dubSession.setState(() => previous); }
-});
+it.each(['transport', 'too-large'] as const)(
+  'does not report local cookie %s validation as an operation failure',
+  async (kind) => {
+    const previous = dubSession.state;
+    const text = vi.fn(async () => 'private fixture cookies');
+    const cookieFile = { size: kind === 'too-large' ? 10_000_000 : 1, text } as unknown as File;
+    cookiePolicy.allowed = kind !== 'transport';
+    vi.mocked(apiJson).mockClear();
+    diagnosticGrant.active = true;
+    try {
+      dubSession.setState((current) => ({ ...current, phase: 'idle', recovery: null }));
+      await ingestDubUrl('https://fixture.invalid/video', cookieFile);
+      expect(dubSession.state.error).toBe(
+        kind === 'too-large' ? 'DUB_COOKIE_TOO_LARGE' : 'DUB_COOKIE_TRANSPORT',
+      );
+      expect(diagnosticCapture).not.toHaveBeenCalled();
+      expect(preparedCapture).not.toHaveBeenCalled();
+      expect(text).not.toHaveBeenCalled();
+      expect(apiJson).not.toHaveBeenCalled();
+    } finally {
+      dubSession.setState(() => previous);
+    }
+  },
+);
 import {
   applyDubTranslationRows,
   replaceDubSegmentTexts,
@@ -85,6 +92,8 @@ import {
   undoDubEdit,
   nextDubSpeakerId,
   setDubSegmentsSpeaker,
+  recordDubSavedFile,
+  flushDubDraft,
 } from './dub-session';
 vi.mock('@/lib/api/client', async (load) => ({
   ...(await load<typeof import('@/lib/api/client')>()),
@@ -1107,6 +1116,16 @@ it('sets and clears Smart Fit speed limits, keeping the rest of the overrides', 
   expect(dubSession.state.fitOptions).toEqual({ allow_video_retime: false });
 });
 
+it('keeps a saved file path in memory, never in the draft', () => {
+  dubSession.setState((current) => ({ ...current, jobId: 'job-path', speed: 1.05 }));
+  recordDubSavedFile(dubSession.state, '/Users/someone/Movies/dub.wav');
+  expect(dubSession.state.lastExport?.path).toBe('/Users/someone/Movies/dub.wav');
+  flushDubDraft();
+  const draft = localStorage.getItem('voicestudio.dub.session.v1') ?? '';
+  expect(draft).toContain('job-path');
+  expect(draft).not.toContain('/Users/someone');
+});
+
 it('does not recreate a cleared draft from a pending write or pagehide', async () => {
   localStorage.setItem('voicestudio.dub.session.v1', 'old');
   dubSession.setState((current) => ({ ...current, speed: 1.1 }));
@@ -1158,7 +1177,10 @@ it('offers no Retry for a translation blocked on the missing source language (#4
     .mockRejectedValueOnce(new ApiError(400, 'raw', { code: 'source_language_required' }));
 
   await expect(translateDub('pt', 'argos')).resolves.toBe(false);
-  expect(translationActivity.state.runs.at(-1)).toMatchObject({ status: 'failed', retry: undefined });
+  expect(translationActivity.state.runs.at(-1)).toMatchObject({
+    status: 'failed',
+    retry: undefined,
+  });
 });
 
 it('stops Agent Fit when the slot-fitting provider disappears mid-run', async () => {
@@ -1822,16 +1844,149 @@ it('keeps a stable repair target for an assembly error after a reload', async ()
   expect(restored.lastGenerationError?.reason).toBe('A speech segment is silent');
 });
 
-it.each([restoreDubSegments, keepDubSourceText])('restores a deliberately blank source cue via %p', (restore) => {
+it('saves an error event that only carries its reason with that reason', async () => {
   dubSession.setState((current) => ({
     ...current,
+    jobId: 'failed-reason',
     phase: 'editing',
     recovery: null,
+    target: 'English',
+    quality: 'fast',
     segments: [
-      { id: 'blank', start: 0, end: 1, text: 'Added translation', text_original: '' },
-      { id: 'old', start: 1, end: 2, text: 'Legacy cue' } as (typeof current.segments)[number],
+      { id: 'row', start: 0, end: 1, text: 'Hello', text_original: 'Hello', profile_id: 'voice' },
     ],
   }));
-  restore();
-  expect(dubSession.state.segments.map((cue) => cue.text)).toEqual(['', 'Legacy cue']);
+  vi.mocked(apiJson).mockReset().mockResolvedValueOnce({ task_id: 'reason-task' });
+  vi.mocked(consumeTaskStream)
+    .mockReset()
+    .mockImplementationOnce(async (_path, emit) => {
+      emit({ type: 'error', reason: 'The voice model could not generate this dub.' });
+    });
+  await generateDub('English', 'en');
+  expect(dubSession.state.lastGenerationError?.reason).toBe(
+    'The voice model could not generate this dub.',
+  );
+});
+
+it.each([restoreDubSegments, keepDubSourceText])(
+  'restores a deliberately blank source cue via %p',
+  (restore) => {
+    dubSession.setState((current) => ({
+      ...current,
+      phase: 'editing',
+      recovery: null,
+      segments: [
+        { id: 'blank', start: 0, end: 1, text: 'Added translation', text_original: '' },
+        { id: 'old', start: 1, end: 2, text: 'Legacy cue' } as (typeof current.segments)[number],
+      ],
+    }));
+    restore();
+    expect(dubSession.state.segments.map((cue) => cue.text)).toEqual(['', 'Legacy cue']);
+  },
+);
+
+it('returns the row that survives a merge in either direction', () => {
+  const rows = ['a', 'b', 'c'].map((id, index) => ({
+    id,
+    start: index,
+    end: index + 1,
+    text: id,
+    text_original: id,
+  }));
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'merge-job',
+    phase: 'editing',
+    recovery: null,
+    segments: rows,
+  }));
+  expect(mergeDubSegment('c', 'prev')).toBe('b');
+  expect(dubSession.state.segments.map((row) => row.id)).toEqual(['a', 'b']);
+  expect(mergeDubSegment('a', 'next')).toBe('a');
+  expect(mergeDubSegment('a', 'prev')).toBeUndefined();
+});
+
+it.each([
+  [['a'], true],
+  [['a', 'b'], false],
+])(
+  'records the full track key after a partial run only when it covers every stale row (stale %j)',
+  async (stale, full) => {
+    const { dubGenerationKey } = await import('./dub-generation-request');
+    const rows = ['a', 'b'].map((id, index) => ({
+      id,
+      start: index,
+      end: index + 1,
+      text: id,
+      text_original: id,
+      profile_id: 'voice',
+    }));
+    dubSession.setState((current) => ({
+      ...current,
+      jobId: 'partial-job',
+      phase: 'editing',
+      recovery: null,
+      target: 'English',
+      quality: 'fast',
+      narration: undefined,
+      segments: rows,
+      fingerprintsByLang: { en: { a: 'old', b: 'same' } },
+      generatedRequestKeys: {},
+    }));
+    const before = dubSession.state;
+    vi.mocked(apiJson)
+      .mockReset()
+      .mockResolvedValueOnce({ stale, fresh: ['a', 'b'].filter((id) => !stale.includes(id)) })
+      .mockResolvedValueOnce({ task_id: 'partial-task' });
+    vi.mocked(consumeTaskStream)
+      .mockReset()
+      .mockImplementationOnce(async (_path, emit) => {
+        emit({ type: 'done', tracks: ['en'], language_code: 'en' });
+      });
+    await generateDub('English', 'en', { regenOnly: ['a'] });
+    const fullKey = dubGenerationKey(before, 'English', 'en');
+    expect(dubSession.state.generatedRequestKeys?.en === fullKey).toBe(full);
+    expect(dubSession.state.generatedRequestKeys?.en).toBeTruthy();
+  },
+);
+
+it('refuses target-language subtitles for an unresolved target before replacing the project', async () => {
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'open-project',
+    phase: 'editing',
+    recovery: null,
+    target: 'French ',
+  }));
+  vi.mocked(apiJson).mockReset();
+  await expect(
+    uploadDub(
+      new File(['video'], 'clip.mp4', { type: 'video/mp4' }),
+      new File(['1\n00:00:00,000 --> 00:00:01,000\nBonjour'], 'fr.srt'),
+      undefined,
+      { subtitlesInTarget: true },
+    ),
+  ).rejects.toThrow();
+  expect(dubSession.state.jobId).toBe('open-project');
+  expect(apiJson).not.toHaveBeenCalled();
+});
+
+it('does not leave a finished preparation to replay when the paired SRT import fails', async () => {
+  dubSession.setState((current) => ({ ...current, jobId: null, phase: 'idle', recovery: null }));
+  vi.mocked(apiJson)
+    .mockReset()
+    .mockResolvedValueOnce({}) // validate-srt
+    .mockResolvedValueOnce({ job_id: 'paired-job', task_id: 'prep-task' })
+    .mockRejectedValueOnce(new Error('import failed'));
+  vi.mocked(consumeTaskStream)
+    .mockReset()
+    .mockImplementationOnce(async (_path, emit) => {
+      emit({ type: 'ready', duration: 4 });
+    });
+  await uploadDub(
+    new File(['video'], 'clip.mp4', { type: 'video/mp4' }),
+    new File(['1\n00:00:00,000 --> 00:00:01,000\nHello'], 'clip.srt'),
+  );
+  expect(dubSession.state).toMatchObject({ jobId: 'paired-job', taskId: null, recovery: null });
+  expect(dubSession.state.error).toBeTruthy();
 });

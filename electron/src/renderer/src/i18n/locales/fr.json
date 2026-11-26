@@ -906,6 +906,7 @@
     "guide_now": "Maintenant",
     "guide_running": "En cours",
     "guide_pending": "En attente",
+    "flow_reselect_srt": "Choisissez à nouveau le fichier SRT pour importer ses lignes dans ce projet.",
     "guide_continue": "Continuer",
     "guide_source": "Préparer la source",
     "guide_voice": "Langue et voix",

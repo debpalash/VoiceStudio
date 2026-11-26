@@ -62,7 +62,6 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
       fingerprintsByLang: s.segHashesByLang,
       generatedRequestKeys: s.generatedRequestKeys,
       exportedRequestKeys: s.exportedRequestKeys,
-      lastExport: s.lastExport,
       lastGenerationError: s.lastGenerationError,
       sourceLang: s.dubSourceLangCode,
       tracks: s.dubTracks,
@@ -90,7 +89,8 @@ export function projectPayload(session: DubSession, name: string) {
     duration:
       typeof sourceDuration === 'number' && Number.isFinite(sourceDuration) && sourceDuration > 0
         ? sourceDuration
-        : prior?.duration ?? session.segments.reduce((end, segment) => Math.max(end, segment.end), 0),
+        : (prior?.duration ??
+          session.segments.reduce((end, segment) => Math.max(end, segment.end), 0)),
     state: {
       ...prior?.state,
       dubJobId: session.jobId,
@@ -133,7 +133,6 @@ export function projectPayload(session: DubSession, name: string) {
       segHashesByLang: session.fingerprintsByLang,
       generatedRequestKeys: session.generatedRequestKeys,
       exportedRequestKeys: session.exportedRequestKeys,
-      lastExport: session.lastExport,
       lastGenerationError: session.lastGenerationError,
       dubLangCode: translationTargetCode(session.target) || 'auto',
       dubSourceLangCode: session.sourceLang,
