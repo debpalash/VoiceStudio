@@ -18,9 +18,9 @@ and fingerprints remain atomic on error, cancellation or changed source cues.
 
 The optional narration strategy accepts original caption cues separately from
 speech blocks linked by source_ids. Every linked block must retain its original
-SRT start/end envelope and blocks must not overlap. SRT-only and narration audio
-are placed within those exact windows, using pitch-preserving compression when
-needed. Later blocks never slide to compensate for an overlong phrase. Natural
+SRT start/end envelope and blocks must not overlap. Narration audio, and
+SRT-only audio once overflow rescue is opted in, is placed within those exact
+windows, using pitch-preserving compression when needed. Later blocks never slide to compensate for an overlong phrase. Natural
 cached takes retain every word; acceleration above 1.5x needs listening review.
 There is no automatic text rewrite or promise of natural speech at any rate.
 

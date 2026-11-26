@@ -354,7 +354,7 @@ def test_subtitle_only_render_keeps_all_speech_without_any_media(render_dub, mon
     monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
     events = render_dub.run(
         segments=[dict(start=0, end=1, text='hello'), dict(start=1, end=2, text='goodbye')],
-        segment_ids=['a', 'b'],
+        segment_ids=['a', 'b'], auto_fit_overflow=True,
     )
     assert any(event['type'] == 'done' for event in events), events
     assert not any(event['type'] == 'error' for event in events)
@@ -370,9 +370,26 @@ def test_subtitle_only_tiny_cue_still_speaks_its_words(render_dub, monkeypatch):
     async def stretch(wav, target, sr):
         return torch.nn.functional.interpolate(wav.unsqueeze(0), size=target, mode='linear').squeeze(0)
     monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
-    events = render_dub.run(segments=[dict(start=0, end=.02, text='hello')])
+    events = render_dub.run(segments=[dict(start=0, end=.02, text='hello')], auto_fit_overflow=True)
     assert render_dub.generated
     assert any(event['type'] == 'done' for event in events), events
+
+
+def test_subtitle_only_default_keeps_its_requested_timing(render_dub, monkeypatch):
+    """Fixed-window compression for SRT-only projects is part of the opt-in rescue."""
+    import api.routers.dub_generate as dg
+    render_dub.job['subtitle_only'] = True
+    render_dub.job['duration'] = 2
+    render_dub.output[0] = lambda: torch.ones(1, 120000) * .1
+    async def stretch(wav, target, sr):
+        pytest.fail('default SRT-only rendering must not compress speech')
+    monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
+    events = render_dub.run(
+        segments=[dict(start=0, end=1, text='hello'), dict(start=1, end=2, text='goodbye')],
+        segment_ids=['a', 'b'],
+    )
+    assert events[-1]['error_code'] == 'dub_timing_overflow'
+    assert not render_dub.job['dubbed_tracks']
 
 
 def test_failed_fit_can_retry_without_tts_and_survives_restart(render_dub, monkeypatch):
@@ -721,3 +738,25 @@ def test_rerenders_keep_only_recent_speech_previews(render_dub):
     from fastapi import HTTPException
     with pytest.raises(HTTPException):
         dg.dub_speech_preview('job', *urls[0].split('/')[-2:])
+
+
+@pytest.mark.parametrize('duration,segments', [
+    # A job without a recorded source duration.
+    (0.0, [dict(start=0, end=1, text='hello')]),
+    # Overlapping cues: the next line starts with this one.
+    (4.0, [dict(start=0, end=1, text='hello'), dict(start=0, end=1, text='again')]),
+])
+def test_concise_rescue_never_lets_overflow_through_unfitted(render_dub, monkeypatch, duration, segments):
+    import api.routers.dub_generate as dg
+    render_dub.job['duration'] = duration
+    render_dub.output[0] = lambda: torch.ones(1, 48000) * .1
+    calls = []
+    async def stretch(wav, target, sr):
+        calls.append(target)
+        return torch.nn.functional.interpolate(wav.unsqueeze(0), size=target, mode='linear').squeeze(0)
+    monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
+    events = render_dub.run(segments=segments, segment_ids=[str(i) for i in range(len(segments))], auto_fit_overflow=True)
+    assert events[-1]['type'] == 'done'
+    # The take is fitted into at least its own cue, never mixed over the next.
+    assert events[-1]['fit_status'][0]['auto_adjusted'] is True
+    assert calls[0] == 24000

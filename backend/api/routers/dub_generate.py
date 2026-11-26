@@ -947,9 +947,13 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
         seg_ids = req.segment_ids or []
         subtitle_only = bool(job.get("subtitle_only"))
         strategy = (req.timing_strategy or "concise").lower()
-        if subtitle_only and strategy != "narration":
+        # Fixed SRT windows with pitch-preserving compression: always for the
+        # narration strategy; for SRT-only projects only once overflow rescue
+        # is opted in. Otherwise they keep the requested strategy and its
+        # blocking timing error, as before.
+        flexible_timing = strategy == "narration" or (subtitle_only and bool(req.auto_fit_overflow))
+        if flexible_timing and strategy != "narration":
             strategy = "concise"
-        flexible_timing = subtitle_only or strategy == "narration"
         # Voice-identity mode (see DubRequest.voice_match). The memo makes the
         # "consistent" pick once per speaker and hands the SAME reference to
         # every segment of that speaker for the whole run.
@@ -2023,7 +2027,7 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                     yield ready
                 # Check natural speech immediately, before synthesizing the rest
                 # of a long video. The valid take is already checkpointed.
-                if strategy == "concise" and not subtitle_only and not req.auto_fit_overflow:
+                if strategy == "concise" and not flexible_timing and not req.auto_fit_overflow:
                     effective_end = seg.end + max(0.0, float(req.overflow_budget_s or 0.0))
                     if i + 1 < total:
                         gap = req.segments[i + 1].start - seg.end
@@ -2312,9 +2316,15 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                             effective_end += min(gap - GAP_OVERFLOW_BUFFER_S, GAP_OVERFLOW_MAX_S)
                     effective_end += overflow_budget_s
                     if req.auto_fit_overflow:
-                        effective_end = min(effective_end, orig_total_dur)
+                        # Rescue stops at the source end and the next onset,
+                        # but always keeps at least this cue's own window:
+                        # an unknown duration or an overlapping next cue must
+                        # never leave an empty slot that skips the fit.
+                        if orig_total_dur > 0:
+                            effective_end = min(effective_end, orig_total_dur)
                         if i + 1 < len(all_segment_wavs):
                             effective_end = min(effective_end, all_segment_wavs[i + 1][0])
+                        effective_end = max(effective_end, end)
                     slot_samples = int(max(0, effective_end - start) * sr)
                     if slot_samples > 0 and wl > slot_samples:
                         if req.auto_fit_overflow:
