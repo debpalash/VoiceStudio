@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/s",
       "eta": "Quedan uns {{time}}",
       "estimating": "Calculando o tempo restante…",
+      "waiting_metered": "Esta wifi ten uso limitado…",
+      "use_connection": "Descargar con esta conexión",
       "waiting_network": "Agardando pola conexión…"
     }
   },

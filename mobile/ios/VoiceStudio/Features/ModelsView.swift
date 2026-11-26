@@ -33,6 +33,9 @@ struct ModelsView: View {
                         if let details = phone.downloadDetails[item.id] { ModelDownloadStatus(details: details) }
                         else { ProgressView(value: value).accessibilityLabel(model.t("mobile.local.download")) }
                         HStack {
+                            if let stage = phone.downloadDetails[item.id]?.stage,stage == "waiting" || stage == "waiting_metered" {
+                                Button(model.t("mobile.downloads.use_connection")) { phone.downloadNow(item) }.studioButton(.tertiary)
+                            }
                             Button(model.t("mobile.downloads.pause")) { phone.pause(item) }.studioButton(.tertiary)
                             Button(model.t("common.cancel")) { phone.cancel(item) }.studioButton(.tertiary)
                         }
@@ -273,6 +276,9 @@ struct LocalDownloadPrompt: View {
                         if let details = model.phone.downloadDetails[item.id] {
                             if needed.count > 1 { Text(item.name).font(.caption) }
                             ModelDownloadStatus(details: details)
+                            if details.stage == "waiting" || details.stage == "waiting_metered" {
+                                Button(model.t("mobile.downloads.use_connection")) { model.phone.downloadNow(item) }.studioButton(.tertiary)
+                            }
                         }
                     }
                 }
@@ -285,7 +291,7 @@ struct ModelDownloadStatus: View {
     let details: ModelDownloadProgress
     private var state: String {
         switch details.stage {
-        case "waiting","waiting_network","connecting","verifying","paused": return model.t("mobile.downloads."+details.stage)
+        case "waiting","waiting_metered","waiting_network","connecting","verifying","paused": return model.t("mobile.downloads."+details.stage)
         case "retrying": return model.t("mobile.downloads.retrying",["seconds": String(details.retrySeconds)])
         default:
             let speed = model.t("mobile.downloads.speed",["speed": ByteCountFormatter.string(fromByteCount: Int64(details.bytesPerSecond),countStyle: .file)])

@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/s",
       "eta": "Noch etwa {{time}}",
       "estimating": "Restzeit wird geschätzt…",
+      "waiting_metered": "Dieses WLAN ist getaktet…",
+      "use_connection": "Über diese Verbindung laden",
       "waiting_network": "Warten auf eine Verbindung…"
     }
   },

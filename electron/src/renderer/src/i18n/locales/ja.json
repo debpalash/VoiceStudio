@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/秒",
       "eta": "残り約{{time}}",
       "estimating": "残り時間を推定中…",
+      "waiting_metered": "このWi-Fiは従量制です…",
+      "use_connection": "この接続でダウンロード",
       "waiting_network": "接続を待っています…"
     }
   },

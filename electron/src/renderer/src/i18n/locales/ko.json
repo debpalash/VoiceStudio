@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/초",
       "eta": "약 {{time}} 남음",
       "estimating": "남은 시간 계산 중…",
+      "waiting_metered": "이 Wi-Fi는 데이터 제한 네트워크입니다…",
+      "use_connection": "이 연결로 다운로드",
       "waiting_network": "연결 대기 중…"
     }
   },

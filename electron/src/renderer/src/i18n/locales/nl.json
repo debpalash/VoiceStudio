@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/s",
       "eta": "Nog ongeveer {{time}}",
       "estimating": "Resterende tijd schatten…",
+      "waiting_metered": "Dit wifi-netwerk is beperkt…",
+      "use_connection": "Downloaden via deze verbinding",
       "waiting_network": "Wachten op verbinding…"
     }
   },

@@ -432,4 +432,13 @@ class LocalPolicyTest {
         assertEquals("–", lines.first { it.key == "variants" }.value)
         assertEquals("a: x", lines.first { it.key == "nested" }.value)
     }
+    @Test fun queuedTransferStageSaysWhyItWaits() {
+        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},{Long.MAX_VALUE},waitStage={"waiting_metered"})
+        assertEquals("waiting_metered",d.waitingStage(false))
+        assertEquals("Mobile data allowed never claims Wi-Fi is missing","waiting_network",d.waitingStage(true))
+        d.scheduled("fixture",10,d.waitingStage(false))
+        assertEquals("waiting_metered",d.progress.value["fixture"]!!.stage)
+        val plain=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},{Long.MAX_VALUE})
+        assertEquals("waiting",plain.waitingStage(false))
+    }
 }

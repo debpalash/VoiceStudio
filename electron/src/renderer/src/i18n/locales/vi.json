@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/giây",
       "eta": "Còn khoảng {{time}}",
       "estimating": "Đang ước tính thời gian còn lại…",
+      "waiting_metered": "Wi-Fi này có giới hạn dữ liệu…",
+      "use_connection": "Tải xuống bằng kết nối này",
       "waiting_network": "Đang chờ kết nối…"
     }
   },

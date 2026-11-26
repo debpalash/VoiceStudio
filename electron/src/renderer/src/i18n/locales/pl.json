@@ -4271,6 +4271,8 @@
       "speed": "{{speed}}/s",
       "eta": "Pozostało około {{time}}",
       "estimating": "Szacowanie pozostałego czasu…",
+      "waiting_metered": "Ta sieć Wi-Fi jest z limitem danych…",
+      "use_connection": "Pobierz przez to połączenie",
       "waiting_network": "Oczekiwanie na połączenie…"
     }
   },

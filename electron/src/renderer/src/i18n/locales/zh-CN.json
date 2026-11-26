@@ -4237,6 +4237,8 @@
       "speed": "{{speed}}/秒",
       "eta": "大约还需 {{time}}",
       "estimating": "正在估算剩余时间…",
+      "waiting_metered": "此 Wi-Fi 为按流量计费网络…",
+      "use_connection": "使用此连接下载",
       "waiting_network": "正在等待网络连接…"
     }
   },

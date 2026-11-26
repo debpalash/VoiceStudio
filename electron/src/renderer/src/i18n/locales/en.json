@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/s",
       "eta": "About {{time}} left",
       "estimating": "Estimating time left…",
+      "waiting_metered": "This Wi-Fi is metered…",
+      "use_connection": "Download on this connection",
       "waiting_network": "Waiting for a connection…"
     }
   },

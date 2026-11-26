@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/s",
       "eta": "Ungefär {{time}} kvar",
       "estimating": "Beräknar återstående tid…",
+      "waiting_metered": "Det här wifi-nätverket är begränsat…",
+      "use_connection": "Ladda ned med den här anslutningen",
       "waiting_network": "Väntar på anslutning…"
     }
   },

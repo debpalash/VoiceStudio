@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/dtk",
       "eta": "Sekitar {{time}} lagi",
       "estimating": "Memperkirakan waktu tersisa…",
+      "waiting_metered": "Wi-Fi ini berkuota…",
+      "use_connection": "Unduh dengan koneksi ini",
       "waiting_network": "Menunggu koneksi…"
     }
   },

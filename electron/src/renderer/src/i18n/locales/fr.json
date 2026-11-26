@@ -4243,6 +4243,8 @@
       "speed": "{{speed}}/s",
       "eta": "Encore environ {{time}}",
       "estimating": "Estimation du temps restant…",
+      "waiting_metered": "Ce Wi-Fi est limité…",
+      "use_connection": "Télécharger avec cette connexion",
       "waiting_network": "En attente de connexion…"
     }
   },

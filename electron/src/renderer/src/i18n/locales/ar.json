@@ -4297,6 +4297,8 @@
       "speed": "{{speed}}/ث",
       "eta": "متبقٍ نحو {{time}}",
       "estimating": "جارٍ تقدير الوقت المتبقي…",
+      "waiting_metered": "شبكة Wi-Fi هذه محدودة الاستخدام…",
+      "use_connection": "التنزيل عبر هذا الاتصال",
       "waiting_network": "في انتظار الاتصال…"
     }
   },

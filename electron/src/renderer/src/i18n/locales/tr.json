@@ -4241,6 +4241,8 @@
       "speed": "{{speed}}/sn",
       "eta": "Yaklaşık {{time}} kaldı",
       "estimating": "Kalan süre hesaplanıyor…",
+      "waiting_metered": "Bu Wi-Fi sınırlı kotalı…",
+      "use_connection": "Bu bağlantıyla indir",
       "waiting_network": "Bağlantı bekleniyor…"
     }
   },

@@ -9,15 +9,18 @@ final class WifiState: @unchecked Sendable {
     private let lock = NSLock()
     private var permitted = false
     private var online = false
+    private var metered = false
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
-            lock.withLock { online = path.status == .satisfied; permitted = path.status == .satisfied && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)) && !path.isExpensive }
+            lock.withLock { online = path.status == .satisfied; metered = path.status == .satisfied && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)) && path.isExpensive; permitted = path.status == .satisfied && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)) && !path.isExpensive }
         }
         monitor.start(queue: DispatchQueue(label: "com.voicestudio.model-network"))
     }
     var wifi: Bool { lock.withLock { permitted } }
     var connected: Bool { lock.withLock { online } }
+    /// Wi-Fi or Ethernet that iOS marks expensive (personal hotspot, Low Data Mode): say so instead of "no Wi-Fi".
+    var waitingStage: String { lock.withLock { metered ? "waiting_metered" : "waiting" } }
     deinit { monitor.cancel() }
 }
 @MainActor @Observable final class PhoneModels {
@@ -189,6 +192,16 @@ final class WifiState: @unchecked Sendable {
         downloadFailures.removeValue(forKey: model.id)
         startDownload(model,mobile: allowMobileData,observation: observation)
     }
+    /// Explicit per-download choice from the waiting state: proceed on whatever connection is active.
+    func downloadNow(_ model: PhoneModel) {
+        let observation = diagnosticFailureObservation?()
+        guard let pin = try? phoneModelPin(model) else { error = ClientError("mobile.local.catalogue_failed"); return }
+        downloadTokens.removeValue(forKey: model.id); downloads[model.id]?.cancel(); downloads[model.id] = nil
+        intents.removeAll { $0.id == model.id }
+        intents.append(DownloadIntent(id: model.id,pin: pin,mobile: true,paused: false))
+        saveIntents(); paused.remove(model.id); downloadFailures.removeValue(forKey: model.id)
+        startDownload(model,mobile: true,observation: observation)
+    }
     private func startDownload(_ model: PhoneModel,mobile: Bool,observation: CompanionDiagnosticObservation?) {
         // The restored-intent loop can race an explicit pause between its snapshot and this call.
         guard downloads[model.id] == nil,let store,!paused.contains(model.id) else { return }
@@ -203,7 +216,7 @@ final class WifiState: @unchecked Sendable {
                 while !Task.isCancelled {
                     let sample = downloadMonitorSample?() ?? (nowMs: Int64(ProcessInfo.processInfo.systemUptime * 1000), connected: wifi.connected, wifi: wifi.wifi)
                     if !sample.connected || (!mobile && !sample.wifi),var value = downloadDetails[model.id] {
-                        value.stage = mobile ? "waiting_network" : "waiting"; value.bytesPerSecond = 0; value.etaSeconds = nil
+                        value.stage = mobile ? "waiting_network" : wifi.waitingStage; value.bytesPerSecond = 0; value.etaSeconds = nil
                         downloadDetails[model.id] = value
                     }
                     let current = diagnosticObservation?() ?? (enabled: false, revision: 0, thresholdMs: 600_000)
@@ -222,7 +235,12 @@ final class WifiState: @unchecked Sendable {
                 }
             }
             defer { monitor.cancel() }
-            defer { downloads[model.id] = nil; progress[model.id] = nil; downloadDetails[model.id] = nil; downloadTokens.removeValue(forKey: model.id) }
+            defer {
+                // A replacement started by downloadNow owns these entries; only clear our own.
+                if downloadTokens[model.id] == token || downloadTokens[model.id] == nil {
+                    downloads[model.id] = nil; progress[model.id] = nil; downloadDetails[model.id] = nil; downloadTokens.removeValue(forKey: model.id)
+                }
+            }
             do {
                 let transport: any HTTPTransport
                 if let suppliedDownloadTransport { transport = suppliedDownloadTransport }
@@ -231,7 +249,7 @@ final class WifiState: @unchecked Sendable {
                     try Task.checkCancellation()
                     if !mobile && !wifi.wifi {
                         var waiting = downloadDetails[model.id] ?? ModelDownloadProgress(received: 0,total: model.total_bytes)
-                        waiting.stage = "waiting"; waiting.bytesPerSecond = 0; waiting.etaSeconds = nil
+                        waiting.stage = wifi.waitingStage; waiting.bytesPerSecond = 0; waiting.etaSeconds = nil
                         downloadDetails[model.id] = waiting
                         try await Task.sleep(for: .seconds(2)); continue
                     }

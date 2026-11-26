@@ -302,6 +302,9 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   smoothed transfer speed and ETA (estimating until enough samples exist), with
   separate waiting, retry and verification states. Resumed bytes and duplicate
   retry traffic do not inflate speed; verification must finish before Ready.
+  A transfer parked by the Wi-Fi-only policy says why (metered Wi-Fi vs no
+  Wi-Fi) and always offers "Download on this connection"; flipping the Mobile
+  data setting applies to transfers already waiting.
   Models offers Pause, Resume, Cancel and Delete. Pause/Cancel retain partial
   files; Cancel removes the automatic restore intent; Delete removes partials too.
   Android's ongoing notification displays transfer status and offers Pause.
