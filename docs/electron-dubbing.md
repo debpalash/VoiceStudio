@@ -33,8 +33,10 @@ Before generation, an inline plan checks saved takes without synthesizing speech
 and displays new/reused counts. The primary action distinguishes Generate,
 Continue and Assemble saved audio. After a current full track is published,
 Listen and Save replace the generation prompt. Forced regeneration retains its
-scope-confirmation dialog. Generated-block playback reads saved WAVs; live TTS
-preview is a separate opt-in control.
+scope-confirmation dialog. Generated-block playback reads saved WAVs; a line
+without a saved take is auditioned on demand as before, and continuous live TTS
+preview is a separate opt-in control. A backend without the plan route still
+generates, without the counts.
 
 Background playback/export is disabled for subtitle-only projects and for projects
 that explicitly skipped separation, even if a legacy export setting requests it.

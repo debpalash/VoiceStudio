@@ -10,7 +10,7 @@ import { DubProjectGuide, dubGuideState, type DubGuideStep } from './dub-project
 import { DubGenerationReview } from './dub-generation-review';
 import type { DubGenerationOptions } from './dub-generation-request';
 import { DubSpeechReady } from './dub-speech-ready';
-import { speechPreviewFor } from './dub-speech-preview';
+import { segmentAuditionRequest, speechPreviewFor } from './dub-speech-preview';
 import type { DubInputOptions } from './dub-input-selection';
 import { DubProjects } from './dub-projects';
 import { segmentTimeLabel } from './segment-time-label';
@@ -744,18 +744,25 @@ export function DubPage() {
     const controller = new AbortController();
     const readyUrl = speechPreviewFor(segment, session, code);
     if (busy && !readyUrl) return;
-    const finishActivity = () => {};
+    // Saved takes are read back; a line without one is auditioned as before.
+    const request = segmentAuditionRequest({
+      jobId: session.jobId,
+      segment,
+      session,
+      index: session.segments.findIndex((row) => row.id === segment.id),
+      code,
+      savedUrl: readyUrl,
+      saved: readySpeechIds.has(segment.id),
+    });
+    const finishActivity = request.synthesizes ? beginAppActivity('synthesis') : () => {};
     segmentPreviewAbort.current = controller;
     setPreviewingSegmentId(segment.id);
     requestPlaybackSeek('dub-preview', segment.start);
     try {
-      const index = session.segments.findIndex((row) => row.id === segment.id);
-      // Listening is read-only; synthesis lives under live preview or Generate.
-      const response = await apiFetch(
-        readyUrl ||
-          `/dub/preview/${encodeURIComponent(session.jobId)}/${index}?lang=${encodeURIComponent(code || '')}`,
-        { signal: controller.signal },
-      );
+      const response = await apiFetch(request.path, {
+        ...request.init,
+        signal: controller.signal,
+      });
       const url = createObjectUrl(await response.blob());
       if (!url) throw new Error(t('player.unavailable'));
       if (controller.signal.aborted) {
