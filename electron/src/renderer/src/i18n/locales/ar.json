@@ -505,7 +505,7 @@
     "deleteConfirm": "هل تريد حذف {{repoId}}؟ ويمكنك إعادة تثبيته لاحقًا.",
     "deleted": "تم حذفه {{repoId}}",
     "engineDeleteTitle": "حذف المحرك",
-    "engineDeleteConfirm": "هل تريد حذف {{name}} وملفاته التي تم تنزيلها من هذا الكمبيوتر؟ يمكنك تثبيته مرة أخرى لاحقًا.",
+    "engineDeleteConfirm": "هل تريد حذف {{name}} والملفات التي ثبّتها VoiceStudio له؟ تبقى النماذج الموجودة في ذاكرة التنزيل المشتركة. يمكنك تثبيته مرة أخرى لاحقًا.",
     "engineDeleteFailed": "تعذّر الحذف",
     "reinstall": "أعد التثبيت",
     "reinstallTitle": "إعادة تثبيت النموذج",

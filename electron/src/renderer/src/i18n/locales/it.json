@@ -483,7 +483,7 @@
     "deleteConfirm": "Eliminare {{repoId}}? Puoi reinstallarlo più tardi.",
     "deleted": "Eliminato {{repoId}}",
     "engineDeleteTitle": "Elimina motore",
-    "engineDeleteConfirm": "Eliminare {{name}} e i relativi file scaricati da questo computer? Potrai reinstallarlo in seguito.",
+    "engineDeleteConfirm": "Eliminare {{name}} e i file che VoiceStudio ha installato per esso? I modelli nella cache di download condivisa vengono mantenuti. Potrai reinstallarlo in seguito.",
     "engineDeleteFailed": "Impossibile eliminare",
     "reinstall": "Reinstallare",
     "reinstallTitle": "Reinstallare il modello",

@@ -481,7 +481,7 @@
     "deleteConfirm": "{{repoId}} löschen? Sie können es später erneut installieren.",
     "deleted": "Gelöscht {{repoId}}",
     "engineDeleteTitle": "Engine löschen",
-    "engineDeleteConfirm": "{{name}} und die heruntergeladenen Dateien von diesem Computer löschen? Du kannst die Engine später erneut installieren.",
+    "engineDeleteConfirm": "{{name}} und die von VoiceStudio dafür installierten Dateien löschen? Modelle im gemeinsamen Download-Cache bleiben erhalten. Du kannst die Engine später erneut installieren.",
     "engineDeleteFailed": "Löschen fehlgeschlagen",
     "reinstall": "Neu installieren",
     "reinstallTitle": "Modell neu installieren",

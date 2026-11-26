@@ -82,3 +82,34 @@ it('shows why a delete failed', async () => {
   expect(await screen.findByText('modelMaintenance.engineDeleteFailed')).toBeTruthy();
   expect(screen.getByText(/files are in use/)).toBeTruthy();
 });
+
+it('keeps Delete for leftovers of an incomplete delete', async () => {
+  mock.api.mockResolvedValue({
+    installed: false,
+    managed: true,
+    repair_available: false,
+    job: null,
+  });
+  renderInstall({ repairOnly: false });
+  expect(await screen.findByRole('button', { name: 'modelMaintenance.delete' })).toBeTruthy();
+});
+
+it('sends one delete however often confirm is clicked', async () => {
+  let finish: (value: unknown) => void = () => {};
+  mock.api.mockImplementation((_path: string, init?: { method?: string }) =>
+    init?.method === 'DELETE'
+      ? new Promise((resolve) => (finish = resolve))
+      : Promise.resolve({ installed: true, managed: true, repair_available: false, job: null }),
+  );
+  renderInstall();
+
+  fireEvent.click(await screen.findByRole('button', { name: 'modelMaintenance.delete' }));
+  const dialog = await screen.findByRole('dialog');
+  const confirm = within(dialog).getByRole('button', { name: 'modelMaintenance.delete' });
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+  await waitFor(() => expect(confirm.hasAttribute('disabled')).toBe(true));
+  finish({ status: 'uninstalled' });
+  const deletes = mock.api.mock.calls.filter(([, init]) => init?.method === 'DELETE');
+  expect(deletes).toHaveLength(1);
+});

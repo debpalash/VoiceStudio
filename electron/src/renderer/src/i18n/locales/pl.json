@@ -493,7 +493,7 @@
     "deleteConfirm": "Usunąć {{repoId}}? Możesz zainstalować go ponownie później.",
     "deleted": "Usunięto {{repoId}}",
     "engineDeleteTitle": "Usuń silnik",
-    "engineDeleteConfirm": "Usunąć {{name}} i pobrane pliki z tego komputera? Możesz go później zainstalować ponownie.",
+    "engineDeleteConfirm": "Usunąć {{name}} i pliki zainstalowane dla niego przez VoiceStudio? Modele we wspólnej pamięci podręcznej pobierania zostaną zachowane. Możesz go później zainstalować ponownie.",
     "engineDeleteFailed": "Nie udało się usunąć",
     "reinstall": "Zainstaluj ponownie",
     "reinstallTitle": "Zainstaluj ponownie model",

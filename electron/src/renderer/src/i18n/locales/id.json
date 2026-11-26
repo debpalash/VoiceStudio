@@ -481,7 +481,7 @@
     "deleteConfirm": "Hapus {{repoId}}? Anda dapat menginstalnya kembali nanti.",
     "deleted": "Dihapus {{repoId}}",
     "engineDeleteTitle": "Hapus mesin",
-    "engineDeleteConfirm": "Hapus {{name}} beserta file unduhannya dari komputer ini? Anda dapat memasangnya lagi nanti.",
+    "engineDeleteConfirm": "Hapus {{name}} dan file yang dipasang VoiceStudio untuknya? Model di cache unduhan bersama tetap disimpan. Anda dapat memasangnya lagi nanti.",
     "engineDeleteFailed": "Tidak dapat menghapus",
     "reinstall": "Instal ulang",
     "reinstallTitle": "Instal ulang modelnya",

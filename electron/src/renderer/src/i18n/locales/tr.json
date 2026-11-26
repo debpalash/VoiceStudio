@@ -481,7 +481,7 @@
     "deleteConfirm": "{{repoId}} silinsin mi? Daha sonra yeniden yükleyebilirsiniz.",
     "deleted": "Silindi {{repoId}}",
     "engineDeleteTitle": "Motoru sil",
-    "engineDeleteConfirm": "{{name}} ve indirilen dosyaları bu bilgisayardan silinsin mi? Daha sonra yeniden yükleyebilirsiniz.",
+    "engineDeleteConfirm": "{{name}} ve VoiceStudio'nun onun için yüklediği dosyalar silinsin mi? Paylaşılan indirme önbelleğindeki modeller korunur. Daha sonra yeniden yükleyebilirsiniz.",
     "engineDeleteFailed": "Silinemedi",
     "reinstall": "Yeniden yükle",
     "reinstallTitle": "Modeli yeniden yükle",

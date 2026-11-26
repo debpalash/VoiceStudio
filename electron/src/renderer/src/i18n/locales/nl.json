@@ -481,7 +481,7 @@
     "deleteConfirm": "{{repoId}} verwijderen? U kunt het later opnieuw installeren.",
     "deleted": "Verwijderd {{repoId}}",
     "engineDeleteTitle": "Engine verwijderen",
-    "engineDeleteConfirm": "{{name}} en de gedownloade bestanden van deze computer verwijderen? Je kunt de engine later opnieuw installeren.",
+    "engineDeleteConfirm": "{{name}} en de bestanden die VoiceStudio ervoor heeft geïnstalleerd verwijderen? Modellen in de gedeelde downloadcache blijven bewaard. Je kunt de engine later opnieuw installeren.",
     "engineDeleteFailed": "Verwijderen mislukt",
     "reinstall": "Opnieuw installeren",
     "reinstallTitle": "Installeer het model opnieuw",

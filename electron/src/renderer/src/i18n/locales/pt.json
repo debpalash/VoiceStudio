@@ -483,7 +483,7 @@
     "deleteConfirm": "Excluir {{repoId}}? Você pode reinstalá-lo mais tarde.",
     "deleted": "Excluído {{repoId}}",
     "engineDeleteTitle": "Excluir mecanismo",
-    "engineDeleteConfirm": "Excluir {{name}} e os arquivos baixados deste computador? Você pode instalá-lo novamente mais tarde.",
+    "engineDeleteConfirm": "Excluir {{name}} e os arquivos que o VoiceStudio instalou para ele? Os modelos no cache de downloads compartilhado são mantidos. Você pode instalá-lo novamente mais tarde.",
     "engineDeleteFailed": "Não foi possível excluir",
     "reinstall": "Reinstale",
     "reinstallTitle": "Reinstale o modelo",

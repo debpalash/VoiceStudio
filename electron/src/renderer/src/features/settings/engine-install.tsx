@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DownloadIcon, Trash2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,8 @@ export function EngineInstall({
   const [dismissedFailure, setDismissedFailure] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
+  // Synchronous guard: a second confirm click must not send a second DELETE.
+  const removeInFlight = useRef(false);
   const [removeFailed, setRemoveFailed] = useState<string | null>(null);
   const status = useQuery({
     queryKey: ['engine-install', id],
@@ -52,8 +54,10 @@ export function EngineInstall({
   }, [status.data?.installed, status.data?.job?.state, client]);
   const running = starting || status.data?.job?.state === 'running';
   // Every app-installed engine can be deleted again (#4490): its folder holds
-  // the venv and often gigabytes of weights that nothing else lists.
-  const removable = Boolean(status.data?.installed && status.data?.managed) && !running;
+  // the venv and often gigabytes of weights that nothing else lists. Based on
+  // the managed folder, not install health, so leftovers of an incomplete
+  // delete can be deleted again.
+  const removable = Boolean(status.data?.managed) && !running;
   const installShown =
     !repairOnly ||
     Boolean(status.data?.repair_available) ||
@@ -62,6 +66,8 @@ export function EngineInstall({
     status.data?.job?.state === 'failed';
   if (!installShown && !removable && !removeFailed) return null;
   const remove = async () => {
+    if (removeInFlight.current) return;
+    removeInFlight.current = true;
     setRemoving(true);
     setRemoveFailed(null);
     try {
@@ -72,6 +78,7 @@ export function EngineInstall({
     } catch (error) {
       setRemoveFailed(describeError(error));
     } finally {
+      removeInFlight.current = false;
       setRemoving(false);
     }
   };
@@ -134,6 +141,7 @@ export function EngineInstall({
         title={t('modelMaintenance.engineDeleteTitle')}
         description={t('modelMaintenance.engineDeleteConfirm', { name: name || id })}
         confirmLabel={t('modelMaintenance.delete')}
+        confirmDisabled={removing}
         onConfirm={remove}
       />
       {removeFailed && (

@@ -495,7 +495,7 @@
     "deleteConfirm": "删除{{repoId}}？您可以稍后重新安装。",
     "deleted": "已删除 {{repoId}}",
     "engineDeleteTitle": "删除引擎",
-    "engineDeleteConfirm": "要从这台电脑删除 {{name}} 及其下载的文件吗？之后可以重新安装。",
+    "engineDeleteConfirm": "要删除 {{name}} 以及 VoiceStudio 为其安装的文件吗？共享下载缓存中的模型会保留。之后可以重新安装。",
     "engineDeleteFailed": "无法删除",
     "reinstall": "重新安装",
     "reinstallTitle": "重新安装模型",

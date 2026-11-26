@@ -905,7 +905,7 @@
     "deleteConfirm": "Delete {{repoId}}? You can reinstall it later.",
     "deleted": "Deleted {{repoId}}",
     "engineDeleteTitle": "Delete engine",
-    "engineDeleteConfirm": "Delete {{name}} and its downloaded files from this computer? You can install it again later.",
+    "engineDeleteConfirm": "Delete {{name}} and the files VoiceStudio installed for it? Models in the shared download cache are kept. You can install it again later.",
     "engineDeleteFailed": "Could not delete",
     "reinstall": "Reinstall",
     "reinstallTitle": "Reinstall model",

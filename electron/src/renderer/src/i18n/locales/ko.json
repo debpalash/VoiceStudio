@@ -481,7 +481,7 @@
     "deleteConfirm": "{{repoId}}을 삭제하시겠습니까? 나중에 다시 설치할 수 있습니다.",
     "deleted": "{{repoId}} 삭제됨",
     "engineDeleteTitle": "엔진 삭제",
-    "engineDeleteConfirm": "{{name}} 및 다운로드한 파일을 이 컴퓨터에서 삭제할까요? 나중에 다시 설치할 수 있습니다.",
+    "engineDeleteConfirm": "{{name}} 및 VoiceStudio가 이를 위해 설치한 파일을 삭제할까요? 공유 다운로드 캐시의 모델은 유지됩니다. 나중에 다시 설치할 수 있습니다.",
     "engineDeleteFailed": "삭제하지 못했습니다",
     "reinstall": "재설치",
     "reinstallTitle": "모델 재설치",

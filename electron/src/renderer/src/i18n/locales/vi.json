@@ -481,7 +481,7 @@
     "deleteConfirm": "Xóa {{repoId}}? Bạn có thể cài đặt lại nó sau.",
     "deleted": "Đã xóa {{repoId}}",
     "engineDeleteTitle": "Xóa công cụ",
-    "engineDeleteConfirm": "Xóa {{name}} và các tệp đã tải xuống khỏi máy tính này? Bạn có thể cài đặt lại sau.",
+    "engineDeleteConfirm": "Xóa {{name}} và các tệp VoiceStudio đã cài đặt cho nó? Các mô hình trong bộ nhớ đệm tải xuống dùng chung được giữ lại. Bạn có thể cài đặt lại sau.",
     "engineDeleteFailed": "Không thể xóa",
     "reinstall": "Cài đặt lại",
     "reinstallTitle": "Cài đặt lại mô hình",
