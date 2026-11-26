@@ -41,6 +41,19 @@ export const DEFAULT_PREFETCH_CONNECTIONS = 8;
 const MAX_PREFETCH_CONNECTIONS = 16;
 const CHUNK_ATTEMPTS = 4;
 const IDLE_TIMEOUT_MS = 30_000;
+/**
+ * No byte on any connection for this long fails the wheel. Socket timeouts
+ * cannot see a proxy tunnel, DNS lookup or agent queue that never answers,
+ * which left a 0 KB download looping forever (#4476).
+ */
+export const PREFETCH_STALL_MS = 60_000;
+
+/** Raised when a download receives no bytes for the stall window. */
+export class DownloadStalledError extends Error {
+  constructor(host: string, seconds: number) {
+    super(`No data from ${host} for ${seconds} s`);
+  }
+}
 const PROGRESS_INTERVAL_MS = 500;
 
 /** Connections per wheel from `OMNIVOICE_SETUP_CONNECTIONS`; 0 or 1 turns the prefetch off. */
@@ -342,6 +355,8 @@ export interface SegmentedDownloadOptions {
   onProgress?: (received: number) => void;
   /** Backoff base between chunk retries; tests shorten it. */
   retryDelayMs?: number;
+  /** Fail when no byte arrives for this long (default {@link PREFETCH_STALL_MS}). */
+  stallMs?: number;
 }
 
 /**
@@ -403,6 +418,7 @@ export async function downloadSegmented(
   report(true);
 
   const internal = new AbortController();
+  let lastByteAt = Date.now();
   const combined = AbortSignal.any([signal, internal.signal]);
   const queue = Array.from({ length: chunkCount }, (_, index) => index).filter(
     (index) => !done.has(index),
@@ -433,6 +449,7 @@ export async function downloadSegmented(
             await handle.write(buffer, 0, buffer.length, position);
             position += buffer.length;
             inFlight.set(index, position - start);
+            lastByteAt = Date.now();
             report();
           }
           if (position !== end + 1) throw new Error('Connection closed early');
@@ -475,7 +492,32 @@ export async function downloadSegmented(
           throw error;
         }),
     );
-    const results = await Promise.allSettled(workers);
+    // A transport that never answers may ignore the abort signal, so the
+    // watchdog also settles the wait itself instead of only aborting.
+    const stallMs = options.stallMs ?? PREFETCH_STALL_MS;
+    let watchdog: ReturnType<typeof setInterval> | undefined;
+    const stalled = new Promise<never>((_resolve, reject) => {
+      watchdog = setInterval(
+        () => {
+          const idle = Date.now() - lastByteAt;
+          if (idle < stallMs) return;
+          const error = new DownloadStalledError(
+            new URL(options.urls[urlIndex]!).host,
+            Math.floor(idle / 1000),
+          );
+          internal.abort(error);
+          reject(error);
+        },
+        Math.min(5_000, Math.max(10, stallMs / 4)),
+      );
+    });
+    stalled.catch(() => undefined);
+    let results: PromiseSettledResult<void>[];
+    try {
+      results = await Promise.race([Promise.allSettled(workers), stalled]);
+    } finally {
+      clearInterval(watchdog);
+    }
     const failed = results.find(
       (result): result is PromiseRejectedResult => result.status === 'rejected',
     );
@@ -515,7 +557,19 @@ export interface PrefetchOptions {
   transfer?: (name: string, received: number, total: number) => void;
   chunkBytes?: number;
   retryDelayMs?: number;
+  stallMs?: number;
   freeBytes?: (dir: string) => Promise<number>;
+}
+
+function withDeadline<T>(work: Promise<T> | undefined, ms: number): Promise<T | 0> {
+  if (!work) return Promise.resolve(0);
+  return new Promise<T | 0>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(0), ms);
+    work.then(
+      (value) => (clearTimeout(timer), resolve(value)),
+      (error: unknown) => (clearTimeout(timer), reject(error)),
+    );
+  });
 }
 
 function sizeText(bytes: number): string {
@@ -552,7 +606,10 @@ export async function prefetchWheels(
       wheels.push(wheel);
       continue;
     }
-    const size = await options.probeSize?.(wheel.url, options.signal).catch(() => 0);
+    const size = await withDeadline(
+      options.probeSize?.(wheel.url, options.signal),
+      options.stallMs ?? PREFETCH_STALL_MS,
+    ).catch(() => 0);
     options.signal.throwIfAborted();
     if (size && size >= PREFETCH_MIN_BYTES) wheels.push({ ...wheel, size });
   }
@@ -589,8 +646,14 @@ export async function prefetchWheels(
     );
     return local;
   }
+  let stalledOut = false;
   for (const wheel of missing) {
     options.signal.throwIfAborted();
+    // A stalled link will stall the next wheel too; leave the rest to uv.
+    if (stalledOut) {
+      options.transfer?.(wheel.name, 0, 0);
+      continue;
+    }
     const target = join(options.dir, folder(wheel));
     await mkdir(target, { recursive: true });
     const dest = join(target, wheel.filename);
@@ -615,6 +678,7 @@ export async function prefetchWheels(
         signal: options.signal,
         chunkBytes: options.chunkBytes,
         retryDelayMs: options.retryDelayMs,
+        stallMs: options.stallMs,
         onProgress: (received) => options.transfer?.(wheel.name, received, wheel.size),
       });
       const seconds = Math.max(1, (Date.now() - started) / 1000);
@@ -624,6 +688,12 @@ export async function prefetchWheels(
       local.set(wheel.url, fileUrl);
     } catch (error) {
       options.signal.throwIfAborted();
+      if (error instanceof DownloadStalledError) {
+        stalledOut = true;
+        log(
+          'Multi-connection downloads stalled; skipping them and letting uv download the remaining wheels.',
+        );
+      }
       log(
         `Multi-connection download of ${wheel.name} failed (${reason(error)}); uv will download it instead.`,
       );

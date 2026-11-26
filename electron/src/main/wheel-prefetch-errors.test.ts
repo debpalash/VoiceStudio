@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { get as httpsGet } from 'node:https';
 import { expect, it } from 'vitest';
-import { downloadSegmented, httpsRangeTransport } from './wheel-prefetch';
+import { downloadSegmented, httpsRangeTransport, prefetchWheels } from './wheel-prefetch';
 
 it('handles a runtime size-probe response reset after valid range headers', async () => {
   const response = Object.assign(new PassThrough(), {
@@ -94,6 +94,41 @@ it.each([false, true])('never publishes an incomplete runtime wheel after a resp
     expect(existsSync(dest)).toBe(false);
   } finally {
     close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('fails a download that never receives a byte instead of looping (#4476)', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'voice-wheel-stall-'));
+  try {
+    const hung = () => new Promise<never>(() => undefined);
+    const logs: string[] = [];
+    const started = Date.now();
+    const wheels = ['a', 'b'].map((name) => ({
+      name,
+      version: '1',
+      url: `https://files.pythonhosted.org/${name}.whl`,
+      filename: `${name}.whl`,
+      sha256: createHash('sha256').update(name).digest('hex'),
+      size: 100 * 1024 ** 2,
+    }));
+    const transfers: Array<[string, number, number]> = [];
+    const local = await prefetchWheels(wheels, {
+      dir: root,
+      connections: 4,
+      transport: hung,
+      signal: new AbortController().signal,
+      stallMs: 100,
+      freeBytes: async () => Infinity,
+      log: (line) => logs.push(line),
+      transfer: (name, received, total) => transfers.push([name, received, total]),
+    });
+    expect(local.size).toBe(0);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(logs.filter((l) => l.includes('stalled; skipping')).length).toBe(1);
+    expect(logs.some((l) => l.includes('uv will download it instead'))).toBe(true);
+    expect(transfers.filter(([, , total]) => total === 0).map(([name]) => name)).toEqual(['a', 'b']);
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
