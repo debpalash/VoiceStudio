@@ -1,17 +1,18 @@
 import { GROVE_THEME, type ThemeColors, type ThemeDefinition } from './t3-palettes';
 
-// Refined VoiceStudio/Tauri palette: original charcoal canvas and rose action,
-// lavender text, plum surfaces, and quieter translucent borders.
+// VoiceStudio Classic: a warm near-black canvas with a low dark-purple tint,
+// warm off-white text and the rose action. Surfaces and borders stay close to
+// neutral so the rose reads as the one accent, not a wash over the whole app.
 // The light variant is a complementary adaptation; the original default is dark.
 function colors(light: boolean): ThemeColors {
-  const canvas = light ? '#faf6fc' : '#211c29';
-  const chrome = light ? '#eee5f2' : '#191420';
-  const surface = light ? '#fffbff' : '#302638';
-  const text = light ? '#392c42' : '#eee5f4';
-  const muted = light ? '#796784' : '#b8a5c3';
+  const canvas = light ? '#f8f6f4' : '#1b181d';
+  const chrome = light ? '#efecea' : '#151316';
+  const surface = light ? '#fffdfb' : '#252128';
+  const text = light ? '#2e2a30' : '#ece8e4';
+  const muted = light ? '#6f6870' : '#a69ea4';
   const action = light ? '#8f3f71' : '#d3869b';
-  const border = light ? 'rgb(100 65 125 / 15%)' : 'rgb(217 185 237 / 14%)';
-  const hover = light ? '#eadff0' : '#403049';
+  const border = light ? 'rgb(60 45 70 / 12%)' : 'rgb(236 225 240 / 9%)';
+  const hover = light ? '#ebe6e8' : '#322d35';
   return {
     ...(light ? GROVE_THEME.colors : GROVE_THEME.variants!.dark!),
     canvas,
@@ -23,8 +24,8 @@ function colors(light: boolean): ThemeColors {
     toolbarControlForeground: text,
     toolbarControlHover: hover,
     surface,
-    surfaceRaised: light ? '#ffffff' : '#382c42',
-    surfaceOverlay: light ? '#fffbff' : '#382c42',
+    surfaceRaised: light ? '#ffffff' : '#2b272e',
+    surfaceOverlay: light ? '#fffdfb' : '#2b272e',
     text,
     textMuted: muted,
     border,
@@ -62,7 +63,7 @@ function colors(light: boolean): ThemeColors {
     sidebarMutedForeground: muted,
     sidebarControlSurface: surface,
     sidebarRowHover: hover,
-    sidebarRowActive: light ? '#e5d3ee' : '#50365c',
+    sidebarRowActive: light ? '#e3dbe6' : '#3a3043',
     sidebarRowSelected: surface,
     sidebarBorder: border,
     terminalBackground: canvas,
