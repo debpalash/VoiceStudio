@@ -136,6 +136,7 @@ _CONSUMER_GENERATION_ROUTES = [
     ("dub_translate.py", "dub_agent_fit"),
     ("dub_generate.py", "dub_generate"),
     ("dub_generate.py", "preview_segment"),
+    ("dub_core.py", "dub_abort"),
     ("batch.py", "enqueue_batch_job"),
     ("batch.py", "cancel_batch_job"),
     ("batch.py", "retry_batch_job"),
@@ -168,7 +169,8 @@ _ADMIN_ONLY_ROUTES = [
 _DUB_ANALYSIS_ROUTES = [
     ("dub_export.py", "dub_prosody_mirror"),
 ]
-# QC annotates stored segments and abort cancels live work: method-aware guard.
+# QC annotates stored segments (admin); abort cancels live work and is marked
+# consumer_generation so paired phones can still cancel their own dubs.
 _DUB_CONSUMPTION_MUTATIONS = [
     ("dub_export.py", "dub_qc_pass"),
     ("dub_core.py", "dub_abort"),
@@ -390,3 +392,32 @@ def test_model_lifecycle_routes_are_gated():
         dependencies = _dependency_names(_route_decorators(tree, function))
         assert "require_consumer" in dependencies, (function, dependencies)
         assert "require_admin" not in dependencies, (function, dependencies)
+
+
+def test_a_paired_phone_can_still_abort_a_dub_but_not_run_qc(monkeypatch):
+    """The tier guard admits consumers to abort (phones cancel their jobs) and
+    keeps the QC pass, which rewrites stored segments, admin-only."""
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    import api.dependencies as deps
+    from api.routers import dub_core, dub_export
+
+    calls = []
+    monkeypatch.setattr(deps, "require_consumer", lambda request: calls.append("consumer"))
+
+    def deny(request):
+        raise HTTPException(status_code=403)
+
+    monkeypatch.setattr(deps, "check_admin", deny)
+
+    def request(endpoint):
+        return SimpleNamespace(method="POST", scope={"route": SimpleNamespace(endpoint=endpoint)})
+
+    import asyncio
+
+    asyncio.run(deps.require_consumer_reads_admin_writes(request(dub_core.dub_abort)))
+    assert calls == ["consumer"]
+    with pytest.raises(HTTPException):
+        asyncio.run(deps.require_consumer_reads_admin_writes(request(dub_export.dub_qc_pass)))
