@@ -261,7 +261,9 @@ The build downloads dependencies and may take several minutes and multiple GB.
 
 Each invocation clones `main` into a temporary directory, prints its commit,
 installs locked Bun dependencies, packages Electron and its Rust native helper,
-and installs the result. It never updates or resets an existing source checkout.
+and installs the result. Linux packaging clears the executable-stack flag on the
+bundled CLI’s Python library for compatibility with newer glibc versions.
+The installer leaves existing source checkouts untouched.
 Temporary files are removed on success or failure. Local packages are unsigned;
 normal OS security prompts may apply. No publishing occurs.
 
