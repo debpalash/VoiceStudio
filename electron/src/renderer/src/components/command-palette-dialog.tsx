@@ -366,7 +366,8 @@ export function CommandPaletteDialog({
               to: '/projects',
               search: { q: project.name },
               replace: project.name === currentProjectSearch,
-              state: { projectSearchSelection: crypto.randomUUID() },
+              // A new selection must reach the mounted page even when the URL is identical.
+              state: (previous) => ({ ...previous, projectSearchSelection: crypto.randomUUID() }),
             }),
         }))
       : []),

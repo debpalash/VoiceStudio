@@ -130,7 +130,10 @@ export function ProjectsPage() {
     select: (search) => search.q ?? '',
   });
   const projectSearchSelection = useLocation({
-    select: ({ state }) => state.projectSearchSelection,
+    select: ({ state }) =>
+      'projectSearchSelection' in state && typeof state.projectSearchSelection === 'string'
+        ? state.projectSearchSelection
+        : undefined,
   });
   const client = useQueryClient();
   const session = useDubSession();
