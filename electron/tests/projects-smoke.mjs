@@ -22,6 +22,12 @@ try {
   let writes = 0;
   let renames = 0;
   let projectsAvailable = false;
+  let projectsListed = true;
+  let connectEvents;
+  const events = new Promise((resolve) => {
+    connectEvents = resolve;
+  });
+  await page.routeWebSocket(/\/ws\/events$/, (socket) => connectEvents(socket));
   await page.addInitScript(() => {
     localStorage.setItem(
       'omni_transcriptions',
@@ -103,7 +109,7 @@ try {
     if (!projectsAvailable && route.request().url().endsWith('/projects'))
       return route.fulfill({ status: 503, json: { detail: 'Unavailable' } });
     return route.fulfill({
-      json: route.request().url().endsWith('/projects') ? (row ? [row] : []) : row,
+      json: route.request().url().endsWith('/projects') ? (row && projectsListed ? [row] : []) : row,
     });
   });
   await page.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3902') + '/#/projects');
@@ -128,6 +134,16 @@ try {
   assert.equal(await paletteSearch.getAttribute('aria-activedescendant'), null);
   await paletteSearch.press('Enter');
   assert.ok(await palette.isVisible());
+  const eventSocket = await events;
+  projectsListed = false;
+  eventSocket.send(JSON.stringify({ kind: 'projects' }));
+  await lastTake.waitFor();
+  assert.equal(await paletteSearch.getAttribute('aria-activedescendant'), null);
+  await paletteSearch.press('Enter');
+  assert.ok(await palette.isVisible());
+  projectsListed = true;
+  eventSocket.send(JSON.stringify({ kind: 'projects' }));
+  await projectResult.waitFor();
   await paletteSearch.press('ArrowUp');
   assert.equal(
     await paletteSearch.getAttribute('aria-activedescendant'),

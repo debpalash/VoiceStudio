@@ -83,13 +83,14 @@ export function CommandPaletteDialog({
   const books = useQuery({ ...longformProjectsQuery, enabled: open && Boolean(needle) });
   // The highlight follows the command, not its position, so results arriving
   // (a saved profile, history) cannot shift Enter onto a different command.
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // Undefined selects the first result by default. Null requires an explicit selection.
+  const [activeId, setActiveId] = useState<string | null>();
   const history = useHistory();
   const profiles = useProfiles();
   const generation = useGenerateClone();
   useEffect(() => {
     setQuery('');
-    setActiveId(null);
+    setActiveId(undefined);
   }, [openNonce]);
   const workspaceGroup = t('nav.workspaces');
   const actionGroup = t('nav.clone');
@@ -380,7 +381,8 @@ export function CommandPaletteDialog({
     : [];
   const items = matchingCommands([...source, ...settingsItems], projectItems, query);
   // If late results displace an explicit selection, Enter must wait for a new one.
-  const active = activeId === null ? 0 : items.findIndex((item) => item.id === activeId);
+  const active = activeId === undefined ? 0 : items.findIndex((item) => item.id === activeId);
+  if (typeof activeId === 'string' && active < 0) setActiveId(null);
   const setActive = (index: number) => setActiveId(items[index]?.id ?? null);
   const run = (index: number) => {
     const item = items[index];
@@ -404,7 +406,7 @@ export function CommandPaletteDialog({
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
-              setActiveId(null);
+              setActiveId(undefined);
             }}
             className="mr-8 h-10 w-[calc(100%-2rem)]"
             onKeyDown={(event) => {
