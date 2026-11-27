@@ -57,6 +57,12 @@ try {
         }),
       );
       await page.goto(ui + '/#/clone');
+      await page
+        .getByRole('button', {
+          name: `${strings.clone.select_profile}: Sidebar layout fixture`,
+          exact: true,
+        })
+        .click();
       const sidebar = page.locator('aside').first();
       const footer = sidebar.locator('footer');
       await footer.getByRole('slider', { name: strings.performanceProfile.title, exact: true }).waitFor();

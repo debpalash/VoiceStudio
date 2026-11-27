@@ -37,7 +37,7 @@ try {
     },
   });
   await page.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3912') + '/#/clone');
-  await page.getByRole('button', { name: 'Preset fixture', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Use voice: Preset fixture', exact: true }).click();
   const trigger = page.getByRole('button', { name: 'Preset voice', exact: true });
   await trigger.click();
   const list = page.getByRole('listbox');

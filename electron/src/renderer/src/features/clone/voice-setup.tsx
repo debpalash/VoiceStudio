@@ -70,15 +70,17 @@ function VoiceCard({
         current ? 'border-primary/60 bg-primary/5' : 'border-border/70 bg-card/50',
       )}
     >
-      {/* The row selects the voice. Independent actions sit above the row button. */}
+      {/* Extend the button across the card, below the independent photo, edit and demo actions. */}
       <button
         type="button"
         data-choose
         aria-label={`${t('clone.select_profile')}: ${profile.name}`}
         aria-current={current || undefined}
-        className="absolute inset-0 rounded-2xl outline-none"
+        className="order-last inline-flex min-h-10 max-w-[40%] items-center rounded-full bg-primary px-3 py-1.5 text-center text-sm leading-tight font-semibold text-primary-foreground outline-none after:absolute after:inset-0 after:rounded-2xl @sm:px-4"
         onClick={() => onChoose(profile)}
-      />
+      >
+        {t('clone.select_profile')}
+      </button>
       <ProfilePhoto
         name={profile.name}
         imageUrl={profile.image_url}
@@ -113,12 +115,6 @@ function VoiceCard({
         <PencilIcon />
       </Button>
       {profile.id === DEMO_PROFILE_ID && <CloneDemoAction compact />}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none relative inline-flex min-h-10 max-w-[40%] items-center rounded-full bg-primary px-3 py-1.5 text-center text-sm leading-tight font-semibold text-primary-foreground @sm:px-4"
-      >
-        {t('clone.select_profile')}
-      </span>
     </div>
   );
 }
