@@ -272,10 +272,11 @@ def _scrub_url_userinfo(text: str) -> str:
     return _URL_USERINFO.sub(lambda m: m.group("scheme") + REDACTED + "@", text)
 
 
-# Prefixes that can start one of ``_TOKEN_PATTERNS``. A single substring scan
-# decides whether the eight-regex shape pass is worth running at all, which is
-# what makes it affordable on every log record.
+# Prefixes that can start one of ``_TOKEN_PATTERNS``, lower-cased: the gate
+# compares against the lower-cased text, so it is a superset of every pattern
+# (``(?i)bearer\s+`` included) while a record with none pays one scan.
 _TOKEN_PREFIXES = (
+    "hf_",
     "sk-",
     "github_pat_",
     "ghp_",
@@ -283,11 +284,11 @@ _TOKEN_PREFIXES = (
     "ghu_",
     "ghs_",
     "ghr_",
-    "eyJ",
-    "AIza",
-    "AKIA",
+    "eyj",
+    "aiza",
+    "akia",
     "xox",
-    "earer ",
+    "bearer",
 )
 
 
@@ -298,7 +299,10 @@ def scrub_credential_shapes(text: str) -> str:
     A log record is scrubbed on every emit, so this skips the env-var sweep and
     the home-path patterns and runs the provider-key patterns only when a single
     prefix scan says one could be present. Never raises."""
-    if not isinstance(text, str) or not any(prefix in text for prefix in _TOKEN_PREFIXES):
+    if not isinstance(text, str):
+        return text
+    lowered = text.lower()
+    if not any(prefix in lowered for prefix in _TOKEN_PREFIXES):
         return text
     for pattern in _TOKEN_PATTERNS:
         try:
