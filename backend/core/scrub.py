@@ -54,9 +54,12 @@ _TOKEN_PATTERNS = (
 # are already caught above and named env vars by the sweep below. `pin` is the
 # share PIN: the backend accepts it as `?pin=` and it authenticates paired
 # clients, so a crash-logged request URL must not carry it into a bundle.
+# `ws_ticket` authorizes one WebSocket handshake and travels in the query string
+# too (`core/auth.py` `_credential_candidate`), so it belongs to the same set.
 _URL_SECRET_NAMES = frozenset((
     "access_token", "access-token", "accesstoken", "api_key", "api-key", "apikey",
     "auth_token", "auth-token", "authtoken", "token", "secret", "password", "passwd", "pwd", "pin",
+    "ws_ticket", "ws-ticket", "wsticket",
 ))
 _URL_SECRET_NAME = "(?:" + "|".join(sorted(_URL_SECRET_NAMES)) + ")"
 _URL_SECRET_RE = re.compile(
@@ -267,6 +270,26 @@ def _scrub_url_userinfo(text: str) -> str:
     path, not userinfo, because the host cannot contain ``/``.
     """
     return _URL_USERINFO.sub(lambda m: m.group("scheme") + REDACTED + "@", text)
+
+
+def scrub_url_credentials(text: str) -> str:
+    """Redact credentials a URL carries (query values and ``user:pw@`` userinfo).
+
+    The cheap subset of ``scrub_text`` for ``core.logging_filter``: it runs on
+    every log record, so it skips the env-var sweep and home paths, and only
+    scans text that can hold a query or userinfo at all. Never raises.
+    """
+    if not isinstance(text, str) or "=" not in text and "@" not in text:
+        return text
+    try:
+        if "@" in text and "://" in text:
+            text = _scrub_url_userinfo(text)
+        if "=" in text:
+            text = _scrub_url_queries(text)
+            text = _URL_SECRET_RE.sub(lambda m: m.group(1) + REDACTED, text)
+    except Exception:
+        return REDACTED
+    return text
 
 
 def scrub_text(text: str | None) -> str:
