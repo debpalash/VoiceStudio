@@ -2192,6 +2192,7 @@
     "cause_noexec": "De enginemap staat het uitvoeren van programma’s niet toe",
     "hint_noexec": "Deze schijf is gekoppeld met noexec. Kies een map op een andere schijf of koppel deze opnieuw zonder noexec en probeer het opnieuw.",
     "cause_download": "De download stopte voordat de installatie klaar was",
+    "download_failed_host": "Downloaden van {{host}} is mislukt.",
     "hint_download": "Probeer het opnieuw om verder te gaan. Stopt hij steeds, probeer dan een ander netwerk, zet je VPN uit of kies een andere downloadregio.",
     "cause_illegal_instruction": "De engine stopte bij een instructie die deze computer niet kon uitvoeren",
     "hint_illegal_instruction": "De processor mist mogelijk een functie die de bibliotheken van de engine nodig hebben. Kopieer de diagnose en voeg die met je processormodel toe aan een melding.",

@@ -97,7 +97,7 @@ interrupted wheel is kept incomplete rather than published as a finished file.
 
 ### `RUNTIME_DOWNLOAD_INTERRUPTED`
 
-The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats.
+The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats. The setup screen names the host that could not be reached: when it is `github.com`, choose the China, Russia or Restricted download region so GitHub downloads go through its proxy.
 
 ### `DISK_FULL`
 

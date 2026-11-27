@@ -2192,6 +2192,7 @@
     "cause_noexec": "Motor klasörü program çalıştırmaya izin vermiyor",
     "hint_noexec": "Bu sürücü noexec ile bağlanmış. Başka bir sürücüde klasör seçin veya sürücüyü noexec olmadan yeniden bağlayıp tekrar deneyin.",
     "cause_download": "İndirme, kurulum bitmeden durdu",
+    "download_failed_host": "{{host}} kaynağından indirilemedi.",
     "hint_download": "Devam etmek için yeniden deneyin. Durmaya devam ederse başka bir ağ deneyin, VPN’i kapatın veya farklı bir indirme bölgesi seçin.",
     "cause_illegal_instruction": "Motor, bu bilgisayarın çalıştıramadığı bir komutta durdu",
     "hint_illegal_instruction": "İşlemcide motor kitaplıklarının gerektirdiği bir özellik eksik olabilir. Tanılama bilgilerini kopyalayıp işlemci modelinizle birlikte bir rapora ekleyin.",

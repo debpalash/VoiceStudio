@@ -2192,6 +2192,7 @@
     "cause_noexec": "Thư mục công cụ không cho phép chạy chương trình",
     "hint_noexec": "Ổ đĩa này được gắn với noexec. Hãy chọn thư mục trên ổ khác hoặc gắn lại không có noexec rồi thử lại.",
     "cause_download": "Quá trình tải dừng trước khi thiết lập xong",
+    "download_failed_host": "Không thể tải xuống từ {{host}}.",
     "hint_download": "Thử lại để tiếp tục. Nếu vẫn dừng, hãy dùng mạng khác, tắt VPN hoặc chọn vùng tải khác.",
     "cause_illegal_instruction": "Công cụ dừng ở một lệnh mà máy tính này không chạy được",
     "hint_illegal_instruction": "Bộ xử lý có thể thiếu tính năng mà thư viện của công cụ cần. Hãy sao chép thông tin chẩn đoán và gửi kèm trong báo cáo cùng mẫu bộ xử lý.",
