@@ -1,9 +1,11 @@
-"""HuggingFace token redaction filter for Python's logging system.
+"""Credential redaction filter for Python's logging system.
 
 Mitigates threat T-01-02 (information disclosure via logs). The filter is
 attached to the root logger so every emit — backend Python, uvicorn,
 fastapi, pyannote, transformers, faster-whisper, etc. — sees the
-substitution before any handler formats the record.
+substitution before any handler formats the record. It covers three shapes a
+message can carry: Hugging Face tokens, URL credentials, and the provider API
+keys a vendor echoes back in its own error text (``core.scrub``'s patterns).
 
 The regex `hf_[A-Za-z0-9]{30,}` is conservative on purpose:
   - Real HF tokens are at least 36 characters total (`hf_` + 33+ chars)
@@ -17,7 +19,7 @@ from __future__ import annotations
 import logging
 import re
 
-from core.scrub import scrub_text, scrub_url_credentials
+from core.scrub import scrub_credential_shapes, scrub_text, scrub_url_credentials
 
 REDACTED = "hf_***REDACTED***"
 
@@ -35,12 +37,20 @@ _UVICORN_ERROR_LOGGERS = ("uvicorn.error", "uvicorn.access")
 
 
 def _redact(text: str) -> str:
-    return scrub_url_credentials(_HF_TOKEN_RE.sub(REDACTED, text))
+    """Redact what a message can carry: HF tokens, URL credentials, and the
+    provider-key shapes a vendor echoes back in its own error text.
+
+    The last one used to be applied only to tracebacks (``scrub_text`` below),
+    so a provider that quotes the caller's key in a failure message left it in
+    the log line and in the diagnostics attached to a bug report. The shape pass
+    is prefix-gated, so a record with no credential shape pays one scan."""
+    return scrub_credential_shapes(scrub_url_credentials(_HF_TOKEN_RE.sub(REDACTED, text)))
 
 
 class HFTokenRedactor(logging.Filter):
-    """logging.Filter that rewrites HF token substrings and URL credentials
-    (`?api_key=`, `?pin=`, `user:pw@host`) in `record.msg`, `record.args` and
+    """logging.Filter that rewrites HF token substrings, URL credentials
+    (`?api_key=`, `?pin=`, `user:pw@host`) and provider-key shapes (`sk-…`,
+    `AIza…`, `AKIA…`, GitHub PATs, JWTs) in `record.msg`, `record.args` and
     the formatted traceback before the formatter sees them."""
 
     def filter(self, record: logging.LogRecord) -> bool:
