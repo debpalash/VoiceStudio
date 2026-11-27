@@ -2325,9 +2325,32 @@ def test_uninstall_removes_read_only_files_like_windows_git_packs(monkeypatch):
         return real_unlink(path, *args, **kwargs)
 
     monkeypatch.setattr(si.os, "unlink", windows_unlink)
+    monkeypatch.setattr(si, "_READ_ONLY_FILES_BLOCK_DELETE", True)
 
     assert si.uninstall("fake-side")["status"] == "uninstalled"
     assert not si.managed_root(spec).exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX inode modes")
+def test_delete_leaves_a_hard_linked_files_mode_alone(monkeypatch, tmp_path):
+    """POSIX: a file's mode is on its inode, shared with links outside the tree."""
+    import stat as stat_mod
+
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", set())
+    outside = tmp_path / "cache-blob"
+    outside.write_bytes(b"weights")
+    outside.chmod(0o644)
+    folder = si.managed_checkout(spec) / "weights"
+    folder.mkdir(parents=True)
+    os.link(outside, folder / "model.bin")
+    folder.chmod(stat_mod.S_IRUSR | stat_mod.S_IXUSR)  # read-only folder: unlink fails first
+
+    assert si.uninstall("fake-side")["status"] == "uninstalled"
+    assert not si.managed_root(spec).exists()
+    assert stat_mod.S_IMODE(outside.stat().st_mode) == 0o644
 
 
 def test_an_unreadable_folder_is_reported_not_raised(monkeypatch):

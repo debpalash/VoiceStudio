@@ -20,11 +20,19 @@ private final class RestoredModelReportTransport: DiagnosticTransport, @unchecke
     }
     func cancelAll() {}
 }
+/// Holds every transfer until release; a cancelled transfer leaves at once, like a real one.
 private actor RestoredModelTransferGate {
-    private var continuation:CheckedContinuation<Void,Never>?
+    private var waiters:[UUID:CheckedContinuation<Void,Never>]=[:]
     private var released=false
-    func wait() async {if !released {await withCheckedContinuation {continuation=$0}}}
-    func release() {released=true;continuation?.resume();continuation=nil}
+    func wait() async {
+        if released {return}
+        let id=UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation {if released||Task.isCancelled {$0.resume()} else {waiters[id]=$0}}
+        } onCancel: {Task {await self.leave(id)}}
+    }
+    private func leave(_ id:UUID) {waiters.removeValue(forKey:id)?.resume()}
+    func release() {released=true;for waiter in waiters.values {waiter.resume()};waiters=[:]}
 }
 /// A persisted permanent response, returned without starting any network transfer.
 private final class RestoredModelReceiptTransport: HTTPTransport, @unchecked Sendable {
@@ -37,7 +45,10 @@ private final class RestoredModelReceiptTransport: HTTPTransport, @unchecked Sen
     private var fresh=0
     private let status:Int
     private let payload:String
+    private var passed=0
     var freshTransfers:Int {lock.withLock {fresh}}
+    /// Transfers that got past the gate (released, or cancelled).
+    var passedTransfers:Int {lock.withLock {passed}}
     init(root:URL,held:Bool=false,status:Int=404,payload:String="missing") throws {
         self.status=status;self.payload=payload
         receipt=root.appendingPathComponent("receipt.json");body=root.appendingPathComponent("receipt.body")
@@ -51,7 +62,7 @@ private final class RestoredModelReceiptTransport: HTTPTransport, @unchecked Sen
     func send(_ request:URLRequest) async throws -> HTTPReply {throw ClientError("mobile.local.download_failed")}
     func download(_ request:URLRequest) async throws -> DownloadReply {
         signal.yield(())
-        if let gate {await gate.wait()}
+        if let gate {await gate.wait();lock.withLock {passed+=1}}
         let recovered=FileManager.default.fileExists(atPath:body.path)
         if !recovered {
             // A real ModelStore removes a consumed permanent receipt body.
@@ -238,7 +249,11 @@ private final class RestoredModelFirstCapacity: @unchecked Sendable {
         defer {phone.allowMobileData=previous}
         phone.download(model);await receipt.waitForEntry()
         phone.downloadNow(model);await receipt.waitForEntry()
-        // The cancelled first task must not clear the replacement's entries.
+        // The cancelled first transfer leaves the gate and runs its cleanup;
+        // that cleanup must not clear the replacement's entries.
+        let deadline=ContinuousClock.now.advanced(by:.seconds(5))
+        while receipt.passedTransfers<1,ContinuousClock.now<deadline {await Task.yield()}
+        #expect(receipt.passedTransfers==1)
         for _ in 0..<50 {await Task.yield()}
         #expect(phone.progress[model.id] != nil)
         // Both transfers reached the transport (the two waitForEntry above);

@@ -1517,6 +1517,10 @@ def start_install(engine_id: str) -> dict:
     return {"status": "started", "engine": engine_id}
 
 
+# Windows will not delete a file with the read-only attribute set.
+_READ_ONLY_FILES_BLOCK_DELETE = os.name == "nt"
+
+
 def _remove_tree(path: Path) -> None:
     """Best-effort recursive delete that also removes read-only files.
 
@@ -1531,14 +1535,15 @@ def _remove_tree(path: Path) -> None:
             return
         try:
             # A read-only folder blocks deleting its entries (POSIX); it is
-            # inside the tree being removed. A symlink's own mode cannot be
-            # changed portably and chmod would follow it to the target (a
-            # venv's python -> the shared interpreter), so only a real file is
-            # made writable itself (Windows' read-only attribute).
+            # inside the tree being removed. Only Windows refuses to delete a
+            # read-only file itself; on POSIX a file's mode lives on its inode,
+            # shared with any hard link outside the tree, so it is left alone.
+            # A symlink is never chmodded: chmod would follow it to the target
+            # (a venv's python -> the shared interpreter).
             parent = os.path.dirname(target)
             if parent:
                 os.chmod(parent, stat.S_IRWXU)
-            if not os.path.islink(target):
+            if _READ_ONLY_FILES_BLOCK_DELETE and not os.path.islink(target):
                 os.chmod(target, stat.S_IWRITE)
             func(target)
         except OSError:
