@@ -1833,6 +1833,10 @@ Licence icon**. Nothing is re-downloaded. Headless and API users can accept with
 `POST /models/licenses/accept`; see
 [Licence acceptance before use](../licensing/model-review-workflow.md#licence-acceptance-before-use).
 
+OmniVoice checks whether the installed checkpoint contains its own audio
+tokenizer. A separate Higgs tokenizer acknowledgement is required when that
+checkpoint needs to load the fallback tokenizer.
+
 ### Setup stops at `VOICESTUDIO_CUDNN8_PROBE` on a CPU-only computer
 
 If an older installer exits with code `3221225477` at this probe, install the
