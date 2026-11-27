@@ -313,7 +313,9 @@ class _JsonFormatter(logging.Formatter):
             "msg": record.getMessage(),
         }
         if record.exc_info:
-            payload["exc"] = self.formatException(record.exc_info)
+            # The redaction filter leaves a scrubbed `exc_text`; reuse it so the
+            # raw exception message is never formatted again.
+            payload["exc"] = record.exc_text or self.formatException(record.exc_info)
         return _json.dumps(payload, ensure_ascii=False)
 
 
@@ -333,6 +335,10 @@ from core.logging_filter import (  # noqa: E402
     install_asyncio_transport_filter,
     install_redaction_filter,
 )
+# Request URLs reach the crash log and the runtime log, and the query string can
+# carry a credential (`?api_key=`, `?pin=`, `?ws_ticket=`). One scrubber owns that
+# policy for every text that leaves the process (see `core/scrub.py`).
+from core.scrub import scrub_text  # noqa: E402
 
 install_redaction_filter()
 install_access_log_filter()
@@ -1820,7 +1826,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         "LocalProtocolError",
         "ClientDisconnect",
     ) or "Content-Length" in str(exc):
-        logger.info("Client disconnect during %s (%s)", request.url, exc_name)
+        logger.info("Client disconnect during %s (%s)", scrub_text(str(request.url)), exc_name)
         return Response(status_code=499)
     # The backend is on its way out and a request asked for a model load
     # (#1276). #1174 already made this benign for the *background preload*,
@@ -1863,15 +1869,23 @@ async def global_exception_handler(request: Request, exc: Exception):
             },
             headers={"Retry-After": "5", **_cors_headers_for(request)},
         )
+    # The formatted traceback embeds the exception message, and that message can
+    # carry the same credential the URL can — `raise RuntimeError(str(request.url))`
+    # is the obvious shape, and a provider that echoes a key back is another. Scrub
+    # the text once and write only that. `logger.exception` is deliberately not used
+    # below: its `exc_info` re-attaches the raw exception, which would undo the scrub.
+    scrubbed_trace = scrub_text(traceback.format_exc())
     try:
         # Serialize writes so concurrent unhandled exceptions don't interleave frames.
         with _crash_log_lock, open(CRASH_LOG_PATH, "a", encoding="utf-8", errors="backslashreplace") as f:
             f.write(f"\n--- {time.strftime('%Y-%m-%dT%H:%M:%S')} ---\n")
-            f.write(f"Request: {request.url}\n")
-            f.write(traceback.format_exc())
+            f.write(f"Request: {scrub_text(str(request.url))}\n")
+            f.write(scrubbed_trace)
     except Exception:
         logger.exception("Failed to write crash log")
-    logger.exception("Unhandled exception for %s", request.url)
+    logger.error(
+        "Unhandled exception for %s\n%s", scrub_text(str(request.url)), scrubbed_trace
+    )
     # Structured journal entry (dedup + error_class) — feeds /system/errors/
     # recent, the diagnostic bundle, and the bug-report pipeline. record()
     # never raises; a journal failure must not shadow the real error.
