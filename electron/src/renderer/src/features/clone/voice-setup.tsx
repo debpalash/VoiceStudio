@@ -1,8 +1,9 @@
-import { ArrowLeftIcon, CheckIcon, PencilIcon, PlusIcon, SearchIcon } from 'lucide-react';
+import { ArrowLeftIcon, CheckIcon, PencilIcon, SearchIcon } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useProfiles } from '@/hooks/use-profiles';
+import { DEMO_PROFILE_ID } from '@/hooks/use-clone-demo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Profile } from '@/lib/api/types';
@@ -12,10 +13,11 @@ import { setWorkspace } from '@/lib/store/workspace';
 import { cn } from '@/lib/utils';
 import { ProfilePhoto, useProfileImageSave } from './profile-photo';
 import { ReferencePanel } from './reference-panel';
+import { CloneDemoAction } from './clone-demo';
 
 const VIRTUALIZE_ABOVE = 30;
 const SEARCH_ABOVE = 4;
-const VOICE_ROW_HEIGHT = 76;
+const VOICE_ROW_HEIGHT = 80;
 const SORT_KEY = 'voicestudio.voice-picker-sort';
 type Sort = 'recent' | 'name';
 
@@ -47,15 +49,9 @@ function VoiceCard({
   current: boolean;
   onChoose: (profile: Profile) => void;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const photo = useProfileImageSave(profile);
-  const created = createdAt(profile);
-  const meta = [
-    profile.language && profile.language !== 'Auto' ? profile.language : null,
-    created
-      ? new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(created)
-      : null,
-  ].filter(Boolean);
+  const language = profile.language === 'Auto' ? null : profile.language;
   const hasFile = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('Files');
   return (
     <div
@@ -70,31 +66,33 @@ function VoiceCard({
         if (file) void photo.save(file);
       }}
       className={cn(
-        'group/card relative flex h-[68px] min-w-0 items-center gap-3 rounded-xl border bg-card/40 px-3 transition-[background-color,border-color,box-shadow] duration-150 hover:border-border hover:bg-muted/40 has-[[data-choose]:focus-visible]:ring-2 has-[[data-choose]:focus-visible]:ring-ring',
-        current ? 'border-primary/60 bg-primary/5' : 'border-border/60',
+        'group/card relative flex h-[72px] min-w-0 items-center gap-2 rounded-2xl border px-3 transition-colors hover:border-border hover:bg-muted/40 has-[[data-choose]:focus-visible]:ring-2 has-[[data-choose]:focus-visible]:ring-ring @sm:gap-3 @sm:px-4',
+        current ? 'border-primary/60 bg-primary/5' : 'border-border/70 bg-card/50',
       )}
     >
-      {/* Covers the card so the whole surface chooses the voice; only the photo's camera badge and edit sit above it. */}
+      {/* Extend the button across the card, below the independent photo, edit and demo actions. */}
       <button
         type="button"
         data-choose
-        aria-label={profile.name}
+        aria-label={`${t('clone.select_profile')}: ${profile.name}`}
         aria-current={current || undefined}
-        className="absolute inset-0 rounded-xl outline-none"
+        className="order-last inline-flex min-h-10 max-w-[40%] items-center rounded-full bg-primary px-3 py-1.5 text-center text-sm leading-tight font-semibold text-primary-foreground outline-none after:absolute after:inset-0 after:rounded-2xl @sm:px-4"
         onClick={() => onChoose(profile)}
-      />
+      >
+        {t('clone.select_profile')}
+      </button>
       <ProfilePhoto
         name={profile.name}
         imageUrl={profile.image_url}
         busy={photo.busy}
         onFile={(file) => void photo.save(file)}
         label={`${t('cloneFlow.change_photo')}: ${profile.name}`}
-        className="z-10 size-11 text-sm"
+        className="z-10 size-10 text-sm"
         badge
       />
       <span className="pointer-events-none min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">{profile.name}</span>
+          <span className="truncate text-base font-semibold">{profile.name}</span>
           {current && (
             <CheckIcon
               className="size-3.5 shrink-0 text-primary"
@@ -102,10 +100,8 @@ function VoiceCard({
             />
           )}
         </span>
-        {meta.length > 0 && (
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-            {meta.join(' · ')}
-          </span>
+        {language && (
+          <span className="mt-0.5 block truncate text-sm text-muted-foreground">{language}</span>
         )}
       </span>
       <Button
@@ -118,6 +114,7 @@ function VoiceCard({
       >
         <PencilIcon />
       </Button>
+      {profile.id === DEMO_PROFILE_ID && <CloneDemoAction compact />}
     </div>
   );
 }
@@ -146,11 +143,11 @@ export function VoiceSetup({ onChosen, onBack }: { onChosen: () => void; onBack:
   }, [eligibleVoices, query, sort, i18n.language]);
   const presentation = voiceGridPresentation(voices.length);
   const rows = useVirtualizer({
-    count: presentation === 'virtual' ? Math.ceil(voices.length / 2) : 0,
+    count: presentation === 'virtual' ? voices.length : 0,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => VOICE_ROW_HEIGHT,
     overscan: 3,
-    getItemKey: (row) => `${voices[row * 2]?.id}:${voices[row * 2 + 1]?.id ?? ''}`,
+    getItemKey: (row) => voices[row].id,
   });
 
   useEffect(() => {
@@ -179,107 +176,103 @@ export function VoiceSetup({ onChosen, onBack }: { onChosen: () => void; onBack:
   );
 
   return (
-    <section className="flex w-full flex-col gap-7">
-      <div className="flex items-start gap-3">
+    <section
+      data-slot="voice-chooser"
+      className="@container mx-auto flex w-full max-w-3xl flex-col gap-7"
+    >
+      <div className="flex items-center gap-3">
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           aria-label={t('preferences.back')}
           title={t('preferences.back')}
-          className="mt-0.5"
+          className="shrink-0"
           onClick={onBack}
         >
           <ArrowLeftIcon />
         </Button>
-        <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight">{t('cloneFlow.choose_voice')}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t('cloneFlow.choose_hint')}</p>
+        <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          {t('cloneFlow.choose_voice')}
+        </h2>
+      </div>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="me-auto text-lg font-semibold tracking-tight">
+            {t('clone.saved_profiles')}
+          </h3>
+          {eligibleVoices.length > SEARCH_ABOVE && (
+            <div className="relative w-full sm:w-56">
+              <SearchIcon className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                aria-label={t('common.search')}
+                placeholder={t('common.search')}
+                className="h-8 ps-8 text-sm"
+              />
+            </div>
+          )}
+          {eligibleVoices.length > 1 && (
+            <div
+              role="radiogroup"
+              aria-label={t('cloneFlow.sort_label')}
+              className="flex items-center gap-0.5 rounded-lg bg-muted/40 p-0.5 ring-1 ring-inset ring-border/50"
+            >
+              {(['recent', 'name'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={sort === value}
+                  onClick={() => chooseSort(value)}
+                  className={cn(
+                    'h-7 rounded-md px-2.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+                    sort === value
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {t(value === 'recent' ? 'cloneFlow.sort_recent' : 'cloneFlow.sort_name')}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div ref={scrollRef} className="-m-1 max-h-[19rem] overflow-y-auto p-1">
+          {eligibleVoices.length === 0 ? (
+            !profiles.isPending && (
+              <p className="text-sm text-muted-foreground">{t('cloneFlow.choose_hint')}</p>
+            )
+          ) : voices.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {t('preferences.no_matches')}
+            </p>
+          ) : presentation === 'virtual' ? (
+            <div className="relative w-full" style={{ height: rows.getTotalSize() }}>
+              {rows.getVirtualItems().map((row) => (
+                <div
+                  key={row.key}
+                  className="absolute left-0 top-0 w-full pb-2"
+                  style={{ transform: `translateY(${row.start}px)` }}
+                >
+                  {card(voices[row.index])}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-2">{voices.map(card)}</div>
+          )}
         </div>
       </div>
-      {eligibleVoices.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="me-auto flex items-center gap-2 text-sm font-medium">
-              {t('clone.saved_profiles')}
-              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground tabular-nums">
-                {eligibleVoices.length}
-              </span>
-            </h3>
-            {eligibleVoices.length > SEARCH_ABOVE && (
-              <div className="relative w-full sm:w-56">
-                <SearchIcon className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  aria-label={t('common.search')}
-                  placeholder={t('common.search')}
-                  className="h-8 ps-8 text-sm"
-                />
-              </div>
-            )}
-            {eligibleVoices.length > 1 && (
-              <div
-                role="radiogroup"
-                aria-label={t('cloneFlow.sort_label')}
-                className="flex items-center gap-0.5 rounded-lg bg-muted/40 p-0.5 ring-1 ring-inset ring-border/50"
-              >
-                {(['recent', 'name'] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    role="radio"
-                    aria-checked={sort === value}
-                    onClick={() => chooseSort(value)}
-                    className={cn(
-                      'h-7 rounded-md px-2.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-                      sort === value
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {t(value === 'recent' ? 'cloneFlow.sort_recent' : 'cloneFlow.sort_name')}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div ref={scrollRef} className="-m-1 max-h-[19rem] overflow-y-auto p-1">
-            {voices.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                {t('preferences.no_matches')}
-              </p>
-            ) : presentation === 'virtual' ? (
-              <div className="relative w-full" style={{ height: rows.getTotalSize() }}>
-                {rows.getVirtualItems().map((row) => (
-                  <div
-                    key={row.key}
-                    className="absolute left-0 top-0 grid w-full grid-cols-2 gap-2 pb-2"
-                    style={{ transform: `translateY(${row.start}px)` }}
-                  >
-                    {voices.slice(row.index * 2, row.index * 2 + 2).map(card)}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,15rem),1fr))] gap-2">
-                {voices.map(card)}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
       {profiles.isPending && (
         <p role="status" className="text-sm text-muted-foreground">
           {t('preferences.loading')}
         </p>
       )}
-      <div className="space-y-3">
-        <h3 className="flex items-center gap-2 text-sm font-medium">
-          <PlusIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-          {t('cloneFlow.add_voice')}
-        </h3>
+      <section className="space-y-2">
+        <h3 className="text-lg font-semibold tracking-tight">{t('cloneFlow.add_voice')}</h3>
         <ReferencePanel setup />
-      </div>
+      </section>
     </section>
   );
 }

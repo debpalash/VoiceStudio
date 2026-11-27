@@ -15,7 +15,9 @@ vi.mock('@/lib/audio/probe', () => ({
 }));
 vi.mock('@/lib/store/reference', () => ({ setReferenceFile: vi.fn() }));
 vi.mock('@/hooks/use-recording', () => ({ useRecording: vi.fn() }));
-vi.mock('@/components/recording-inputs', () => ({ RecordingInputs: () => null }));
+vi.mock('@/components/recording-inputs', () => ({
+  RecordingInputs: () => <div>recording inputs</div>,
+}));
 import { ReferenceSourcePicker, UploadZone } from './reference-input';
 import { useRecording } from '@/hooks/use-recording';
 
@@ -120,4 +122,17 @@ it('drops a probe that finishes after the picker closes', async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   expect(onAccept).not.toHaveBeenCalled();
+});
+
+it('shows both capture methods and the recording inputs in the voice chooser', () => {
+  mockRecorder();
+  const view = render(<ReferenceSourcePicker compact />);
+  expect(view.getByText('clone.drop_audio')).toBeVisible();
+  const fileInput = view.container.querySelector<HTMLInputElement>('input[type="file"]')!;
+  const openFile = vi.spyOn(fileInput, 'click');
+  fireEvent.click(view.getByRole('button', { name: 'clone.upload_audio' }));
+  expect(openFile).toHaveBeenCalledOnce();
+  expect(view.getByRole('button', { name: 'clone.record' })).toBeVisible();
+  expect(view.getByText('recording inputs')).toBeVisible();
+  expect(view.queryByRole('tablist')).toBeNull();
 });

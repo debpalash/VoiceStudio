@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { PanelLeftIcon, PanelLeftOpenIcon, SettingsIcon } from 'lucide-react';
-import { brandIcon, brandArtwork } from '@/lib/brand';
+import { brandIcon } from '@/lib/brand';
 import { appVersion, isMac } from '@/components/bridge';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -45,18 +45,10 @@ export function WorkspaceSidebar() {
           data-slot="compact-main-sidebar"
           onDoubleClick={() => setOpen(true)}
           className={cn(
-            'brand-sidebar relative isolate grid h-full min-h-0 shrink-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden bg-sidebar',
-            mac ? 'w-16' : 'w-12 border-r border-border/50',
+            'brand-sidebar relative isolate grid h-full min-h-0 shrink-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden',
+            mac ? 'w-16' : 'w-12',
           )}
         >
-          {mac && (
-            <span
-              aria-hidden="true"
-              data-slot="compact-sidebar-divider"
-              style={{ top: 48 + (trafficLights ? MAC_TRAFFIC_LIGHTS_BAND : 0) }}
-              className="pointer-events-none absolute right-0 bottom-0 w-px bg-border/50"
-            />
-          )}
           <div
             data-slot="titlebar-row"
             style={trafficLights ? { paddingTop: MAC_TRAFFIC_LIGHTS_BAND } : undefined}
@@ -116,14 +108,8 @@ export function WorkspaceSidebar() {
           ref={sidebarResize.host}
           style={{ width: sidebarResize.width }}
           aria-label={t('app.name')}
-          className="brand-sidebar relative isolate grid h-full min-h-0 min-w-0 shrink-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-r border-border/50 bg-sidebar"
+          className="brand-sidebar relative isolate grid h-full min-h-0 min-w-0 shrink-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden"
         >
-          <img
-            src={brandArtwork}
-            alt=""
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-40 w-full object-cover object-right opacity-25 [mask-image:linear-gradient(black,transparent)] dark:opacity-40"
-          />
           <header
             data-slot="titlebar-row"
             // The traffic lights own a strip above the brand (one shared constant
@@ -160,7 +146,7 @@ export function WorkspaceSidebar() {
           <div
             {...sidebarResize.separatorProps}
             aria-label={t('app.name')}
-            className="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize touch-none outline-none hover:bg-primary/15 focus-visible:bg-primary/30"
+            className="workspace-resize-handle absolute inset-y-0 right-0 z-20 w-3 cursor-col-resize touch-none outline-none [--resize-line-offset:0px]"
           />
           <div className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
             <WorkspaceNavigation />

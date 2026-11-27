@@ -16,7 +16,8 @@ import {
 } from '../longform/longform-session';
 import { projectLibrary } from '../longform/project-library';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useLocation, useNavigate, useSearch } from '@tanstack/react-router';
+import { dubProjectsQuery, longformProjectsQuery } from './project-queries';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -124,6 +125,16 @@ function when(value: number): string {
 export function ProjectsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const projectSearch = useSearch({
+    strict: false,
+    select: (search) => search.q ?? '',
+  });
+  const projectSearchSelection = useLocation({
+    select: ({ state }) =>
+      'projectSearchSelection' in state && typeof state.projectSearchSelection === 'string'
+        ? state.projectSearchSelection
+        : undefined,
+  });
   const client = useQueryClient();
   const session = useDubSession();
   const longform = useLongformSession();
@@ -132,7 +143,7 @@ export function ProjectsPage() {
   const history = useHistory();
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>(loadTranscriptions);
   const [rename, setRename] = useState('');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(projectSearch);
   const [filter, setFilter] = useState<Filter>('all');
   const [view, setView] = useState<'grid' | 'list'>('list');
   const [confirm, setConfirm] = useState<{
@@ -149,14 +160,8 @@ export function ProjectsPage() {
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const query = useQuery({
-    queryKey: ['projects'],
-    queryFn: ({ signal }) => apiJson<DubProject[]>('/projects', { signal }),
-  });
-  const books = useQuery({
-    queryKey: ['longform-projects'],
-    queryFn: projectLibrary.list,
-  });
+  const query = useQuery(dubProjectsQuery);
+  const books = useQuery(longformProjectsQuery);
   const exports = useQuery({
     queryKey: ['export-history'],
     queryFn: ({ signal }) => apiJson<ExportRecord[]>('/export/history', { signal }),
@@ -169,6 +174,12 @@ export function ProjectsPage() {
   useEffect(() => {
     return subscribeTranscriptions(setTranscripts);
   }, []);
+
+  useEffect(() => {
+    setSearch(projectSearch);
+    setFilter('all');
+    setSelected(new Set());
+  }, [projectSearch, projectSearchSelection]);
 
   const locked =
     busy ||

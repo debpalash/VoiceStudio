@@ -208,6 +208,7 @@ export interface UseGenerateClone {
   /** How many takes are waiting (not counting the running one). */
   queuedCount: number;
   removeQueued(id: string): void;
+  retryFailed(id: string): void;
   clearFinished(): void;
   isGenerating: boolean;
   /** 0..100 while the WAV body streams in; null when unknown. */
@@ -333,6 +334,7 @@ function useGenerateController(): UseGenerateClone {
   const sawModelLoadRef = useRef(false);
   // Takes waiting their turn, oldest first; the running one is not in here.
   const pendingRef = useRef<PreparedTake[]>([]);
+  const failedRef = useRef(new Map<string, PreparedTake>());
   const currentTakeIdRef = useRef<string | null>(null);
   const drainRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drainRef = useRef<() => void>(() => {});
@@ -600,7 +602,11 @@ function useGenerateController(): UseGenerateClone {
       reportModeRef.current = reportMode;
       currentTakeIdRef.current = take.id;
       recordActionBreadcrumb(`generate:${reportMode}:start`);
-      patchQueueItem(take.id, { status: 'running' });
+      setQueue((items) =>
+        items.some((item) => item.id === take.id)
+          ? items.map((item) => item.id === take.id ? { ...item, status: 'running', error: undefined } : item)
+          : [...trimFinished(items), { id: take.id, label: take.label, voice: take.voice, mode: take.mode, status: 'running' }],
+      );
 
       activeRef.current = true;
       cancelledRef.current = false;
@@ -706,7 +712,19 @@ function useGenerateController(): UseGenerateClone {
           setErrorCause(err);
           setErrorTopic(failureTopicOf(err) ?? null);
           setError(message);
-          patchQueueItem(take.id, { status: 'failed', error: message });
+          failedRef.current.set(take.id, take);
+          const evictedId =
+            failedRef.current.size > MAX_FINISHED_SHOWN
+              ? failedRef.current.keys().next().value
+              : undefined;
+          if (evictedId !== undefined) failedRef.current.delete(evictedId);
+          setQueue((items) =>
+            items
+              .filter((item) => item.id !== evictedId)
+              .map((item) =>
+                item.id === take.id ? { ...item, status: 'failed', error: message } : item,
+              ),
+          );
         }
       } finally {
         finishActivity();
@@ -802,8 +820,22 @@ function useGenerateController(): UseGenerateClone {
     setQueue((items) => items.filter((item) => item.id !== id || item.status !== 'queued'));
   }, []);
 
+  const retryFailed = useCallback((id: string) => {
+    const take = failedRef.current.get(id);
+    if (!take || !queue.some((item) => item.id === id && item.status === 'failed')) return;
+    if (pendingRef.current.length >= MAX_QUEUED) {
+      toast.warning(tr('generationQueue.full', { count: MAX_QUEUED }));
+      return;
+    }
+    failedRef.current.delete(id);
+    pendingRef.current.push(take);
+    patchQueueItem(id, { status: 'queued', error: undefined });
+    drain();
+  }, [drain, patchQueueItem, queue]);
+
   /** Remove finished, failed and cancelled entries from the list. */
   const clearFinished = useCallback(() => {
+    failedRef.current.clear();
     setQueue((items) =>
       items.filter((item) => item.status === 'queued' || item.status === 'running'),
     );
@@ -848,6 +880,7 @@ function useGenerateController(): UseGenerateClone {
     queue,
     queuedCount: queue.filter((item) => item.status === 'queued').length,
     removeQueued,
+    retryFailed,
     clearFinished,
     cancelAll,
     designBlocker,
@@ -870,6 +903,7 @@ function useGenerateController(): UseGenerateClone {
       designBlocker,
       queue,
       removeQueued,
+      retryFailed,
       clearFinished,
       cancelAll,
       designBlockerFor,
@@ -885,7 +919,12 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
   return createElement(GenerationContext.Provider, { value }, children);
 }
 export function useGenerateClone(): UseGenerateClone {
-  const value = useContext(GenerationContext);
+  const value = useGenerationActivity();
   if (!value) throw new Error('GenerationProvider is required');
   return value;
+}
+
+/** Shared shell surfaces can render before a generation provider is available. */
+export function useGenerationActivity(): UseGenerateClone | null {
+  return useContext(GenerationContext);
 }

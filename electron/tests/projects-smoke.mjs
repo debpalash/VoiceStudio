@@ -21,6 +21,13 @@ try {
   let row = stored;
   let writes = 0;
   let renames = 0;
+  let projectsAvailable = false;
+  let projectsListed = true;
+  let connectEvents;
+  const events = new Promise((resolve) => {
+    connectEvents = resolve;
+  });
+  await page.routeWebSocket(/\/ws\/events$/, (socket) => connectEvents(socket));
   await page.addInitScript(() => {
     localStorage.setItem(
       'omni_transcriptions',
@@ -49,7 +56,7 @@ try {
       ],
     }),
   );
-  await page.route('**/api/history', (route) =>
+  await page.route(/\/api\/history(?:\?|$)/, (route) =>
     route.fulfill({
       json: [
         {
@@ -59,6 +66,13 @@ try {
           audio_path: 'take.wav',
           created_at: 2,
         },
+        ...Array.from({ length: 30 }, (_, index) => ({
+          id: `project-take-${index}`,
+          text: `Legacy project take ${index}`,
+          mode: 'clone',
+          audio_path: 'take.wav',
+          created_at: 3 + index,
+        })),
       ],
     }),
   );
@@ -92,12 +106,65 @@ try {
       row = { ...route.request().postDataJSON(), id: 'legacy' };
       return route.fulfill({ json: row });
     }
+    if (!projectsAvailable && route.request().url().endsWith('/projects'))
+      return route.fulfill({ status: 503, json: { detail: 'Unavailable' } });
     return route.fulfill({
-      json: route.request().url().endsWith('/projects') ? (row ? [row] : []) : row,
+      json: route.request().url().endsWith('/projects') ? (row && projectsListed ? [row] : []) : row,
     });
   });
   await page.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3902') + '/#/projects');
+  const projectSearch = page.getByRole('searchbox', { name: /Search dubs/ });
+  await projectSearch.waitFor();
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog');
+  const paletteSearch = palette.getByRole('combobox');
+  await paletteSearch.fill('Legacy project');
+  await palette.getByRole('alert').filter({ hasText: 'Something went wrong' }).waitFor();
+  const lastTake = palette.getByRole('option', { name: /Legacy project take/ }).nth(29);
+  await lastTake.waitFor();
+  await paletteSearch.press('ArrowUp');
+  assert.equal(
+    await paletteSearch.getAttribute('aria-activedescendant'),
+    await lastTake.getAttribute('id'),
+  );
+  projectsAvailable = true;
+  await palette.getByRole('button', { name: 'Retry', exact: true }).press('Enter');
+  const projectResult = palette.getByRole('option', { name: /^Legacy project Dubbing$/ });
+  await projectResult.waitFor();
+  assert.equal(await paletteSearch.getAttribute('aria-activedescendant'), null);
+  await paletteSearch.press('Enter');
+  assert.ok(await palette.isVisible());
+  const eventSocket = await events;
+  projectsListed = false;
+  eventSocket.send(JSON.stringify({ kind: 'projects' }));
+  await lastTake.waitFor();
+  assert.equal(await paletteSearch.getAttribute('aria-activedescendant'), null);
+  await paletteSearch.press('Enter');
+  assert.ok(await palette.isVisible());
+  projectsListed = true;
+  eventSocket.send(JSON.stringify({ kind: 'projects' }));
+  await projectResult.waitFor();
+  await paletteSearch.press('ArrowUp');
+  assert.equal(
+    await paletteSearch.getAttribute('aria-activedescendant'),
+    await projectResult.getAttribute('id'),
+  );
+  await paletteSearch.press('Enter');
+  await page.waitForURL((url) => url.hash.includes('q=Legacy'));
+  await page.waitForFunction(() =>
+    Array.from(document.querySelectorAll('input[type=search]')).some(
+      (input) => input.value === 'Legacy project',
+    ),
+  );
   const filters = page.locator('[data-slot=secondary-sidebar]');
+  await filters.getByRole('button', { name: 'Voice profiles 1', exact: true }).click();
+  await projectSearch.fill('Library');
+  await page.keyboard.press('Control+k');
+  await palette.getByRole('combobox').fill('Legacy project');
+  await palette.getByRole('option', { name: /^Legacy project Dubbing$/ }).click();
+  await page.getByRole('button', { name: 'Legacy project', exact: true }).waitFor();
+  assert.equal(await projectSearch.inputValue(), 'Legacy project');
+  await projectSearch.fill('');
   await filters.getByRole('button', { name: 'Voice profiles 1', exact: true }).click();
   await page.locator('main').getByRole('heading', { name: 'Library voice', exact: true }).waitFor();
   await filters.getByRole('button', { name: 'Transcripts 1', exact: true }).click();
@@ -107,7 +174,7 @@ try {
   assert.equal(await page.getByText('Library take', { exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Legacy project', exact: true }).click();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  assert(page.url().endsWith('/projects'));
+  assert.equal(new URL(page.url()).hash.split('?')[0], '#/projects');
   await page.getByRole('button', { name: 'Legacy project', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await page.waitForURL('**/#/dub');

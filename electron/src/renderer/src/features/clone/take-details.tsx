@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { SaveAudioButton } from '@/components/save-audio-button';
 import { WaveformPlayer } from '@/components/waveform-player';
+import { PlayInDockButton } from '@/components/now-playing-dock';
+import { takePlaybackKind } from '@/lib/audio/playback-kind';
 import { audioMp3Url, audioUrl } from '@/lib/api/client';
 import { fullTake, getHistoryItem } from '@/lib/api/history';
 import type { HistoryItem } from '@/lib/api/types';
@@ -25,7 +27,7 @@ import { designDraftFromTake, writeDraft } from '@/features/design/design-draft'
 import { openTake } from '@/lib/store/takes';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { languageOptions } from '@/lib/language-options';
-import { formatRelative, formatSeconds } from './format';
+import { displayTitle, formatRelative, formatSeconds } from './format';
 import { reuseWithFeedback } from './reuse-feedback';
 
 const NUMERIC_SETTINGS = [
@@ -226,27 +228,35 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
           disabled={isGenerating}
         />
       )}
-      {/* One row: the primary save, then the secondary actions as quiet icon buttons. */}
       <div data-slot="take-actions" className="flex flex-wrap items-center gap-1.5">
-        <SaveTakeProfile key={item.id + '-save'} item={item} />
+        {item.audio_path && (
+          <PlayInDockButton
+            src={audioUrl(item.audio_path)}
+            source={'take-' + item.id}
+            title={displayTitle(item.text)}
+            kind={takePlaybackKind(item.mode)}
+            duration={item.duration_seconds}
+            showLabel
+          />
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={isGenerating}
+          onClick={() => void reuse()}
+        >
+          <RepeatIcon />
+          {t('clone.history_reuse')}
+        </Button>
         {item.audio_path && (
           <SaveAudioButton
             url={audioUrl(item.audio_path)}
             mp3Url={audioMp3Url(item.audio_path)}
             suggestedName={`voicestudio-${item.id}.wav`}
-            iconOnly
+            label={t('projects.export')}
           />
         )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t('clone.history_reuse')}
-          title={t('clone.history_reuse')}
-          disabled={isGenerating}
-          onClick={() => void reuse()}
-        >
-          <RepeatIcon />
-        </Button>
+        <SaveTakeProfile key={item.id + '-save'} item={item} />
       </div>
     </div>
   );

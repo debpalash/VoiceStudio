@@ -9,21 +9,28 @@ import {
 } from './theme-preferences';
 
 describe('theme preferences', () => {
+  it('defaults both appearances to VoiceStudio Classic on first launch', () => {
+    expect(parseThemePreferences(null)).toEqual({
+      mode: 'dark',
+      light: 'heritage',
+      dark: 'heritage',
+    });
+  });
   it('preserves the old appearance and tolerates malformed saved preferences', () => {
     expect(parseThemePreferences('{', 'light')).toEqual({
       mode: 'light',
-      light: 'default',
-      dark: 'default',
+      light: 'heritage',
+      dark: 'heritage',
     });
     expect(parseThemePreferences('{"mode":"invalid","light":"missing","dark":"current"}')).toEqual({
       mode: 'dark',
-      light: 'default',
+      light: 'heritage',
       dark: 'current',
     });
     expect(parseThemePreferences('null')).toEqual({
       mode: 'dark',
-      light: 'default',
-      dark: 'default',
+      light: 'heritage',
+      dark: 'heritage',
     });
   });
   it('resolves independent halves when the operating system changes', () => {

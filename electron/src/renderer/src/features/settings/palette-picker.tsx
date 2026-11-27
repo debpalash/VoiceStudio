@@ -21,11 +21,11 @@ export function PalettePicker({ appearance }: { appearance: ThemeAppearance }) {
       >
         {options.map((option) => {
           const colors = paletteColors(option.id, appearance);
-          const dark = appearance === 'dark';
-          const background = colors?.canvas ?? (dark ? '#0a0a0a' : '#fdfdfd');
-          const sidebar = colors?.sidebar ?? (dark ? '#111111' : '#fafafa');
-          const text = colors?.text ?? (dark ? '#f5f5f5' : '#27272a');
-          const accent = colors?.messageAction ?? (dark ? '#3268ef' : '#2449df');
+          const studio = `--studio-${appearance}`;
+          const background = colors?.canvas ?? `var(${studio}-canvas)`;
+          const sidebar = colors?.sidebar ?? `var(${studio}-sidebar)`;
+          const text = colors?.text ?? `var(${studio}-text)`;
+          const accent = colors?.messageAction ?? `var(${studio}-action)`;
           const selected = settings[appearance] === option.id;
           return (
             <button

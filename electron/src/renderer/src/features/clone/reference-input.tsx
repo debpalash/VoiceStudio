@@ -88,36 +88,42 @@ export function ReferenceUsageNote({ durationSeconds }: { durationSeconds: numbe
 export function UploadZone({
   onAccept,
   pickToken,
-}: { onAccept?: AcceptReference; pickToken?: PickToken } = {}) {
+  compact = false,
+}: { onAccept?: AcceptReference; pickToken?: PickToken; compact?: boolean } = {}) {
   const { t } = useTranslation();
   const ingestFile = useIngest(onAccept, pickToken);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const id = useId();
 
-  const onDrop = (event: DragEvent<HTMLLabelElement>) => {
+  const onDrop = (event: DragEvent<HTMLButtonElement>) => {
     event.preventDefault();
     setDragging(false);
     void ingestFile(event.dataTransfer.files[0] ?? null);
   };
 
   return (
-    <div>
+    <div className="flex">
       <input
         ref={inputRef}
-        id={id}
         type="file"
         accept={ACCEPT}
-        className="sr-only"
+        hidden
         onChange={(event) => {
           void ingestFile(event.target.files?.[0] ?? null);
           event.target.value = '';
         }}
       />
-      <label
-        htmlFor={id}
+      <button
+        type="button"
+        aria-describedby={compact ? id : undefined}
+        aria-label={compact ? t('clone.upload_audio') : undefined}
+        onClick={() => inputRef.current?.click()}
         className={cn(
-          'flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/30 px-4 py-6 text-center transition-colors hover:border-primary/60 hover:bg-muted/50 focus-within:ring-3 focus-within:ring-ring/50',
+          'flex w-full cursor-pointer rounded-2xl border border-border/70 outline-none transition-colors hover:border-primary/50 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring',
+          compact
+            ? 'items-start gap-3 bg-card/50 p-4 text-start'
+            : 'min-h-36 flex-col items-center justify-center gap-2 border-dashed bg-muted/30 px-4 py-6 text-center',
           dragging && 'border-primary bg-primary/10',
         )}
         onDragOver={(event) => {
@@ -127,11 +133,24 @@ export function UploadZone({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
       >
-        <UploadCloudIcon className="size-6 text-muted-foreground" aria-hidden="true" />
-        <span className="text-[length:var(--text-label)] font-medium text-muted-foreground">
-          {t('clone.drop_audio')}
+        <span
+          className={cn(
+            'shrink-0',
+            compact && 'grid size-9 place-items-center rounded-xl bg-primary/10 text-primary',
+          )}
+        >
+          <UploadCloudIcon
+            className={compact ? 'size-4' : 'size-6 text-muted-foreground'}
+            aria-hidden="true"
+          />
         </span>
-      </label>
+        <span className={cn('min-w-0', compact && 'flex flex-col gap-1 pt-1')}>
+          {compact && <span className="text-base font-semibold">{t('clone.upload_audio')}</span>}
+          <span id={id} className="text-sm text-muted-foreground">
+            {t('clone.drop_audio')}
+          </span>
+        </span>
+      </button>
     </div>
   );
 }
@@ -139,16 +158,24 @@ export function UploadZone({
 export function RecordZone({
   onAccept,
   pickToken,
-}: { onAccept?: AcceptReference; pickToken?: PickToken } = {}) {
+  compact = false,
+}: { onAccept?: AcceptReference; pickToken?: PickToken; compact?: boolean } = {}) {
   const { t } = useTranslation();
   const ingestFile = useIngest(onAccept, pickToken);
   const rec = useRecording((file) => void ingestFile(file));
   const hasSignal = rec.level >= LEVEL_THRESHOLD;
+  const compactControl =
+    'inline-flex min-h-9 items-center gap-3 rounded-xl pe-3 text-base font-semibold';
   let micButton;
   if (rec.isStarting || rec.isCleaning) {
     micButton = (
       <div
-        className="flex size-24 flex-col items-center justify-center gap-1.5 rounded-full bg-muted text-[length:var(--text-label)] font-medium text-muted-foreground"
+        className={cn(
+          'text-muted-foreground',
+          compact
+            ? compactControl
+            : 'flex size-24 flex-col items-center justify-center gap-1.5 rounded-full bg-muted text-[length:var(--text-label)] font-medium',
+        )}
         role="status"
         aria-live="polite"
       >
@@ -166,10 +193,18 @@ export function RecordZone({
         type="button"
         onClick={() => rec.stop()}
         aria-label={t('clone.stop_recording')}
-        className="relative flex size-24 flex-col items-center justify-center gap-1.5 rounded-full border-2 border-destructive bg-destructive/10 text-[length:var(--text-label)] font-semibold text-destructive outline-none focus-visible:ring-3 focus-visible:ring-destructive/40"
+        className={cn(
+          'relative text-destructive outline-none focus-visible:ring-2 focus-visible:ring-destructive/40',
+          compact
+            ? compactControl
+            : 'flex size-24 flex-col items-center justify-center gap-1.5 rounded-full border-2 border-destructive bg-destructive/10 text-[length:var(--text-label)] font-semibold',
+        )}
       >
         <span
-          className="absolute inset-0 rounded-full border-2 border-destructive/60 animate-ping motion-reduce:animate-none"
+          className={cn(
+            'absolute inset-0 rounded-full border border-destructive/60',
+            !compact && 'animate-ping motion-reduce:animate-none',
+          )}
           aria-hidden="true"
         />
         <SquareIcon className="size-5 fill-current" />
@@ -183,17 +218,36 @@ export function RecordZone({
       <button
         type="button"
         onClick={() => void rec.start()}
-        className="flex size-24 flex-col items-center justify-center gap-1.5 rounded-full bg-muted text-[length:var(--text-label)] font-medium text-muted-foreground transition-colors outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50"
+        className={cn(
+          'outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+          compact
+            ? cn(compactControl, 'hover:bg-muted/40')
+            : 'flex size-24 flex-col items-center justify-center gap-2 rounded-full bg-muted text-[length:var(--text-label)] font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
+        )}
       >
-        <MicIcon className="size-5" />
+        <span
+          className={cn(
+            'shrink-0',
+            compact && 'grid size-9 place-items-center rounded-xl bg-primary/10 text-primary',
+          )}
+        >
+          <MicIcon className={compact ? 'size-4' : 'size-5'} aria-hidden="true" />
+        </span>
         {t('clone.record')}
       </button>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg bg-muted/30 p-4">
-      <div className="flex justify-center py-2">{micButton}</div>
+    <div
+      className={cn(
+        'flex flex-col gap-3 rounded-2xl p-4',
+        compact ? 'border border-border/70 bg-card/50' : 'bg-muted/30',
+      )}
+    >
+      <div className={cn('flex', compact ? 'justify-start' : 'justify-center py-2')}>
+        {micButton}
+      </div>
       <RecordingInputs rec={rec} />
       {rec.isRecording ? (
         <div
@@ -234,7 +288,10 @@ export function RecordZone({
  * Upload and record side by side: both ways in are visible at once instead of
  * hidden behind a toggle. Stacks on narrow containers.
  */
-export function ReferenceSourcePicker({ onAccept }: { onAccept?: AcceptReference } = {}) {
+export function ReferenceSourcePicker({
+  onAccept,
+  compact = false,
+}: { onAccept?: AcceptReference; compact?: boolean } = {}) {
   const pickToken = useRef(0);
   // Leaving the picker (a clip was accepted, or the user cancelled) retires
   // every probe still running, so none can replace the choice afterwards.
@@ -247,8 +304,8 @@ export function ReferenceSourcePicker({ onAccept }: { onAccept?: AcceptReference
   return (
     <div className="@container">
       <div className="grid gap-3 @md:grid-cols-2 [&>*]:min-w-0">
-        <UploadZone onAccept={onAccept} pickToken={pickToken} />
-        <RecordZone onAccept={onAccept} pickToken={pickToken} />
+        <UploadZone compact={compact} onAccept={onAccept} pickToken={pickToken} />
+        <RecordZone compact={compact} onAccept={onAccept} pickToken={pickToken} />
       </div>
     </div>
   );

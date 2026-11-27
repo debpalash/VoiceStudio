@@ -980,6 +980,9 @@ describe('generation queue', () => {
           {state.queue.map((item) => (
             <li key={item.id} data-testid="item" data-status={item.status}>
               {item.label}
+              {item.status === 'failed' && (
+                <button onClick={() => state.retryFailed(item.id)}>retry take</button>
+              )}
             </li>
           ))}
         </ul>
@@ -1020,6 +1023,24 @@ describe('generation queue', () => {
       </QueryClientProvider>,
     );
 
+  it('retries the failed request with its original script after the composer has changed', async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'Original script', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    await act(async () => renders[0]!.reject(new Error('render failed')));
+    expect(statuses()).toEqual(['failed']);
+
+    patchCloneSettings({ text: 'Edited script' });
+    fireEvent.click(screen.getByText('retry take'));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(generateClone).mock.calls[1]?.[0]).toEqual(
+      vi.mocked(generateClone).mock.calls[0]?.[0],
+    );
+    await act(async () => renders[1]!.resolve(take('retry')));
+    expect(statuses()).toEqual(['done']);
+  });
+
   it('queues takes requested mid-render and runs them in order with their own script', async () => {
     const renders = deferredRenders();
     mount();
@@ -1048,6 +1069,26 @@ describe('generation queue', () => {
     await act(async () => renders[2]!.resolve(take('c')));
     await waitFor(() => expect(statuses()).toEqual(['done', 'failed', 'done']));
     expect(screen.getByTestId('waiting')).toHaveTextContent('0');
+  });
+
+  it('removes a failed row when its retry snapshot is evicted', async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ selectedProfileId: 'voice-1', autoPlay: false });
+    for (let i = 0; i < 21; i++) {
+      patchCloneSettings({ text: `Queued script ${i}` });
+      fireEvent.click(screen.getByText('go'));
+    }
+    expect(screen.getByTestId('waiting')).toHaveTextContent('20');
+    for (let i = 0; i < 21; i++) {
+      await waitFor(() => expect(renders).toHaveLength(i + 1));
+      await act(async () => renders[i]!.reject(new Error('render failed')));
+    }
+    expect(statuses()).toEqual(Array(20).fill('failed'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'retry take' })[0]);
+    await waitFor(() => expect(renders).toHaveLength(22));
+    expect(vi.mocked(generateClone).mock.calls[21][0].text).toBe('Queued script 1');
+    await act(async () => renders[21]!.resolve(take('retry-after-eviction')));
   });
 
   it('pins each queued take to the engine active when it was requested', async () => {

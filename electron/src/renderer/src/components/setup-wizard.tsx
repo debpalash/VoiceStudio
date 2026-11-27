@@ -80,7 +80,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <header
         className={cn(
-          'workspace-titlebar flex shrink-0 items-center gap-2 border-b border-border/50 px-5',
+          'workspace-titlebar flex shrink-0 items-center gap-2 px-5',
           isMac() && 'pl-24',
         )}
       >

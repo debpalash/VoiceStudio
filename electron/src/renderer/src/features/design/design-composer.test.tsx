@@ -13,6 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-query')>()),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  useQuery: () => ({ data: undefined }),
 }));
 vi.mock('@/hooks/use-tts-readiness', () => ({ useTtsReadiness: () => readiness.blocker }));
 vi.mock('@/hooks/use-model-install', () => ({

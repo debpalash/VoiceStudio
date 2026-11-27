@@ -33,10 +33,8 @@ export function AgentDockFrame({
         <div
           {...resize.separatorProps}
           aria-label={label}
-          className="group absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <span className="absolute top-1/2 left-1/2 h-0.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sidebar-border opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-        </div>
+          className="workspace-resize-handle absolute inset-x-0 -top-1.5 z-20 h-3 cursor-row-resize touch-none outline-none"
+        />
       )}
       {children}
     </section>

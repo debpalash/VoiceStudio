@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { DownloadActivityList, useDownloadActivity } from './download-activity';
 import { LongformActivityCard, longformActivityStatus } from '@/components/longform-activity-card';
 import { useLongformActivity } from '@/lib/longform-activity';
+import { TaskActivityList, useTaskActivity } from './task-activity';
 
 interface SystemNotification {
   id: string;
@@ -93,6 +94,8 @@ export function SystemNotifications({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(loadDismissed);
+  const [open, setOpen] = useState(false);
+  const { tasks, checkingBatch } = useTaskActivity(enabled, open);
   const downloads = useDownloadActivity();
   // A Stories/Audiobook render keeps running when its page is left.
   const render = useLongformActivity();
@@ -160,13 +163,15 @@ export function SystemNotifications({
     }
   };
 
-  const total = visible.length + downloads.items.length + (render ? 1 : 0);
+  const total = visible.length + downloads.items.length + (render ? 1 : 0) + tasks.length;
+  const checking = query.isPending || checkingBatch;
   const triggerLabel =
     [
       render
         ? `${t(render.mode === 'stories' ? 'nav.stories' : 'audiobook.title')}: ${longformActivityStatus(render, t)}`
         : null,
       downloads.active ? t('modelInstall.activeCount', { count: downloads.active }) : null,
+      tasks.length ? t('generationQueue.title') : null,
       ...visible.map((note) => note.title || note.message),
     ]
       .filter(Boolean)
@@ -176,12 +181,12 @@ export function SystemNotifications({
         ? 'modelSettings.unavailable'
         : query.isError
           ? 'common.error'
-          : query.isPending
+          : checking
             ? 'preferences.loading'
             : 'logs.all_clear',
     );
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <Button
@@ -200,7 +205,9 @@ export function SystemNotifications({
           <span
             className={cn(
               'absolute -top-0.5 -right-0.5 min-w-3 rounded-full px-0.5 text-center text-[8px] leading-3 font-semibold text-white',
-              downloadFailed || visible.some((note) => note.level === 'error')
+              downloadFailed ||
+                tasks.some((task) => task.failed) ||
+                visible.some((note) => note.level === 'error')
                 ? 'bg-destructive'
                 : 'bg-primary',
             )}
@@ -215,6 +222,7 @@ export function SystemNotifications({
         align={titlebar ? 'end' : 'start'}
         className="max-h-[min(28rem,calc(100vh-2rem))] w-[min(22rem,calc(100vw-2rem))] space-y-1 overflow-y-auto p-1.5"
       >
+        <TaskActivityList tasks={tasks} />
         <LongformActivityCard />
         <DownloadActivityList activity={downloads} />
         {!enabled && total === 0 && (
@@ -222,12 +230,12 @@ export function SystemNotifications({
             {t('modelSettings.unavailable')}
           </p>
         )}
-        {enabled && query.isPending && total === 0 && (
+        {enabled && checking && total === 0 && (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
             {t('preferences.loading')}
           </p>
         )}
-        {enabled && !query.isPending && !query.isError && total === 0 && (
+        {enabled && !checking && !query.isError && total === 0 && (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
             {t('logs.all_clear')}
           </p>

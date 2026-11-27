@@ -91,21 +91,24 @@ export function NowPlayingDock() {
 /** Row play button that sends a clip to the bottom player; pressing it again pauses. */
 export function PlayInDockButton({
   className,
+  showLabel = false,
   ...clip
-}: Omit<NowPlaying, 'nonce'> & { className?: string }) {
+}: Omit<NowPlaying, 'nonce'> & { className?: string; showLabel?: boolean }) {
   const { t } = useTranslation();
   const playing = isClipPlaying(usePlaybackSource(), clip.source);
+  const label = t(playing ? 'player.pause' : 'player.play');
   return (
     <Button
       variant="ghost"
-      size="icon-xs"
-      aria-label={t(playing ? 'player.pause' : 'player.play')}
-      title={t(playing ? 'player.pause' : 'player.play')}
+      size={showLabel ? 'sm' : 'icon-xs'}
+      aria-label={label}
+      title={label}
       aria-pressed={playing}
       onClick={() => (playing ? stopActivePlayback() : playInDock(clip))}
       className={cn(playing && 'text-primary', className)}
     >
       {playing ? <PauseIcon /> : <PlayIcon />}
+      {showLabel && label}
     </Button>
   );
 }

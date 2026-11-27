@@ -1,5 +1,6 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { PlayInDockButton } from '@/components/now-playing-dock';
+import { SaveAudioButton } from '@/components/save-audio-button';
 import { takePlaybackKind } from '@/lib/audio/playback-kind';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { setWorkspace } from '@/lib/store/workspace';
@@ -389,10 +390,6 @@ function TakeRow({ item, onStar, onReuse, onDelete }: TakeRowProps) {
   const selected = useSelectedTake();
   const isDesign = item.mode === 'design';
   const workspaceLabel = isDesign ? t('designWorkspace.title') : t('clone.title');
-  const reopen = async () => {
-    await onReuse(item);
-    await navigate({ to: isDesign ? '/design' : '/clone' });
-  };
   return (
     <div
       className={cn(
@@ -427,16 +424,21 @@ function TakeRow({ item, onStar, onReuse, onDelete }: TakeRowProps) {
         )}
         <span className="truncate">{displayTitle(item.text)}</span>
       </button>
-      <div className="pointer-events-none absolute right-1 z-10 flex items-center gap-0.5 rounded-md bg-sidebar bg-[linear-gradient(var(--sidebar-accent),var(--sidebar-accent))] p-0.5 opacity-0 shadow-sm ring-1 ring-sidebar-border/50 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
-        {item.audio_path && (
-          <PlayInDockButton
-            src={audioUrl(item.audio_path)}
-            source={'take-' + item.id}
-            title={displayTitle(item.text)}
-            kind={takePlaybackKind(item.mode)}
-            duration={item.duration_seconds}
-          />
+      {item.audio_path && (
+        <PlayInDockButton
+          src={audioUrl(item.audio_path)}
+          source={'take-' + item.id}
+          title={displayTitle(item.text)}
+          kind={takePlaybackKind(item.mode)}
+          duration={item.duration_seconds}
+        />
+      )}
+      <div
+        className={cn(
+          'pointer-events-none absolute z-10 flex items-center gap-0.5 rounded-md bg-sidebar bg-[linear-gradient(var(--sidebar-accent),var(--sidebar-accent))] p-0.5 opacity-0 shadow-sm ring-1 ring-sidebar-border/50 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100',
+          item.audio_path ? 'end-9' : 'end-1',
         )}
+      >
         <Button
           variant="ghost"
           size="icon-xs"
@@ -452,10 +454,18 @@ function TakeRow({ item, onStar, onReuse, onDelete }: TakeRowProps) {
           size="icon-xs"
           aria-label={t('clone.history_reuse')}
           title={t('clone.history_reuse')}
-          onClick={() => void reopen()}
+          onClick={() => void onReuse(item)}
         >
           <Redo2Icon data-icon="inline-start" />
         </Button>
+        {item.audio_path && (
+          <SaveAudioButton
+            url={audioUrl(item.audio_path)}
+            suggestedName={`voicestudio-${item.id}.wav`}
+            label={t('projects.export')}
+            iconOnly
+          />
+        )}
         <Button
           variant="ghost"
           size="icon-xs"
@@ -510,6 +520,7 @@ interface RecentTakesProps {
 }
 
 function RecentTakes({ scrollRef }: RecentTakesProps) {
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const history = useHistory();
   const deleteItem = useDeleteHistoryItem();
@@ -536,9 +547,10 @@ function RecentTakes({ scrollRef }: RecentTakesProps) {
           writeDraft(designDraftFromTake(await fullTake(item)));
           setCloneSetting('language', item.language || 'Auto');
           openTake(null);
+          await navigate({ to: '/design' });
           return;
         }
-        await reuseTake(item);
+        if (await reuseTake(item)) await navigate({ to: '/clone' });
       }, t),
     onDelete: (item) => deleteItem.mutate(item.id),
   };

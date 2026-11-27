@@ -186,6 +186,9 @@ export const pronunciationRoute = createRoute({
 export const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects',
+  validateSearch: (search: Record<string, unknown>): { q?: string } => ({
+    q: typeof search.q === 'string' ? search.q : undefined,
+  }),
   component: ProjectsPage,
 });
 export const storiesRoute = createRoute({

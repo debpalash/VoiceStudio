@@ -26,12 +26,11 @@ import { ActionBar } from './action-bar';
 import { OutputPanel } from './output-panel';
 import { ReferencePanel, SaveProfileForm } from './reference-panel';
 import { ScriptPanel } from './script-panel';
-import { useCloneDemo } from '@/hooks/use-clone-demo';
+import { DEMO_PROFILE_ID, useCloneDemo } from '@/hooks/use-clone-demo';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { SynthesisDock } from '@/components/synthesis-dock';
 import { isSynthesizeShortcut } from './synthesize-shortcut';
 
-const DEMO_PROFILE_ID = 'demo0001';
 const DEMO_PROMPTED_KEY = 'omnivoice.demoClonePrompted';
 
 export function ClonePage() {
@@ -43,7 +42,7 @@ export function ClonePage() {
   // One setup for the notice and the composer: choosing a voice swaps one for
   // the other, and a download must keep its progress and Cancel across that.
   const setup = useEngineSetup('clone');
-  const { panel, editingProfileId } = useWorkspace();
+  const { panel, editingProfileId, libraryTab } = useWorkspace();
   const setPanel = (panel: 'voice' | null) => setWorkspace({ panel });
   const setLibraryTab = (libraryTab: 'voices' | 'takes') => setWorkspace({ libraryTab });
   useEffect(() => {
@@ -140,7 +139,10 @@ export function ClonePage() {
   }, [demo, generate, panel]);
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
+    <div
+      data-choosing-saved-voice={(choosingVoice && libraryTab === 'voices') || undefined}
+      className="flex h-full min-h-0 overflow-hidden"
+    >
       <div className="flex min-w-0 flex-1">
         <section className="flex min-w-0 flex-1 flex-col">
           <header
@@ -259,7 +261,7 @@ export function ClonePage() {
           {((!choosingVoice && !savingUpload) || isGenerating) && (
             <SynthesisDock output={<OutputPanel />}>
               <div className="mx-auto w-full max-w-4xl px-6 pb-4">
-                <div className="glass-panel composer-surface rounded-xl border border-border/60 bg-muted/30 p-2.5 shadow-[0_2px_12px_rgb(0_0_0/4%)]">
+                <div className="glass-panel composer-surface rounded-xl border border-border/60 bg-muted/30 p-2.5 shadow-composer dark:shadow-composer-dark">
                   <ActionBar setup={setup} />
                 </div>
               </div>

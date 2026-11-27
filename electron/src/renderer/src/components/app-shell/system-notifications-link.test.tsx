@@ -48,6 +48,10 @@ vi.mock('./download-activity', () => ({
   useDownloadActivity: () => ({ items: [], active: 0, pending: null }),
   DownloadActivityList: () => null,
 }));
+vi.mock('./task-activity', () => ({
+  useTaskActivity: () => ({ tasks: [], checkingBatch: false }),
+  TaskActivityList: () => null,
+}));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));

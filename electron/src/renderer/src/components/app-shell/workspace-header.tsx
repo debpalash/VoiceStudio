@@ -23,7 +23,7 @@ export function WorkspaceHeader({ children }: { children: ReactNode }) {
     <header
       data-slot="workspace-header"
       className={cn(
-        'workspace-titlebar flex shrink-0 items-center gap-3 border-b border-border/50 px-5',
+        'workspace-titlebar flex shrink-0 items-center gap-3 px-5',
         !isMac() && 'native-controls-right',
       )}
     >

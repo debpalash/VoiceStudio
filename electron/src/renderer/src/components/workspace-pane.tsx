@@ -49,13 +49,11 @@ export function WorkspacePane({
       <div
         {...separatorProps}
         aria-label={title}
-        className="group/resize absolute inset-y-0 -left-1 z-20 flex w-2 cursor-col-resize touch-none items-center justify-center outline-none"
-      >
-        <span className="h-10 w-px rounded-full bg-border/0 transition-[height,background-color,box-shadow] duration-150 group-hover/resize:h-16 group-hover/resize:bg-primary/45 group-hover/resize:shadow-[0_0_8px_var(--primary)] group-focus-visible/resize:h-16 group-focus-visible/resize:bg-primary" />
-      </div>
+        className="workspace-resize-handle absolute inset-y-0 -left-1.5 z-20 w-3 cursor-col-resize touch-none outline-none"
+      />
       <header
         className={cn(
-          'workspace-titlebar flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/45 bg-background/30 px-3 shadow-[0_1px_0_color-mix(in_oklab,var(--foreground)_2%,transparent)] backdrop-blur-xl',
+          'workspace-titlebar flex h-12 shrink-0 items-center justify-between gap-2 px-3',
           !isMac() && 'native-controls-right',
         )}
       >

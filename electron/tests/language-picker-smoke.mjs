@@ -90,7 +90,9 @@ try {
       }),
     );
     await page.goto(ui + '/#/clone');
-    await page.getByRole('button', { name: 'Language fixture', exact: true }).first().click();
+    await page
+      .getByRole('button', { name: `${strings.clone.select_profile}: Language fixture`, exact: true })
+      .click();
     const trigger = page.getByRole('button', { name: strings.clone.language, exact: true }).first();
     await trigger.waitFor();
     const openMs = await trigger.evaluate(async (element) => {

@@ -138,12 +138,18 @@ try {
     .click();
   await page.getByRole("link", { name: "Clone", exact: true }).click();
   await page.waitForURL("**/#/clone");
-  // Clone shows its library as a context pane, so navigation stays an icon rail.
+  // Clone keeps the icon rail while the chooser presents saved voices in the workspace.
   assert.equal(
     await page.locator("[data-slot=compact-main-sidebar]").count(),
     1,
   );
-  await page.getByRole("tab", { name: "Saved voices", exact: true }).waitFor();
+  const chooser = page.locator("[data-slot=voice-chooser]");
+  await chooser.getByRole("heading", { name: "Saved voices", exact: true }).waitFor();
+  const library = page.locator('[data-slot=secondary-sidebar][data-variant=library]');
+  await library.waitFor({ state: "attached" });
+  assert.equal(await library.isVisible(), false, "The chooser already lists saved voices");
+  await page.getByRole("button", { name: "Recent takes", exact: true }).click();
+  await library.getByRole("tab", { name: "Saved voices", exact: true }).waitFor();
   await page.setViewportSize({ width: 640, height: 900 });
   for (const route of [
     "stories",

@@ -1,6 +1,6 @@
 # VoiceStudio — Electron desktop app
 
-![VoiceStudio in its default dark theme, using the demo workspace.](../docs/media/electron/overview.png)
+![VoiceStudio in dark mode, using the demo workspace.](../docs/media/electron/overview.png)
 
 Electron is the only maintained desktop app for voice cloning, stories, dubbing,
 transcription, voice design, and workflows. Tauri is archived at v0.5.3. For
@@ -200,12 +200,14 @@ sidebar, max-w-4xl scroll frame, grouped sections, and consistent setting rows.
 Sidebar active/hover surfaces use the shared T3 theme tokens.
 
 The local palette library includes VoiceStudio Original, Canopy, Current, Hearth, and Orchid, with
-upstream light/dark color definitions with VoiceStudio display names from T3 Code (MIT). Each appearance keeps
+upstream light/dark color definitions with VoiceStudio display names from T3 Code (MIT). VoiceStudio Classic is the default in both light and dark mode. Each appearance keeps
 its own selected palette. System mode follows live OS appearance changes; the
 sidebar toggle explicitly switches to light or dark. Choices persist under
-`voicestudio.theme.v2`, migrating the older light/dark setting. Studio restores
-the neutral palette. Semantic roles drive chrome, sidebar, overlays, controls,
-text, and waveform colors. No network request is needed to select a theme.
+`voicestudio.theme.v2`, migrating the older light/dark setting. Choose **Studio**
+in Appearance for T3 Code's neutral palette with a black dark canvas, a
+near-white light canvas, and blue primary actions. The palette previews share
+the same color tokens as the app. Shared controls use T3 Code's corner radius
+scale and elevation tokens. Theme selection works offline.
 
 Glass mode is an opt-in, persisted appearance setting for translucent in-app
 surfaces with palette-tinted background depth. It does not make the native window
@@ -225,6 +227,21 @@ Classic uses plum-charcoal surfaces, lavender text, and violet glass reflections
 with the original rose action color.
 
 ## Workspace interactions
+
+Recent takes gives you Play, Reuse script, and Export. Playing a take or a
+finished dub in the bottom player keeps it available when you switch workspaces.
+The bell shows render and batch progress alongside model downloads. Cancel or
+retry there, or open Dubbing to resolve a failed step. If the bell cannot check
+for failed batch jobs, use Retry to check again. Interrupted dubs with a saved
+checkpoint can resume from the bell.
+
+Use Ctrl/Cmd+K to find saved voices, projects, takes, or settings by name. Project
+results stay available when many takes match. They open the Projects library
+with the matching name filled in, even if you changed the search or category
+after selecting that project earlier. If a search
+source fails to load, use Retry in the palette. In Settings, System groups the
+engine, device, and connection controls. Diagnostics groups logs, diagnostic
+information, and updates.
 
 Both library and inspector panes share the same resize behavior: pointer drag,
 arrow keys on the focused divider, and double-click to reset. Widths, library

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { useLocation, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { isImeComposing } from '@/lib/ime';
@@ -13,13 +14,15 @@ import { openTake } from '@/lib/store/takes';
 import { selectCloneProfile } from '@/lib/store/reference';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { SETTINGS_ENTRIES } from '@/features/settings/settings-index';
+import { dubProjectsQuery, longformProjectsQuery } from '@/features/projects/project-queries';
 import { cn } from '@/lib/utils';
 import { Kbd } from '@/components/ui/kbd';
 import { isMac } from '@/components/bridge';
 import { KeyboardCheatsheet } from '@/components/keyboard-cheatsheet';
 import { useTheme } from '@/hooks/use-theme';
 import { formatRelative } from '@/features/clone/format';
-import { commandMatches, recentTakes, takeLength, type CommandItem } from './command-palette-items';
+import { matchingCommands, recentTakes, takeLength, type CommandItem } from './command-palette-items';
+import { CommandPaletteSearchStatus } from './command-palette-search-status';
 import {
   AudioLinesIcon,
   BlocksIcon,
@@ -47,7 +50,6 @@ import {
   XIcon,
 } from 'lucide-react';
 import {
-  designDraftFromTake,
   readDraft,
   replaceRecipe,
   restoreDesignProfile,
@@ -72,16 +74,23 @@ export function CommandPaletteDialog({
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+  const currentProjectSearch = useLocation({
+    select: ({ pathname, search }) => (pathname === '/projects' ? search.q : undefined),
+  });
   const [query, setQuery] = useState('');
+  const needle = query.trim();
+  const dubs = useQuery({ ...dubProjectsQuery, enabled: open && Boolean(needle) });
+  const books = useQuery({ ...longformProjectsQuery, enabled: open && Boolean(needle) });
   // The highlight follows the command, not its position, so results arriving
   // (a saved profile, history) cannot shift Enter onto a different command.
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // Undefined selects the first result by default. Null requires an explicit selection.
+  const [activeId, setActiveId] = useState<string | null>();
   const history = useHistory();
   const profiles = useProfiles();
   const generation = useGenerateClone();
   useEffect(() => {
     setQuery('');
-    setActiveId(null);
+    setActiveId(undefined);
   }, [openNonce]);
   const workspaceGroup = t('nav.workspaces');
   const actionGroup = t('nav.clone');
@@ -317,7 +326,7 @@ export function CommandPaletteDialog({
         await navigate({ to: '/clone' });
       },
     })),
-    ...recentTakes(history.data ?? []).map((item): CommandItem => ({
+    ...recentTakes(history.data ?? [], needle ? Infinity : undefined).map((item): CommandItem => ({
       id: 'take-' + item.id,
       label: item.text,
       detail: [formatRelative(item.created_at, i18n.language), takeLength(item.duration_seconds)]
@@ -328,7 +337,6 @@ export function CommandPaletteDialog({
       run: async () => {
         openTake(item);
         if (item.mode === 'design') {
-          writeDraft(designDraftFromTake(item));
           await navigate({ to: '/design' });
         } else {
           await navigate({ to: '/clone' });
@@ -336,8 +344,32 @@ export function CommandPaletteDialog({
       },
     })),
   ];
+  const projectItems: CommandItem[] = needle
+    ? [
+        ...(dubs.data ?? []).map(({ id, name }) => ({ id: `dub-${id}`, name, kind: 'nav.dub' })),
+        ...(books.data ?? []).map(({ id, name, mode }) => ({
+          id: `${mode}-${id}`,
+          name,
+          kind: mode === 'stories' ? 'nav.stories' : 'audiobook.title',
+        })),
+      ].map((project) => ({
+        id: `project-${project.id}`,
+        label: project.name,
+        detail: t(project.kind),
+        keywords: [t('projects.title'), t(project.kind)],
+        group: t('projects.title'),
+        icon: FolderIcon,
+        run: () =>
+          navigate({
+            to: '/projects',
+            search: { q: project.name },
+            replace: project.name === currentProjectSearch,
+            // A new selection must reach the mounted page even when the URL is identical.
+            state: (previous) => ({ ...previous, projectSearchSelection: crypto.randomUUID() }),
+          }),
+      }))
+    : [];
   // Settings pages are searchable but stay out of the default list.
-  const needle = query.trim().toLocaleLowerCase();
   const settingsItems: CommandItem[] = needle
     ? SETTINGS_ENTRIES.map((entry) => ({
         id: `settings-${entry.label}`,
@@ -347,13 +379,10 @@ export function CommandPaletteDialog({
         run: () => navigate({ to: entry.to }),
       }))
     : [];
-  const items = [...source, ...settingsItems]
-    .filter((item) => commandMatches(item, query))
-    .slice(0, 30);
-  const active = Math.max(
-    0,
-    items.findIndex((item) => item.id === activeId),
-  );
+  const items = matchingCommands([...source, ...settingsItems], projectItems, query);
+  // If late results displace an explicit selection, Enter must wait for a new one.
+  const active = activeId === undefined ? 0 : items.findIndex((item) => item.id === activeId);
+  if (typeof activeId === 'string' && active < 0) setActiveId(null);
   const setActive = (index: number) => setActiveId(items[index]?.id ?? null);
   const run = (index: number) => {
     const item = items[index];
@@ -377,16 +406,18 @@ export function CommandPaletteDialog({
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
-              setActiveId(null);
+              setActiveId(undefined);
             }}
             className="mr-8 h-10 w-[calc(100%-2rem)]"
             onKeyDown={(event) => {
               if (isImeComposing(event)) return;
-              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              if (items.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
                 event.preventDefault();
+                const forward = event.key === 'ArrowDown';
                 const next =
-                  (active + (event.key === 'ArrowDown' ? 1 : -1) + items.length) %
-                  Math.max(1, items.length);
+                  active < 0
+                    ? (forward ? 0 : items.length - 1)
+                    : (active + (forward ? 1 : -1) + items.length) % items.length;
                 setActive(next);
                 document
                   .getElementById(`command-${items[next]?.id}`)
@@ -443,15 +474,11 @@ export function CommandPaletteDialog({
               );
             })}
           </div>
-          {!items.length && (
-            <p className="p-4 text-center text-sm text-muted-foreground">
-              {history.isFetching || profiles.isFetching
-                ? t('common.loading')
-                : history.isError || profiles.isError
-                  ? t('common.error')
-                  : t('preferences.no_matches')}
-            </p>
-          )}
+          <CommandPaletteSearchStatus
+            hasResults={items.length > 0}
+            queries={[history, profiles]}
+            projectQueries={needle ? [dubs, books] : []}
+          />
         </DialogContent>
       </Dialog>
       <KeyboardCheatsheet open={shortcutsOpen} onOpenChange={onShortcutsOpenChange} />

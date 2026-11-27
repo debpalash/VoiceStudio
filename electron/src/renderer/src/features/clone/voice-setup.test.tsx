@@ -26,11 +26,23 @@ vi.mock('@tanstack/react-query', async (original) => ({
   useQueryClient: () => ({ setQueryData: vi.fn() }),
 }));
 vi.mock('./reference-panel', () => ({ ReferencePanel: () => <div>reference panel</div> }));
+vi.mock('./clone-demo', () => ({ CloneDemoAction: () => <button>demo.hear_demo</button> }));
 
 import { VoiceSetup } from './voice-setup';
 
 const voice = (id: string, name: string, created_at: number, language: string | null = null) =>
   ({ id, name, created_at, language, kind: 'clone', ref_audio_path: `${id}.wav` }) as Profile;
+
+it('keeps the demo preview inside its saved voice row', () => {
+  mock.profiles = [...mock.profiles, voice('demo0001', 'Demo Voice', 20)];
+  const onChosen = vi.fn();
+  render(<VoiceSetup onChosen={onChosen} onBack={() => {}} />);
+  const row = screen
+    .getByRole('button', { name: 'clone.select_profile: Demo Voice' })
+    .closest('[data-slot=voice-card]')!;
+  fireEvent.click(within(row as HTMLElement).getByRole('button', { name: 'demo.hear_demo' }));
+  expect(onChosen).not.toHaveBeenCalled();
+});
 
 beforeEach(() => {
   localStorage.clear();
@@ -50,7 +62,7 @@ const names = () =>
   screen
     .getAllByRole('button')
     .filter((button) => button.hasAttribute('data-choose'))
-    .map((button) => button.getAttribute('aria-label'));
+    .map((button) => button.getAttribute('aria-label')?.replace('clone.select_profile: ', ''));
 
 it('lists cloned voices newest first, sorts by name on request and remembers it', () => {
   const view = render(<VoiceSetup onChosen={() => {}} onBack={() => {}} />);
@@ -70,14 +82,14 @@ it('lists cloned voices newest first, sorts by name on request and remembers it'
 it('marks the current voice, chooses a card and opens editing without choosing', () => {
   const chosen = vi.fn();
   render(<VoiceSetup onChosen={chosen} onBack={() => {}} />);
-  const adam = screen.getByRole('button', { name: 'Adam' });
+  const adam = screen.getByRole('button', { name: 'clone.select_profile: Adam' });
   expect(adam).toHaveAttribute('aria-current', 'true');
   const card = adam.closest('[data-slot="voice-card"]') as HTMLElement;
   expect(within(card).getByText(/English/)).toBeInTheDocument();
   fireEvent.click(within(card).getByRole('button', { name: 'clone.edit_voice: Adam' }));
   expect(mock.workspace).toHaveBeenCalledWith({ editingProfileId: 'b', panel: null });
   expect(chosen).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Mia' }));
+  fireEvent.click(screen.getByRole('button', { name: 'clone.select_profile: Mia' }));
   expect(mock.select).toHaveBeenCalledWith(expect.objectContaining({ id: 'c' }));
   expect(chosen).toHaveBeenCalledOnce();
 });
@@ -110,7 +122,9 @@ it('searches by name once the list is long enough', () => {
 
 it('lets clicks on the photo reach the card; only the camera badge picks a photo', () => {
   render(<VoiceSetup onChosen={() => {}} onBack={() => {}} />);
-  const card = screen.getByRole('button', { name: 'Adam' }).closest('[data-slot="voice-card"]');
+  const card = screen
+    .getByRole('button', { name: 'clone.select_profile: Adam' })
+    .closest('[data-slot="voice-card"]');
   const label = within(card as HTMLElement)
     .getByLabelText('cloneFlow.change_photo: Adam')
     .closest('label') as HTMLElement;
@@ -123,7 +137,9 @@ it('lets clicks on the photo reach the card; only the camera badge picks a photo
 it('still accepts a photo dropped anywhere on the card', () => {
   mock.update.mockResolvedValue(voice('b', 'Adam', 300));
   render(<VoiceSetup onChosen={() => {}} onBack={() => {}} />);
-  const card = screen.getByRole('button', { name: 'Adam' }).closest('[data-slot="voice-card"]');
+  const card = screen
+    .getByRole('button', { name: 'clone.select_profile: Adam' })
+    .closest('[data-slot="voice-card"]');
   const png = new File(['x'], 'a.png', { type: 'image/png' });
   fireEvent.drop(card as HTMLElement, { dataTransfer: { types: ['Files'], files: [png] } });
   expect(mock.update).toHaveBeenCalledWith('b', png);
@@ -132,10 +148,23 @@ it('still accepts a photo dropped anywhere on the card', () => {
 it('saves a photo dropped on the camera badge exactly once', () => {
   mock.update.mockResolvedValue(voice('b', 'Adam', 300));
   render(<VoiceSetup onChosen={() => {}} onBack={() => {}} />);
-  const card = screen.getByRole('button', { name: 'Adam' }).closest('[data-slot="voice-card"]');
-  const badge = (card as HTMLElement).querySelector('label span.pointer-events-auto') as HTMLElement;
+  const card = screen
+    .getByRole('button', { name: 'clone.select_profile: Adam' })
+    .closest('[data-slot="voice-card"]');
+  const badge = (card as HTMLElement).querySelector(
+    'label span.pointer-events-auto',
+  ) as HTMLElement;
   const png = new File(['x'], 'a.png', { type: 'image/png' });
   fireEvent.drop(badge, { dataTransfer: { types: ['Files'], files: [png] } });
   expect(mock.update).toHaveBeenCalledTimes(1);
   expect(mock.update).toHaveBeenCalledWith('b', png);
+});
+
+it('shows saved voices and capture together with one back action', () => {
+  const back = vi.fn();
+  render(<VoiceSetup onChosen={() => {}} onBack={back} />);
+  expect(names()).toContain('Adam');
+  expect(screen.getByText('reference panel')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'preferences.back' }));
+  expect(back).toHaveBeenCalledOnce();
 });
