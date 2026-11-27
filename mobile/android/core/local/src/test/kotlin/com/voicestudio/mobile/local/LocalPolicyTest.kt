@@ -433,16 +433,16 @@ class LocalPolicyTest {
         assertEquals("a: x", lines.first { it.key == "nested" }.value)
     }
     @Test fun queuedTransferStageSaysWhyItWaits() {
-        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},{Long.MAX_VALUE},waitStage={"waiting_metered"})
+        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},freeBytes={Long.MAX_VALUE},waitStage={"waiting_metered"})
         assertEquals("waiting_metered",d.waitingStage(false))
         assertEquals("Mobile data allowed never claims Wi-Fi is missing","waiting_network",d.waitingStage(true))
         d.scheduled("fixture",10,d.waitingStage(false))
         assertEquals("waiting_metered",d.progress.value["fixture"]!!.stage)
-        val plain=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},{Long.MAX_VALUE})
+        val plain=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},freeBytes={Long.MAX_VALUE})
         assertEquals("waiting",plain.waitingStage(false))
     }
     @Test fun restoredWaitingEntryIsRelabelledButActiveProgressIsKept() {
-        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},{Long.MAX_VALUE})
+        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},freeBytes={Long.MAX_VALUE})
         d.scheduled("fixture",10,"waiting_metered")
         d.scheduled("fixture",10,"waiting")
         assertEquals("Network moved off metered Wi-Fi: the stale reason must go","waiting",d.progress.value["fixture"]!!.stage)
