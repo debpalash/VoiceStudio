@@ -15,13 +15,7 @@ import {
 } from '@/features/dub/dub-session';
 import { dubProgressPercent, dubStageKey } from '@/features/dub/dub-task-status';
 import { Button } from '@/components/ui/button';
-import {
-  canRetryLongform,
-  dismissLongformError,
-  retryLongform,
-  useLongformSession,
-} from '@/features/longform/longform-session';
-import { longformRoute } from '@/lib/longform-activity';
+import { longformRoute, useLongformFailure } from '@/lib/longform-activity';
 
 interface TaskAction {
   label: string;
@@ -46,7 +40,7 @@ export function useTaskActivity(enabled: boolean, open: boolean): TaskActivity[]
   const generation = useGenerationActivity();
   const dub = useDubSession();
   const cancellingDub = useDubCancelling();
-  const longform = useLongformSession();
+  const failedRender = useLongformFailure();
   // StatusBar already refreshes the active list. Only fetch retryable jobs
   // when someone opens the panel.
   const activeBatch = useQuery({
@@ -132,20 +126,19 @@ export function useTaskActivity(enabled: boolean, open: boolean): TaskActivity[]
       ],
     });
   }
-  const failedRender = longform.failedRender;
-  if (failedRender && longform.error && !longform.active) {
-    const { mode, draft } = failedRender;
+  if (failedRender) {
+    const { mode, title, error, retry, dismiss } = failedRender;
     const workspaceName = t(mode === 'stories' ? 'nav.stories' : 'audiobook.title');
     rows.push({
       id: 'longform-failed',
-      title: draft.title || workspaceName,
+      title: title || workspaceName,
       status: t('generationQueue.status.failed'),
       failed: true,
-      error: longform.error,
+      error,
       actions: [
         { label: workspaceName, run: () => navigate({ to: longformRoute(mode) }) },
-        ...(canRetryLongform(longform) ? [{ label: t('common.retry'), run: retryLongform }] : []),
-        { label: t('common.dismiss'), run: dismissLongformError },
+        ...(retry ? [{ label: t('common.retry'), run: retry }] : []),
+        { label: t('common.dismiss'), run: dismiss },
       ],
     });
   }

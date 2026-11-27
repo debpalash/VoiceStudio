@@ -1,7 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
-
-vi.mock('./app-shell/task-activity', () => ({ useTaskActivity: () => [], TaskActivityList: () => null }));
 import { beforeEach, expect, it, vi } from 'vitest';
 import i18n from '@/i18n';
 import type { BackendStatus } from '../../../preload/index.d';

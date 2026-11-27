@@ -22,7 +22,7 @@ import { tr } from '@/lib/i18n-text';
 import { consumeLongformStream } from '@shared/utils/longformStream';
 import { storyToSpans } from '@shared/utils/storyToSpans';
 import { beginAppActivity } from '@/lib/app-activity';
-import { publishLongformActivity } from '@/lib/longform-activity';
+import { publishLongformActivity, publishLongformFailure } from '@/lib/longform-activity';
 import { publicFailureFromEvent, type PublicFailure } from '@/lib/api/failure';
 import { parseProgressEvent, type RenderProgressSnapshot } from './render-eta';
 export type Mode = 'stories' | 'audiobook';
@@ -299,6 +299,17 @@ const optionalFiniteNumber = (value: unknown): number | undefined => {
 /** Mirror the live render into the app-wide activity store (notifications, other page). */
 function publishActivity() {
   const s = longformSession.state;
+  publishLongformFailure(
+    s.failedRender && s.error && !s.active
+      ? {
+          mode: s.failedRender.mode,
+          title: s.failedRender.draft.title,
+          error: s.error,
+          retry: canRetryLongform(s) ? retryLongform : undefined,
+          dismiss: dismissLongformError,
+        }
+      : null,
+  );
   publishLongformActivity(
     s.active
       ? {
@@ -917,7 +928,7 @@ export function dismissLongformError(): void {
   patch({ error: null, failure: null, failedRender: undefined });
 }
 
-export function canRetryLongform(session: Session): boolean {
+function canRetryLongform(session: Session): boolean {
   const failed = session.failedRender;
   return Boolean(
     !session.active && failed && failed.draft === session.drafts[failed.mode] &&
@@ -925,7 +936,7 @@ export function canRetryLongform(session: Session): boolean {
   );
 }
 
-export async function retryLongform() {
+async function retryLongform() {
   const session = longformSession.state;
   if (!canRetryLongform(session) || !session.failedRender) return;
   const { mode, resumeId } = session.failedRender;

@@ -37,9 +37,6 @@ vi.mock('@/features/dub/dub-session', () => ({
   cancelDub: task.cancelDub,
   resumeDub: task.resumeDub,
 }));
-vi.mock('@/features/longform/longform-session', () => ({
-  useLongformSession: () => ({ active: null }),
-}));
 
 import { TaskActivityList, useTaskActivity } from './task-activity';
 

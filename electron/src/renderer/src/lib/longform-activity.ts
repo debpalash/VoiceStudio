@@ -48,5 +48,25 @@ export function stopLongformActivity(): void {
 
 export const useLongformActivity = () => useStore(longformActivity);
 
+interface LongformFailure {
+  mode: LongformActivity['mode'];
+  title: string;
+  error: string;
+  retry?: () => Promise<void>;
+  dismiss: () => void;
+}
+
+const longformFailure = new Store<LongformFailure | null>(null);
+
+export function publishLongformFailure(failure: LongformFailure | null): void {
+  const current = longformFailure.state;
+  if (current === failure ||
+      (current && failure && current.mode === failure.mode && current.title === failure.title &&
+        current.error === failure.error && current.retry === failure.retry)) return;
+  longformFailure.setState(() => failure);
+}
+
+export const useLongformFailure = () => useStore(longformFailure);
+
 export const longformRoute = (mode: LongformActivity['mode']) =>
   mode === 'stories' ? ('/stories' as const) : ('/audiobook' as const);
