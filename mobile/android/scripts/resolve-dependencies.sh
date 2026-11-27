@@ -6,6 +6,10 @@
 # build step, which reports it with its full context.
 set -uo pipefail
 scripts="$(cd "$(dirname "$0")" && pwd)"
+# Every later Gradle run in this job (build, tests, emulator) also reads
+# Maven Central through its mirror first: an init.d script applies to all.
+init_dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
+mkdir -p "$init_dir" && cp "$scripts/maven-central-mirror.init.gradle" "$init_dir/"
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 for delay in ${RESOLVE_RETRY_DELAYS:-0 30 90 180}; do

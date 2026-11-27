@@ -115,6 +115,7 @@ jobs:
             mobile/android/install-sdk-packages.sh
             mobile/android/scripts/resolve-dependencies.sh
             mobile/android/scripts/resolve-all.init.gradle
+            mobile/android/scripts/maven-central-mirror.init.gradle
           sparse-checkout-cone-mode: false
           persist-credentials: false
 

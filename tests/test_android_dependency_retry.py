@@ -62,7 +62,7 @@ def _run(tmp_path: Path, outcomes: list[str]) -> tuple[int, list[str]]:
         encoding="utf-8",
     )
     gradlew.chmod(0o755)
-    env = {**os.environ, "RESOLVE_RETRY_DELAYS": "0 0 0"}
+    env = {**os.environ, "RESOLVE_RETRY_DELAYS": "0 0 0", "GRADLE_USER_HOME": str(tmp_path / "gradle-home")}
     result = subprocess.run(
         ["bash", str(SCRIPT), ":app:prepareRobolectricSdk"],
         cwd=project, env=env, capture_output=True, text=True, timeout=60,
@@ -91,3 +91,18 @@ def test_a_persistent_rate_limit_fails_after_the_last_retry(tmp_path):
     status, calls = _run(tmp_path, ["429"] * 5)
     assert status == 1
     assert len(calls) == 3
+
+
+@needs_bash
+def test_every_later_gradle_run_in_the_job_reads_maven_central_through_its_mirror(tmp_path):
+    _run(tmp_path, [])
+    installed = tmp_path / "gradle-home" / "init.d" / "maven-central-mirror.init.gradle"
+    assert installed.is_file()
+    text = installed.read_text(encoding="utf-8")
+    assert "https://maven-central.storage-download.googleapis.com/maven2/" in text
+    assert "beforeSettings" in text
+
+
+def test_release_recovery_checks_out_the_mirror_script_with_the_retry():
+    workflow = (WORKFLOWS / "mobile-release.yml").read_text(encoding="utf-8")
+    assert "mobile/android/scripts/maven-central-mirror.init.gradle" in workflow
