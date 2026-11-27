@@ -10,6 +10,24 @@ omit `separate_background` keep the existing separation default. Cache identity
 includes the separation choice so stems cannot leak between modes. URL ingest
 keeps its existing behavior. Existing prepared projects are not reprocessed.
 
+### External audio separation for API clients
+
+On `POST /dub/upload`, set `external_stems=true` to skip Demucs and keep the
+44.1 kHz stereo `audio_hq.wav` extract alongside the 16 kHz mono `audio.wav`.
+If HQ extraction fails, preparation logs the failure and retains `audio.wav`.
+After the upload task reports `ready`, run your separator on that extract and
+write its WAV output into the job directory. Attach the vocals and optional
+background with `POST /dub/stems/{job_id}` before transcription or rendering.
+
+The route requires administrator access. Send the bare filenames in `vocals`
+and `no_vocals`. Both WAVs must resolve inside the job directory and match the
+source duration to within one second. A rejected attachment leaves the current
+audio available. With vocals only, rendering uses the existing speech-only
+export behavior. VoiceStudio keeps the attached files with the job and leaves
+them out of the shared preparation cache.
+
+### Guided preparation
+
 The source card guides local preparation through file selection, SRT choice,
 SRT language (source or target), optional background separation, script style,
 and a final summary. Selecting files does not start ASR, separation or TTS.

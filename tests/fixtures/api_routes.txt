@@ -272,6 +272,7 @@ POST /dub/plan/{job_id}
 POST /dub/preview-segment/{job_id}
 POST /dub/prosody-mirror/{job_id}
 POST /dub/qc/{job_id}
+POST /dub/stems/{job_id}
 POST /dub/sync-transcript/{job_id}
 POST /dub/transcribe/{job_id}
 POST /dub/translate

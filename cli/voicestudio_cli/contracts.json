@@ -767,6 +767,7 @@
     "body_required": true,
     "encoding": "multipart/form-data",
     "fields": [
+      "external_stems",
       "input_type",
       "job_id",
       "separate_background",
