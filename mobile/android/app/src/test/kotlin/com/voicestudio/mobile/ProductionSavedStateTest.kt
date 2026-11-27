@@ -598,15 +598,30 @@ class ProductionSavedStateTest {
         lateinit var session:ProductionDraftSession
         compose.setContent {}
         val store=androidx.lifecycle.ViewModelStore()
-        try {
-            compose.runOnIdle {
-                session=ProductionDraftSession(repository,"stories","Untitled")
-                store.put("legacy",session)
-                session.attach {failures+=it}
-                session.initialize(Json.encodeToString(ProductionProject.serializer(),project))
-                assertTrue(session.state.loading)
-                assertEquals("Existing inline recovery data stays until migration is durable",Json.encodeToString(ProductionProject.serializer(),project),session.savedHandle())
+        // Hold the shared repository IO lock so the legacy parse cannot finish
+        // before the loading gate is checked (it raced on fast runners).
+        val entered=CountDownLatch(1)
+        val release=CountDownLatch(1)
+        val holding=object:File(temporary.root,"held-legacy-json-io") {
+            override fun isDirectory():Boolean {
+                entered.countDown()
+                if(!release.await(10,TimeUnit.SECONDS)) throw java.io.IOException("Controlled legacy IO was not released")
+                return super.isDirectory()
             }
+        }
+        val disk=Thread {ProductionDraftRepository(holding).save(fixture("audiobook"))}.apply {isDaemon=true;start()}
+        try {
+            try {
+                assertTrue(entered.await(5,TimeUnit.SECONDS))
+                compose.runOnIdle {
+                    session=ProductionDraftSession(repository,"stories","Untitled")
+                    store.put("legacy",session)
+                    session.attach {failures+=it}
+                    session.initialize(Json.encodeToString(ProductionProject.serializer(),project))
+                    assertTrue(session.state.loading)
+                    assertEquals("Existing inline recovery data stays until migration is durable",Json.encodeToString(ProductionProject.serializer(),project),session.savedHandle())
+                }
+            } finally {release.countDown();disk.join(5000)}
             compose.waitUntil(5000) {compose.waitForIdle();!session.state.loading&&session.state.value==project}
             awaitCheckpoint(temporary.root,project)
             compose.waitUntil(5000) {compose.waitForIdle();session.savedHandle()==project.id}
