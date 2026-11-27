@@ -345,6 +345,63 @@ def test_git_failure_falls_back_to_tarball(monkeypatch):
     assert (si.managed_checkout(spec) / "pyproject.toml").is_file()
 
 
+def _windows_read_only_semantics(monkeypatch):
+    """Make unlink refuse read-only files, as Windows does."""
+    import stat as stat_mod
+
+    real_unlink = os.unlink
+
+    def windows_unlink(path, *args, **kwargs):
+        mode = os.stat(path, dir_fd=kwargs.get("dir_fd"), follow_symlinks=False).st_mode
+        if not mode & stat_mod.S_IWRITE:
+            raise PermissionError(13, "Access is denied", str(path))
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(si.os, "unlink", windows_unlink)
+    monkeypatch.setattr(si, "_READ_ONLY_FILES_BLOCK_DELETE", True)
+
+
+def test_a_failed_clone_with_read_only_packs_still_unpacks_at_the_root(monkeypatch):
+    """Windows: the failed clone's read-only .git must not nest the tarball."""
+    import stat as stat_mod
+
+    import httpx
+
+    spec = _mk_spec()
+    checkout = si.managed_checkout(spec)
+    _windows_read_only_semantics(monkeypatch)
+    monkeypatch.setattr(si.shutil, "which", lambda n: "/usr/bin/git" if n == "git" else None)
+
+    def failed_clone(job, argv, timeout):
+        pack = checkout / ".git" / "objects" / "pack" / "pack-1.pack"
+        pack.parent.mkdir(parents=True, exist_ok=True)
+        pack.write_bytes(b"pack")
+        pack.chmod(stat_mod.S_IREAD)
+        return 128
+
+    monkeypatch.setattr(si, "_run_logged", failed_clone)
+    monkeypatch.setattr(httpx, "stream", lambda m, u, **k: _FakeStream(_tarball_bytes("fake-side-main")))
+    job = si._new_job(spec.engine_id)
+    si._job_step(job, "fetch_source")["state"] = "running"
+    si._step_fetch_source(spec, job)
+    assert (checkout / "pyproject.toml").is_file()
+    assert not (checkout / ".git").exists()
+
+
+def test_an_uncleared_destination_is_named_not_nested(monkeypatch, tmp_path):
+    """A folder that cannot be cleared stops the install with its name."""
+    import httpx
+
+    monkeypatch.setattr(httpx, "stream", lambda m, u, **k: _FakeStream(_tarball_bytes("fake-side-main")))
+    monkeypatch.setattr(si, "_remove_tree", lambda path: None)  # still locked
+    dest = tmp_path / "checkout"
+    (dest / ".git").mkdir(parents=True)
+    job = si._new_job("fake-side")
+    with pytest.raises(si._StepError, match="Could not clear"):
+        si._download_and_extract(job, "https://example.test/s.tar.gz", dest, tmp_path, "OMNIVOICE_FAKE_SIDE_DIR")
+    assert [p.name for p in dest.iterdir()] == [".git"]
+
+
 def test_legacy_kill_fallback_uses_only_direct_stable_handle(monkeypatch):
     calls = {}
     monkeypatch.setattr(si.os, "name", "nt")

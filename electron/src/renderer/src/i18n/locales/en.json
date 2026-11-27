@@ -405,6 +405,7 @@
     "cause_noexec": "The engine folder does not allow running programs",
     "hint_noexec": "This drive is mounted with noexec. Choose a folder on another drive, or remount this one without noexec, then retry.",
     "cause_download": "The download stopped before setup finished",
+    "download_failed_host": "Could not download from {{host}}.",
     "hint_download": "Retry to continue. If it keeps stopping, try another network, turn off your VPN or choose a different download region.",
     "cause_illegal_instruction": "The engine stopped on an instruction this computer could not run",
     "hint_illegal_instruction": "The processor may lack a feature the engine’s libraries need. Copy the diagnostics and include them, with your processor model, in a report.",

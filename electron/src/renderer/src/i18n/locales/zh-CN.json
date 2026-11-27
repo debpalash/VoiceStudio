@@ -1047,7 +1047,7 @@
   },
   "common": {
     "stop": "停止",
-    "resume": "恢复",
+    "resume": "继续",
     "paused": "已暂停",
     "open": "打开",
     "cancel": "取消",
@@ -2192,6 +2192,7 @@
     "cause_noexec": "引擎文件夹不允许运行程序",
     "hint_noexec": "此驱动器以 noexec 方式挂载。请选择其他驱动器上的文件夹,或不带 noexec 重新挂载后重试。",
     "cause_download": "下载在设置完成前中断了",
+    "download_failed_host": "无法从 {{host}} 下载。",
     "hint_download": "重试即可继续。如果仍然中断,请换一个网络、关闭 VPN 或选择其他下载区域。",
     "cause_illegal_instruction": "引擎停在了这台电脑无法执行的指令上",
     "hint_illegal_instruction": "处理器可能缺少引擎库所需的功能。请复制诊断信息,并连同处理器型号一起附在报告中。",

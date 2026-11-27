@@ -2194,6 +2194,7 @@
     "cause_noexec": "La cartella del motore non consente di eseguire programmi",
     "hint_noexec": "Questa unità è montata con noexec. Scegli una cartella su un’altra unità o rimontala senza noexec, poi riprova.",
     "cause_download": "Il download si è interrotto prima della fine della configurazione",
+    "download_failed_host": "Impossibile scaricare da {{host}}.",
     "hint_download": "Riprova per continuare. Se continua a interrompersi, prova un’altra rete, disattiva la VPN o scegli un’altra regione di download.",
     "cause_illegal_instruction": "Il motore si è fermato su un’istruzione che questo computer non ha potuto eseguire",
     "hint_illegal_instruction": "Il processore potrebbe non avere una funzione richiesta dalle librerie del motore. Copia la diagnostica e includila in una segnalazione con il modello del processore.",

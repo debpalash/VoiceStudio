@@ -2194,6 +2194,7 @@
     "cause_noexec": "A pasta do mecanismo não permite executar programas",
     "hint_noexec": "Esta unidade está montada com noexec. Escolha uma pasta em outra unidade ou remonte-a sem noexec e tente novamente.",
     "cause_download": "O download parou antes de a configuração terminar",
+    "download_failed_host": "Não foi possível baixar de {{host}}.",
     "hint_download": "Tente novamente para continuar. Se continuar parando, use outra rede, desative a VPN ou escolha outra região de download.",
     "cause_illegal_instruction": "O mecanismo parou em uma instrução que este computador não conseguiu executar",
     "hint_illegal_instruction": "Talvez falte ao processador um recurso exigido pelas bibliotecas do mecanismo. Copie o diagnóstico e inclua-o em um relatório com o modelo do processador.",

@@ -1746,7 +1746,7 @@ def _fetch_main_source(spec: SidecarSpec, job: dict) -> None:
         # generations live at a different path and remain usable until this
         # replacement has completed successfully.
         _log(job, f"Removing incomplete or outdated checkout at {checkout} …")
-        shutil.rmtree(checkout, ignore_errors=True)
+        _remove_tree(checkout)
 
     git = shutil.which("git")
     if git:
@@ -1767,7 +1767,9 @@ def _fetch_main_source(spec: SidecarSpec, job: dict) -> None:
             step["detail"] = "git clone"
             return
         _log(job, f"git clone failed (exit {rc}) — falling back to source tarball.")
-        shutil.rmtree(checkout, ignore_errors=True)
+        # Windows leaves a failed clone's .git packs read-only; ignore_errors
+        # kept them, and the tarball then landed one folder too deep.
+        _remove_tree(checkout)
     else:
         _log(job, "git not found — using the source-tarball fallback.")
 
@@ -1853,6 +1855,15 @@ def _download_and_extract(job: dict, url: str, dest: Path, work_root: Path, env_
                     "Re-run the install; if it keeps failing, clone the repository "
                     f"manually and set {env_var} (see the engine docs).",
                 )
+            # shutil.move into an existing folder nests the source inside it,
+            # so the manifest check would fail with a misleading message.
+            if dest.exists():
+                _remove_tree(dest)
+            if dest.exists():
+                raise _StepError(
+                    f"Could not clear {dest} before unpacking the source; a file in it is still in use.",
+                    "Close programs using that folder (editor, terminal, antivirus scan), then retry the install.",
+                )
             # os.replace-style move keeps this atomic-ish on the same volume.
             shutil.move(str(entries[0]), str(dest))
     finally:
@@ -1882,7 +1893,7 @@ def _ensure_extra_sources(spec: SidecarSpec, job: dict, checkout: Path) -> None:
         dest = checkout / extra.path
         if _extra_source_present(extra, dest):
             continue
-        shutil.rmtree(dest, ignore_errors=True)
+        _remove_tree(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         _log(job, f"Fetching {extra.path} at {extra.revision[:8]} …")
         _download_and_extract(job, extra.tarball_url, dest, managed_root(spec), spec.env_var)

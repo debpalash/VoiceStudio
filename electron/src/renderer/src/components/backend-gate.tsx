@@ -418,6 +418,14 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                   {t(`backend.cause_${cause}`)}
                 </p>
               ) : null}
+              {failureCode === 'RUNTIME_DOWNLOAD_INTERRUPTED' &&
+              status.failure?.failedDownloadHost ? (
+                // Name the host that failed, so a blocked github.com is not read
+                // as a slow connection (#4502).
+                <p className="text-sm text-muted-foreground" data-testid="backend-download-host">
+                  {t('backend.download_failed_host', { host: status.failure.failedDownloadHost })}
+                </p>
+              ) : null}
               {guidance
                 ? guidance.hints.map((key) => (
                     <p

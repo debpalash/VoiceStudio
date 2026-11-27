@@ -139,6 +139,17 @@ size and digest checks detect damaged transfers against the metadata supplied
 by that endpoint; they do not independently authenticate its publisher or make
 an untrusted mirror safe. Opt out with `OMNIVOICE_HF_ENDPOINT_MODE=manual`.
 
+The automatic choice also applies when models load. With no endpoint
+explicitly configured, the backend uses the picked endpoint as its Hugging Face
+default, from startup and right after a new pick (such as the first-run check),
+and engine processes it starts inherit it. A model load that needs a file from
+the Hub then uses the mirror instead of failing on a blocked `huggingface.co`
+(#4503). This does not count as an explicit choice: the next automatic decision
+replaces it, and choosing a different endpoint in Settings asks for a restart.
+The mirror never receives your Hugging Face token. If the automatic choice
+moves back to `huggingface.co` during a session, restart the app before
+downloading a gated model with your saved token.
+
 This retry also applies to the model weights fetched by one-click engine
 installation. It retries once only when a network failure selects a different
 automatic endpoint; explicit endpoint choices stay fixed, and a full disk

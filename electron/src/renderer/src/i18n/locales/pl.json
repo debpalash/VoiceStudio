@@ -2218,6 +2218,7 @@
     "cause_noexec": "Folder silnika nie pozwala na uruchamianie programów",
     "hint_noexec": "Ten dysk jest zamontowany z opcją noexec. Wybierz folder na innym dysku lub zamontuj go ponownie bez noexec i spróbuj jeszcze raz.",
     "cause_download": "Pobieranie zatrzymało się przed końcem konfiguracji",
+    "download_failed_host": "Nie można pobrać z {{host}}.",
     "hint_download": "Spróbuj ponownie, aby kontynuować. Jeśli nadal się zatrzymuje, użyj innej sieci, wyłącz VPN lub wybierz inny region pobierania.",
     "cause_illegal_instruction": "Silnik zatrzymał się na instrukcji, której ten komputer nie mógł wykonać",
     "hint_illegal_instruction": "Procesorowi może brakować funkcji wymaganej przez biblioteki silnika. Skopiuj diagnostykę i dołącz ją do zgłoszenia wraz z modelem procesora.",
