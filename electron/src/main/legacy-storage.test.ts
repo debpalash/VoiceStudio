@@ -1,16 +1,17 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { legacyStorageEnv } from './legacy-storage';
+import { removeTempDir } from './test-support/remove-temp-dir';
 const roots: string[] = [];
 const root = () => {
   const path = mkdtempSync(join(tmpdir(), 'vs-legacy-storage-'));
   roots.push(path);
   return path;
 };
-afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); vi.unstubAllEnvs(); });
+afterEach(() => { for (const path of roots.splice(0)) removeTempDir(path); vi.unstubAllEnvs(); });
 it.each([false, true])('preserves existing custom/portable storage without rewriting it (%s)', (portable) => {
   const base = root();
   const data = join(base, 'data');

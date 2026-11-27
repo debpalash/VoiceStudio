@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as realDelay } from 'node:timers/promises';
@@ -107,6 +107,7 @@ import {
 } from './backend';
 import { scrubText } from '../shared/utils/scrub';
 import { MAX_MSG_CHARS } from '../shared/utils/bugReportDocument';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 const BUDGET_S = '10';
 
@@ -186,7 +187,7 @@ afterEach(() => {
   mocks.occupied.clear();
   mocks.runtimeReadyNow = true;
   mocks.prime = async () => undefined;
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) removeTempDir(dir);
 });
 
 it('gives a freshly spawned backend its whole budget after slow pre-launch work', async () => {
