@@ -104,7 +104,7 @@ export function DesignComposer({
             <EngineSetupButton
               setup={setup}
               primary
-              className="h-10 min-w-44 rounded-lg px-4 @max-[28rem]/composer:flex-1"
+              className="h-10 min-w-44 max-w-80 rounded-lg px-4 @max-[28rem]/composer:flex-1"
             />
           ) : (
             <DisabledReason
@@ -152,7 +152,9 @@ export function DesignComposer({
                   </span>
                   {isGenerating && (
                     <span className="shrink-0 text-xs font-normal tabular-nums opacity-80">
-                      <GenerationElapsed prefix={progress == null ? '' : `${Math.round(progress)}% · `} />
+                      <GenerationElapsed
+                        prefix={progress == null ? '' : `${Math.round(progress)}% · `}
+                      />
                     </span>
                   )}
                 </Button>

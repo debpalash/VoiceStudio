@@ -307,14 +307,14 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
           <EmotionControls />
         </div>
 
-        <div className="relative ml-auto flex shrink-0 gap-2">
+        <div className="relative ml-auto flex max-w-full min-w-0 shrink-0 gap-2">
           {demo ? (
             <CloneDemoAction />
           ) : needsSetup ? (
             <EngineSetupButton
               setup={setup}
               primary
-              className="h-10 w-60 max-w-full shrink-0 rounded-lg px-4 shadow-sm"
+              className="h-10 w-auto max-w-80 min-w-0 shrink rounded-lg px-4 shadow-sm"
             />
           ) : (
             <Button
@@ -340,7 +340,11 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
               {isGenerating ? (
                 <span className="shrink-0 text-xs font-normal tabular-nums opacity-80">
                   <GenerationElapsed
-                    prefix={modelProgress != null && stage === 'loading' ? `${Math.round(modelProgress)}% · ` : ''}
+                    prefix={
+                      modelProgress != null && stage === 'loading'
+                        ? `${Math.round(modelProgress)}% · `
+                        : ''
+                    }
                   />
                 </span>
               ) : (
