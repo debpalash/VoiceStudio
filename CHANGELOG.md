@@ -318,11 +318,11 @@ metadata and the backend fallback mirror it.
 
 **Highlights**
 
-- Optional automatic error reports stay off until separately allowed in Privacy
-- Android Stories and Audiobook keep long manuscripts scrollable and recover drafts through activity recreation
-- Stories can merge adjacent lines with compatible speaker and voice settings
-- Linux ROCm setup preserves its installed PyTorch stack, and GPU readiness reflects failed self-tests
-- Phone dub exports check available space and avoid false low-space errors on iOS
+- ElevenLabs-compatible API: point apps and SDKs built for ElevenLabs at `/elevenlabs`, now with dialogue, timestamps, voice cloning, dubbing and streaming (#4467, #4497)
+- Subtitle-led dubbing walks you from staged media to listening and export, keeping narration inside its subtitle windows (#4220, #4221)
+- Setup and model loading work where GitHub or Hugging Face is blocked, and a failed download names the host it could not reach (#4504)
+- Pages stay fast with no voice engine loaded, and history opens quickly with long scripts (#4507, #4488)
+- Delete engines VoiceStudio installed from Settings to free their disk space (#4496)
 
 ### Changed
 
