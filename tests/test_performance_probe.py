@@ -115,6 +115,11 @@ def test_readiness_cache_preserves_results_and_expires(monkeypatch, probe, ready
         first["ready"] = not ready
         assert probe.selection_ready("asr", "faster-whisper") == ready
     clock[0] += 31
+    if ready is True:
+        # A success is kept for the long TTL: re-proving it imported PyTorch in
+        # a child on every engine-list refresh (#4483).
+        assert probe.selection_ready("asr", "faster-whisper") is True
+        clock[0] += probe._SUCCESS_CACHE_SECONDS
     fake_child(monkeypatch, probe, payload=result())
     assert probe.selection_ready("asr", "faster-whisper")
 

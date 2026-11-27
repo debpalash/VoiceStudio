@@ -19,7 +19,12 @@ _AUTO_ASR = frozenset({"mlx-whisper", "whisperx", "faster-whisper", "pytorch-whi
 _CACHE = {}
 _INFLIGHT = {}
 _CACHE_LOCK = threading.Lock()
-_CACHE_SECONDS = 30
+# A failure is retried soon so a repair shows up. A success stays: the cache
+# key already changes with the packages, interpreter, device settings and
+# preferences, and re-proving it spawned a child that imports PyTorch on every
+# engine-list refresh, about every 30 s while no voice engine was ready (#4483).
+_FAILURE_CACHE_SECONDS = 30
+_SUCCESS_CACHE_SECONDS = 3600
 _PACKAGES = ("torch", "ctranslate2", "faster-whisper", "whisperx", "transformers",
              "mlx-whisper", "sherpa-onnx", "omnivoice", "kittentts", "argostranslate",
              "rocm-sdk-core", "rocm-sdk-libraries", "rocm-sdk-libraries-custom")
@@ -52,6 +57,10 @@ def _identity(family, engine, broken):
             str(prefs.get("compute_device", "auto")), preference_file, broken)
 
 
+def _cache_seconds(data):
+    return _SUCCESS_CACHE_SECONDS if data is not None and data.get("ready") is True else _FAILURE_CACHE_SECONDS
+
+
 def _query(family, engine):
     """Return a strictly matched child result; crashes and timeouts fail closed."""
     asr = sys.modules.get("services.asr_backend")
@@ -59,7 +68,7 @@ def _query(family, engine):
     key = _identity(family, engine, broken)
     with _CACHE_LOCK:
         cached = _CACHE.get(key)
-        if cached and time.monotonic() - cached[0] < _CACHE_SECONDS:
+        if cached and time.monotonic() - cached[0] < _cache_seconds(cached[1]):
             return dict(cached[1]) if cached[1] is not None else None
         flight = _INFLIGHT.get(key)
         owner = flight is None
