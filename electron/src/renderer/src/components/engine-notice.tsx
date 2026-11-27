@@ -200,6 +200,16 @@ export function EngineSetupProgress({
   );
 }
 
+/**
+ * A model's name without the catalogue's parenthesised details
+ * ("VoiceStudio TTS (k2-fsa/OmniVoice, 600+ languages, …)" → "VoiceStudio TTS"),
+ * so a fixed-height button never has to wrap a description.
+ */
+export function shortModelName(model: { repo_id: string; label?: string }): string {
+  const name = model.label?.split(' (')[0].trim();
+  return name || model.repo_id.split('/').pop() || model.repo_id;
+}
+
 /** "Set up" in a notice, and the composer's primary action while TTS is not ready. */
 export function EngineSetupButton({
   setup,
@@ -213,15 +223,17 @@ export function EngineSetupButton({
   const { t } = useTranslation();
   const working = setup.busy || Boolean(setup.install);
   const download = setup.download;
+  const size = download?.size_gb ? fmtGb(download.size_gb) : null;
   const label = download
-    ? [
-        t('modelMaintenance.download'),
-        download.label || download.repo_id,
-        download.size_gb ? fmtGb(download.size_gb) : null,
-      ]
+    ? [t('modelMaintenance.download'), shortModelName(download), size].filter(Boolean).join(' · ')
+    : t('engines.set_up');
+  // The visible label is one short line; the catalogue's full description
+  // stays available to hover and to screen readers.
+  const fullLabel = download
+    ? [t('modelMaintenance.download'), download.label || download.repo_id, size]
         .filter(Boolean)
         .join(' · ')
-    : t('engines.set_up');
+    : label;
   return (
     <Button
       type="button"
@@ -229,6 +241,8 @@ export function EngineSetupButton({
       className={className}
       disabled={working}
       aria-busy={working || undefined}
+      aria-label={fullLabel}
+      title={fullLabel === label ? undefined : fullLabel}
       onClick={() => void setup.fix()}
     >
       {working ? (
@@ -236,7 +250,7 @@ export function EngineSetupButton({
       ) : (
         <WrenchIcon />
       )}
-      <span className="min-w-0 whitespace-normal text-start">{label}</span>
+      <span className="min-w-0 truncate">{label}</span>
     </Button>
   );
 }

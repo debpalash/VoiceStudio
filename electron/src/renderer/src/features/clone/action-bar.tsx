@@ -314,7 +314,7 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
             <EngineSetupButton
               setup={setup}
               primary
-              className="h-10 w-60 max-w-full shrink-0 rounded-lg px-4 shadow-sm"
+              className="h-10 w-auto min-w-60 max-w-80 shrink-0 rounded-lg px-4 shadow-sm"
             />
           ) : (
             <Button
@@ -340,7 +340,11 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
               {isGenerating ? (
                 <span className="shrink-0 text-xs font-normal tabular-nums opacity-80">
                   <GenerationElapsed
-                    prefix={modelProgress != null && stage === 'loading' ? `${Math.round(modelProgress)}% · ` : ''}
+                    prefix={
+                      modelProgress != null && stage === 'loading'
+                        ? `${Math.round(modelProgress)}% · `
+                        : ''
+                    }
                   />
                 </span>
               ) : (

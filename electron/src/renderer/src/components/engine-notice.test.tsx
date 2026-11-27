@@ -1,4 +1,12 @@
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { EngineNotice, useEngineSetup } from './engine-notice';
@@ -117,6 +125,30 @@ it('names the selected model and its size before starting the first-run download
   );
 });
 
+it('keeps the download button to one short line and the full description for hover', async () => {
+  const label = 'VoiceStudio TTS (k2-fsa/OmniVoice, 600+ languages, zero-shot)';
+  mock.api.mockImplementation(async (path: string) => {
+    if (path === '/engines')
+      return {
+        tts: {
+          active: 'local',
+          active_model: 'k2-fsa/OmniVoice',
+          backends: [{ id: 'local', available: true }],
+        },
+      };
+    if (path === '/models')
+      return { models: [{ repo_id: 'k2-fsa/OmniVoice', label, size_gb: 2.4, installed: false }] };
+    return {};
+  });
+  renderNotice('clone');
+  const download = await screen.findByRole('button', {
+    name: new RegExp(label.replace(/[()+]/g, '\\$&')),
+  });
+  expect(download).toHaveTextContent(/^modelMaintenance.download · VoiceStudio TTS · 2\.40 GB$/);
+  expect(download).toHaveAttribute('title', expect.stringContaining('600+ languages'));
+  expect(download.querySelector('span')).toHaveClass('truncate');
+});
+
 it('refreshes the download offer after the selected TTS model changes', async () => {
   let selected = 'voice/first';
   mock.api.mockImplementation(async (path: string) => {
@@ -132,13 +164,14 @@ it('refreshes the download offer after the selected TTS model changes', async ()
           backends: [{ id: 'local', available: true }],
         },
       };
-    if (path === '/models')
-      return { models: [{ repo_id: selected, installed: false }] };
+    if (path === '/models') return { models: [{ repo_id: selected, installed: false }] };
     return {};
   });
   function SelectModel() {
     const engine = useEngineSelect('tts');
-    return <button onClick={() => void engine.select('local', 'voice/second')}>Change model</button>;
+    return (
+      <button onClick={() => void engine.select('local', 'voice/second')}>Change model</button>
+    );
   }
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -189,7 +222,11 @@ it('discards a pending setup plan when the TTS selection changes', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const { result } = renderHook(
     () => ({ setup: useEngineSetup('clone'), engine: useEngineSelect('tts') }),
-    { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> },
+    {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    },
   );
   window.addEventListener('voicestudio:repair-agent-open', repair);
   try {
