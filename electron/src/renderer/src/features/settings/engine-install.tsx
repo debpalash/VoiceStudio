@@ -91,13 +91,15 @@ export function EngineInstall({
             variant="outline"
             disabled={
               running ||
+              // Never install or repair into files a delete is removing.
+              removing ||
               status.isPending ||
               status.isError ||
               (status.data?.installed && !status.data?.repair_available) ||
               status.data?.install_allowed === false
             }
             onClick={async () => {
-              if (status.data?.install_allowed === false) return;
+              if (status.data?.install_allowed === false || removeInFlight.current) return;
               setStarting(true);
               setFailed(null);
               setDismissedFailure(false);

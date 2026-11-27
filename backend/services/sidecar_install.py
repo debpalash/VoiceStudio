@@ -1465,6 +1465,10 @@ def _persist(spec: SidecarSpec) -> None:
     advance(spec.engine_id)
 
 
+class EngineBeingRemoved(RuntimeError):
+    """An install or repair was asked for while the engine's files are deleted."""
+
+
 def start_install(engine_id: str) -> dict:
     """Start (or report) the install job for *engine_id*.
 
@@ -1477,10 +1481,15 @@ def start_install(engine_id: str) -> dict:
     ok, why = host_support(spec)
     if not ok:
         raise HostUnsupported(why)
+    from services import engine_removal
+
     with _jobs_lock:
         existing = _jobs.get(engine_id)
         if existing and existing["state"] == "running":
             return {"status": "already_running", "engine": engine_id}
+        # Never write into a checkout that a delete is removing.
+        if engine_removal.is_removing(engine_id):
+            raise EngineBeingRemoved(engine_id)
         # A healthy install (user-managed or app-managed) never reinstalls;
         # a PARTIAL managed install falls through so the job repairs it.
         if _healthy(spec):
@@ -1521,7 +1530,16 @@ def _remove_tree(path: Path) -> None:
         if func not in (os.unlink, os.remove, os.rmdir):
             return
         try:
-            os.chmod(target, stat.S_IWRITE)
+            # A read-only folder blocks deleting its entries (POSIX); it is
+            # inside the tree being removed. A symlink's own mode cannot be
+            # changed portably and chmod would follow it to the target (a
+            # venv's python -> the shared interpreter), so only a real file is
+            # made writable itself (Windows' read-only attribute).
+            parent = os.path.dirname(target)
+            if parent:
+                os.chmod(parent, stat.S_IRWXU)
+            if not os.path.islink(target):
+                os.chmod(target, stat.S_IWRITE)
             func(target)
         except OSError:
             # Still locked by another process: leave it, uninstall reports it.

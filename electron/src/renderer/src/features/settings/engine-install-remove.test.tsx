@@ -113,3 +113,23 @@ it('sends one delete however often confirm is clicked', async () => {
   const deletes = mock.api.mock.calls.filter(([, init]) => init?.method === 'DELETE');
   expect(deletes).toHaveLength(1);
 });
+
+it('disables Repair while a delete is pending', async () => {
+  let finish: (value: unknown) => void = () => {};
+  mock.api.mockImplementation((_path: string, init?: { method?: string }) =>
+    init?.method === 'DELETE'
+      ? new Promise((resolve) => (finish = resolve))
+      : Promise.resolve({ installed: true, managed: true, repair_available: true, job: null }),
+  );
+  renderInstall();
+
+  const repair = await screen.findByRole('button', { name: 'modelMaintenance.repair' });
+  expect(repair.hasAttribute('disabled')).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'modelMaintenance.delete' }));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'modelMaintenance.delete' }));
+  await waitFor(() => expect(repair.hasAttribute('disabled')).toBe(true));
+  fireEvent.click(repair);
+  expect(mock.api.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+  finish({ status: 'uninstalled' });
+});
