@@ -140,3 +140,27 @@ def test_real_ffmpeg_extracts_mono_and_stereo_for_external_stems(prepared):
     mono, stereo = (sf.info(output / name) for name in ("audio.wav", "audio_hq.wav"))
     assert (mono.samplerate, mono.channels, mono.frames) == (16000, 1, 32000)
     assert (stereo.samplerate, stereo.channels, stereo.frames) == (44100, 2, 88200)
+
+
+def test_attaching_stems_supersedes_a_running_transcription(clients, prepared):
+    """A transcript of the old audio cannot publish over the attached stems."""
+    dp, job_id, _ = prepared
+    local, _ = clients
+    started = dp.segments_revision(dp.get_job(job_id))
+    response = local.post(f"/dub/stems/{job_id}", json={"vocals": "vocals.wav", "no_vocals": "bed.wav"})
+    assert response.status_code == 200, response.text
+    assert dp.segments_revision(dp.get_job(job_id)) != started
+    dp._dub_jobs.clear()
+    assert dp.segments_revision(dp.get_job(job_id)) != started
+
+
+def test_a_reused_external_job_id_never_serves_the_ingest_cache(clients, prepared):
+    """An external job's row can keep an older hash; it is still not a cache hit."""
+    dp, job_id, folder = prepared
+    local, _ = clients
+    sf.write(folder / "audio_hq.wav", np.zeros((2 * 44100, 2)), 44100)
+    response = local.post(f"/dub/stems/{job_id}", json={"vocals": "vocals.wav", "no_vocals": "bed.wav"})
+    assert response.status_code == 200, response.text
+    with dp.db_conn() as conn:
+        conn.execute("UPDATE dub_history SET content_hash=? WHERE id=?", ("earlier-hash", job_id))
+    assert dp.find_cached_job("earlier-hash", "another-job") is None

@@ -387,6 +387,10 @@ def find_cached_job(content_hash: str, exclude_job_id: str) -> Optional[dict]:
         # audio as its "vocals"; reusing it would make a retry skip separation.
         if job.get("background_separation") == "failed":
             continue
+        # Externally separated stems belong to their own job. A reused job id
+        # can keep an older row's hash, so the flag, not the hash, excludes it.
+        if job.get("external_stems"):
+            continue
         # Jobs written before the marker above existed carry no flag: a cache
         # without a bed on disk is the same failed separation (#4346), and its
         # "vocals" is a byte copy of the source mix.
@@ -679,6 +683,9 @@ def attach_external_stems(job_id: str, vocals: str, no_vocals: str | None) -> bo
             raise ValueError("Wait for media preparation before attaching stems")
         if job.get("segments") or job.get("dubbed_tracks"):
             raise ValueError("Attach stems before transcribing or rendering")
+        # A transcription already reading the old audio must not publish: the
+        # write revision it captured no longer matches, so it discards.
+        updates["segments_write_rev"] = segments_revision(job) + 1
         save_job(job_id, {**job, **updates}, job.get("filename") or "", duration, strict=True)
         job.update(updates)
     return bed is not None
