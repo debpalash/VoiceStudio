@@ -49,6 +49,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -1333,6 +1334,13 @@ def _serialize_job(job: Optional[dict]) -> Optional[dict]:
     return out
 
 
+def _has_entries(path: Path) -> bool:
+    try:
+        return path.is_dir() and any(path.iterdir())
+    except OSError:
+        return False
+
+
 def get_status(engine_id: str) -> dict:
     """Install state + last/current job for one engine. Cheap (file probes)."""
     spec = get_spec(engine_id)
@@ -1353,6 +1361,8 @@ def get_status(engine_id: str) -> dict:
         "managed": bool(
             (checkout.is_dir() and (not env_dir or Path(env_dir) == checkout))
             or (env_dir and Path(env_dir) in _legacy_managed_checkouts(spec))
+            # Files an incomplete delete left behind stay ours to delete again.
+            or (not env_dir and _has_entries(managed_root(spec)))
         ),
         "install_dir": env_dir or (str(checkout) if checkout.is_dir() else None),
         "job": job,
@@ -1455,6 +1465,10 @@ def _persist(spec: SidecarSpec) -> None:
     advance(spec.engine_id)
 
 
+class EngineBeingRemoved(RuntimeError):
+    """An install or repair was asked for while the engine's files are deleted."""
+
+
 def start_install(engine_id: str) -> dict:
     """Start (or report) the install job for *engine_id*.
 
@@ -1467,10 +1481,15 @@ def start_install(engine_id: str) -> dict:
     ok, why = host_support(spec)
     if not ok:
         raise HostUnsupported(why)
+    from services import engine_removal
+
     with _jobs_lock:
         existing = _jobs.get(engine_id)
         if existing and existing["state"] == "running":
             return {"status": "already_running", "engine": engine_id}
+        # Never write into a checkout that a delete is removing.
+        if engine_removal.is_removing(engine_id):
+            raise EngineBeingRemoved(engine_id)
         # A healthy install (user-managed or app-managed) never reinstalls;
         # a PARTIAL managed install falls through so the job repairs it.
         if _healthy(spec):
@@ -1496,6 +1515,45 @@ def start_install(engine_id: str) -> dict:
     )
     th.start()
     return {"status": "started", "engine": engine_id}
+
+
+# Windows will not delete a file with the read-only attribute set.
+_READ_ONLY_FILES_BLOCK_DELETE = os.name == "nt"
+
+
+def _remove_tree(path: Path) -> None:
+    """Best-effort recursive delete that also removes read-only files.
+
+    Windows marks git pack files read-only, so ``rmtree(ignore_errors=True)``
+    leaves ``.git`` behind. Anything still locked by another process stays, for
+    the caller to report.
+    """
+    def _writable(func: Callable, target: str, _exc) -> None:
+        # Only a removal is retried: rmtree also reports os.open/os.scandir
+        # failures here, and those need arguments this callback does not have.
+        if func not in (os.unlink, os.remove, os.rmdir):
+            return
+        try:
+            # A read-only folder blocks deleting its entries (POSIX); it is
+            # inside the tree being removed. Only Windows refuses to delete a
+            # read-only file itself; on POSIX a file's mode lives on its inode,
+            # shared with any hard link outside the tree, so it is left alone.
+            # A symlink is never chmodded: chmod would follow it to the target
+            # (a venv's python -> the shared interpreter).
+            parent = os.path.dirname(target)
+            if parent:
+                os.chmod(parent, stat.S_IRWXU)
+            if _READ_ONLY_FILES_BLOCK_DELETE and not os.path.islink(target):
+                os.chmod(target, stat.S_IWRITE)
+            func(target)
+        except OSError:
+            # Still locked by another process: leave it, uninstall reports it.
+            return
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_writable)
+    else:
+        shutil.rmtree(path, onerror=_writable)
 
 
 def uninstall(engine_id: str) -> dict:
@@ -1524,9 +1582,16 @@ def uninstall(engine_id: str) -> dict:
                 f"clear {spec.env_var} in Settings."
             ),
         }
+    # The caller stops the engine's sidecar first and keeps requests away
+    # meanwhile (``subprocess_backend.exclusive_engine``): a running sidecar
+    # holds its interpreter and weights open, which locks them on Windows.
     root = managed_root(spec)
     removed = root.is_dir()
-    shutil.rmtree(root, ignore_errors=True)
+    if removed:
+        _remove_tree(root)
+    # The install is unusable either way, so clear its configuration below, but
+    # never report a delete that left gigabytes behind as done.
+    leftover = root.exists()
     if env_dir:  # only ever the managed checkout at this point
         os.environ.pop(spec.env_var, None)
     from core import prefs
@@ -1538,6 +1603,16 @@ def uninstall(engine_id: str) -> dict:
         pass  # best-effort cache invalidation — uninstall already succeeded
     with _jobs_lock:
         _jobs.pop(engine_id, None)
+    if leftover:
+        return {
+            "status": "incomplete",
+            "engine": engine_id,
+            "detail": (
+                f"Some {spec.display_name} files in {root} could not be deleted, usually "
+                "because another program is using them. Close it and delete again, or "
+                "remove that folder yourself."
+            ),
+        }
     return {"status": "uninstalled" if removed else "not_installed", "engine": engine_id}
 
 

@@ -28,7 +28,7 @@ so its dependency stack never touches the default VoiceStudio interpreter.
 ## One-click install
 
 **Model Catalogue → Confucius4-TTS → Install** does the steps below
-for you, on Windows, Linux and macOS. It installs into its own folder under VoiceStudio's data directory, with its own Python environment. Nothing it installs touches VoiceStudio itself or any other engine, so you can switch to it and back without breaking what already worked. **Uninstall** in the same row removes only that folder. On an NVIDIA machine it installs
+for you, on Windows, Linux and macOS. It installs into its own folder under VoiceStudio's data directory, with its own Python environment. Nothing it installs touches VoiceStudio itself or any other engine, so you can switch to it and back without breaking what already worked. **Delete** in the same row removes only that folder. On an NVIDIA machine it installs
 the CUDA build of PyTorch. On a Linux ROCm host it installs the matching HIP
 build; otherwise it uses the CPU build. The ~5 GB of weights still download on
 first synthesis.

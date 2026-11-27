@@ -28,7 +28,7 @@ for this model.
    installs the same pinned package into the engine's own Python environment
    under VoiceStudio's data directory, with the CPU build of PyTorch, because
    PocketTTS never uses a GPU. Nothing it installs touches VoiceStudio itself
-   or any other engine, and **Uninstall** in the same row removes only that
+   or any other engine, and **Delete** in the same row removes only that
    folder. An install made with `uv sync` keeps working as it is. The button
    is not offered on Intel Macs (see Platform notes).
 

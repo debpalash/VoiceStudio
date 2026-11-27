@@ -480,6 +480,9 @@
     "deleteTitle": "刪除模型",
     "deleteConfirm": "刪除{{repoId}}？您可以稍後重新安裝。",
     "deleted": "已刪除 {{repoId}}",
+    "engineDeleteTitle": "刪除引擎",
+    "engineDeleteConfirm": "要刪除 {{name}} 以及 VoiceStudio 為其安裝的檔案嗎？共用下載快取中的模型會保留。之後可以重新安裝。",
+    "engineDeleteFailed": "無法刪除",
     "reinstall": "重新安裝",
     "reinstallTitle": "重新安裝模型",
     "reinstallConfirm": "重新安裝{{repoId}}？這將刪除當前副本並再次下載。",
@@ -1663,6 +1666,10 @@
     "aec_row_title": "為聽寫啟用回音消除",
     "aec_experimental": "實驗性",
     "aec_hint": "可在播放預覽、配音或影片時聽寫，而不會轉錄應用程式本身的聲音。會增加少量音訊處理；若不會在播放時聽寫，請保持關閉。",
+    "compact_title": "精簡浮層",
+    "compact_row_title": "按住聽寫的精簡浮層",
+    "compact_description": "按住快捷鍵期間，只顯示即時音量表與計時器，而不顯示完整的錄音器與逐字稿。放開後文字仍會照常插入。",
+    "compact_save_failed": "無法儲存此設定，請重試。",
     "cleanup_title": "文字整理",
     "spoken_punctuation": "語音標點",
     "spoken_punctuation_desc": "說 “comma”, “period”, “question mark”, “new line” 即可輸入。僅支援英語。"
@@ -4238,6 +4245,8 @@
       "speed": "{{speed}}/秒",
       "eta": "大約還需 {{time}}",
       "estimating": "正在估算剩餘時間…",
+      "waiting_metered": "此 Wi-Fi 為計量付費網路…",
+      "use_connection": "使用此連線下載",
       "waiting_network": "正在等待網路連線…"
     }
   },

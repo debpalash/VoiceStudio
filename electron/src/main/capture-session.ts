@@ -32,7 +32,7 @@ export class CaptureSession {
 
   constructor(
     private output: Output,
-    private show: () => void,
+    private show: (mode?: 'hold' | 'toggle') => void,
     private hide: () => void,
   ) {}
 
@@ -146,7 +146,7 @@ export class CaptureSession {
     };
     try {
       // begin captures focus before this can reveal or focus the recorder.
-      this.show();
+      this.show(shortcutMode);
       this.acceptanceTimer = setTimeout(() => {
         void this.cancel().catch(() => {});
       }, 15_000);

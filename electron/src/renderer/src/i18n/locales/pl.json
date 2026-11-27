@@ -492,6 +492,9 @@
     "deleteTitle": "Usuń model",
     "deleteConfirm": "Usunąć {{repoId}}? Możesz zainstalować go ponownie później.",
     "deleted": "Usunięto {{repoId}}",
+    "engineDeleteTitle": "Usuń silnik",
+    "engineDeleteConfirm": "Usunąć {{name}} i pliki zainstalowane dla niego przez VoiceStudio? Modele we wspólnej pamięci podręcznej pobierania zostaną zachowane. Możesz go później zainstalować ponownie.",
+    "engineDeleteFailed": "Nie udało się usunąć",
     "reinstall": "Zainstaluj ponownie",
     "reinstallTitle": "Zainstaluj ponownie model",
     "reinstallConfirm": "Zainstalować ponownie {{repoId}}? Spowoduje to usunięcie bieżącej kopii i ponowne pobranie.",
@@ -1679,6 +1682,10 @@
     "aec_row_title": "Włącz usuwanie echa dla dyktowania",
     "aec_experimental": "Eksperymentalne",
     "aec_hint": "Pozwala dyktować podczas odtwarzania podglądu, dubbingu lub filmu bez transkrybowania dźwięku aplikacji. Dodaje niewielkie przetwarzanie; wyłącz, jeśli nie dyktujesz podczas odtwarzania.",
+    "compact_title": "Kompaktowa nakładka",
+    "compact_row_title": "Kompaktowa nakładka dla dyktowania z przytrzymaniem",
+    "compact_description": "Gdy przytrzymujesz skrót, pokazuje tylko wskaźnik poziomu na żywo i licznik czasu zamiast pełnego rejestratora i transkrypcji. Po puszczeniu tekst jest nadal wstawiany.",
+    "compact_save_failed": "Nie udało się zapisać tego ustawienia. Spróbuj ponownie.",
     "cleanup_title": "Porządkowanie tekstu",
     "spoken_punctuation": "Dyktowana interpunkcja",
     "spoken_punctuation_desc": "Powiedz “comma”, “period”, “question mark”, “new line”, aby to wpisać. Tylko po angielsku."
@@ -4268,6 +4275,8 @@
       "speed": "{{speed}}/s",
       "eta": "Pozostało około {{time}}",
       "estimating": "Szacowanie pozostałego czasu…",
+      "waiting_metered": "Ta sieć Wi-Fi jest z limitem danych…",
+      "use_connection": "Pobierz przez to połączenie",
       "waiting_network": "Oczekiwanie na połączenie…"
     }
   },

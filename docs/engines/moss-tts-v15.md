@@ -33,7 +33,7 @@ interpreter, so MOSS runs behind
 ## One-click install
 
 On a machine with an NVIDIA GPU, **Model Catalogue → MOSS-TTS-v1.5 →
-Install** does every step below for you. It installs into its own folder under VoiceStudio's data directory, with its own Python environment. Nothing it installs touches VoiceStudio itself or any other engine, so you can switch to it and back without breaking what already worked. **Uninstall** in the same row removes only that folder. The ~16 GB of weights still
+Install** does every step below for you. It installs into its own folder under VoiceStudio's data directory, with its own Python environment. Nothing it installs touches VoiceStudio itself or any other engine, so you can switch to it and back without breaking what already worked. **Delete** in the same row removes only that folder. The ~16 GB of weights still
 download on first synthesis. On a CPU-only host the button is not offered; use
 the manual install.
 

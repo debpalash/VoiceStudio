@@ -11,7 +11,7 @@ fun modelDownloadDescription(context: Context,l: L10n,p: DownloadProgress): Stri
     val percent=NumberFormat.getPercentInstance(java.util.Locale.forLanguageTag(l.locale)).format(if(p.total>0) p.received.toDouble()/p.total else 0.0)
     val bytes=l.t("mobile.local.transfer",mapOf("received" to Formatter.formatFileSize(context,p.received),"total" to Formatter.formatFileSize(context,p.total)))
     val state=when(p.stage) {
-        "paused","waiting","waiting_network","connecting","verifying" -> l.t("mobile.downloads.${p.stage}")
+        "paused","waiting","waiting_metered","waiting_network","connecting","verifying" -> l.t("mobile.downloads.${p.stage}")
         "retrying" -> l.t("mobile.downloads.retrying",mapOf("seconds" to p.retrySeconds))
         else -> {
             val speed=l.t("mobile.downloads.speed",mapOf("speed" to Formatter.formatFileSize(context,p.bytesPerSecond.toLong())))
@@ -21,3 +21,6 @@ fun modelDownloadDescription(context: Context,l: L10n,p: DownloadProgress): Stri
     }
     return "$percent · $bytes\n$state"
 }
+
+/** A Wi-Fi-only transfer that is parked on the network policy always offers a way forward. */
+fun canUseThisConnection(p: DownloadProgress): Boolean = p.running&&(p.stage=="waiting"||p.stage=="waiting_metered")
