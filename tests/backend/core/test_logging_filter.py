@@ -250,3 +250,64 @@ def test_traceback_drops_env_secret_values_and_home_paths(redactor_logger, caplo
     assert "envsecretvalue123" not in caplog.text
     assert f"{home}/projects" not in caplog.text
     assert "RuntimeError" in caplog.text
+
+# ── Provider keys the redactor used to miss ──────────────────────────────────
+# A vendor that echoes the caller's key inside its own error text is why
+# core.scrub.scrub_provider_error exists. That scrubbing was only applied to
+# tracebacks, so the same key logged as a message reached the log file (and the
+# diagnostics attached to a bug report) verbatim.
+PROVIDER_KEYS = [
+    ("openai", "sk-" + "proj-A1b2C3d4E5f6G7h8I9j0"),
+    ("google", "AIza" + "B1c2D3e4F5g6H7i8J9k0L1m2N3o4P5q6R7s"),
+    ("aws", "AKIA" + "Q2W3E4R5T6Y7U8I9J0"),
+    ("github", "ghp_" + "Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2"),
+]
+
+
+@pytest.mark.parametrize("label,key", PROVIDER_KEYS)
+def test_redacts_provider_key_in_args(redactor_logger, caplog, label, key):
+    with caplog.at_level(logging.INFO, logger=redactor_logger.name):
+        redactor_logger.warning("provider rejected the request: %s", f"invalid key {key}")
+    message = caplog.records[0].getMessage()
+    assert key not in message
+    assert "provider rejected the request" in message
+
+
+@pytest.mark.parametrize("label,key", PROVIDER_KEYS)
+def test_redacts_provider_key_in_plain_message(redactor_logger, caplog, label, key):
+    with caplog.at_level(logging.INFO, logger=redactor_logger.name):
+        redactor_logger.warning(f"translation failed: {key}")
+    assert key not in caplog.records[0].getMessage()
+
+
+def test_keeps_short_identifier_shapes(redactor_logger, caplog):
+    """A short look-alike (`sk-learn`) is not a key: the shape needs 20+ chars."""
+    with caplog.at_level(logging.INFO, logger=redactor_logger.name):
+        redactor_logger.info("scikit uses sk-learn for the classifier")
+    assert caplog.records[0].getMessage() == "scikit uses sk-learn for the classifier"
+
+
+class _RecordingPattern:
+    """Stand-in for one compiled credential pattern."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def sub(self, replacement, text):
+        self.calls += 1
+        return text.replace("sk-abcdefghijklmnopqrstuvwx", replacement)
+
+
+def test_shape_pass_skips_text_without_a_prefix(monkeypatch):
+    """The hot path must not run the shape regexes on ordinary log text."""
+    from core import scrub
+
+    pattern = _RecordingPattern()
+    monkeypatch.setattr(scrub, "_TOKEN_PATTERNS", (pattern,))
+    assert scrub.scrub_credential_shapes("plain log line with no credential") == (
+        "plain log line with no credential"
+    )
+    assert pattern.calls == 0
+    key = "sk-abcdefghijklmnopqrstuvwx"
+    assert scrub.scrub_credential_shapes(f"key {key}") == f"key {scrub.REDACTED}"
+    assert pattern.calls == 1

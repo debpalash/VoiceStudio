@@ -272,6 +272,42 @@ def _scrub_url_userinfo(text: str) -> str:
     return _URL_USERINFO.sub(lambda m: m.group("scheme") + REDACTED + "@", text)
 
 
+# Prefixes that can start one of ``_TOKEN_PATTERNS``. A single substring scan
+# decides whether the eight-regex shape pass is worth running at all, which is
+# what makes it affordable on every log record.
+_TOKEN_PREFIXES = (
+    "sk-",
+    "github_pat_",
+    "ghp_",
+    "gho_",
+    "ghu_",
+    "ghs_",
+    "ghr_",
+    "eyJ",
+    "AIza",
+    "AKIA",
+    "xox",
+    "earer ",
+)
+
+
+def scrub_credential_shapes(text: str) -> str:
+    """Redact credential-shaped substrings only — the cheap half of
+    :func:`scrub_text`, for ``core.logging_filter``.
+
+    A log record is scrubbed on every emit, so this skips the env-var sweep and
+    the home-path patterns and runs the provider-key patterns only when a single
+    prefix scan says one could be present. Never raises."""
+    if not isinstance(text, str) or not any(prefix in text for prefix in _TOKEN_PREFIXES):
+        return text
+    for pattern in _TOKEN_PATTERNS:
+        try:
+            text = pattern.sub(REDACTED, text)
+        except Exception:
+            return REDACTED
+    return text
+
+
 def scrub_url_credentials(text: str) -> str:
     """Redact credentials a URL carries (query values and ``user:pw@`` userinfo).
 
