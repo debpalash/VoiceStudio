@@ -150,6 +150,15 @@ except ImportError:
 if sys.platform == "win32":
     os.environ.setdefault("HF_DEACTIVATE_ASYNC_LOAD", "1")
 
+# The other half of that crash class is the read itself: transformers
+# memory-maps CPU checkpoint reads, and the first read through that mapping can
+# fault on Windows (#4142). Serve them with safetensors' pread backend instead.
+# After .env so OMNIVOICE_SAFETENSORS_PREAD=0 is honoured; before transformers
+# binds safe_open. No-op off Windows.
+from omnivoice.utils.safetensors_windows import install as _install_safetensors_pread  # noqa: E402
+
+_install_safetensors_pread()
+
 # A mirror in HF_ENDPOINT must never receive the Hugging Face token, here or in
 # engine processes that inherit this environment.
 from services.hf_auth import apply_process_token_policy as _apply_hf_token_policy  # noqa: E402
