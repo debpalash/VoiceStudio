@@ -460,7 +460,7 @@ def test_transcription_uploads_are_capped_and_cleaned_up(client, monkeypatch, tm
 
     oc = importlib.import_module("api.routers.openai_compat")
     asr = importlib.import_module("services.asr_backend")
-    monkeypatch.setattr(asr, "asr_model_missing_error", lambda: None)
+    monkeypatch.setattr(asr, "asr_model_missing_error", lambda **_k: None)
     monkeypatch.setattr(oc, "MAX_TRANSCRIPTION_UPLOAD_BYTES", 1000)
     monkeypatch.setattr(_el(), "_MAX_UPLOAD_BYTES", 1000)
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
@@ -645,7 +645,7 @@ def test_with_timestamps_uses_recognized_words_when_available(client, engine, mo
 
     oc = importlib.import_module("api.routers.openai_compat")
     asr = importlib.import_module("services.asr_backend")
-    monkeypatch.setattr(asr, "asr_model_missing_error", lambda: None)
+    monkeypatch.setattr(asr, "asr_model_missing_error", lambda **_k: None)
 
     async def fake(**kw):
         assert kw["file"].file.read(4) == b"RIFF"
@@ -666,7 +666,7 @@ def test_with_timestamps_uses_recognized_words_when_available(client, engine, mo
 
 def test_with_timestamps_estimates_without_a_recognizer(client, engine, monkeypatch):
     asr = importlib.import_module("services.asr_backend")
-    monkeypatch.setattr(asr, "asr_model_missing_error", lambda: {"error": "asr_model_missing"})
+    monkeypatch.setattr(asr, "asr_model_missing_error", lambda **_k: {"error": "asr_model_missing"})
     res = client.post("/elevenlabs/v1/text-to-speech/default/stream/with-timestamps",
                       params={"output_format": "pcm_24000"}, json={"text": "Hi you"})
     assert res.status_code == 200, res.text
@@ -854,3 +854,29 @@ def test_history_lists_pages_and_serves_takes(client, monkeypatch, profile, hist
     monkeypatch.setattr(gen, "delete_single_history", lambda hid: deleted.append(hid))
     assert client.delete(f"/elevenlabs/v1/history/{third}").status_code == 200
     assert deleted == [third]
+
+
+def test_stream_input_never_emits_a_segment_over_the_buffer_limit():
+    take, limit = _el().take_ready_text, _el()._WS_MAX_BUFFER
+    flushed, rest = take("word " * 1000, flush=True)
+    assert rest == "" and flushed and all(len(s) <= limit for s in flushed)
+    sentence, rest = take("word " * 1000 + ". next", flush=False)
+    assert all(len(s) <= limit for s in sentence) and rest == "next"
+    cjk, rest = take("你好。 再见", flush=False)
+    assert cjk == ["你好。"] and rest == "再见"
+
+
+def test_character_timings_never_download_a_recognition_model(monkeypatch):
+    import asyncio
+
+    from services import asr_backend
+
+    seen = {}
+
+    def missing(**kwargs):
+        seen.update(kwargs)
+        return {"error": "asr_model_missing"}
+
+    monkeypatch.setattr(asr_backend, "asr_model_missing_error", missing)
+    assert asyncio.run(_el()._recognized_words([0.0] * 10, "en")) == ([], "estimated")
+    assert seen == {"require_installed": True}

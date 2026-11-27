@@ -1170,7 +1170,9 @@ async def _recognized_words(samples, language: Optional[str]) -> tuple[list[dict
     from api.routers.openai_compat import _transcribe_request
     from services.asr_backend import asr_model_missing_error
 
-    if await asyncio.to_thread(asr_model_missing_error) is not None:
+    # Fail closed: timings never download a model (the normal transcription
+    # path's fail-open default would fetch e.g. pytorch-whisper's weights).
+    if await asyncio.to_thread(asr_model_missing_error, require_installed=True) is not None:
         return [], "estimated"
     buf = _io.BytesIO()
     await asyncio.to_thread(sf.write, buf, samples, _SOURCE_RATE, format="WAV")
@@ -1369,6 +1371,7 @@ def get_dubbed_file(dubbing_id: str, language_code: str):
     from api.routers.batch import download_batch_output
 
     job = _dub_job(dubbing_id)
+    dubbing_id = job["id"]
     if job.get("status") != "done":
         raise _error(425 if job.get("status") in ("queued", "running") else 409,
                      "dubbing_not_ready",
@@ -1382,8 +1385,8 @@ def delete_dubbing(dubbing_id: str):
     the Batch page). Cancel an active one in the app first."""
     from api.routers.batch import delete_batch_job
 
-    _dub_job(dubbing_id)
-    delete_batch_job(dubbing_id)
+    # The stored job's own id, not the request's: only known jobs reach the files.
+    delete_batch_job(_dub_job(dubbing_id)["id"])
     return {"status": "ok"}
 
 
@@ -1501,23 +1504,23 @@ def delete_history_item(history_item_id: str):
 #: Speak without waiting for a sentence end once this much text is buffered
 #: (the last value of ElevenLabs' default chunk_length_schedule).
 _WS_MAX_BUFFER = 290
-_SENTENCE_END = re.compile(r"(?<=[.!?;:。！？；…])[\"'”’)\]]*\s+")
+# Sentence ends, including the full-width ones CJK text uses (\u3002 \uff01 \uff1f \uff1b).
+_SENTENCE_END = re.compile(r"(?<=[.!?;:\u3002\uff01\uff1f\uff1b\u2026])[\"'\u201d\u2019)\]]*\s+")
 
 
 def take_ready_text(buffer: str, *, flush: bool) -> tuple[list[str], str]:
     """Split ``buffer`` into segments ready to speak and the remainder.
 
     Complete sentences are ready; so is a long run without one (cut at its
-    last space), and everything when ``flush`` is set.
+    last space), and everything when ``flush`` is set. No segment is longer
+    than ``_WS_MAX_BUFFER``, so none can exceed the speech request limit.
     """
     if flush:
-        return ([buffer.strip()] if buffer.strip() else []), ""
+        return _bounded(buffer), ""
     ready: list[str] = []
     last = 0
     for match in _SENTENCE_END.finditer(buffer):
-        segment = buffer[last:match.end()].strip()
-        if segment:
-            ready.append(segment)
+        ready.extend(_bounded(buffer[last:match.end()]))
         last = match.end()
     rest = buffer[last:]
     while len(rest) > _WS_MAX_BUFFER:
@@ -1526,6 +1529,20 @@ def take_ready_text(buffer: str, *, flush: bool) -> tuple[list[str], str]:
         ready.append(rest[:cut].strip())
         rest = rest[cut:].lstrip()
     return [r for r in ready if r], rest
+
+
+def _bounded(text: str) -> list[str]:
+    """``text`` as segments of at most ``_WS_MAX_BUFFER`` characters, cut at spaces."""
+    out: list[str] = []
+    text = text.strip()
+    while len(text) > _WS_MAX_BUFFER:
+        cut = text.rfind(" ", 0, _WS_MAX_BUFFER)
+        cut = cut if cut > 0 else _WS_MAX_BUFFER
+        out.append(text[:cut].strip())
+        text = text[cut:].lstrip()
+    if text:
+        out.append(text)
+    return [o for o in out if o]
 
 
 async def _ws_segment(voice_id: str, text: str, settings: Optional[VoiceSettings],
