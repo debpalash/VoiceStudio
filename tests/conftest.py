@@ -722,10 +722,25 @@ def _no_real_endpoint_probes():
             latency_ms=50.0 if endpoint == _er.CANONICAL_ENDPOINT else 80.0,
         )
 
+    # Importing backend main turns on the process-wide sync of automatic
+    # picks (#4503); restore what it may change so no pick outlives its test.
+    env_keys = ("HF_ENDPOINT", "OMNIVOICE_HF_ENDPOINT_AUTO", "HF_HUB_DISABLE_IMPLICIT_TOKEN")
+    saved_env = {key: os.environ.get(key) for key in env_keys}
+    hub = sys.modules.get("huggingface_hub.constants")
+    hub_keys = ("ENDPOINT", "HUGGINGFACE_CO_URL_TEMPLATE", "HF_HUB_DISABLE_IMPLICIT_TOKEN")
+    saved_hub = {key: getattr(hub, key) for key in hub_keys} if hub is not None else {}
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(_er, "probe_endpoint", _fake_probe)
         mp.setattr(_er, "throughput_probe", lambda endpoint, timeout=None: None)
+        mp.setattr(_er, "_process_sync", False)
         yield
+    for key, value in saved_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    for key, value in saved_hub.items():
+        setattr(hub, key, value)
     # The decision cache lives in prefs; `_isolate_persisted_settings` restores
     # it, so one test's auto pick cannot leak into another's preflight.
 
