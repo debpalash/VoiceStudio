@@ -62,6 +62,19 @@ let uiReadyTimeout: TimeInterval = 45
     }
     func tap() { State.current.taps += 1; if isHittable { State.current.accepted += 1; State.current.selected = State.current.selectionWorks } }
 }
+// tapReady waits for hittability with a predicate expectation (#4283); a tab
+// becomes hittable once waited for, exactly like the key-path wait above.
+@MainActor final class XCTNSPredicateExpectation {
+    let object: XCUIElement
+    init(predicate: NSPredicate, object: XCUIElement) { self.object = object }
+}
+@MainActor final class XCTWaiter {
+    enum Result { case completed, timedOut }
+    func wait(for expectations: [XCTNSPredicateExpectation], timeout: TimeInterval) -> Result {
+        for expectation in expectations where expectation.object.role == "tab" { State.current.hittable = true }
+        return expectations.allSatisfy { $0.object.isHittable } ? .completed : .timedOut
+    }
+}
 @MainActor final class Query {
     let role: String
     init(_ role: String) { self.role = role }
