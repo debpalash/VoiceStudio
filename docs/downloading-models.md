@@ -146,6 +146,9 @@ and engine processes it starts inherit it. A model load that needs a file from
 the Hub then uses the mirror instead of failing on a blocked `huggingface.co`
 (#4503). This does not count as an explicit choice: the next automatic decision
 replaces it, and choosing a different endpoint in Settings asks for a restart.
+The mirror never receives your Hugging Face token. If the automatic choice
+moves back to `huggingface.co` during a session, restart the app before
+downloading a gated model with your saved token.
 
 This retry also applies to the model weights fetched by one-click engine
 installation. It retries once only when a network failure selects a different
