@@ -980,6 +980,9 @@ describe('generation queue', () => {
           {state.queue.map((item) => (
             <li key={item.id} data-testid="item" data-status={item.status}>
               {item.label}
+              {item.status === 'failed' && (
+                <button onClick={() => state.retryFailed(item.id)}>retry take</button>
+              )}
             </li>
           ))}
         </ul>
@@ -1019,6 +1022,24 @@ describe('generation queue', () => {
         </GenerationProvider>
       </QueryClientProvider>,
     );
+
+  it('retries the failed request with its original script after the composer has changed', async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'Original script', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    await act(async () => renders[0]!.reject(new Error('render failed')));
+    expect(statuses()).toEqual(['failed']);
+
+    patchCloneSettings({ text: 'Edited script' });
+    fireEvent.click(screen.getByText('retry take'));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(generateClone).mock.calls[1]?.[0]).toEqual(
+      vi.mocked(generateClone).mock.calls[0]?.[0],
+    );
+    await act(async () => renders[1]!.resolve(take('retry')));
+    expect(statuses()).toEqual(['done']);
+  });
 
   it('queues takes requested mid-render and runs them in order with their own script', async () => {
     const renders = deferredRenders();

@@ -15,9 +15,12 @@ try {
     (process.env.VOICESTUDIO_UI_URL || 'http://localhost:3928') + '/#/settings/appearance',
   );
   const dark = page.getByRole('group', { name: 'Dark', exact: true });
+  const studioDark = dark.getByRole('button', { name: 'Studio', exact: true });
   const original = dark.getByRole('button', { name: 'VoiceStudio Original', exact: true });
   assert.equal(
-    await dark.getByRole('button', { name: 'Studio', exact: true }).getAttribute('aria-pressed'),
+    await dark
+      .getByRole('button', { name: 'VoiceStudio Classic', exact: true })
+      .getAttribute('aria-pressed'),
     'true',
   );
   assert.equal(await original.getAttribute('aria-pressed'), 'false');
@@ -27,7 +30,7 @@ try {
   const originalBackground = await page.evaluate(
     () => getComputedStyle(document.body).backgroundColor,
   );
-  await dark.getByRole('button', { name: 'Studio', exact: true }).click();
+  await studioDark.click();
   let state = await page.evaluate(() => ({
     dark: document.documentElement.classList.contains('dark'),
     palette: document.documentElement.dataset.themeId ?? null,
@@ -37,6 +40,22 @@ try {
   assert.equal(state.palette, null);
   assert.equal(state.saved.dark, 'default');
   assert.equal(state.saved.mode, 'dark');
+  assert.equal(
+    await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+    'rgb(0, 0, 0)',
+  );
+  assert.equal(
+    await studioDark
+      .locator('div[aria-hidden=true]')
+      .evaluate((preview) => getComputedStyle(preview).backgroundColor),
+    'rgb(0, 0, 0)',
+  );
+  assert.equal(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--radius').trim(),
+    ),
+    '0.5rem',
+  );
   assert.notEqual(
     await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
     originalBackground,
@@ -48,11 +67,14 @@ try {
   assert.equal(await original.getAttribute('aria-pressed'), 'false');
 
   const light = page.getByRole('group', { name: 'Light', exact: true });
+  const studioLight = light.getByRole('button', { name: 'Studio', exact: true });
   assert.equal(
-    await light.getByRole('button', { name: 'Studio', exact: true }).getAttribute('aria-pressed'),
+    await light
+      .getByRole('button', { name: 'VoiceStudio Classic', exact: true })
+      .getAttribute('aria-pressed'),
     'true',
   );
-  await light.getByRole('button', { name: 'Studio', exact: true }).click();
+  await studioLight.click();
   state = await page.evaluate(() => ({
     dark: document.documentElement.classList.contains('dark'),
     palette: document.documentElement.dataset.themeId ?? null,
@@ -62,6 +84,12 @@ try {
   assert.equal(state.palette, null);
   assert.equal(state.saved.light, 'default');
   assert.equal(state.saved.mode, 'light');
+  assert.equal(
+    await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+    await studioLight
+      .locator('div[aria-hidden=true]')
+      .evaluate((preview) => getComputedStyle(preview).backgroundColor),
+  );
 
   await page.reload();
   assert.equal(

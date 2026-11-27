@@ -97,6 +97,19 @@ try {
     });
   });
   await page.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3902') + '/#/projects');
+  const projectSearch = page.getByRole('searchbox', { name: /Search dubs/ });
+  await projectSearch.waitFor();
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog');
+  await palette.getByRole('combobox').fill('Legacy project');
+  await palette.getByRole('option', { name: /Legacy project/ }).click();
+  await page.waitForURL((url) => url.hash.includes('q=Legacy'));
+  await page.waitForFunction(() =>
+    Array.from(document.querySelectorAll('input[type=search]')).some(
+      (input) => input.value === 'Legacy project',
+    ),
+  );
+  await projectSearch.fill('');
   const filters = page.locator('[data-slot=secondary-sidebar]');
   await filters.getByRole('button', { name: 'Voice profiles 1', exact: true }).click();
   await page.locator('main').getByRole('heading', { name: 'Library voice', exact: true }).waitFor();
@@ -107,7 +120,7 @@ try {
   assert.equal(await page.getByText('Library take', { exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Legacy project', exact: true }).click();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  assert(page.url().endsWith('/projects'));
+  assert.equal(new URL(page.url()).hash.split('?')[0], '#/projects');
   await page.getByRole('button', { name: 'Legacy project', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await page.waitForURL('**/#/dub');

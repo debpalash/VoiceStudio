@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { runRendererTask } from '@/lib/global-error-recovery';
@@ -13,6 +14,7 @@ import { openTake } from '@/lib/store/takes';
 import { selectCloneProfile } from '@/lib/store/reference';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { SETTINGS_ENTRIES } from '@/features/settings/settings-index';
+import { dubProjectsQuery, longformProjectsQuery } from '@/features/projects/project-queries';
 import { cn } from '@/lib/utils';
 import { Kbd } from '@/components/ui/kbd';
 import { isMac } from '@/components/bridge';
@@ -47,7 +49,6 @@ import {
   XIcon,
 } from 'lucide-react';
 import {
-  designDraftFromTake,
   readDraft,
   replaceRecipe,
   restoreDesignProfile,
@@ -73,6 +74,9 @@ export function CommandPaletteDialog({
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const needle = query.trim();
+  const dubs = useQuery({ ...dubProjectsQuery, enabled: open && Boolean(needle) });
+  const books = useQuery({ ...longformProjectsQuery, enabled: open && Boolean(needle) });
   // The highlight follows the command, not its position, so results arriving
   // (a saved profile, history) cannot shift Enter onto a different command.
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -317,7 +321,7 @@ export function CommandPaletteDialog({
         await navigate({ to: '/clone' });
       },
     })),
-    ...recentTakes(history.data ?? []).map((item): CommandItem => ({
+    ...recentTakes(history.data ?? [], needle ? Infinity : undefined).map((item): CommandItem => ({
       id: 'take-' + item.id,
       label: item.text,
       detail: [formatRelative(item.created_at, i18n.language), takeLength(item.duration_seconds)]
@@ -328,16 +332,32 @@ export function CommandPaletteDialog({
       run: async () => {
         openTake(item);
         if (item.mode === 'design') {
-          writeDraft(designDraftFromTake(item));
           await navigate({ to: '/design' });
         } else {
           await navigate({ to: '/clone' });
         }
       },
     })),
+    ...(needle
+      ? [
+          ...(dubs.data ?? []).map(({ id, name }) => ({ id: `dub-${id}`, name, kind: 'nav.dub' })),
+          ...(books.data ?? []).map(({ id, name, mode }) => ({
+            id: `${mode}-${id}`,
+            name,
+            kind: mode === 'stories' ? 'nav.stories' : 'audiobook.title',
+          })),
+        ].map((project): CommandItem => ({
+          id: `project-${project.id}`,
+          label: project.name,
+          detail: t(project.kind),
+          keywords: [t('projects.title'), t(project.kind)],
+          group: t('projects.title'),
+          icon: FolderIcon,
+          run: () => navigate({ to: '/projects', search: { q: project.name } }),
+        }))
+      : []),
   ];
   // Settings pages are searchable but stay out of the default list.
-  const needle = query.trim().toLocaleLowerCase();
   const settingsItems: CommandItem[] = needle
     ? SETTINGS_ENTRIES.map((entry) => ({
         id: `settings-${entry.label}`,

@@ -335,7 +335,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
     >
       <header
         className={cn(
-          'workspace-titlebar flex shrink-0 items-center gap-2 border-b border-border/50 px-5',
+          'workspace-titlebar flex shrink-0 items-center gap-2 px-5',
           isMac() && 'pl-24',
         )}
       >

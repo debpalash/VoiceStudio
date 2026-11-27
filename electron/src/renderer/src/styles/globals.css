@@ -49,10 +49,10 @@
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
 }
 
 @theme {
@@ -68,6 +68,11 @@
   --text-editor: 1rem;
   --text-editor--line-height: 1.75rem;
   --color-zinc-25: oklch(99.2% 0 0);
+  /* Control and composer elevation from T3 Code. */
+  --inset-shadow-control-highlight: 0 1px rgb(255 255 255 / 16%);
+  --inset-shadow-control-pressed: 0 1px rgb(0 0 0 / 8%);
+  --shadow-composer: 0 1px 2px rgb(0 0 0 / 5%);
+  --shadow-composer-dark: 0 14px 32px -18px rgb(0 0 0 / 75%);
 }
 
 :root {
@@ -209,10 +214,56 @@
 /* Pane headers form the native title bar; interactive controls remain clickable. */
 .workspace-titlebar {
   height: 52px;
+  position: relative;
+  z-index: 2;
   -webkit-app-region: drag;
+  background: transparent;
+  color: var(--toolbar-foreground);
 }
 .workspace-titlebar :is(button, a, input, [role='button']) {
   -webkit-app-region: no-drag;
+}
+@supports (backdrop-filter: blur(1px)) {
+  .workspace-titlebar::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: -7px;
+    height: 14px;
+    pointer-events: none;
+    -webkit-app-region: initial;
+    backdrop-filter: blur(5px);
+    mask-image: linear-gradient(transparent, black, transparent);
+  }
+}
+.workspace-resize-handle {
+  -webkit-app-region: no-drag;
+}
+.workspace-resize-handle::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  background: var(--primary);
+  border-radius: 999px;
+  opacity: 0;
+}
+.workspace-resize-handle[aria-orientation='vertical']::after {
+  top: calc(50% - 16px);
+  right: var(--resize-line-offset, calc(50% - 1px));
+  width: 2px;
+  height: 32px;
+}
+.workspace-resize-handle[aria-orientation='horizontal']::after {
+  left: calc(50% - 16px);
+  top: calc(50% - 1px);
+  height: 2px;
+  width: 32px;
+}
+.workspace-resize-handle:hover::after {
+  opacity: 0.48;
+}
+.workspace-resize-handle:is(:active, :focus-visible)::after {
+  opacity: 0.8;
 }
 .native-controls-right {
   /* + the top-right corner (account and notifications, account-corner.tsx). */
@@ -230,11 +281,7 @@
   }
 }
 
-/* Semantic chrome roles follow the selected palette, including native drag rows. */
-.workspace-titlebar {
-  background: var(--toolbar-background);
-  color: var(--toolbar-foreground);
-}
+/* Title bar controls follow the selected palette. */
 .workspace-titlebar [data-slot='button'] {
   color: var(--toolbar-control-foreground);
 }
@@ -248,16 +295,13 @@
 .workspace-pane {
   color: color-mix(in srgb, var(--foreground) 94%, var(--muted-foreground));
 }
-.secondary-sidebar > *,
-.workspace-pane > * {
+.secondary-sidebar > :where(:not(.workspace-titlebar, .workspace-resize-handle)),
+.workspace-pane > :where(:not(.workspace-titlebar, .workspace-resize-handle)) {
   z-index: 1;
 }
 [data-slot='secondary-sidebar-content'],
 [data-slot='workspace-pane-content'] {
   line-height: 1.45;
-}
-[data-slot='secondary-sidebar-header'] {
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 2.5%, transparent);
 }
 [data-slot='secondary-sidebar-content'] .text-muted-foreground,
 [data-slot='workspace-pane-content'] .text-muted-foreground {
@@ -539,7 +583,6 @@
   color: var(--sidebar-foreground);
 }
 .brand-sidebar .workspace-titlebar {
-  background: var(--sidebar);
   color: var(--sidebar-foreground);
 }
 .brand-sidebar .text-muted-foreground {
@@ -610,24 +653,13 @@
     html[data-glass='true'] .app-surface .bg-background {
       background: transparent;
     }
-    html[data-glass='true'] .app-surface aside {
+    html[data-glass='true'] .app-surface aside:where(:not(.brand-sidebar)) {
       background:
         linear-gradient(155deg, var(--material-sheen), transparent 44%),
         color-mix(in srgb, var(--sidebar) var(--material-fill), transparent);
       backdrop-filter: blur(24px) saturate(130%);
       border-color: var(--material-edge);
       box-shadow: inset -1px 0 0 rgb(255 255 255 / 3%);
-    }
-    html[data-glass='true'] .workspace-titlebar {
-      background: color-mix(in srgb, var(--toolbar-background) 42%, transparent);
-      backdrop-filter: blur(20px) saturate(130%);
-      box-shadow: inset 0 1px 0 var(--material-edge);
-    }
-    /* A frosted pane already composites its header; avoid nested backdrop work. */
-    html[data-glass='true'] aside .workspace-titlebar {
-      background: transparent;
-      backdrop-filter: none;
-      box-shadow: none;
     }
     html[data-glass='true'] .glass-panel {
       background:
@@ -693,4 +725,9 @@ html[data-theme-id='heritage'] {
    total by adding whatever the header's own start padding (12px) leaves over. */
 .header-area__lead--mac-inset {
   margin-inline-start: calc(64px - var(--header-area-pad-x, 12px));
+}
+
+/* The chooser already lists saved voices. Recent takes can still open alongside it. */
+[data-slot="secondary-sidebar"][data-variant="library"]:has(~ main [data-choosing-saved-voice]) {
+  display: none;
 }

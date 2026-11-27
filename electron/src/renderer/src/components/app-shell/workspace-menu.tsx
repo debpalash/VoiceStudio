@@ -68,7 +68,7 @@ const laterDestinations: Destination[] = [
 ];
 
 const itemClass =
-  'workspace-nav-item group relative isolate flex h-8 min-w-0 items-center overflow-hidden rounded-md text-[13px] text-sidebar-foreground/80 outline-none transition-[color,background-color,box-shadow,backdrop-filter] duration-150 before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:rounded-[inherit] before:bg-gradient-to-r before:from-white/[0.07] before:via-white/[0.025] before:to-transparent before:opacity-0 before:transition-opacity before:duration-150 hover:bg-sidebar-accent/65 hover:text-sidebar-foreground hover:backdrop-blur-xl hover:shadow-[inset_0_1px_0_rgb(255_255_255/9%),0_6px_18px_rgb(0_0_0/10%)] hover:ring-1 hover:ring-inset hover:ring-sidebar-border/60 hover:before:opacity-100 focus-visible:ring-2 focus-visible:ring-ring';
+  'workspace-nav-item group relative flex h-9 min-w-0 items-center overflow-hidden rounded-lg text-sm text-sidebar-foreground/80 outline-none transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring';
 const iconClass =
   'workspace-nav-icon size-4 shrink-0 text-muted-foreground transition-[color,filter] duration-150';
 
@@ -121,8 +121,7 @@ function NavigationLink({
               : 'gap-2.5 px-2.5',
       )}
       activeProps={{
-        className:
-          'bg-sidebar-accent/80 text-sidebar-foreground shadow-sm ring-1 ring-inset ring-sidebar-border/60',
+        className: 'bg-sidebar-accent/80 font-semibold text-sidebar-foreground',
         'aria-current': 'page',
       }}
     >
@@ -201,8 +200,8 @@ function NavigationGroup({
     itemClass,
     'w-full',
     compact ? 'h-10 justify-center' : 'gap-2.5 px-2.5 font-medium',
-    active &&
-      'bg-sidebar-accent/65 text-sidebar-foreground ring-1 ring-inset ring-sidebar-border/50',
+    active && 'text-sidebar-foreground',
+    active && compact && 'bg-sidebar-accent/80',
   );
   if (compact)
     return (

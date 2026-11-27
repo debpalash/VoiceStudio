@@ -23,7 +23,7 @@ vi.mock('@/components/pipeline-failure', () => ({
   PipelineFailure: ({ fallback }: any) => <p role="alert">{fallback}</p>,
 }));
 vi.mock('@/components/profile-avatar', () => ({ ProfileAvatar: () => null }));
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }));
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn(), useSearch: () => '' }));
 vi.mock('@/hooks/use-profiles', () => ({
   useProfiles: () => ({ data: [] }),
   useDeleteProfile: () => ({ mutateAsync: vi.fn() }),

@@ -33,7 +33,7 @@ export function parseThemePreferences(
     return typeof id === 'string' &&
       (id === 'default' || AVAILABLE_PALETTES.some((theme) => theme.id === id))
       ? id
-      : 'default';
+      : TAURI_THEME.id;
   };
   return {
     mode: ['light', 'dark', 'system'].includes(value.mode ?? '')

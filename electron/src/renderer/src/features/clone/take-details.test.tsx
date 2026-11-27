@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import { closeDock, nowPlayingStore } from '@/lib/store/now-playing';
 
 const mock = vi.hoisted(() => ({
   saveAudio: vi.fn(() => Promise.resolve({ canceled: true })),
@@ -34,6 +35,20 @@ vi.mock('./lock-voice', () => ({ LockVoice: () => <div>lock</div> }));
 
 import { TakeDetails, sameLanguage } from './take-details';
 
+it('keeps a take in the app-wide player after its detail pane closes', () => {
+  const view = render(<TakeDetails item={take({ audio_path: 'history/take-7.wav' })} />);
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'player.play' }));
+    view.unmount();
+    expect(nowPlayingStore.state).toMatchObject({
+      src: '/audio/history/take-7.wav',
+      kind: 'design',
+    });
+  } finally {
+    closeDock();
+  }
+});
+
 it('exports a historical take through the native save dialog', async () => {
   render(
     <TakeDetails
@@ -48,7 +63,7 @@ it('exports a historical take through the native save dialog', async () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole('button', { name: 'clone.download' }));
+  fireEvent.click(screen.getByRole('button', { name: 'projects.export' }));
   await waitFor(() =>
     expect(mock.saveAudio).toHaveBeenCalledWith({
       url: '/audio/history/take-42.wav',

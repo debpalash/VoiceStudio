@@ -1,3 +1,5 @@
+import { dubStageKey, dubProgressPercent } from './dub-task-status';
+import { PlayInDockButton } from '@/components/now-playing-dock';
 import { dubPreservesBackground } from './dub-flow-state';
 import { dubGenerationKey } from './dub-generation-request';
 import { recordDubListened } from './dub-session';
@@ -158,16 +160,6 @@ const LIVE_PREVIEW_KEY = 'voicestudio.dubLivePreview';
 // Targets include translate-and-speak-only languages (Kabyle, Uyghur).
 const targetOptions = TRANSLATION_TARGET_LABELS;
 const sentenceEnd = /[.!?\u3002\uff01\uff1f]/;
-
-function preparationStageKey(eventType: unknown) {
-  const type = typeof eventType === 'string' ? eventType : '';
-  if (type.startsWith('download')) return 'dub.prep_download';
-  if (type.startsWith('extract')) return 'dub.prep_extract';
-  if (type.startsWith('demucs')) return 'dub.prep_demucs';
-  if (type.startsWith('scene')) return 'dub.prep_scene';
-  if (type === 'cached') return 'dub.prep_cached';
-  return 'dub.prep_preparing';
-}
 
 type MirrorNotice = {
   tone: 'error' | 'success' | 'info';
@@ -551,6 +543,9 @@ export function DubPage() {
   const previewBedLevel = session.exportOptions?.bedLevel ?? 100;
   const previewAudio = session.inputType === 'audio' || audioOnlyPreview;
   const previewMix = `&preserve_bg=${preservePreviewBg}&bed_level=${Math.max(0, Math.min(400, previewBedLevel)) / 100}`;
+  const completedAudioUrl = code
+    ? apiPath(`/dub/download-audio/${job}?lang=${encodeURIComponent(code)}${previewMix}${completeRevision ? `&v=${completeRevision}` : ''}`)
+    : '';
   const source = apiPath(
     preview === 'original'
       ? `/dub/${previewAudio ? 'audio' : 'media'}/${job}`
@@ -575,33 +570,8 @@ export function DubPage() {
     player.currentTime = Math.max(0, Math.min(handoff.time, duration));
     if (handoff.play) void player.play().catch(() => {});
   }, []);
-  const stage = session.agentPass
-    ? session.agentPass.stage === 'measuring'
-      ? 'dub.agent_measuring'
-      : session.agentPass.stage === 'adapting'
-        ? 'dub.agent_adapting'
-        : 'dub.agent_rerendering'
-    : session.phase === 'preparing'
-      ? preparationStageKey(session.event?.type)
-      : session.phase === 'transcribing'
-        ? 'dub_workflow.transcribing_audio'
-        : session.phase === 'translating'
-          ? 'dub.translating'
-          : session.phase === 'cleaning'
-            ? 'dub.clean_up'
-            : session.phase === 'mirroring'
-              ? 'dub.mirror_delivery'
-              : session.phase === 'generating'
-                ? 'dub_workflow.generating_dub'
-                : 'common.loading';
-  const eventCurrent = Number(session.event?.current);
-  const eventTotal = Number(session.event?.total);
-  const progressPercent =
-    typeof session.event?.percent === 'number'
-      ? session.event.percent
-      : Number.isFinite(eventCurrent) && Number.isFinite(eventTotal) && eventTotal > 0
-        ? (eventCurrent / eventTotal) * 100
-        : null;
+  const stage = dubStageKey(session);
+  const progressPercent = dubProgressPercent(session);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (
@@ -1474,6 +1444,13 @@ export function DubPage() {
                 <Button size="sm" variant="outline" onClick={openExport}>
                   {t('dub.flow_save')}
                 </Button>
+                <PlayInDockButton
+                  src={completedAudioUrl}
+                  source={`dub-${job}-${code}-${completeRevision}-${previewMix}`}
+                  title={`${session.filename || t('dubWorkspace.title')} · ${code.toUpperCase()}`}
+                  kind="dub"
+                  showLabel
+                />
                 {(listenComplete || guide.audioReady) && (
                   <>
                     <DubMediaPreview
@@ -1481,9 +1458,7 @@ export function DubPage() {
                       kind="audio"
                       sourceKey="dub-complete"
                       onCanPlay={applyCompleteSeek}
-                      src={apiPath(
-                        `/dub/download-audio/${job}?lang=${encodeURIComponent(code)}${previewMix}${completeRevision ? `&v=${completeRevision}` : ''}`,
-                      )}
+                      src={completedAudioUrl}
                     />
                   </>
                 )}

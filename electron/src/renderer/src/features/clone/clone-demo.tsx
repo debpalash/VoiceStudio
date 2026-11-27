@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { apiPath } from '@/lib/api/client';
 
 /** The no-model first-run sample occupies the normal synthesis CTA position. */
-export function CloneDemoAction() {
+export function CloneDemoAction({ compact = false }: { compact?: boolean } = {}) {
   const player = useRef<MediaPlayerInstance>(null);
   return (
     <StudioMediaPlayer
@@ -25,12 +25,18 @@ export function CloneDemoAction() {
       className="contents"
     >
       <MediaProvider loaders={audioLoaders} className="hidden" />
-      <DemoControl player={player} />
+      <DemoControl player={player} compact={compact} />
     </StudioMediaPlayer>
   );
 }
 
-function DemoControl({ player }: { player: React.RefObject<MediaPlayerInstance | null> }) {
+function DemoControl({
+  player,
+  compact,
+}: {
+  player: React.RefObject<MediaPlayerInstance | null>;
+  compact: boolean;
+}) {
   const { t } = useTranslation();
   const paused = useMediaState('paused');
   const waiting = useMediaState('waiting');
@@ -48,9 +54,15 @@ function DemoControl({ player }: { player: React.RefObject<MediaPlayerInstance |
 
   return (
     <Button
-      size="lg"
-      className="h-10 w-52 shrink-0 overflow-hidden rounded-lg px-4 shadow-sm transition-colors"
+      size={compact ? 'sm' : 'lg'}
+      variant={compact ? 'ghost' : 'default'}
+      className={
+        compact
+          ? 'relative z-10 shrink-0 rounded-full'
+          : 'h-10 w-52 shrink-0 overflow-hidden rounded-lg px-4 shadow-sm transition-colors'
+      }
       aria-label={label}
+      title={compact ? label : undefined}
       aria-pressed={!paused}
       aria-busy={waiting}
       disabled={Boolean(error)}
@@ -68,7 +80,7 @@ function DemoControl({ player }: { player: React.RefObject<MediaPlayerInstance |
       ) : (
         <PauseIcon data-icon="inline-start" />
       )}
-      <span className="min-w-0 truncate">{label}</span>
+      <span className={compact ? 'hidden @md:inline' : 'min-w-0 truncate'}>{label}</span>
     </Button>
   );
 }

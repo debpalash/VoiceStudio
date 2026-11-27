@@ -59,6 +59,15 @@ approval), [Windows](../install/windows.md), [Linux](../install/linux.md),
 
 ### Reference clip length
 
+In **Choose a voice**, select **Use voice** beside a saved voice. To supply a clip,
+use **Add a new voice** on the same page. Select **Upload audio** to browse or
+drop a clip there. Choose your input device and channels in the **Record** panel.
+
+On a fresh profile library, **Demo Voice** is ready to select. **Hear demo**
+plays a bundled result without model weights. When setup requires a model, the
+download button shows its name and published size when the catalogue provides
+them.
+
 Voice Clone accepts clips up to 75 seconds and recommends 5–15 seconds of clean
 speech. How much of a longer clip reaches the model depends on the engine; the
 Voice Clone screen says which applies, and `GET /engines` reports it per engine

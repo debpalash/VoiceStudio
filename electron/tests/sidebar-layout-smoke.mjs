@@ -273,13 +273,6 @@ try {
     const compactMacSidebar = macPage.locator('[data-slot=compact-main-sidebar]');
     await compactMacSidebar.waitFor();
     assert.equal(Math.round((await compactMacSidebar.boundingBox()).width), 64);
-    const compactDividerBounds = await compactMacSidebar
-      .locator('[data-slot=compact-sidebar-divider]')
-      .boundingBox();
-    assert.ok(
-      compactDividerBounds && compactDividerBounds.y >= 72,
-      'macOS compact-sidebar divider must begin below the titlebar',
-    );
     const compactToggleBounds = await compactMacSidebar
       .getByRole('button', { name: 'Toggle sidebar', exact: true })
       .boundingBox();

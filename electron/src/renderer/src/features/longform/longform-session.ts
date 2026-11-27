@@ -74,6 +74,7 @@ interface Session {
   total: number;
   failed: number;
   error: string | null;
+  failedRender?: { mode: Mode; draft: Draft; resumeId?: string; connection: number };
   failure: PublicFailure | null;
   storageError: boolean;
   chapters: AudiobookRenderChapter[];
@@ -739,6 +740,7 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
     connectionRevision === connection &&
     !current.signal.aborted;
   const finishActivity = beginAppActivity('longform');
+  const draft = longformSession.state.drafts[mode];
   patch({
     active: mode,
     stage: 'starting',
@@ -746,6 +748,7 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
     total: 0,
     failed: 0,
     error: null,
+    failedRender: undefined,
     failure: null,
     chapters: [],
     stopped: false,
@@ -757,7 +760,6 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
   let jobId = '';
   let outputChapters: AudiobookRenderChapter[] = [];
   try {
-    const draft = longformSession.state.drafts[mode];
     if (
       !resumeId &&
       !cachedTtsLanguagesSupported(queryClient, mode === 'stories' ? 'longform' : 'audiobook', [
@@ -896,7 +898,12 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
       for (const event of finished) onEvent(event);
     }
   } catch (error) {
-    if (mayPresent()) patch({ error: error instanceof Error ? error.message : String(error) });
+    if (mayPresent()) {
+      patch({
+        error: error instanceof Error ? error.message : String(error),
+        failedRender: { mode, draft, resumeId: jobId || resumeId, connection },
+      });
+    }
   } finally {
     finishActivity();
     if (controller === current) {
@@ -907,7 +914,22 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
 }
 
 export function dismissLongformError(): void {
-  patch({ error: null, failure: null });
+  patch({ error: null, failure: null, failedRender: undefined });
+}
+
+export function canRetryLongform(session: Session): boolean {
+  const failed = session.failedRender;
+  return Boolean(
+    !session.active && failed && failed.draft === session.drafts[failed.mode] &&
+      failed.connection === connectionRevision,
+  );
+}
+
+export async function retryLongform() {
+  const session = longformSession.state;
+  if (!canRetryLongform(session) || !session.failedRender) return;
+  const { mode, resumeId } = session.failedRender;
+  await renderLongform(mode, resumeId);
 }
 
 export function chapterPreviewBody(draft: Draft, chapter_index: number) {

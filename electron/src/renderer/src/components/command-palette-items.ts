@@ -47,7 +47,7 @@ export function recentTakes(
     typeof item.created_at === 'number' ? item.created_at : Date.parse(item.created_at) / 1000 || 0;
   const picked: HistoryItem[] = [];
   for (const item of [...history].sort((a, b) => stamp(b) - stamp(a))) {
-    if (item.mode !== 'clone' && item.mode !== 'design') continue;
+    if (item.mode && item.mode !== 'clone' && item.mode !== 'design') continue;
     const key = `${item.mode}:${fold(displayTitle(item.text)).replace(/\s+/g, ' ').trim()}`;
     if (seen.has(key)) continue;
     seen.add(key);

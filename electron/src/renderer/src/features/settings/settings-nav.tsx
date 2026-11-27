@@ -32,7 +32,7 @@ import {
 } from './settings-search';
 
 const navItemClass =
-  'group h-9 min-w-0 rounded-lg font-normal transition-[color,background-color,box-shadow,backdrop-filter] duration-150 hover:bg-[var(--sidebar-row-hover)] hover:backdrop-blur-xl hover:shadow-[inset_0_1px_0_rgb(255_255_255/8%),0_5px_15px_rgb(0_0_0/9%)] hover:ring-1 hover:ring-inset hover:ring-sidebar-border/60 aria-[current=page]:bg-[var(--sidebar-row-active)] aria-[current=page]:font-medium aria-[current=page]:shadow-[inset_2px_0_0_var(--primary)]';
+  'group h-9 min-w-0 rounded-lg font-normal transition-colors hover:bg-[var(--sidebar-row-hover)] aria-[current=page]:bg-[var(--sidebar-row-active)] aria-[current=page]:font-semibold';
 const navIconClass =
   'size-4 shrink-0 text-muted-foreground transition-[color,filter] duration-150 group-hover:text-sidebar-foreground group-hover:drop-shadow-[0_1px_3px_rgb(0_0_0/20%)]';
 
@@ -45,6 +45,17 @@ const fieldTargets: Record<string, string> = {
   language: 'language-label',
   review_mode: 'review-mode-label',
 };
+
+const systemRoutes = new Set([
+  '/settings/performance',
+  '/settings/permissions',
+  '/settings/network',
+  '/settings/sharing',
+  '/settings/storage',
+  '/settings/credentials',
+  '/settings/openapi',
+]);
+const diagnosticRoutes = new Set(['/settings/diagnostics', '/settings/updates']);
 
 export interface SettingsNavExtra {
   to: string;
@@ -117,7 +128,14 @@ export function SettingsNav({
   const [query, setQuery] = useState('');
   const needle = normalizeSettingsQuery(query);
   const sections = preferenceSections.filter((section) => sectionMatches(t, section, needle));
-  const extraMatches = extras.filter((item) => keysMatch(t, item.fields, needle));
+  const extraMatches = extras.filter(
+    (item) => item.to !== '/settings/support' && keysMatch(t, item.fields, needle),
+  );
+  const everyday = extraMatches.filter(
+    (item) => !systemRoutes.has(item.to) && !diagnosticRoutes.has(item.to),
+  );
+  const system = extraMatches.filter((item) => systemRoutes.has(item.to));
+  const diagnostics = extraMatches.filter((item) => diagnosticRoutes.has(item.to));
   const onModels = location.kind === 'models';
   const families = matchingFamilies(t, needle, onModels);
   const pinned = {
@@ -133,12 +151,21 @@ export function SettingsNav({
     !pinned.logs;
   const sectionTo = (section: PreferenceSection) =>
     section === 'appearance' ? '/settings/appearance' : '/settings/general';
+  const link = ({ to, label, Icon }: SettingsNavExtra) => (
+    <NavLink
+      key={to}
+      to={to}
+      label={t(to === '/settings/diagnostics' ? 'about.diagnostics' : label)}
+      Icon={Icon}
+      current={location.kind === 'extra' && location.to === to}
+    />
+  );
 
   return (
     <aside className="flex w-[clamp(11rem,20vw,17rem)] shrink-0 flex-col border-r border-sidebar-border/50 bg-sidebar text-sidebar-foreground shadow-[inset_-1px_0_0_color-mix(in_oklab,var(--foreground)_2%,transparent)]">
       <div
         data-slot="settings-column-header"
-        className="workspace-titlebar flex h-12 shrink-0 items-center gap-2 border-b border-sidebar-border/50 bg-sidebar/70 px-3 backdrop-blur-xl"
+        className="workspace-titlebar flex h-12 shrink-0 items-center gap-2 px-3"
       >
         <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/12 text-primary">
           <SettingsIcon aria-hidden="true" className="size-3.5" />
@@ -193,52 +220,72 @@ export function SettingsNav({
                   ))}
             </div>
           ))}
-          {pinned.models && (
-            <NavLink
-              to="/settings/models"
-              label={t('modelSettings.models')}
-              Icon={BoxesIcon}
-              current={onModels && !location.family}
-            />
+          {everyday.map(link)}
+          {(pinned.models || pinned.media || system.length > 0) && (
+            <div
+              role="group"
+              aria-label={t('preferences.audio_tools_origin_system')}
+              className="mt-3 flex flex-col gap-0.5 border-t border-sidebar-border/50 pt-2"
+            >
+              <p
+                aria-hidden="true"
+                className="px-2 py-1 text-xs font-semibold text-muted-foreground"
+              >
+                {t('preferences.audio_tools_origin_system')}
+              </p>
+              {pinned.models && (
+                <NavLink
+                  to="/settings/models"
+                  label={t('modelSettings.models')}
+                  Icon={BoxesIcon}
+                  current={onModels && !location.family}
+                />
+              )}
+              {pinned.models &&
+                families.map((family) => (
+                  <NavLink
+                    key={family}
+                    to="/settings/models/$family"
+                    params={{ family }}
+                    label={t('engineSidebar.' + family)}
+                    Icon={familyIcons[family]}
+                    current={onModels && location.family === family}
+                    className="pl-7 text-muted-foreground"
+                  />
+                ))}
+              {system.map(link)}
+              {pinned.media && (
+                <NavLink
+                  to="/settings/media"
+                  label={t('settings.audio_tools')}
+                  Icon={WrenchIcon}
+                  current={location.kind === 'media'}
+                />
+              )}
+            </div>
           )}
-          {pinned.models &&
-            families.map((family) => (
-              <NavLink
-                key={family}
-                to="/settings/models/$family"
-                params={{ family }}
-                label={t('engineSidebar.' + family)}
-                Icon={familyIcons[family]}
-                current={onModels && location.family === family}
-                className="pl-7 text-muted-foreground"
-              />
-            ))}
-          {extraMatches
-            .filter(({ to }) => to !== '/settings/support')
-            .map(({ to, label, Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                label={t(label)}
-                Icon={Icon}
-                current={location.kind === 'extra' && location.to === to}
-              />
-            ))}
-          {pinned.media && (
-            <NavLink
-              to="/settings/media"
-              label={t('settings.audio_tools')}
-              Icon={WrenchIcon}
-              current={location.kind === 'media'}
-            />
-          )}
-          {pinned.logs && (
-            <NavLink
-              to="/settings/logs"
-              label={t('settings.logs')}
-              Icon={FileTextIcon}
-              current={location.kind === 'logs'}
-            />
+          {(pinned.logs || diagnostics.length > 0) && (
+            <div
+              role="group"
+              aria-label={t('about.diagnostics')}
+              className="mt-3 flex flex-col gap-0.5 border-t border-sidebar-border/50 pt-2"
+            >
+              <p
+                aria-hidden="true"
+                className="px-2 py-1 text-xs font-semibold text-muted-foreground"
+              >
+                {t('about.diagnostics')}
+              </p>
+              {pinned.logs && (
+                <NavLink
+                  to="/settings/logs"
+                  label={t('settings.logs')}
+                  Icon={FileTextIcon}
+                  current={location.kind === 'logs'}
+                />
+              )}
+              {diagnostics.map(link)}
+            </div>
           )}
         </nav>
         {nothing && (

@@ -28,13 +28,13 @@ vi.mock('@/lib/api/client', () => ({
   describeError: String,
 }));
 
-function renderNotice() {
+function renderNotice(operation?: string) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <EngineNotice />
+      <EngineNotice operation={operation} />
     </QueryClientProvider>,
   );
 }
@@ -84,6 +84,36 @@ it('installs the required TTS model without sending the user through Settings', 
     }),
   );
   expect(mock.toast).toHaveBeenCalled();
+});
+
+it('names the selected model and its size before starting the first-run download', async () => {
+  mock.api.mockImplementation(async (path: string) => {
+    if (path === '/engines')
+      return {
+        tts: {
+          active: 'local',
+          active_model: 'voice/selected',
+          backends: [{ id: 'local', available: true }],
+        },
+      };
+    if (path === '/models')
+      return {
+        models: [
+          { repo_id: 'voice/selected', label: 'Selected model', size_gb: 3, installed: false },
+        ],
+      };
+    return {};
+  });
+  renderNotice('clone');
+  const download = await screen.findByRole('button', { name: /Selected model.*3/ });
+  expect(mock.api.mock.calls.some(([path]) => path === '/models/install')).toBe(false);
+  fireEvent.click(download);
+  await waitFor(() =>
+    expect(mock.api).toHaveBeenCalledWith('/models/install', {
+      method: 'POST',
+      body: JSON.stringify({ repo_id: 'voice/selected' }),
+    }),
+  );
 });
 
 it('hands an unexplained readiness failure to the default repair agent', async () => {

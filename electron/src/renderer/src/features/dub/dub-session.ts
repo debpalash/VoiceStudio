@@ -244,6 +244,7 @@ export interface DubSession {
   tracks: string[];
   event: TaskEvent | null;
   error: string | null;
+  failedPhase?: DubSession['phase'];
   failure?: PublicFailure | null;
   /** A source the user can fix by choosing another file (shown on the file row). */
   inputIssue?: DubInputIssue | null;
@@ -1298,6 +1299,7 @@ async function run(
   patch({
     phase,
     error: null,
+    failedPhase: undefined,
     failure: null,
     inputIssue: null,
     event: null,
@@ -1348,13 +1350,17 @@ async function run(
       // row as a choose-another-file prompt, not as a recoverable failure.
       patch({ error: null, failure: null, inputIssue });
     } else if (!active.signal.aborted) {
+      // Preparing can transition into transcription before the enclosing operation returns.
+      const currentPhase = dubSession.state.phase;
+      const failedPhase = ['idle', 'editing', 'done'].includes(currentPhase) ? phase : currentPhase;
       const translationError = phase === 'translating' ? describeDubTranslationError(error) : null;
       if (error instanceof DubAsrModelMissingError)
-        patch({ error: null, asrModelMissing: error.payload });
-      else if (translationError) patch({ error: translationError });
+        patch({ error: null, asrModelMissing: error.payload, failedPhase });
+      else if (translationError) patch({ error: translationError, failedPhase });
       else
         patch({
           error: error instanceof Error ? error.message : String(error),
+          failedPhase,
         });
     }
     const current = dubSession.state;
@@ -2607,7 +2613,7 @@ export async function cancelDub() {
 }
 
 export function dismissDubError(): void {
-  patch({ error: null, failure: null, asrModelMissing: null, lastGenerationError: undefined });
+  patch({ error: null, failure: null, asrModelMissing: null, lastGenerationError: undefined, failedPhase: undefined });
 }
 
 /** Leave an unreachable recovered task locally so a new source can be started. */

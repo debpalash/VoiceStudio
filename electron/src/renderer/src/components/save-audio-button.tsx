@@ -19,6 +19,7 @@ export function SaveAudioButton({
   suggestedName,
   disabled = false,
   iconOnly = false,
+  label,
 }: {
   url?: string;
   /** When set, a format menu beside the button also offers an MP3 export. */
@@ -27,6 +28,7 @@ export function SaveAudioButton({
   disabled?: boolean;
   /** A compact secondary action: the label becomes the tooltip. */
   iconOnly?: boolean;
+  label?: string;
 }) {
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
@@ -63,17 +65,18 @@ export function SaveAudioButton({
   };
 
   const off = disabled || saving || !url;
+  const actionLabel = label ?? t('clone.download');
   const button = (
     <Button
       variant="ghost"
       size={iconOnly ? 'icon-sm' : 'sm'}
-      aria-label={iconOnly ? t('clone.download') : undefined}
-      title={iconOnly ? t('clone.download') : undefined}
+      aria-label={iconOnly ? actionLabel : undefined}
+      title={iconOnly ? actionLabel : undefined}
       onClick={() => void save()}
       disabled={off}
     >
       <DownloadIcon />
-      {iconOnly ? null : t('clone.download')}
+      {iconOnly ? null : actionLabel}
     </Button>
   );
   if (!mp3Url) return button;

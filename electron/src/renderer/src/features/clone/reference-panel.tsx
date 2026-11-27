@@ -383,7 +383,7 @@ export function ReferencePanel({
           </div>
         </div>
 
-        {!hasReference ? <ReferenceSourcePicker /> : null}
+        {!hasReference ? <ReferenceSourcePicker compact={setup} /> : null}
 
         {file ? (
           <div className="flex flex-col gap-2 rounded-lg bg-muted/30 p-3">
