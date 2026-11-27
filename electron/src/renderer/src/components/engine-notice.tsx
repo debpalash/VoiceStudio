@@ -242,7 +242,7 @@ export function EngineSetupButton({
       disabled={working}
       aria-busy={working || undefined}
       aria-label={fullLabel}
-      title={fullLabel === label ? undefined : fullLabel}
+      title={fullLabel}
       onClick={() => void setup.fix()}
     >
       {working ? (
