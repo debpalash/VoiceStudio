@@ -470,11 +470,17 @@ def test_probe_defaults_allow_eight_seconds():
 # ── Process-wide default for model loads (#4503) ────────────────────────────
 
 @pytest.fixture
-def clean_env(monkeypatch):
-    """Record both variables so values the code sets are undone after the test."""
-    for name in ("HF_ENDPOINT", "OMNIVOICE_HF_ENDPOINT_AUTO"):
+def clean_env(monkeypatch, er):
+    """Undo every process-wide value the code under test sets."""
+    for name in ("HF_ENDPOINT", "OMNIVOICE_HF_ENDPOINT_AUTO", "HF_HUB_DISABLE_IMPLICIT_TOKEN"):
         monkeypatch.setenv(name, "")
         monkeypatch.delenv(name)
+    from huggingface_hub import constants
+
+    for name in ("ENDPOINT", "HUGGINGFACE_CO_URL_TEMPLATE", "HF_HUB_DISABLE_IMPLICIT_TOKEN"):
+        monkeypatch.setattr(constants, name, getattr(constants, name))
+    monkeypatch.setattr(er, "_process_sync", False)
+    return constants
 
 
 def _mirror_decision(er):
@@ -526,3 +532,31 @@ def test_backend_applies_the_pick_before_huggingface_hub_is_imported():
     for marker in ("import huggingface_hub", "from huggingface_hub", "import transformers", "from transformers"):
         if marker in source:
             assert applied < source.index(marker), marker
+
+
+def test_a_first_run_pick_reaches_this_process_loads(er, clean_env):
+    """Setup picks the mirror after the backend started; the same session's
+    loads must use it without a restart (#4503 review)."""
+    constants = clean_env
+    constants.ENDPOINT = er.CANONICAL_ENDPOINT
+    constants.HUGGINGFACE_CO_URL_TEMPLATE = er.CANONICAL_ENDPOINT + "/{repo_id}/resolve/{revision}/{filename}"
+    assert er.apply_process_default() is None  # nothing decided yet
+    _mirror_decision(er)
+    from huggingface_hub import hf_hub_url
+
+    assert os.environ["HF_ENDPOINT"] == er.COMMUNITY_MIRROR
+    assert constants.ENDPOINT == er.COMMUNITY_MIRROR
+    assert hf_hub_url("k2-fsa/OmniVoice", "config.json").startswith(er.COMMUNITY_MIRROR + "/")
+    assert constants.HF_HUB_DISABLE_IMPLICIT_TOKEN is True  # a mirror never gets the token
+    assert er.mode() == "auto"
+
+    prober = make_prober(er, {er.CANONICAL_ENDPOINT: 50, er.COMMUNITY_MIRROR: 60})
+    er.ensure_decision(force=True, prober=prober, throughput_prober=_NO_THROUGHPUT)
+    assert "HF_ENDPOINT" not in os.environ
+    assert constants.ENDPOINT == er.CANONICAL_ENDPOINT
+    assert hf_hub_url("k2-fsa/OmniVoice", "config.json").startswith(er.CANONICAL_ENDPOINT + "/")
+
+
+def test_decisions_leave_the_process_alone_until_the_backend_opts_in(er, clean_env):
+    _mirror_decision(er)
+    assert "HF_ENDPOINT" not in os.environ

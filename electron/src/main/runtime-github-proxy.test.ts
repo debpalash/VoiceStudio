@@ -13,6 +13,7 @@ import { PYPI_FILES_ORIGIN } from './pypi-mirror';
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((p) => rm(p, { recursive: true, force: true })));
 });
 
@@ -41,6 +42,8 @@ it('routes only GitHub release assets through the proxy and keeps hashes', () =>
 });
 
 it('uses the proxy exactly when the managed Python downloads through it', () => {
+  // runtimeDownloadEnv leaves a user-set mirror alone; this case starts without one.
+  vi.stubEnv('UV_PYTHON_INSTALL_MIRROR', undefined);
   expect(githubReleaseProxy(runtimeDownloadEnv('china'))).toBe(GITHUB_RELEASE_PROXY);
   expect(githubReleaseProxy(runtimeDownloadEnv('restricted'))).toBe(GITHUB_RELEASE_PROXY);
   expect(githubReleaseProxy(runtimeDownloadEnv('global'))).toBeNull();

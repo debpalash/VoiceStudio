@@ -1906,7 +1906,8 @@ export async function installRuntime(
         signal,
         { ...downloads, allowOriginMirrorFallback: region === 'auto' },
         localUrls,
-        githubReleaseProxy(env),
+        // The subprocess also inherits the user's own UV_PYTHON_INSTALL_MIRROR.
+        githubReleaseProxy({ ...process.env, ...env }),
       );
     },
     signal,

@@ -9,7 +9,7 @@ import importlib
 import pytest
 
 
-_ENDPOINT_ENV_KEYS = ("HF_ENDPOINT", "OMNIVOICE_HF_ENDPOINT_MODE")
+_ENDPOINT_ENV_KEYS = ("HF_ENDPOINT", "OMNIVOICE_HF_ENDPOINT_MODE", "OMNIVOICE_HF_ENDPOINT_AUTO")
 
 
 @pytest.fixture(autouse=True)
@@ -227,4 +227,20 @@ def test_test_endpoint_is_noop_in_manual_mode(settings_mod, monkeypatch):
     monkeypatch.setattr(er, "probe_endpoint", boom)
     st = settings_mod.test_hf_mirror()
     assert st["mode"] == "manual"
+    assert st["configured"] == "https://hf-mirror.com"
+
+
+def test_leaving_an_applied_automatic_mirror_requires_a_restart(settings_mod):
+    """Loads already use the automatic pick; choosing another endpoint needs a restart."""
+    os.environ["HF_ENDPOINT"] = os.environ["OMNIVOICE_HF_ENDPOINT_AUTO"] = "https://hf-mirror.com"
+    st = settings_mod.set_hf_mirror(settings_mod._HFMirrorBody(url=""))
+    assert st["restart_required"] is True
+    assert "OMNIVOICE_HF_ENDPOINT_AUTO" not in os.environ
+
+
+def test_choosing_the_applied_automatic_mirror_needs_no_restart(settings_mod):
+    os.environ["HF_ENDPOINT"] = os.environ["OMNIVOICE_HF_ENDPOINT_AUTO"] = "https://hf-mirror.com"
+    st = settings_mod.set_hf_mirror(settings_mod._HFMirrorBody(url="https://hf-mirror.com"))
+    assert st["restart_required"] is False
+    assert "OMNIVOICE_HF_ENDPOINT_AUTO" not in os.environ
     assert st["configured"] == "https://hf-mirror.com"
