@@ -143,9 +143,22 @@ def test_separately_authored_pauses_are_not_clamped_when_merged():
 def test_many_paragraphs_plan_in_linear_time():
     import time
 
-    start = time.perf_counter()
-    plan_spans("A.\n\n" * 20000, JoinOptions(paragraph_gap_ms=1))
-    assert time.perf_counter() - start < 2
+    def best_of_three(paragraphs: int) -> float:
+        timings = []
+        for _ in range(3):
+            start = time.perf_counter()
+            plan_spans("A.\n\n" * paragraphs, JoinOptions(paragraph_gap_ms=1))
+            timings.append(time.perf_counter() - start)
+        return min(timings)
+
+    # Warm up first: the wrapper imports the planner on first call, and that
+    # import is not planning time. Then compare growth, not wall-clock time,
+    # so a loaded CI runner cannot fail it: 4x the paragraphs costs ~4x when
+    # linear and ~16x when quadratic.
+    plan_spans("A.", JoinOptions(paragraph_gap_ms=1))
+    small = best_of_three(10000)
+    large = best_of_three(40000)
+    assert large < max(small, 0.005) * 8
 
 
 def test_trim_engine_silence_alone_takes_the_span_renderer():
