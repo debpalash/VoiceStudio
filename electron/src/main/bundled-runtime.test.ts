@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bundledPython, bundledRuntimeEnv } from './bundled-runtime';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 const roots: string[] = [];
-afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
+afterEach(() => roots.splice(0).forEach((root) => removeTempDir(root)));
 
 function runtime(python: string) {
   const root = mkdtempSync(join(tmpdir(), 'mas-runtime-'));
