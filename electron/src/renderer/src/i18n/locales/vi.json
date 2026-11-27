@@ -2052,9 +2052,11 @@
   "privacy": {
     "translator_online": "Người dịch đang trực tuyến: {{provider}}",
     "analytics_title": "Giúp cải thiện VoiceStudio",
+    "analytics_subtitle": "Mặc định tắt. Dữ liệu ẩn danh về bộ máy, ngôn ngữ, thời lượng, số ký tự và loại lỗi. Không gửi văn bản hay âm thanh.",
     "translator_offline": "Chỉ ngoại tuyến",
     "translator_unknown": "Không rõ",
     "watermark_title": "Hình mờ vô hình",
+    "watermark_subtitle": "Bật theo mặc định. Đánh dấu âm thanh được tạo là do AI tạo ra để có thể nhận biết về sau. Chỉ ảnh hưởng đến âm thanh được tạo từ giờ trở đi.",
     "change_translator": "Đổi trình dịch"
   },
   "updates": {

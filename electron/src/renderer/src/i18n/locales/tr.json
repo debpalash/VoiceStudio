@@ -2052,9 +2052,11 @@
   "privacy": {
     "translator_online": "Çevirmen çevrimiçi: {{provider}}",
     "analytics_title": "VoiceStudio’nun gelişimine katkıda bulun",
+    "analytics_subtitle": "Varsayılan olarak kapalıdır. Motor, dil, süre, karakter sayısı ve hata türlerine ilişkin anonim veriler. Metniniz veya sesiniz asla gönderilmez.",
     "translator_offline": "Yalnızca çevrimdışı",
     "translator_unknown": "Bilinmiyor",
     "watermark_title": "Görünmez filigran",
+    "watermark_subtitle": "Varsayılan olarak açık. Üretilen sesi, sonradan tanınabilmesi için yapay zekâ üretimi olarak işaretler. Yalnızca bundan sonra üretilen sesi etkiler.",
     "change_translator": "Çevirmeni değiştir"
   },
   "updates": {

@@ -2052,9 +2052,11 @@
   "privacy": {
     "translator_online": "Översättaren är online: {{provider}}",
     "analytics_title": "Hjälp till att förbättra VoiceStudio",
+    "analytics_subtitle": "Av som standard. Anonyma uppgifter om motor, språk, varaktighet, antal tecken och feltyper. Aldrig din text eller ditt ljud.",
     "translator_offline": "Endast offline",
     "translator_unknown": "Okänd",
     "watermark_title": "Osynlig vattenstämpel",
+    "watermark_subtitle": "På som standard. Märker genererat ljud som AI-skapat så att det kan identifieras senare. Gäller bara ljud som genereras från och med nu.",
     "change_translator": "Byt översättare"
   },
   "updates": {

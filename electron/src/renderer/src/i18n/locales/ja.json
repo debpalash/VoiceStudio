@@ -2052,9 +2052,11 @@
   "privacy": {
     "translator_online": "翻訳者はオンラインです: {{provider}}",
     "analytics_title": "VoiceStudio の改善に協力",
+    "analytics_subtitle": "初期設定では無効です。エンジン、言語、所要時間、文字数、エラーの種類を匿名で送信します。テキストや音声は送信しません。",
     "translator_offline": "オフラインのみ",
     "translator_unknown": "不明",
     "watermark_title": "不可視の透かし",
+    "watermark_subtitle": "既定で有効。生成した音声を AI 生成として印付けし、後から識別できるようにします。今後生成する音声にのみ適用されます。",
     "change_translator": "翻訳エンジンを変更"
   },
   "updates": {

@@ -2233,9 +2233,11 @@
   "privacy": {
     "translator_online": "Online through {{provider}}",
     "analytics_title": "Help improve VoiceStudio",
+    "analytics_subtitle": "Off by default. Anonymous engine, language, duration, character counts and error types. Never your text or audio.",
     "translator_offline": "Offline only",
     "translator_unknown": "Unknown",
     "watermark_title": "Invisible watermark",
+    "watermark_subtitle": "On by default. Marks generated audio as AI-made so it can be identified later. Only affects audio generated from now on.",
     "change_translator": "Change translator"
   },
   "updates": {

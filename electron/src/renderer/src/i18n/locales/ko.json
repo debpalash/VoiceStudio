@@ -2052,8 +2052,10 @@
   "privacy": {
     "translator_online": "번역가가 온라인 상태입니다: {{provider}}",
     "analytics_title": "VoiceStudio 개선에 참여",
+    "analytics_subtitle": "기본적으로 꺼져 있습니다. 엔진, 언어, 소요 시간, 글자 수, 오류 유형의 익명 통계입니다. 텍스트나 오디오는 전송하지 않습니다.",
     "translator_offline": "오프라인 전용",
     "watermark_title": "보이지 않는 워터마크",
+    "watermark_subtitle": "기본으로 켜져 있습니다. 생성된 오디오를 AI 제작물로 표시해 나중에 식별할 수 있게 합니다. 지금부터 생성되는 오디오에만 적용됩니다.",
     "change_translator": "번역기 변경",
     "translator_unknown": "알 수 없음"
   },

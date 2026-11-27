@@ -68,11 +68,13 @@ function PrivacyToggle({ kind }: { kind: 'watermark' | 'analytics' }) {
     <div>
       <SettingsRow
         id={'privacy-' + kind}
-        title={t('privacy.' + kind + '_title')}
-        description={t('privacy.' + kind + '_subtitle')}
+        // Literal keys, so the locale check proves each one exists (a concatenated
+        // key was once deleted as unused and then rendered raw).
+        title={watermark ? t('privacy.watermark_title') : t('privacy.analytics_title')}
+        description={watermark ? t('privacy.watermark_subtitle') : t('privacy.analytics_subtitle')}
       >
         <Switch
-          aria-label={t('privacy.' + kind + '_title')}
+          aria-label={watermark ? t('privacy.watermark_title') : t('privacy.analytics_title')}
           checked={!!(watermark ? state?.invisible_enabled : state?.opted_in)}
           disabled={!state || action.busy}
           onCheckedChange={(enabled) =>
