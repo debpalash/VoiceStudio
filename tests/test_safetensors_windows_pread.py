@@ -107,3 +107,29 @@ def test_gpu_reads_are_left_alone(sw, monkeypatch):
     safetensors.safe_open("w.safetensors", "pt", device="cuda:0")
     safetensors.safe_open("w.safetensors", "pt", device="mps", backend="pread")
     assert seen == [("cuda:0", {}), ("mps", {"backend": "pread"})]
+
+
+def test_a_none_device_counts_as_cpu(sw, monkeypatch, checkpoint):
+    calls, _ = _spy(monkeypatch)
+    sw.install(platform="win32")
+    import safetensors
+
+    with safetensors.safe_open(checkpoint, "pt", device=None, backend="mmap") as f:
+        assert f.get_tensor("a").tolist() == [0.0, 1.0, 2.0, 3.0]
+    assert calls == ["pread"]
+
+
+def test_an_error_naming_a_backend_folder_is_not_mistaken_for_no_pread(sw, monkeypatch, caplog):
+    import logging
+
+    import safetensors
+
+    def missing(filename, framework, device="cpu", **kwargs):
+        raise FileNotFoundError(f"No such file: C:\\\\Users\\\\alice\\\\backend\\\\{filename}")
+
+    monkeypatch.setattr(safetensors, "safe_open", missing)
+    sw.install(platform="win32")
+    with caplog.at_level(logging.INFO, logger="omnivoice.safetensors"):
+        with pytest.raises(FileNotFoundError):
+            safetensors.safe_open("w.safetensors", "pt")
+    assert "alice" not in caplog.text

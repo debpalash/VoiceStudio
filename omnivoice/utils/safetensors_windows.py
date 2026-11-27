@@ -23,58 +23,63 @@ logger = logging.getLogger("omnivoice.safetensors")
 
 OPT_OUT_ENV = "OMNIVOICE_SAFETENSORS_PREAD"
 _OFF = {"0", "false", "no", "off"}
-_original = None
-_wrapper = None
+#: The wrapper and the function it replaced, while installed.
+_state: dict = {}
+# The two ways a safetensors without a pread backend refuses it: no keyword at
+# all, or a backend list without "pread". Anything else is a real read error.
+_UNSUPPORTED = ("unexpected keyword argument 'backend'", 'backend "pread" is invalid')
 
 
 def _opted_out() -> bool:
     return os.environ.get(OPT_OUT_ENV, "").strip().lower() in _OFF
 
 
+def _cpu(device) -> bool:
+    # safetensors treats an omitted or None device as CPU.
+    return device is None or str(device) == "cpu"
+
+
 def install(platform: str | None = None) -> bool:
     """Serve CPU ``mmap`` reads with ``pread`` on Windows. True when active."""
-    global _original, _wrapper
     if (platform or sys.platform) != "win32" or _opted_out():
         return False
     try:
         import safetensors
     except ImportError:
         return False
-    if _wrapper is not None and safetensors.safe_open is _wrapper:
+    if _state and safetensors.safe_open is _state["wrapper"]:
         return True
     original = safetensors.safe_open
 
     def safe_open(filename, framework, device="cpu", *args, **kwargs):
-        if kwargs.get("backend", "mmap") == "mmap" and str(device) == "cpu":
+        if kwargs.get("backend", "mmap") == "mmap" and _cpu(device):
             try:
                 return original(filename, framework, device, *args, **{**kwargs, "backend": "pread"})
-            except Exception as exc:  # noqa: BLE001 - an older safetensors: keep loading
-                if "backend" not in str(exc):
+            except Exception as exc:  # noqa: BLE001 - only an unsupported backend falls back
+                if not any(marker in str(exc) for marker in _UNSUPPORTED):
                     raise
-                logger.info("safetensors has no pread backend (%s); using its default", exc)
+                # Fixed text: the exception can name the file, and so a home path.
+                logger.info("This safetensors has no pread backend; using memory-mapped reads")
         return original(filename, framework, device, *args, **kwargs)
 
     safe_open.__doc__ = original.__doc__
-    for module in list(sys.modules.values()):
-        try:
-            if getattr(module, "safe_open", None) is original:
-                module.safe_open = safe_open
-        except Exception:  # noqa: BLE001 - a lazy or read-only module: skip it
-            continue
-    _original, _wrapper = original, safe_open
+    _rebind(original, safe_open)
+    _state.update(original=original, wrapper=safe_open)
     logger.info("Windows reads safetensors weights with pread (%s=0 turns it off)", OPT_OUT_ENV)
     return True
 
 
-def uninstall() -> None:
-    """Restore the original ``safe_open`` everywhere (tests)."""
-    global _original, _wrapper
-    if _wrapper is None:
-        return
+def _rebind(old, new) -> None:
     for module in list(sys.modules.values()):
         try:
-            if getattr(module, "safe_open", None) is _wrapper:
-                module.safe_open = _original
-        except Exception:  # noqa: BLE001
+            if getattr(module, "safe_open", None) is old:
+                module.safe_open = new
+        except Exception:  # noqa: BLE001 - a lazy or read-only module: skip it
             continue
-    _original = _wrapper = None
+
+
+def uninstall() -> None:
+    """Restore the original ``safe_open`` everywhere (tests)."""
+    if _state:
+        _rebind(_state["wrapper"], _state["original"])
+        _state.clear()
