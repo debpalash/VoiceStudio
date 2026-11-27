@@ -39,6 +39,7 @@ import sys
 import threading
 import time
 from collections import OrderedDict
+from pathlib import Path
 from typing import AsyncIterator, Optional
 
 import soundfile as sf
@@ -72,6 +73,7 @@ from core.db import db_conn
 from core import event_bus
 from core import failure
 from core.logging_utils import log_safe
+from core.path_security import UnsafePath, resolve_within, safe_relative_path
 
 logger = logging.getLogger("omnivoice.dub_pipeline")
 
@@ -635,6 +637,51 @@ def merge_and_save_job(
         job.update(updates)
         save_job(job_id, job, filename, duration, content_hash)
         return True
+
+
+def _external_stem_path(job_dir: str, name: str, duration: float) -> str:
+    """Validate a WAV in the job directory and return its resolved path."""
+    try:
+        if "/" in safe_relative_path(name):
+            raise UnsafePath("nested stem filename")
+        path = resolve_within(job_dir, name)
+    except UnsafePath as exc:
+        raise ValueError("Stem must be a WAV filename in the job directory") from exc
+    if path.parent != Path(job_dir) or path.suffix.lower() != ".wav" or not path.is_file():
+        raise ValueError("Stem must be an existing WAV in the job directory")
+    try:
+        info = sf.info(path)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("Stem must be readable WAV audio") from exc
+    if info.format not in {"WAV", "WAVEX", "RF64"} or info.frames <= 0:
+        raise ValueError("Stem must be readable WAV audio")
+    if abs(info.frames / info.samplerate - duration) > 1.0:
+        raise ValueError("Stem duration differs from the source audio by more than one second")
+    return str(path)
+
+
+def attach_external_stems(job_id: str, vocals: str, no_vocals: str | None) -> bool:
+    """Persist validated stems for an external-separation job before transcription."""
+    job_dir = safe_job_dir(job_id)
+    job = get_job(job_id) if job_dir else None
+    if job is None:
+        raise LookupError("Dub job not found")
+    if not job.get("external_stems"):
+        raise ValueError("Prepare the job with external_stems before attaching audio")
+    duration = float(job.get("duration") or 0)
+    voices = _external_stem_path(job_dir, vocals, duration)
+    bed = _external_stem_path(job_dir, no_vocals, duration) if no_vocals else None
+    updates = {"vocals_path": voices, "no_vocals_path": bed, "background_separation": "ok" if bed else "skipped"}
+    with _dub_jobs_lock:
+        if _dub_jobs.get(job_id) is not job or job_id in _withdrawn_jobs:
+            raise LookupError("Dub job not found")
+        if job_id in _inflight_jobs or not job.get("background_separation"):
+            raise ValueError("Wait for media preparation before attaching stems")
+        if job.get("segments") or job.get("dubbed_tracks"):
+            raise ValueError("Attach stems before transcribing or rendering")
+        save_job(job_id, {**job, **updates}, job.get("filename") or "", duration, strict=True)
+        job.update(updates)
+    return bed is not None
 
 
 async def aput_and_save_job(job_id: str, job: dict, **kwargs) -> bool:
@@ -1662,7 +1709,9 @@ async def ingest_pipeline(
     # Audio-only jobs (#119) skip scene detection + thumbnailing below; the
     # transcribe → translate → TTS core is identical.
     input_type = (source.get("input_type") or "video").lower()
-    separate_background = source.get("separate_background", True) is not False
+    external_stems = source.get("external_stems") is True
+    separate_background = source.get("separate_background", True) is not False and not external_stems
+    extract_hq = separate_background or external_stems
     # Declare the run so a "clear history" arriving before this job's first
     # persistence can still withdraw it (#1252 review).
     begin_ingest(job_id)
@@ -1778,7 +1827,7 @@ async def ingest_pipeline(
             # through to the original two separate invocations, so behaviour
             # and error reporting on bad media are unchanged.
             combined_ok = False
-            if separate_background:
+            if extract_hq:
                 try:
                     p_c, _, stderr_c = await run_proc([
                         ffmpeg, "-i", video_path,
@@ -1832,7 +1881,7 @@ async def ingest_pipeline(
             # stereo original costs about the same and returns a true-stereo,
             # full-band bed. Best-effort: on failure Demucs falls back to the
             # ASR file, which is exactly the old behavior.
-            if separate_background and not combined_ok:
+            if extract_hq and not combined_ok:
                 try:
                     p_hq, _, stderr_hq = await run_proc([
                         ffmpeg, "-i", video_path, "-vn", "-acodec", "pcm_s16le",
@@ -1851,7 +1900,7 @@ async def ingest_pipeline(
                     logger.warning("HQ audio extraction errored (%s) — falling back", type(e_hq).__name__)
                     _discard_partial_audio(extract_hq_path)
                     audio_hq_path = None
-            elif not separate_background:
+            elif not extract_hq:
                 audio_hq_path = None
         except asyncio.CancelledError:
             _discard_partial_audio(extract_path, extract_hq_path)
@@ -1877,12 +1926,13 @@ async def ingest_pipeline(
             video_path = await _ensure_browser_playable_mp4_for_job(job_id, video_path)
 
         # Content-hash cache: reuse artifacts from previous matching jobs.
-        content_hash = await asyncio.to_thread(compute_file_hash, audio_path)
+        # External stems belong to this job and never enter the ingest cache.
+        content_hash = "" if external_stems else await asyncio.to_thread(compute_file_hash, audio_path)
         # Separation mode is part of artifact identity: neither mode may reuse
         # stems (or their absence) from the other mode. Legacy hashes keep music.
-        if not separate_background:
+        if content_hash and not separate_background:
             content_hash += ":voice-only"
-        cached = find_cached_job(content_hash, job_id)
+        cached = find_cached_job(content_hash, job_id) if content_hash else None
         if cached:
             logger.info("Cache hit for job %s (hash %s) → reusing artifacts from %s",
                         log_safe(job_id), log_safe(content_hash[:12]), log_safe(cached["job_id"]))
@@ -1951,6 +2001,7 @@ async def ingest_pipeline(
                 "input_type": input_type,
                 "source_lang_override": source.get("source_lang"),
                 "separate_background": separate_background,
+                "external_stems": external_stems,
             }
             if not await aput_and_save_job(
                 job_id, partial, filename=filename, duration=dur, content_hash=content_hash,

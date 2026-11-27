@@ -283,6 +283,13 @@ class TranscriptSyncRequest(BaseModel):
     segments: List[TranscriptSegment] = Field(min_length=1, max_length=20000)
 
 
+class DubAttachStemsRequest(BaseModel):
+    """WAV filenames in a prepared job's directory."""
+
+    vocals: str = Field(min_length=1, max_length=240)
+    no_vocals: str | None = Field(default=None, min_length=1, max_length=240)
+
+
 class CleanupSegmentsRequest(BaseModel):
     """The editor's current segments; without them the stored copy is cleaned."""
 

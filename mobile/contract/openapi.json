@@ -1109,6 +1109,11 @@
    },
    "Body_dub_upload_dub_upload_post": {
     "properties": {
+     "external_stems": {
+      "default": false,
+      "title": "External Stems",
+      "type": "boolean"
+     },
      "input_type": {
       "default": "video",
       "title": "Input Type",
@@ -2508,6 +2513,35 @@
      "text"
     ],
     "title": "DirectionReq",
+    "type": "object"
+   },
+   "DubAttachStemsRequest": {
+    "description": "WAV filenames in a prepared job's directory.",
+    "properties": {
+     "no_vocals": {
+      "anyOf": [
+       {
+        "maxLength": 240,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "No Vocals"
+     },
+     "vocals": {
+      "maxLength": 240,
+      "minLength": 1,
+      "title": "Vocals",
+      "type": "string"
+     }
+    },
+    "required": [
+     "vocals"
+    ],
+    "title": "DubAttachStemsRequest",
     "type": "object"
    },
    "DubIngestUrlRequest": {
@@ -14228,6 +14262,54 @@
     "summary": "Dub Export Srt"
    }
   },
+  "/dub/stems/{job_id}": {
+   "post": {
+    "description": "Register externally separated WAVs with a prepared dubbing job.",
+    "operationId": "dub_attach_stems_dub_stems__job_id__post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DubAttachStemsRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dub Attach Stems"
+   }
+  },
   "/dub/sync-transcript/{job_id}": {
    "post": {
     "description": "Store the editor's transcript while the job has no dub yet (#3393).\n\nExporting the original video or audio with subtitles needs no generated\ntrack, but the subtitle writers read ``job[\"segments\"]``, which still\nholds the raw transcription. Once a dub exists its exports must keep the\nsegments that dub was rendered from, so this refuses to overwrite them.\nPer-row metadata (speaker, word timings, cue sources) is carried over by\nstable id; text and timing come from the editor.",
@@ -14567,7 +14649,7 @@
   },
   "/dub/upload": {
    "post": {
-    "description": "Accept a media upload, write to disk, queue background prep task.\n\n`input_type` is \"video\" (default) or \"audio\". Audio-only jobs (#119) skip\nscene detection, thumbnailing, and the final video mux \u2014 the transcribe \u2192\ntranslate \u2192 TTS core is identical.\n\nReturns 202 with {job_id, task_id, filename}. Client should open SSE on\n/tasks/stream/{task_id} to monitor extract/demucs stages and wait for the\n'ready' event before starting transcription.",
+    "description": "Accept a media upload, write to disk, queue background prep task.\n\n``external_stems`` keeps the full-quality audio extract for an external\nseparator and skips Demucs. Attach the result before transcribing.\n\n`input_type` is \"video\" (default) or \"audio\". Audio-only jobs (#119) skip\nscene detection, thumbnailing, and the final video mux \u2014 the transcribe \u2192\ntranslate \u2192 TTS core is identical.\n\nReturns 202 with {job_id, task_id, filename}. Client should open SSE on\n/tasks/stream/{task_id} to monitor extract/demucs stages and wait for the\n'ready' event before starting transcription.",
     "operationId": "dub_upload_dub_upload_post",
     "requestBody": {
      "content": {
