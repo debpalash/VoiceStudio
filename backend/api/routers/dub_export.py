@@ -46,6 +46,7 @@ from services.video_retime import (
 )
 
 from api.routers.dub_core import _get_job, _safe_lang_or_400
+from api.dependencies import require_consumer, require_consumer_reads_admin_writes
 from schemas.requests import ProsodyMirrorRequest
 from core.browser_guard import reject_cross_site_get
 from core.scrub import scrub_text
@@ -1628,7 +1629,7 @@ async def dub_get_onsets(job_id: str):
     return payload
 
 
-@router.post("/dub/prosody-mirror/{job_id}")
+@router.post("/dub/prosody-mirror/{job_id}", dependencies=[Depends(require_consumer)])
 async def dub_prosody_mirror(job_id: str, req: ProsodyMirrorRequest):
     """Suggest delivery directions from how the source actor spoke each line.
 
@@ -1777,7 +1778,7 @@ async def dub_preview_segment(job_id: str, segment_index: int, lang: str = Query
 # ── Second-pass ASR QC (Wave 3.3 / Spec 5) ───────────────────────────────────
 
 
-@router.post("/dub/qc/{job_id}")
+@router.post("/dub/qc/{job_id}", dependencies=[Depends(require_consumer_reads_admin_writes)])
 async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: float = Query(0.5)):
     """Re-recognize the dubbed audio and flag lines whose recognized text
     drifts from the target text. Opt-in, never fatal: the dub is untouched —

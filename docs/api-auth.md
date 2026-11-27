@@ -324,7 +324,7 @@ Editing, deleting and importing stored content (voice/profile, project,
 glossary, persona, watermark settings, marketplace, batch-job delete) also uses
 this admin gate. Their read-only metadata and saved audio remain available to
 authenticated consumers, including PIN-paired phones, and so do the routes that
-only run a generation (translate, dub, batch submit/cancel/retry, voice convert,
+only run a generation (translate, dub, dub abort, batch submit/cancel/retry, voice convert,
 capture, describe voice, audiobook render, clone creation), marked with
 `@consumer_generation`. The OpenAI-compatible
 `/v1` API retains its consumption gate. A pending designed-voice preview can
