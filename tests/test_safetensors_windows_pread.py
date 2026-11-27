@@ -84,6 +84,10 @@ def test_an_older_safetensors_without_pread_still_loads(sw, monkeypatch):
     assert sw.install(platform="win32") is True
     assert safetensors.safe_open("w.safetensors", "pt") == "opened"
     assert calls == ["pread", None]
+    calls.clear()
+    # An explicit mmap request falls back without the keyword the old version lacks.
+    assert safetensors.safe_open("w.safetensors", "pt", backend="mmap") == "opened"
+    assert calls == ["pread", None]
 
 
 def test_a_real_read_failure_is_not_masked(sw, monkeypatch):

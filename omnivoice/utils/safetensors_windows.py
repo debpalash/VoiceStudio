@@ -60,6 +60,9 @@ def install(platform: str | None = None) -> bool:
                     raise
                 # Fixed text: the exception can name the file, and so a home path.
                 logger.info("This safetensors has no pread backend; using memory-mapped reads")
+                if _UNSUPPORTED[0] in str(exc):
+                    # No backend keyword at all: an explicit "mmap" would fail the same way.
+                    kwargs = {k: v for k, v in kwargs.items() if k != "backend"}
         return original(filename, framework, device, *args, **kwargs)
 
     safe_open.__doc__ = original.__doc__
