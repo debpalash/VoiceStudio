@@ -379,10 +379,8 @@ export function CommandPaletteDialog({
       }))
     : [];
   const items = matchingCommands([...source, ...settingsItems], projectItems, query);
-  const active = Math.max(
-    0,
-    items.findIndex((item) => item.id === activeId),
-  );
+  // If late results displace an explicit selection, Enter must wait for a new one.
+  const active = activeId === null ? 0 : items.findIndex((item) => item.id === activeId);
   const setActive = (index: number) => setActiveId(items[index]?.id ?? null);
   const run = (index: number) => {
     const item = items[index];
@@ -411,11 +409,13 @@ export function CommandPaletteDialog({
             className="mr-8 h-10 w-[calc(100%-2rem)]"
             onKeyDown={(event) => {
               if (isImeComposing(event)) return;
-              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              if (items.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
                 event.preventDefault();
+                const forward = event.key === 'ArrowDown';
                 const next =
-                  (active + (event.key === 'ArrowDown' ? 1 : -1) + items.length) %
-                  Math.max(1, items.length);
+                  active < 0
+                    ? (forward ? 0 : items.length - 1)
+                    : (active + (forward ? 1 : -1) + items.length) % items.length;
                 setActive(next);
                 document
                   .getElementById(`command-${items[next]?.id}`)

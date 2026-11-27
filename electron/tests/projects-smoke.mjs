@@ -111,12 +111,29 @@ try {
   await projectSearch.waitFor();
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog');
-  await palette.getByRole('combobox').fill('Legacy project');
+  const paletteSearch = palette.getByRole('combobox');
+  await paletteSearch.fill('Legacy project');
   await palette.getByRole('alert').filter({ hasText: 'Something went wrong' }).waitFor();
-  await palette.getByRole('option', { name: /Legacy project take/ }).nth(29).waitFor();
+  const lastTake = palette.getByRole('option', { name: /Legacy project take/ }).nth(29);
+  await lastTake.waitFor();
+  await paletteSearch.press('ArrowUp');
+  assert.equal(
+    await paletteSearch.getAttribute('aria-activedescendant'),
+    await lastTake.getAttribute('id'),
+  );
   projectsAvailable = true;
-  await palette.getByRole('button', { name: 'Retry', exact: true }).click();
-  await palette.getByRole('option', { name: /^Legacy project Dubbing$/ }).click();
+  await palette.getByRole('button', { name: 'Retry', exact: true }).press('Enter');
+  const projectResult = palette.getByRole('option', { name: /^Legacy project Dubbing$/ });
+  await projectResult.waitFor();
+  assert.equal(await paletteSearch.getAttribute('aria-activedescendant'), null);
+  await paletteSearch.press('Enter');
+  assert.ok(await palette.isVisible());
+  await paletteSearch.press('ArrowUp');
+  assert.equal(
+    await paletteSearch.getAttribute('aria-activedescendant'),
+    await projectResult.getAttribute('id'),
+  );
+  await paletteSearch.press('Enter');
   await page.waitForURL((url) => url.hash.includes('q=Legacy'));
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll('input[type=search]')).some(
