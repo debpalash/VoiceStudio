@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -15,6 +15,7 @@ import {
   writeDiscovery,
   type BackendActivity,
 } from './headless';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 const MINUTE = 60_000;
 
@@ -136,7 +137,7 @@ test('launch intent survives a relaunch without Chromium switches', () => {
 const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
+    removeTempDir(directory);
 });
 
 test('discovery is replaced atomically and cleared only by its owner', () => {
