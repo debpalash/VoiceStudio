@@ -73,6 +73,8 @@ export interface InstallFailure {
   quarantined?: boolean;
   noexecMount?: boolean;
   downloadHost?: string;
+  /** Host of the request that failed; absent when only the progress source is known. */
+  failedDownloadHost?: string;
   downloadedBytes?: number;
   stalledSeconds?: number;
   proxyConfigured?: boolean;

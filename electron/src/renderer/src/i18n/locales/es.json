@@ -2194,6 +2194,7 @@
     "cause_noexec": "La carpeta del motor no permite ejecutar programas",
     "hint_noexec": "Esta unidad está montada con noexec. Elige una carpeta en otra unidad o vuelve a montarla sin noexec, y reintenta.",
     "cause_download": "La descarga se detuvo antes de terminar la instalación",
+    "download_failed_host": "No se pudo descargar desde {{host}}.",
     "hint_download": "Reintenta para continuar. Si sigue deteniéndose, prueba otra red, desactiva la VPN o elige otra región de descarga.",
     "cause_illegal_instruction": "El motor se detuvo en una instrucción que este equipo no pudo ejecutar",
     "hint_illegal_instruction": "Puede que al procesador le falte una función que necesitan las bibliotecas del motor. Copia el diagnóstico e inclúyelo en un informe junto con el modelo de tu procesador.",

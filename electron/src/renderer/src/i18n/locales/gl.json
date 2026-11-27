@@ -405,6 +405,7 @@
     "cause_noexec": "O cartafol do motor non permite executar programas",
     "hint_noexec": "Esta unidade está montada con noexec. Escolle un cartafol noutra unidade ou móntaa de novo sen noexec e téntao outra vez.",
     "cause_download": "A descarga detívose antes de rematar a instalación",
+    "download_failed_host": "Non se puido descargar desde {{host}}.",
     "hint_download": "Téntao de novo para continuar. Se segue detendo, proba outra rede, desactiva a VPN ou escolle outra rexión de descarga.",
     "cause_illegal_instruction": "O motor detívose nunha instrución que este ordenador non puido executar",
     "hint_illegal_instruction": "Pode que ao procesador lle falte unha función que precisan as bibliotecas do motor. Copia o diagnóstico e inclúeo nun informe co modelo do teu procesador.",

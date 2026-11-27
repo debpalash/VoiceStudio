@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import threading
 import time
 import urllib.error
@@ -287,6 +288,17 @@ def env_opt_out() -> bool:
 _PREF_READ_FAILED = object()
 
 
+# Set beside HF_ENDPOINT when the backend applied the automatic pick at
+# startup, so that value is never mistaken for the user's explicit choice.
+AUTO_PROCESS_ENV = "OMNIVOICE_HF_ENDPOINT_AUTO"
+# True once the backend applied the automatic pick at startup.
+_process_sync = False
+
+
+def _auto_process_endpoint() -> str:
+    return (os.environ.get(AUTO_PROCESS_ENV) or "").strip().rstrip("/")
+
+
 def explicit_endpoint():
     """The endpoint the user explicitly configured, or "".
 
@@ -297,7 +309,7 @@ def explicit_endpoint():
     endpoint — explicitly choosing huggingface.co is still an explicit
     choice. Never raises."""
     ep = (os.environ.get("HF_ENDPOINT") or "").strip().rstrip("/")
-    if ep:
+    if ep and ep != _auto_process_endpoint():
         return ep
     try:
         from core import prefs
@@ -463,6 +475,7 @@ def ensure_decision(
             return d
         d = race(prober=prober, throughput_prober=throughput_prober)
         _store_decision(d)
+        _sync_process(d)
         return d
 
 
@@ -486,6 +499,91 @@ def effective_endpoint() -> Optional[str]:
     except Exception:
         logger.warning("effective_endpoint failed; using canonical", exc_info=True)
     return None
+
+
+def apply_process_default() -> Optional[str]:
+    """Make the remembered automatic pick this process's Hub default.
+
+    Download paths pass ``endpoint=`` per call, but model loads
+    (``from_pretrained`` / ``snapshot_download`` fallbacks, engine processes
+    that inherit this environment) use huggingface_hub's default, which it
+    fixes from ``HF_ENDPOINT`` at import. Where huggingface.co is blocked those
+    loads failed although setup had used the mirror (#4503). Call before
+    huggingface_hub is imported. An explicit endpoint is left untouched; the
+    value set here is marked so it never counts as one. Never probes, never
+    persists, never raises. Returns the endpoint applied, if any.
+    """
+    try:
+        current = (os.environ.get("HF_ENDPOINT") or "").strip().rstrip("/")
+        auto = (os.environ.pop(AUTO_PROCESS_ENV, None) or "").strip().rstrip("/")
+        if current and current != auto:
+            return None  # the user's explicit endpoint
+        if current:
+            os.environ.pop("HF_ENDPOINT", None)  # an inherited automatic pick
+        if mode() != "auto":
+            return None
+        decision = cached_decision()
+        if not (decision and decision.get("reachable") and decision["endpoint"] != CANONICAL_ENDPOINT):
+            return None
+        endpoint = decision["endpoint"].strip().rstrip("/")
+        _apply_to_process(endpoint)
+        logger.info("Hugging Face loads use the automatically selected endpoint %s", endpoint)
+        return endpoint
+    except Exception:
+        logger.warning("Could not apply the automatic Hugging Face endpoint", exc_info=True)
+        return None
+    finally:
+        # Only the backend calls this; from now on a new automatic decision
+        # also reaches this process's loads (a first-run pick, a failover).
+        global _process_sync
+        _process_sync = True
+
+
+def _apply_to_process(endpoint: Optional[str]) -> None:
+    """Point this process's Hub default, and engine processes it starts, at an
+    automatic pick (``None`` or the official endpoint restores the default).
+
+    huggingface_hub builds load URLs from ``constants.ENDPOINT`` and its URL
+    template at call time, so updating both reaches the next load. Its token
+    allowlist keeps the import-time host, and the token policy below disables
+    implicit tokens for a mirror. An explicit endpoint is never touched.
+    """
+    current = (os.environ.get("HF_ENDPOINT") or "").strip().rstrip("/")
+    if current and current != _auto_process_endpoint():
+        return
+    mirror = endpoint if endpoint and endpoint != CANONICAL_ENDPOINT else None
+    if mirror:
+        os.environ["HF_ENDPOINT"] = mirror
+        os.environ[AUTO_PROCESS_ENV] = mirror
+    else:
+        os.environ.pop("HF_ENDPOINT", None)
+        os.environ.pop(AUTO_PROCESS_ENV, None)
+    constants = sys.modules.get("huggingface_hub.constants")
+    target = mirror or CANONICAL_ENDPOINT
+    if constants is not None and constants.ENDPOINT != target:
+        if not mirror and constants.HF_HUB_DISABLE_IMPLICIT_TOKEN:
+            # A load still running against the mirror would send the cached
+            # token there if implicit tokens came back on now, so this process
+            # keeps them off; engine processes and the next launch use it again.
+            logger.info("Back on the official Hugging Face endpoint; restart to use a saved token in this process")
+        constants.ENDPOINT = target
+        constants.HUGGINGFACE_CO_URL_TEMPLATE = target + "/{repo_id}/resolve/{revision}/{filename}"
+    from services.hf_auth import apply_process_token_policy
+
+    # Only ever turns the in-process implicit-token switch on (see hf_auth).
+    apply_process_token_policy()
+
+
+def _sync_process(decision: Optional[dict]) -> None:
+    if not _process_sync:
+        return
+    try:
+        if mode() != "auto":
+            return
+        reachable = bool(decision and decision.get("reachable"))
+        _apply_to_process(decision["endpoint"] if reachable else None)
+    except Exception:
+        logger.warning("Could not apply the new Hugging Face endpoint to this process", exc_info=True)
 
 
 def download_endpoint(*, gated: bool = False) -> Optional[str]:

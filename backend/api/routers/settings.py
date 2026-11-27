@@ -1491,9 +1491,17 @@ def set_hf_mirror(body: _HFMirrorBody):
     # Compare against the currently-persisted value (normalised the same way) so
     # a no-op save doesn't nag the user to restart. Only a real change to the
     # persisted endpoint can require a restart.
+    from services.endpoint_race import AUTO_PROCESS_ENV
+
     previous = (user_env.get_user_env(_HF_ENDPOINT_ENV) or "").strip().rstrip("/")
-    changed = url != previous
+    # With an automatic pick applied to this process, loads already use that
+    # endpoint: only a choice different from it needs a restart.
+    auto_applied = (os.environ.get(AUTO_PROCESS_ENV) or "").strip().rstrip("/")
+    changed = url != (auto_applied or previous)
     try:
+        # A user choice replaces the automatic pick, even when it names the
+        # same endpoint.
+        os.environ.pop(AUTO_PROCESS_ENV, None)
         if url:
             user_env.set_user_env(_HF_ENDPOINT_ENV, url)
             os.environ[_HF_ENDPOINT_ENV] = url  # best-effort for new downloads this session

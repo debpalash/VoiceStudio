@@ -2192,6 +2192,7 @@
     "cause_noexec": "引擎資料夾不允許執行程式",
     "hint_noexec": "此磁碟機以 noexec 方式掛接。請選擇其他磁碟機上的資料夾,或不帶 noexec 重新掛接後重試。",
     "cause_download": "下載在設定完成前中斷了",
+    "download_failed_host": "無法從 {{host}} 下載。",
     "hint_download": "重試即可繼續。如果仍然中斷,請換一個網路、關閉 VPN 或選擇其他下載區域。",
     "cause_illegal_instruction": "引擎停在了這台電腦無法執行的指令上",
     "hint_illegal_instruction": "處理器可能缺少引擎函式庫所需的功能。請複製診斷資訊,並連同處理器型號一起附在回報中。",
