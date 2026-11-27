@@ -117,22 +117,6 @@ ALLOWLIST: dict[str, str] = {
         "KNOWN GAP: merges and rewrites stored job segments; editing stored content is "
         "documented admin-only but this route has no dependency yet."
     ),
-    "POST /dub/sync-transcript/{job_id}": (
-        "KNOWN GAP: rewrites a stored job's transcript and segments; editing stored content "
-        "is documented admin-only but this route has no dependency yet."
-    ),
-    "POST /dub/abort/{job_id}": (
-        "Dub consumption: aborts a running job by ID with no per-caller ownership check; "
-        "still missing the consumer reads/admin writes router guard."
-    ),
-    "POST /dub/prosody-mirror/{job_id}": (
-        "Dub consumption: runs the prosody-mirror pass over a job; open to consumers by design, "
-        "still missing the consumer reads/admin writes router guard."
-    ),
-    "POST /dub/qc/{job_id}": (
-        "Dub consumption: runs the quality-control pass over a job; open to consumers by design, "
-        "still missing the consumer reads/admin writes router guard."
-    ),
     "POST /preview/upload": (
         "Dub consumption: accepts a short preview clip for the preview renderer; open to "
         "consumers by design, still missing the consumer reads/admin writes router guard."

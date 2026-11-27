@@ -17,7 +17,7 @@ from fastapi import Request, Depends, Query
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 
-from api.dependencies import require_admin
+from api.dependencies import require_admin, require_consumer_reads_admin_writes
 from core.db import db_conn
 from core.config import PREVIEW_DIR
 from core.tasks import task_manager
@@ -700,7 +700,7 @@ def dub_sync_transcript(job_id: str, req: TranscriptSyncRequest):
     return {"segments": len(rows)}
 
 
-@router.post("/dub/abort/{job_id}")
+@router.post("/dub/abort/{job_id}", dependencies=[Depends(require_consumer_reads_admin_writes)])
 def dub_abort(job_id: str):
     """Cancel in-flight upload/transcribe subprocesses for a job."""
     with _active_procs_lock:

@@ -161,6 +161,32 @@ _ADMIN_ONLY_ROUTES = [
     ("watermark.py", "update_watermark_settings"),
 ]
 
+# `dub_export.py` and `dub_core.py` declare a bare `APIRouter()`, so a tier guard
+# can only live on the route itself. These POSTs carried no dependency at all
+# while every sibling dub mutation was guarded, and the route-policy allowlist
+# recorded them as known gaps.
+_DUB_ANALYSIS_ROUTES = [
+    ("dub_export.py", "dub_prosody_mirror"),
+]
+# QC annotates stored segments and abort cancels live work: method-aware guard.
+_DUB_CONSUMPTION_MUTATIONS = [
+    ("dub_export.py", "dub_qc_pass"),
+    ("dub_core.py", "dub_abort"),
+]
+
+
+@pytest.mark.parametrize("filename,function_name", _DUB_ANALYSIS_ROUTES)
+def test_dub_analysis_route_carries_the_read_guard(filename, function_name):
+    """Read-only delivery analysis stays callable by a PIN-paired consumer."""
+    names = _dependency_names(_route_decorators(_tree(filename), function_name))
+    assert "require_consumer" in names
+
+
+@pytest.mark.parametrize("filename,function_name", _DUB_CONSUMPTION_MUTATIONS)
+def test_dub_consumption_mutations_carry_the_tier_guard(filename, function_name):
+    names = _dependency_names(_route_decorators(_tree(filename), function_name))
+    assert "require_consumer_reads_admin_writes" in names
+
 
 def _is_consumer_generation(filename: str, function_name: str) -> bool:
     decorators = _route_decorators(_tree(filename), function_name)
