@@ -356,7 +356,7 @@ def omnivoice_tokenizer_fallback_needed() -> bool:
     try:
         import os
 
-        from services.omnivoice_checkpoint import resolve_omnivoice_checkpoint
+        from services.omnivoice_checkpoint import omnivoice_pin_kwargs, resolve_omnivoice_checkpoint
 
         checkpoint = resolve_omnivoice_checkpoint()
         if os.path.isdir(checkpoint):
@@ -367,11 +367,11 @@ def omnivoice_tokenizer_fallback_needed() -> bool:
         from huggingface_hub.errors import LocalEntryNotFoundError
 
         try:
-            # The loader resolves the cached ``main`` ref the same way
-            # (omnivoice.models.omnivoice._resolve_snapshot_dir), so the gate
-            # and the loader read the same snapshot.
+            # Use the loader's revision even when the cached main ref points
+            # to a different snapshot. Unpinned checkpoints use the Hub default.
+            revision = omnivoice_pin_kwargs(checkpoint).get("revision")
             snapshot = snapshot_download(  # nosec B615 — local cache only, same ref as the loader
-                checkpoint, revision="main", local_files_only=True
+                checkpoint, revision=revision, local_files_only=True
             )
         except (LocalEntryNotFoundError, FileNotFoundError):
             return False

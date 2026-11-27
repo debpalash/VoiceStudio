@@ -216,6 +216,30 @@ def test_fallback_check_reads_the_installed_snapshot(ma, monkeypatch, tmp_path):
     assert ma.omnivoice_tokenizer_fallback_needed() is False
 
 
+@pytest.mark.parametrize("bundled_in_pin", [True, False])
+def test_tokenizer_gate_uses_the_loaders_revision(ma, monkeypatch, tmp_path, bundled_in_pin):
+    """The installed and cached main snapshots can disagree in either direction."""
+    from huggingface_hub import constants
+    from services.omnivoice_checkpoint import omnivoice_pin_kwargs
+
+    installed_revision, main_revision = "1" * 40, "2" * 40
+    cache = tmp_path / "models--k2-fsa--OmniVoice"
+    (cache / "refs").mkdir(parents=True)
+    (cache / "refs/main").write_text(main_revision, encoding="ascii")
+    (cache / "voicestudio-revision").write_text(installed_revision, encoding="ascii")
+    installed = cache / "snapshots" / installed_revision
+    main = cache / "snapshots" / main_revision
+    installed.mkdir(parents=True)
+    main.mkdir()
+    ((installed if bundled_in_pin else main) / "audio_tokenizer").mkdir()
+    monkeypatch.setenv("OMNIVOICE_MODEL", OMNI)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setattr(constants, "HF_HUB_CACHE", str(tmp_path))
+
+    assert omnivoice_pin_kwargs(OMNI)["revision"] == installed_revision
+    assert ma.omnivoice_tokenizer_fallback_needed() is (not bundled_in_pin)
+
+
 def test_fallback_check_not_installed_needs_nothing(ma, monkeypatch, tmp_path):
     _fake_hf(monkeypatch, ma, tmp_path, missing=True)
     assert ma.omnivoice_tokenizer_fallback_needed() is False
