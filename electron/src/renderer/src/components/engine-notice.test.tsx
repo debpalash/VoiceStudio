@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { EngineNotice } from './engine-notice';
+import { useEngineSelect } from '@/features/settings/model-list/use-engine-select';
 
 const mock = vi.hoisted(() => ({
   api: vi.fn(),
@@ -112,6 +113,47 @@ it('names the selected model and its size before starting the first-run download
     expect(mock.api).toHaveBeenCalledWith('/models/install', {
       method: 'POST',
       body: JSON.stringify({ repo_id: 'voice/selected' }),
+    }),
+  );
+});
+
+it('refreshes the download offer after the selected TTS model changes', async () => {
+  let selected = 'voice/first';
+  mock.api.mockImplementation(async (path: string) => {
+    if (path === '/engines/select') {
+      selected = 'voice/second';
+      return { active: 'local' };
+    }
+    if (path === '/engines')
+      return {
+        tts: {
+          active: 'local',
+          active_model: selected,
+          backends: [{ id: 'local', available: true }],
+        },
+      };
+    if (path === '/models')
+      return { models: [{ repo_id: selected, installed: false }] };
+    return {};
+  });
+  function SelectModel() {
+    const engine = useEngineSelect('tts');
+    return <button onClick={() => void engine.select('local', 'voice/second')}>Change model</button>;
+  }
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <EngineNotice operation="clone" />
+      <SelectModel />
+    </QueryClientProvider>,
+  );
+  await screen.findByRole('button', { name: /voice\/first/ });
+  fireEvent.click(screen.getByRole('button', { name: 'Change model' }));
+  fireEvent.click(await screen.findByRole('button', { name: /voice\/second/ }));
+  await waitFor(() =>
+    expect(mock.api).toHaveBeenCalledWith('/models/install', {
+      method: 'POST',
+      body: JSON.stringify({ repo_id: 'voice/second' }),
     }),
   );
 });

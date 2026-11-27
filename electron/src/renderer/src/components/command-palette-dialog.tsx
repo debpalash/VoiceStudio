@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useLocation, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { isImeComposing } from '@/lib/ime';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useHistory } from '@/hooks/use-history';
 import { useProfiles } from '@/hooks/use-profiles';
@@ -73,6 +74,9 @@ export function CommandPaletteDialog({
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+  const currentProjectSearch = useLocation({
+    select: ({ pathname, search }) => (pathname === '/projects' ? search.q : undefined),
+  });
   const [query, setQuery] = useState('');
   const needle = query.trim();
   const dubs = useQuery({ ...dubProjectsQuery, enabled: open && Boolean(needle) });
@@ -82,6 +86,10 @@ export function CommandPaletteDialog({
   const [activeId, setActiveId] = useState<string | null>(null);
   const history = useHistory();
   const profiles = useProfiles();
+  const projectQueries = needle ? [dubs, books] : [];
+  const searchQueries = [history, profiles, ...projectQueries];
+  const failedQueries = searchQueries.filter((query) => query.isError);
+  const projectSearchFailed = projectQueries.some((query) => query.isError);
   const generation = useGenerateClone();
   useEffect(() => {
     setQuery('');
@@ -353,7 +361,13 @@ export function CommandPaletteDialog({
           keywords: [t('projects.title'), t(project.kind)],
           group: t('projects.title'),
           icon: FolderIcon,
-          run: () => navigate({ to: '/projects', search: { q: project.name } }),
+          run: () =>
+            navigate({
+              to: '/projects',
+              search: { q: project.name },
+              replace: project.name === currentProjectSearch,
+              state: { projectSearchSelection: crypto.randomUUID() },
+            }),
         }))
       : []),
   ];
@@ -463,15 +477,30 @@ export function CommandPaletteDialog({
               );
             })}
           </div>
-          {!items.length && (
-            <p className="p-4 text-center text-sm text-muted-foreground">
-              {history.isFetching || profiles.isFetching
+          {failedQueries.length > 0 ? (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+              <p role="alert" className="text-destructive">
+                {projectSearchFailed && <span className="block">{t('projects.title')}</span>}
+                {t('common.error')}
+              </p>
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={failedQueries.every((query) => query.isFetching)}
+                onClick={() => {
+                  for (const query of failedQueries) void query.refetch({ cancelRefetch: false });
+                }}
+              >
+                {t('common.retry')}
+              </Button>
+            </div>
+          ) : items.length === 0 ? (
+            <p role="status" className="p-4 text-center text-sm text-muted-foreground">
+              {searchQueries.some((query) => query.isFetching)
                 ? t('common.loading')
-                : history.isError || profiles.isError
-                  ? t('common.error')
-                  : t('preferences.no_matches')}
+                : t('preferences.no_matches')}
             </p>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
       <KeyboardCheatsheet open={shortcutsOpen} onOpenChange={onShortcutsOpenChange} />

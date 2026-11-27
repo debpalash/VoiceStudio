@@ -1071,6 +1071,26 @@ describe('generation queue', () => {
     expect(screen.getByTestId('waiting')).toHaveTextContent('0');
   });
 
+  it('removes a failed row when its retry snapshot is evicted', async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ selectedProfileId: 'voice-1', autoPlay: false });
+    for (let i = 0; i < 21; i++) {
+      patchCloneSettings({ text: `Queued script ${i}` });
+      fireEvent.click(screen.getByText('go'));
+    }
+    expect(screen.getByTestId('waiting')).toHaveTextContent('20');
+    for (let i = 0; i < 21; i++) {
+      await waitFor(() => expect(renders).toHaveLength(i + 1));
+      await act(async () => renders[i]!.reject(new Error('render failed')));
+    }
+    expect(statuses()).toEqual(Array(20).fill('failed'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'retry take' })[0]);
+    await waitFor(() => expect(renders).toHaveLength(22));
+    expect(vi.mocked(generateClone).mock.calls[21][0].text).toBe('Queued script 1');
+    await act(async () => renders[21]!.resolve(take('retry-after-eviction')));
+  });
+
   it('pins each queued take to the engine active when it was requested', async () => {
     const renders = deferredRenders();
     const client = new QueryClient();

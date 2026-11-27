@@ -95,7 +95,7 @@ export function SystemNotifications({
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(loadDismissed);
   const [open, setOpen] = useState(false);
-  const tasks = useTaskActivity(enabled, open);
+  const { tasks, checkingBatch } = useTaskActivity(enabled, open);
   const downloads = useDownloadActivity();
   // A Stories/Audiobook render keeps running when its page is left.
   const render = useLongformActivity();
@@ -164,6 +164,7 @@ export function SystemNotifications({
   };
 
   const total = visible.length + downloads.items.length + (render ? 1 : 0) + tasks.length;
+  const checking = query.isPending || checkingBatch;
   const triggerLabel =
     [
       render
@@ -180,7 +181,7 @@ export function SystemNotifications({
         ? 'modelSettings.unavailable'
         : query.isError
           ? 'common.error'
-          : query.isPending
+          : checking
             ? 'preferences.loading'
             : 'logs.all_clear',
     );
@@ -229,12 +230,12 @@ export function SystemNotifications({
             {t('modelSettings.unavailable')}
           </p>
         )}
-        {enabled && query.isPending && total === 0 && (
+        {enabled && checking && total === 0 && (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
             {t('preferences.loading')}
           </p>
         )}
-        {enabled && !query.isPending && !query.isError && total === 0 && (
+        {enabled && !checking && !query.isError && total === 0 && (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
             {t('logs.all_clear')}
           </p>

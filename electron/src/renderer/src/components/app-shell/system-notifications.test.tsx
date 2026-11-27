@@ -50,7 +50,10 @@ vi.mock('./download-activity', () => ({
   DownloadActivityList: ({ activity }: { activity: { items: unknown[] } }) =>
     activity.items.length ? <section aria-label="downloads">downloads</section> : null,
 }));
-vi.mock('./task-activity', () => ({ useTaskActivity: () => [], TaskActivityList: () => null }));
+vi.mock('./task-activity', () => ({
+  useTaskActivity: () => ({ tasks: [], checkingBatch: false }),
+  TaskActivityList: () => null,
+}));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, values?: { version?: string; count?: number }) =>

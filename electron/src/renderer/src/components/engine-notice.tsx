@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircleIcon, TriangleAlertIcon, WrenchIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -52,6 +52,12 @@ async function loadTtsSetupPlan() {
   return { engines, model };
 }
 
+const ttsSetupPlanQuery = queryOptions({
+  queryKey: ['tts-setup-plan'],
+  queryFn: loadTtsSetupPlan,
+  staleTime: 15_000,
+});
+
 /**
  * Readiness of text-to-speech for `operation` plus the one-click setup that
  * restores it (download the selected or recommended model, or activate an
@@ -64,10 +70,8 @@ export function useEngineSetup(operation = 'tts'): EngineSetup {
   const [fixing, setFixing] = useState(false);
   const blocker = useTtsReadiness(operation);
   const plan = useQuery({
-    queryKey: ['tts-setup-plan'],
-    queryFn: loadTtsSetupPlan,
+    ...ttsSetupPlanQuery,
     enabled: operation === 'clone' && blocker === 'engine',
-    staleTime: 15_000,
   });
 
   const refreshReadiness = useCallback(
@@ -144,7 +148,9 @@ export function useEngineSetup(operation = 'tts'): EngineSetup {
     setFixing(true);
     try {
       const { engines, model } =
-        operation === 'clone' && plan.data ? plan.data : await loadTtsSetupPlan();
+        operation === 'clone'
+          ? await client.fetchQuery(ttsSetupPlanQuery)
+          : await loadTtsSetupPlan();
       if (model) {
         await startInstall(model.repo_id);
         return;
@@ -163,7 +169,7 @@ export function useEngineSetup(operation = 'tts'): EngineSetup {
   const view = install.view;
   return {
     blocked: blocker === 'engine',
-    busy: fixing || install.busy,
+    busy: fixing || install.busy || (operation === 'clone' && plan.isFetching),
     download: operation === 'clone' ? plan.data?.model : undefined,
     /** A download this setup started or joined, until it ends or is dismissed. */
     install: view && view.stage !== 'ready' && view.stage !== 'cancelled' ? install : null,

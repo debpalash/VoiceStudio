@@ -713,11 +713,18 @@ function useGenerateController(): UseGenerateClone {
           setErrorTopic(failureTopicOf(err) ?? null);
           setError(message);
           failedRef.current.set(take.id, take);
-          if (failedRef.current.size > MAX_FINISHED_SHOWN) {
-            const oldest = failedRef.current.keys().next().value;
-            if (oldest !== undefined) failedRef.current.delete(oldest);
-          }
-          patchQueueItem(take.id, { status: 'failed', error: message });
+          const evictedId =
+            failedRef.current.size > MAX_FINISHED_SHOWN
+              ? failedRef.current.keys().next().value
+              : undefined;
+          if (evictedId !== undefined) failedRef.current.delete(evictedId);
+          setQueue((items) =>
+            items
+              .filter((item) => item.id !== evictedId)
+              .map((item) =>
+                item.id === take.id ? { ...item, status: 'failed', error: message } : item,
+              ),
+          );
         }
       } finally {
         finishActivity();

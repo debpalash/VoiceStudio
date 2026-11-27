@@ -56,7 +56,11 @@ const LLM_KEYS = ['llm-skills', 'translation-engines', 'dictation-refinement'] a
 
 /** Select a TTS/ASR/LLM backend, optionally with one of its models. */
 export function useEngineSelect(family: 'tts' | 'asr' | 'llm') {
-  const selection = useSelection(family, [...ENGINE_KEYS, ...(family === 'llm' ? LLM_KEYS : [])]);
+  const selection = useSelection(family, [
+    ...ENGINE_KEYS,
+    ...(family === 'tts' ? ['tts-setup-plan'] : []),
+    ...(family === 'llm' ? LLM_KEYS : []),
+  ]);
   return {
     ...selection,
     select: (backendId: string, modelId?: string) =>

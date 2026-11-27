@@ -231,13 +231,16 @@ with the original rose action color.
 Recent takes gives you Play, Reuse script, and Export. Playing a take or a
 finished dub in the bottom player keeps it available when you switch workspaces.
 The bell shows render and batch progress alongside model downloads. Cancel or
-retry there, or open Dubbing to resolve a failed step. Interrupted dubs with a
-saved checkpoint can resume from the bell.
+retry there, or open Dubbing to resolve a failed step. If the bell cannot check
+for failed batch jobs, use Retry to check again. Interrupted dubs with a saved
+checkpoint can resume from the bell.
 
 Use Ctrl/Cmd+K to find saved voices, projects, takes, or settings by name. Project
-results open the Projects library with the matching name filled in. In Settings,
-System groups the engine, device, and connection controls. Diagnostics groups
-logs, diagnostic information, and updates.
+results open the Projects library with the matching name filled in, even if you
+changed the search or category after selecting that project earlier. If a search
+source fails to load, use Retry in the palette. In Settings, System groups the
+engine, device, and connection controls. Diagnostics groups logs, diagnostic
+information, and updates.
 
 Both library and inspector panes share the same resize behavior: pointer drag,
 arrow keys on the focused divider, and double-click to reset. Widths, library

@@ -16,7 +16,7 @@ import {
 } from '../longform/longform-session';
 import { projectLibrary } from '../longform/project-library';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useLocation, useNavigate, useSearch } from '@tanstack/react-router';
 import { dubProjectsQuery, longformProjectsQuery } from './project-queries';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -129,6 +129,9 @@ export function ProjectsPage() {
     strict: false,
     select: (search) => search.q ?? '',
   });
+  const projectSearchSelection = useLocation({
+    select: ({ state }) => state.projectSearchSelection,
+  });
   const client = useQueryClient();
   const session = useDubSession();
   const longform = useLongformSession();
@@ -172,7 +175,8 @@ export function ProjectsPage() {
   useEffect(() => {
     setSearch(projectSearch);
     setFilter('all');
-  }, [projectSearch]);
+    setSelected(new Set());
+  }, [projectSearch, projectSearchSelection]);
 
   const locked =
     busy ||

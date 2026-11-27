@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { expect, it, vi } from 'vitest';
 
 const task = vi.hoisted(() => ({
+  api: vi.fn(),
   cancelDub: vi.fn(),
   resumeDub: vi.fn(),
   retryTake: vi.fn(),
@@ -25,6 +26,7 @@ const task = vi.hoisted(() => ({
 }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => task.navigate }));
+vi.mock('@/lib/api/client', () => ({ apiJson: task.api, describeError: String }));
 vi.mock('@/hooks/use-generate', () => ({
   useGenerationActivity: () => ({
     queue: [{ id: 'take-1', label: 'Saved script', mode: 'design', status: 'failed' }],
@@ -40,9 +42,28 @@ vi.mock('@/features/dub/dub-session', () => ({
 
 import { TaskActivityList, useTaskActivity } from './task-activity';
 
-function Panel() {
-  return <TaskActivityList tasks={useTaskActivity(false, true)} />;
+function Panel({ enabled = false }: { enabled?: boolean }) {
+  const { tasks } = useTaskActivity(enabled, true);
+  return <TaskActivityList tasks={tasks} />;
 }
+
+it('shows a retryable batch query failure and clears it after retry', async () => {
+  task.api.mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValueOnce([]);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <Panel enabled />
+    </QueryClientProvider>,
+  );
+  const error = (await screen.findByText('nav.batch_dub')).closest('article')!;
+  expect(within(error).getByText('common.error')).toBeVisible();
+  fireEvent.click(within(error).getByRole('button', { name: 'common.retry' }));
+  await waitFor(() => expect(error).not.toBeInTheDocument());
+  expect(task.api.mock.calls.map(([path]) => path)).toEqual([
+    '/batch/jobs?status=retryable&limit=100',
+    '/batch/jobs?status=retryable&limit=100',
+  ]);
+});
 
 it('shows live progress and lets the user cancel a dub and retry a failed take', () => {
   render(<Panel />, {

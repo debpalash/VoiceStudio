@@ -33,7 +33,7 @@ interface TaskActivity {
   actions: TaskAction[];
 }
 
-export function useTaskActivity(enabled: boolean, open: boolean): TaskActivity[] {
+export function useTaskActivity(enabled: boolean, open: boolean) {
   const { t } = useTranslation();
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -48,12 +48,13 @@ export function useTaskActivity(enabled: boolean, open: boolean): TaskActivity[]
     queryFn: ({ signal }) => apiJson<BatchJob[]>('/batch/jobs?status=active&limit=100', { signal }),
     enabled: false,
   });
+  const checkBatch = enabled && open;
   const failedBatch = useQuery({
     queryKey: ['batch-jobs', 'failed'],
     queryFn: ({ signal }) =>
       apiJson<BatchJob[]>('/batch/jobs?status=retryable&limit=100', { signal }),
-    enabled: enabled && open,
-    refetchInterval: enabled && open ? 5_000 : false,
+    enabled: checkBatch,
+    refetchInterval: checkBatch ? 5_000 : false,
   });
   const batchAction = useMutation({
     mutationFn: async ({ id, action }: { id: string; action: 'cancel' | 'retry' }) => {
@@ -173,7 +174,24 @@ export function useTaskActivity(enabled: boolean, open: boolean): TaskActivity[]
       ],
     });
   }
-  return rows;
+  if (checkBatch && failedBatch.isError) {
+    rows.push({
+      id: 'batch-query-error',
+      title: t('nav.batch_dub'),
+      status: t('common.error'),
+      failed: true,
+      actions: [
+        {
+          label: t('common.retry'),
+          run: async () => {
+            await failedBatch.refetch();
+          },
+          disabled: failedBatch.isFetching,
+        },
+      ],
+    });
+  }
+  return { tasks: rows, checkingBatch: checkBatch && failedBatch.isPending };
 }
 
 export function TaskActivityList({ tasks }: { tasks: TaskActivity[] }) {

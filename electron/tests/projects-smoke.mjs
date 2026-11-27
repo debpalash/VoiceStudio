@@ -21,6 +21,7 @@ try {
   let row = stored;
   let writes = 0;
   let renames = 0;
+  let projectsAvailable = false;
   await page.addInitScript(() => {
     localStorage.setItem(
       'omni_transcriptions',
@@ -92,6 +93,8 @@ try {
       row = { ...route.request().postDataJSON(), id: 'legacy' };
       return route.fulfill({ json: row });
     }
+    if (!projectsAvailable && route.request().url().endsWith('/projects'))
+      return route.fulfill({ status: 503, json: { detail: 'Unavailable' } });
     return route.fulfill({
       json: route.request().url().endsWith('/projects') ? (row ? [row] : []) : row,
     });
@@ -102,6 +105,9 @@ try {
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog');
   await palette.getByRole('combobox').fill('Legacy project');
+  await palette.getByRole('alert').filter({ hasText: 'Something went wrong' }).waitFor();
+  projectsAvailable = true;
+  await palette.getByRole('button', { name: 'Retry', exact: true }).click();
   await palette.getByRole('option', { name: /Legacy project/ }).click();
   await page.waitForURL((url) => url.hash.includes('q=Legacy'));
   await page.waitForFunction(() =>
@@ -109,8 +115,15 @@ try {
       (input) => input.value === 'Legacy project',
     ),
   );
-  await projectSearch.fill('');
   const filters = page.locator('[data-slot=secondary-sidebar]');
+  await filters.getByRole('button', { name: 'Voice profiles 1', exact: true }).click();
+  await projectSearch.fill('Library');
+  await page.keyboard.press('Control+k');
+  await palette.getByRole('combobox').fill('Legacy project');
+  await palette.getByRole('option', { name: /Legacy project/ }).click();
+  await page.getByRole('button', { name: 'Legacy project', exact: true }).waitFor();
+  assert.equal(await projectSearch.inputValue(), 'Legacy project');
+  await projectSearch.fill('');
   await filters.getByRole('button', { name: 'Voice profiles 1', exact: true }).click();
   await page.locator('main').getByRole('heading', { name: 'Library voice', exact: true }).waitFor();
   await filters.getByRole('button', { name: 'Transcripts 1', exact: true }).click();
