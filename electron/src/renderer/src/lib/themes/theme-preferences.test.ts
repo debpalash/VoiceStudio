@@ -70,7 +70,7 @@ describe('theme preferences', () => {
         for (const role of THEME_COLOR_ROLES)
           expect(colors?.[role], `${theme.id}/${mode}/${role}`).toEqual(expect.any(String));
       }
-    expect(paletteColors('heritage', 'dark')?.canvas).toBe('#211c29');
+    expect(paletteColors('heritage', 'dark')?.canvas).toBe('#1b181d');
     expect(paletteColors('heritage', 'dark')?.messageAction).toBe('#d3869b');
     expect(parseThemePreferences('{"dark":"heritage"}').dark).toBe('heritage');
     expect(paletteColors('default', 'dark')).toBeNull();
