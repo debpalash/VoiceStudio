@@ -480,6 +480,9 @@
     "deleteTitle": "Modeli sil",
     "deleteConfirm": "{{repoId}} silinsin mi? Daha sonra yeniden yükleyebilirsiniz.",
     "deleted": "Silindi {{repoId}}",
+    "engineDeleteTitle": "Motoru sil",
+    "engineDeleteConfirm": "{{name}} ve VoiceStudio'nun onun için yüklediği dosyalar silinsin mi? Paylaşılan indirme önbelleğindeki modeller korunur. Daha sonra yeniden yükleyebilirsiniz.",
+    "engineDeleteFailed": "Silinemedi",
     "reinstall": "Yeniden yükle",
     "reinstallTitle": "Modeli yeniden yükle",
     "reinstallConfirm": "{{repoId}} yeniden yüklensin mi? Bu, mevcut kopyayı silecek ve tekrar indirecektir.",
@@ -1663,6 +1666,10 @@
     "aec_row_title": "Dikte için yankı gidermeyi etkinleştir",
     "aec_experimental": "Deneysel",
     "aec_hint": "Ön izleme, dublaj veya video oynarken uygulamanın sesini yazıya dökmeden dikte etmenizi sağlar. Biraz işlem ekler; çalma sırasında dikte etmiyorsanız kapalı bırakın.",
+    "compact_title": "Kompakt katman",
+    "compact_row_title": "Basılı tutarak yazdırma için kompakt katman",
+    "compact_description": "Kısayolu basılı tuttuğunuz sürece tam kaydedici ve transkript yerine yalnızca canlı bir seviye göstergesi ve bir zamanlayıcı gösterilir. Bıraktığınızda metin yine eklenir.",
+    "compact_save_failed": "Bu ayar kaydedilemedi. Lütfen tekrar deneyin.",
     "cleanup_title": "Metin temizliği",
     "spoken_punctuation": "Sesli noktalama",
     "spoken_punctuation_desc": "Yazmak için “comma”, “period”, “question mark”, “new line” deyin. Yalnızca İngilizce."
@@ -4238,6 +4245,8 @@
       "speed": "{{speed}}/sn",
       "eta": "Yaklaşık {{time}} kaldı",
       "estimating": "Kalan süre hesaplanıyor…",
+      "waiting_metered": "Bu Wi-Fi sınırlı kotalı…",
+      "use_connection": "Bu bağlantıyla indir",
       "waiting_network": "Bağlantı bekleniyor…"
     }
   },

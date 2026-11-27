@@ -240,6 +240,39 @@ def list_live_sidecars() -> list[dict]:
     return out
 
 
+@contextlib.contextmanager
+def exclusive_engine(engine_id: str):
+    """Keep every request away from ``engine_id`` while its files are deleted.
+
+    Yields ``True`` once no request can touch the install: the engine is marked
+    removing first (so a backend created now refuses to spawn, and installs are
+    refused), then every instance's op lock is taken without waiting and its
+    sidecar stopped. Yields ``False``, holding nothing, when a request is
+    mid-operation, including one still resolving its environment before the
+    process exists.
+    """
+    from services import engine_removal
+
+    with engine_removal.removing(engine_id):
+        held = []
+        try:
+            for backend in list(_LIVE_BACKENDS):
+                if backend.id != engine_id:
+                    continue
+                if not backend._lock.acquire(blocking=False):
+                    yield False
+                    return
+                held.append(backend)
+            for backend in held:
+                proc = getattr(backend, "_proc", None)
+                if proc is not None and proc.poll() is None:
+                    backend.shutdown()  # shutdown() does not take _lock
+            yield True
+        finally:
+            for backend in held:
+                backend._lock.release()
+
+
 def unload_sidecar(engine_id: str) -> int:
     """Force-shut a specific engine's sidecar now (busy-guarded). Returns the
     number shut down (0 if it wasn't running or was busy)."""
@@ -551,6 +584,10 @@ class SubprocessBackend(TTSBackend):
             raise RuntimeError(
                 f"{self.id} sidecar is still stopping after a timeout; retry once it exits"
             )
+        from services import engine_removal
+
+        if engine_removal.is_removing(self.id):
+            raise RuntimeError(f"{self.id} is being deleted; install it again to use it")
         from services.sidecar_revisions import current
         revision = current(self.id)
         if self._proc is not None and self._proc.poll() is None:
@@ -1289,6 +1326,7 @@ __all__ = [
     "SIDECAR_INBOUND_OPS",
     "SIDECAR_IDLE_TIMEOUT_S",
     "reap_idle_sidecars",
+    "exclusive_engine",
     "list_live_sidecars",
     "unload_sidecar",
     "unload_all_sidecars",

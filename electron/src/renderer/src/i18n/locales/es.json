@@ -482,6 +482,9 @@
     "deleteTitle": "Eliminar modelo",
     "deleteConfirm": "¿Eliminar {{repoId}}? Puedes reinstalarlo más tarde.",
     "deleted": "Eliminado {{repoId}}",
+    "engineDeleteTitle": "Eliminar motor",
+    "engineDeleteConfirm": "¿Eliminar {{name}} y los archivos que VoiceStudio instaló para él? Los modelos de la caché de descargas compartida se conservan. Puedes volver a instalarlo más tarde.",
+    "engineDeleteFailed": "No se pudo eliminar",
     "reinstall": "Reinstalar",
     "reinstallTitle": "Reinstalar el modelo",
     "reinstallConfirm": "¿Reinstalar {{repoId}}? Esto eliminará la copia actual y la descargará nuevamente.",
@@ -1665,6 +1668,10 @@
     "aec_row_title": "Activar cancelación de eco para el dictado",
     "aec_experimental": "Experimental",
     "aec_hint": "Permite dictar mientras se reproduce una vista previa, doblaje o vídeo sin transcribir el audio de la aplicación. Añade un poco de procesamiento; déjalo desactivado si no dictas durante la reproducción.",
+    "compact_title": "Superposición compacta",
+    "compact_row_title": "Superposición compacta para dictado mantenido",
+    "compact_description": "Mientras mantienes el atajo, muestra solo un medidor de nivel en vivo y un temporizador en lugar de la grabadora completa y la transcripción. El texto se inserta igualmente al soltarlo.",
+    "compact_save_failed": "No se pudo guardar este ajuste. Inténtalo de nuevo.",
     "cleanup_title": "Limpieza del texto",
     "spoken_punctuation": "Puntuación dictada",
     "spoken_punctuation_desc": "Di “comma”, “period”, “question mark”, “new line” para escribirlo. Solo en inglés."
@@ -4240,6 +4247,8 @@
       "speed": "{{speed}}/s",
       "eta": "Quedan unos {{time}}",
       "estimating": "Calculando el tiempo restante…",
+      "waiting_metered": "Esta red Wi-Fi tiene tarifa limitada…",
+      "use_connection": "Descargar con esta conexión",
       "waiting_network": "Esperando conexión…"
     }
   },

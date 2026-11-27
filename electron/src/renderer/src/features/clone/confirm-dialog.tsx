@@ -19,6 +19,8 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  /** Disables the confirm button, e.g. while the confirmed action runs. */
+  confirmDisabled?: boolean;
   onConfirm: () => void | Promise<void>;
   onCancel?: () => void | Promise<void>;
 }
@@ -31,6 +33,7 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   destructive = true,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -50,6 +53,7 @@ export function ConfirmDialog({
           </DialogClose>
           <Button
             variant={destructive ? 'destructive' : 'default'}
+            disabled={confirmDisabled}
             onClick={() =>
               rendererTask(async () => {
                 await onConfirm();

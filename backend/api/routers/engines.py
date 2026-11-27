@@ -592,6 +592,10 @@ def install_sidecar_engine(engine_id: str):
     from services import sidecar_install
     try:
         return sidecar_install.start_install(engine_id)
+    except sidecar_install.EngineBeingRemoved:
+        raise HTTPException(
+            status_code=409, detail="The engine is being deleted — install it again once that finishes."
+        )
     except sidecar_install.HostUnsupported as exc:
         # The engine has an installer, but not one that can work on this
         # machine. 409, not 404: the route is right, the host is the problem,
@@ -638,18 +642,31 @@ def uninstall_sidecar_engine(engine_id: str):
     """Remove an app-managed sidecar install (checkout + venv + weights) and
     clear the persisted path. Refuses user-managed installs (a clone the user
     made themselves) and installs with a job still running."""
-    from services import sidecar_install
-    try:
-        res = sidecar_install.uninstall(engine_id)
-    except KeyError:
+    from services import sidecar_install, subprocess_backend
+    if sidecar_install.get_spec(engine_id) is None:
         raise HTTPException(
             status_code=404,
             detail=f"No one-click installer for engine {engine_id!r}.",
         )
+    # A running sidecar holds its files open (locked on Windows), and a request
+    # spawning one could rebuild part of the install mid-delete: stop it and
+    # keep requests away until the files are gone.
+    with subprocess_backend.exclusive_engine(engine_id) as exclusive:
+        res = (
+            sidecar_install.uninstall(engine_id)
+            if exclusive
+            else {"status": "in_use", "engine": engine_id}
+        )
     if res["status"] == "install_in_progress":
         raise HTTPException(status_code=409, detail="Install is still running — wait for it to finish.")
+    if res["status"] == "in_use":
+        raise HTTPException(
+            status_code=409, detail="The engine is busy with a request — try again when it finishes."
+        )
     if res["status"] == "not_managed":
         raise HTTPException(status_code=400, detail=res["detail"])
+    if res["status"] == "incomplete":
+        raise HTTPException(status_code=500, detail=res["detail"])
     return res
 
 

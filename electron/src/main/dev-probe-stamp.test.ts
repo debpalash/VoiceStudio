@@ -1,9 +1,10 @@
 // @vitest-environment node
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { devProbeStamped, writeDevProbeStamp } from './dev-probe-stamp';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 let root = '';
 let python = '';
@@ -17,7 +18,7 @@ beforeEach(() => {
     writeFileSync(file, 'x');
   writeFileSync(join(root, '.venv', 'pyvenv.cfg'), 'home = /x');
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => removeTempDir(root));
 
 it('skips the import probe only after a successful probe of the same environment', () => {
   expect(devProbeStamped(root, python)).toBe(false);

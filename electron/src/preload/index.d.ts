@@ -629,6 +629,10 @@ export interface VoiceStudioBridge {
     finish(session: number): Promise<void>;
     cancel(session: number | null): Promise<void>;
     stop(): Promise<void>;
+    /** Recorder only: restore the full-size window when a compact overlay must show a result. */
+    expand(): Promise<void>;
+    /** Main window only: show the compact level-meter overlay for press-and-hold dictation. */
+    setCompact(compact: boolean): Promise<void>;
     labels(labels: {
       show: string;
       start: string;
@@ -637,7 +641,11 @@ export interface VoiceStudioBridge {
       exit: string;
     }): Promise<void>;
     onEvent(
-      callback: (event: { session: number; action: 'start' | 'stop' | 'cancel' }) => void,
+      callback: (event: {
+        session: number;
+        action: 'start' | 'stop' | 'cancel';
+        compact?: boolean;
+      }) => void,
     ): () => void;
   };
   files: {

@@ -2178,3 +2178,251 @@ def test_voxcpm2_never_builds_kaldifst_from_source():
     args = si.get_spec("voxcpm2").install_args
     assert "kaldifst==1.9.0" in args
     assert args[args.index("--only-binary") + 1] == "kaldifst"
+
+
+# ── uninstall stops the live sidecar and reports leftovers (#4490) ─────────
+
+
+def _managed_install(monkeypatch):
+    spec = _mk_spec()
+    monkeypatch.setitem(si.SPECS, "fake-side", spec)
+    checkout = si.managed_checkout(spec)
+    py = si._venv_python(checkout / ".venv")
+    py.parent.mkdir(parents=True)
+    py.write_text("#!fake\n")
+    monkeypatch.setattr("core.prefs.get", lambda k, d=None: None)
+    monkeypatch.setattr("core.prefs.delete", lambda k: None)
+    return spec
+
+
+class _FakeLiveBackend:
+    """Stands in for a SubprocessBackend in the live registry."""
+
+    def __init__(self, engine_id, running=True):
+        import threading as _threading
+
+        self.id = engine_id
+        self._lock = _threading.Lock()
+        self._proc = type("P", (), {"poll": lambda self: None})() if running else None
+        self.stopped = 0
+
+    def shutdown(self):
+        self.stopped += 1
+        self._proc = None
+
+
+def test_delete_route_stops_the_running_sidecar_before_removing_files(monkeypatch):
+    from api.routers import engines as engines_router
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    backend = _FakeLiveBackend("fake-side")
+    other = _FakeLiveBackend("other-engine")
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", {backend, other})
+    seen = []
+    real_uninstall = si.uninstall
+
+    def uninstall(engine_id):
+        seen.append((backend.stopped, backend._lock.locked(), __import__("services.engine_removal", fromlist=["x"]).is_removing("fake-side")))
+        return real_uninstall(engine_id)
+
+    monkeypatch.setattr(si, "uninstall", uninstall)
+
+    assert engines_router.uninstall_sidecar_engine("fake-side")["status"] == "uninstalled"
+    # Stopped and locked while the files were deleted; other engines untouched.
+    assert seen == [(1, True, True)]
+    assert other.stopped == 0
+    assert not backend._lock.locked()
+    assert not __import__("services.engine_removal", fromlist=["x"]).is_removing("fake-side")
+    assert not si.managed_root(spec).exists()
+
+
+def test_delete_route_refuses_while_a_request_is_still_resolving_the_engine(monkeypatch):
+    """A request holds the op lock before its process exists (venv resolution)."""
+    from api.routers import engines as engines_router
+    from fastapi import HTTPException
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    backend = _FakeLiveBackend("fake-side", running=False)
+    backend._lock.acquire()
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", {backend})
+    try:
+        with pytest.raises(HTTPException) as ei:
+            engines_router.uninstall_sidecar_engine("fake-side")
+    finally:
+        backend._lock.release()
+    assert ei.value.status_code == 409
+    assert si.managed_root(spec).exists()
+    assert not __import__("services.engine_removal", fromlist=["x"]).is_removing("fake-side")
+
+
+def test_a_new_request_cannot_spawn_an_engine_being_deleted(monkeypatch):
+    from services import subprocess_backend
+
+    class _Engine(subprocess_backend.SubprocessBackend):
+        id = "fake-side"
+        is_available = sample_rate = supported_languages = None
+
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", set())
+    backend = _Engine.__new__(_Engine)
+    backend.id = "fake-side"
+    monkeypatch.setattr(backend, "_retry_timeout_cleanup", lambda: True, raising=False)
+    with subprocess_backend.exclusive_engine("fake-side") as exclusive:
+        assert exclusive
+        with pytest.raises(RuntimeError, match="being deleted"):
+            backend._spawn()
+
+
+def test_status_keeps_leftovers_of_an_incomplete_delete_deletable(monkeypatch):
+    spec = _mk_spec()
+    monkeypatch.setitem(si.SPECS, "fake-side", spec)
+    monkeypatch.delenv("OMNIVOICE_FAKE_SIDE_DIR", raising=False)
+    leftover = si.managed_root(spec) / "stray" / "weights.bin"
+    leftover.parent.mkdir(parents=True)
+    leftover.write_bytes(b"x")
+    status = si.get_status("fake-side")
+    assert status["installed"] is False
+    assert status["managed"] is True
+
+
+def test_uninstall_reports_files_it_could_not_delete(monkeypatch):
+    from api.routers import engines as engines_router
+    from fastapi import HTTPException
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", set())
+    # A file another process holds open: the delete leaves the folder behind.
+    monkeypatch.setattr(si, "_remove_tree", lambda path: None)
+
+    res = si.uninstall("fake-side")
+    assert res["status"] == "incomplete"
+    assert str(si.managed_root(spec)) in res["detail"]
+    with pytest.raises(HTTPException) as ei:
+        engines_router.uninstall_sidecar_engine("fake-side")
+    assert ei.value.status_code == 500
+
+
+def test_uninstall_removes_read_only_files_like_windows_git_packs(monkeypatch):
+    """Windows refuses to delete a read-only file; git marks its pack files so."""
+    import stat as stat_mod
+
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", set())
+    pack = si.managed_checkout(spec) / ".git" / "objects" / "pack" / "pack-1.pack"
+    pack.parent.mkdir(parents=True)
+    pack.write_bytes(b"pack")
+    pack.chmod(stat_mod.S_IREAD)
+    real_unlink = os.unlink
+
+    def windows_unlink(path, *args, **kwargs):
+        mode = os.stat(path, dir_fd=kwargs.get("dir_fd"), follow_symlinks=False).st_mode
+        if not mode & stat_mod.S_IWRITE:
+            raise PermissionError(13, "Access is denied", str(path))
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(si.os, "unlink", windows_unlink)
+    monkeypatch.setattr(si, "_READ_ONLY_FILES_BLOCK_DELETE", True)
+
+    assert si.uninstall("fake-side")["status"] == "uninstalled"
+    assert not si.managed_root(spec).exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX inode modes")
+def test_delete_leaves_a_hard_linked_files_mode_alone(monkeypatch, tmp_path):
+    """POSIX: a file's mode is on its inode, shared with links outside the tree."""
+    import stat as stat_mod
+
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", set())
+    outside = tmp_path / "cache-blob"
+    outside.write_bytes(b"weights")
+    outside.chmod(0o644)
+    folder = si.managed_checkout(spec) / "weights"
+    folder.mkdir(parents=True)
+    os.link(outside, folder / "model.bin")
+    folder.chmod(stat_mod.S_IRUSR | stat_mod.S_IXUSR)  # read-only folder: unlink fails first
+
+    assert si.uninstall("fake-side")["status"] == "uninstalled"
+    assert not si.managed_root(spec).exists()
+    assert stat_mod.S_IMODE(outside.stat().st_mode) == 0o644
+
+
+def test_an_unreadable_folder_is_reported_not_raised(monkeypatch):
+    """rmtree hands os.open/os.scandir failures to the same callback (3.11)."""
+    spec = _managed_install(monkeypatch)
+    from services import subprocess_backend
+
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", set())
+    calls = []
+
+    def rmtree(path, onexc=None, onerror=None):
+        handler = onexc or onerror
+        calls.append(path)
+        handler(os.open, str(path), PermissionError(13, "denied"))
+
+    monkeypatch.setattr(si.shutil, "rmtree", rmtree)
+    res = si.uninstall("fake-side")
+    assert res["status"] == "incomplete"
+    assert calls
+
+
+def test_an_overlapping_delete_cannot_clear_the_mark_of_one_still_removing(monkeypatch):
+    from services import engine_removal, subprocess_backend
+
+    busy = _FakeLiveBackend("fake-side", running=False)
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", {busy})
+    with engine_removal.removing("fake-side"):  # the first delete, still removing files
+        busy._lock.acquire()
+        try:
+            with subprocess_backend.exclusive_engine("fake-side") as exclusive:
+                assert exclusive is False  # the second delete gives up
+        finally:
+            busy._lock.release()
+        assert engine_removal.is_removing("fake-side")
+    assert not engine_removal.is_removing("fake-side")
+
+
+def test_install_and_repair_are_refused_while_the_engine_is_deleted(monkeypatch):
+    from api.routers import engines as engines_router
+    from fastapi import HTTPException
+    from services import engine_removal
+
+    _managed_install(monkeypatch)
+    monkeypatch.setattr(si, "host_support", lambda spec: (True, ""))
+    with engine_removal.removing("fake-side"):
+        with pytest.raises(si.EngineBeingRemoved):
+            si.start_install("fake-side")
+        with pytest.raises(HTTPException) as ei:
+            engines_router.install_sidecar_engine("fake-side")
+    assert ei.value.status_code == 409
+    assert "fake-side" not in si._jobs
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX folder permissions")
+def test_deleting_never_changes_a_symlinked_interpreter_outside_the_tree(monkeypatch, tmp_path):
+    import stat as stat_mod
+
+    from services import subprocess_backend
+
+    spec = _managed_install(monkeypatch)
+    monkeypatch.setattr(subprocess_backend, "_LIVE_BACKENDS", set())
+    shared = tmp_path / "shared-python"
+    shared.write_text("#!interpreter")
+    shared.chmod(0o755)
+    bin_dir = si.managed_checkout(spec) / ".venv" / "venvbin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "python").symlink_to(shared)
+    bin_dir.chmod(stat_mod.S_IRUSR | stat_mod.S_IXUSR)  # read-only folder: unlink fails first
+    try:
+        assert si.uninstall("fake-side")["status"] == "uninstalled"
+    finally:
+        if bin_dir.exists():
+            bin_dir.chmod(0o755)
+    assert stat_mod.S_IMODE(shared.stat().st_mode) == 0o755
+    assert not si.managed_root(spec).exists()

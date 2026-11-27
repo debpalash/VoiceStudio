@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { envWithToolPath, toolSearchDirs, toolSearchDirsAsync } from './tool-path';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 describe('toolSearchDirs', () => {
   it('adds user-level install locations after the inherited PATH on macOS and Linux', () => {
@@ -64,7 +65,7 @@ describe('NVM discovery order', () => {
       ]);
       expect(dirs[0]).toBe('/usr/bin');
     } finally {
-      rmSync(home, { recursive: true, force: true });
+      removeTempDir(home);
     }
   });
 });
@@ -77,7 +78,7 @@ describe('toolSearchDirsAsync', () => {
       const opts = { env: { PATH: '/usr/bin' }, platform: 'linux' as const, home };
       expect(await toolSearchDirsAsync(opts)).toEqual(toolSearchDirs(opts));
     } finally {
-      rmSync(home, { recursive: true, force: true });
+      removeTempDir(home);
     }
   });
 

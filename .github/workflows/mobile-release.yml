@@ -102,8 +102,9 @@ jobs:
       - name: SDK location
         run: printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
 
-      # release_ref may check out a tag older than the installer, so it comes from the
-      # workflow's own commit, like the iOS signing tools below.
+      # release_ref may check out a tag older than the installer and dependency
+      # retry, so they come from the workflow's own commit, like the iOS signing
+      # tools below.
       - name: Checkout Android SDK installer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -112,6 +113,9 @@ jobs:
           path: .ci-android-tools
           sparse-checkout: |
             mobile/android/install-sdk-packages.sh
+            mobile/android/scripts/resolve-dependencies.sh
+            mobile/android/scripts/resolve-all.init.gradle
+            mobile/android/scripts/maven-central-mirror.init.gradle
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -123,6 +127,11 @@ jobs:
         with:
           path: mobile/native/android/build
           key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
+
+      # Maven Central rate-limits (HTTP 429) shared runner IPs; download every
+      # dependency with backoff before the signed build.
+      - name: Resolve dependencies (retry on rate limits)
+        run: bash "$GITHUB_WORKSPACE/.ci-android-tools/mobile/android/scripts/resolve-dependencies.sh"
 
       - name: Decode keystore
         if: ${{ !inputs.rehearsal }}

@@ -235,3 +235,12 @@ it('preserves Tauri behavior by rejecting starts while transcription is still ru
   ]);
   await capture.cancel();
 });
+it('tells the recorder window which shortcut mode started the session', async () => {
+  const { capture, show } = setup();
+  await capture.shortcut({ session: 5, pressed: true } as never, 'hold');
+  expect(show).toHaveBeenLastCalledWith('hold');
+  await capture.cancel();
+  await capture.start('tray');
+  expect(show).toHaveBeenLastCalledWith(undefined);
+  await capture.cancel();
+});

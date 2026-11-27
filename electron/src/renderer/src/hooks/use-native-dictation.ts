@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBackendStatus } from './use-backend-status';
 import { isBackendReachable } from '@shared/utils/backendStage';
 import { apiJson } from '@/lib/api/client';
+import { useCompactOverlay } from '@/lib/store/dictation-settings';
 export const dictationPreferencesKey = ['dictation-shortcut-prefs'];
 export const nativeShortcutKey = ['native-shortcut'];
 
@@ -30,6 +31,10 @@ export function NativeDictationSync() {
   const backend = useBackendStatus();
   const prefs = useDictationPreferences(!!api && isBackendReachable(backend.stage));
   const client = useQueryClient();
+  const compact = useCompactOverlay();
+  useEffect(() => {
+    void api?.setCompact(compact).catch(() => {});
+  }, [api, compact]);
   useEffect(() => {
     if (!api || !prefs.data) return;
     void api

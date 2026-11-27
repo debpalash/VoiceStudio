@@ -14,6 +14,7 @@ import { SettingsSection } from './settings-layout';
 import { VoicePreviewsSettings } from './voice-previews-settings';
 import { AsrOpenAiCompatSettings } from './asr-openai-compat-settings';
 import { AecSettings } from './aec-settings';
+import { CompactOverlaySettings } from './compact-overlay-settings';
 import { DiarisationSettings } from './model-list/diarisation-list';
 import { DictationList } from './model-list/dictation-list';
 import { EngineFamilyList } from './model-list/engine-family-list';
@@ -77,6 +78,7 @@ export function ModelSettings({ family }: { family?: ModelFamily }) {
         <>
           <DictationList />
           <ShortcutSettings />
+          <CompactOverlaySettings />
           <DictationCleanupSettings />
           <RefinementSettings />
           <AecSettings />

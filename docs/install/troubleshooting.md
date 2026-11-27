@@ -139,6 +139,8 @@ The engine crashed below Python (`0xC0000005` or `SIGSEGV`). Update your GPU dri
 
 A crash inside the model weight loader (`transformers/core_model_loading.py` in the crashed thread, seen on some Windows machines) is avoided on Windows by default: the backend loads weights one at a time (`HF_DEACTIVATE_ASYNC_LOAD=1`), which only makes loading slower. Set `HF_DEACTIVATE_ASYNC_LOAD=0` to opt back in to threaded loading. On macOS and Linux the same setting is applied automatically, for later starts of the same version, after such a crash.
 
+On Windows the backend also reads model weights with ordinary file reads (safetensors' `pread`) instead of memory-mapping them, because the first read through the memory map can crash the same way (`torch/storage.py` in the crashed thread). It reads the same bytes. Set `OMNIVOICE_SAFETENSORS_PREAD=0` to go back to memory-mapped reads.
+
 ### `NATIVE_ILLEGAL_INSTRUCTION`
 
 The engine hit an instruction this computer could not run (`0xC000001D` or `SIGILL`). The processor may lack a feature its libraries need, or a driver stopped on purpose. Send the in-app report with your processor model. On Windows it names the library that stopped.

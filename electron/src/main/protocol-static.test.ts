@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -36,6 +36,7 @@ vi.mock('electron', () => ({
   net: { fetch: mocks.fetch },
 }));
 import { APP_ORIGIN, installAppProtocol } from './protocol';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 it('serves small and large static files from one open handle and 404s a directory', async () => {
   const root = mkdtempSync(join(tmpdir(), 'vs-proto-handle-'));
@@ -60,7 +61,7 @@ it('serves small and large static files from one open handle and 404s a director
 
     expect((await handler(new Request(`${APP_ORIGIN}/assets/dir.js`))).status).toBe(404);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });
 
@@ -88,6 +89,6 @@ it.each([
     expect(bytes.every((byte) => byte === 1)).toBe(true);
   } finally {
     mocks.afterStat = null;
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });
