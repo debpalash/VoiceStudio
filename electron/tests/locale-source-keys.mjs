@@ -31,9 +31,10 @@ const used = new Map();
 const callPattern = /\b(?:t|tr)\(\s*(['"])([A-Za-z0-9_.:-]+)\1/g;
 const transPattern = /\bi18nKey\s*=\s*(['"])([A-Za-z0-9_.:-]+)\1/g;
 
-const sharedControls = ['SearchableSelect', 'VoiceSelector'].map((name) =>
-  new URL(`../src/shared/components/${name}.jsx`, import.meta.url));
-for (const file of [...await sourceFiles(sourceDirectory), ...sharedControls]) {
+const sharedControls = ['SearchableSelect', 'VoiceSelector'].map(
+  (name) => new URL(`../src/shared/components/${name}.jsx`, import.meta.url),
+);
+for (const file of [...(await sourceFiles(sourceDirectory)), ...sharedControls]) {
   const source = await readFile(file, 'utf8');
   for (const pattern of [callPattern, transPattern]) {
     pattern.lastIndex = 0;
@@ -89,6 +90,39 @@ assert.deepEqual(
     .join('\n')}`,
 );
 console.log(`Locale source keys: ${used.size} static renderer keys exist in en.json`);
+// A built key — t('ns.' + x + '_suffix') or t(`ns.${x}_suffix`) — is skipped above, so
+// a key it needs could vanish unnoticed and render raw (privacy.watermark_subtitle).
+// Each such call must still match at least one catalog key.
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const builtPatterns = [
+  /\b(?:t|tr)\(\s*(['"])([A-Za-z][A-Za-z0-9_.-]*[._])\1\s*\+\s*[A-Za-z_$][\w$.]*(?:\s*\+\s*(['"])([A-Za-z0-9_.-]*)\3)?/g,
+  /\b(?:t|tr)\(\s*`([A-Za-z][A-Za-z0-9_.-]*[._])\$\{[^}`]+\}([A-Za-z0-9_.-]*)`/g,
+];
+const unmatchedBuilt = [];
+for (const file of await sourceFiles(sourceDirectory)) {
+  const source = await readFile(file, 'utf8');
+  for (const [index, pattern] of builtPatterns.entries()) {
+    pattern.lastIndex = 0;
+    for (const match of source.matchAll(pattern)) {
+      const prefix = index === 0 ? match[2] : match[1];
+      const suffix = (index === 0 ? match[4] : match[2]) ?? '';
+      const shape = new RegExp(
+        `^${escapeRe(prefix)}[A-Za-z0-9_-]+${escapeRe(suffix)}(?:_(?:one|other))?$`,
+      );
+      if (![...catalog].some((key) => shape.test(key))) {
+        const line = source.slice(0, match.index).split('\n').length;
+        unmatchedBuilt.push(
+          `${prefix}…${suffix} (${file.pathname.split('/src/renderer/src/')[1]}:${line})`,
+        );
+      }
+    }
+  }
+}
+assert.deepEqual(
+  unmatchedBuilt,
+  [],
+  `Renderer builds i18n keys that match nothing in en.json:\n  ${unmatchedBuilt.join('\n  ')}`,
+);
 
 // Unused-key gate: every English key must be referenced by shipped code, or
 // the catalog accumulates strings no screen renders (and every translator
@@ -103,8 +137,22 @@ const repository = new URL('../../', import.meta.url);
 const ALLOWED_PREFIXES = ['mobile.'];
 const codeFile = /\.(?:tsx?|jsx?|mjs|cjs|py|swift|kts?|xml|plist|json|ya?ml|html|strings|gradle)$/;
 const skipDirectory = new Set([
-  'node_modules', '.git', 'out', 'dist', 'build', 'release', '.venv', 'locales', 'tests',
-  'Tests', 'test', 'docs', 'changelog.d', 'Pods', '.generated', 'omnivoice_data',
+  'node_modules',
+  '.git',
+  'out',
+  'dist',
+  'build',
+  'release',
+  '.venv',
+  'locales',
+  'tests',
+  'Tests',
+  'test',
+  'docs',
+  'changelog.d',
+  'Pods',
+  '.generated',
+  'omnivoice_data',
 ]);
 const skipFile = /(?:\.test\.[jt]sx?|\.lock|package-lock\.json|strings[^/]*\.en\.json)$/;
 
@@ -132,10 +180,7 @@ for (const tree of CORPUS_TREES) {
 }
 const inCI = !['', '0', 'false'].includes((process.env.CI ?? '').toLowerCase());
 if (missingTrees.length) {
-  assert.ok(
-    !inCI,
-    `Unused-key scan cannot find ${missingTrees.join(', ')}; update CORPUS_TREES`,
-  );
+  assert.ok(!inCI, `Unused-key scan cannot find ${missingTrees.join(', ')}; update CORPUS_TREES`);
   console.log(`Locale unused keys: skipped (partial checkout, no ${missingTrees.join(', ')})`);
   process.exit(0);
 }

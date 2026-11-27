@@ -2052,9 +2052,11 @@
   "privacy": {
     "translator_online": "Penerjemah sedang online: {{provider}}",
     "analytics_title": "Bantu tingkatkan VoiceStudio",
+    "analytics_subtitle": "Nonaktif secara bawaan. Data anonim mesin, bahasa, durasi, jumlah karakter, dan jenis kesalahan. Bukan teks atau audio Anda.",
     "translator_offline": "Hanya luring",
     "translator_unknown": "Tidak diketahui",
     "watermark_title": "Tanda air tak terlihat",
+    "watermark_subtitle": "Aktif secara bawaan. Menandai audio hasil buatan sebagai dibuat AI agar dapat dikenali nanti. Hanya memengaruhi audio yang dibuat mulai sekarang.",
     "change_translator": "Ganti penerjemah"
   },
   "updates": {

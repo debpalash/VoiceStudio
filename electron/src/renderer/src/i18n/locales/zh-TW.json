@@ -2052,9 +2052,11 @@
   "privacy": {
     "translator_online": "譯者在線：{{provider}}",
     "analytics_title": "協助改善 VoiceStudio",
+    "analytics_subtitle": "預設關閉。引擎、語言、時長、字元數和錯誤類型的匿名統計。絕不傳送您的文字或音訊。",
     "translator_offline": "僅離線",
     "translator_unknown": "未知",
     "watermark_title": "不可見浮水印",
+    "watermark_subtitle": "預設開啟。將產生的音訊標記為 AI 製作，以便日後識別。僅影響從現在起產生的音訊。",
     "change_translator": "變更翻譯引擎"
   },
   "updates": {

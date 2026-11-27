@@ -2052,9 +2052,11 @@
   "privacy": {
     "translator_online": "Vertaler is online: {{provider}}",
     "analytics_title": "Help VoiceStudio verbeteren",
+    "analytics_subtitle": "Standaard uit. Anonieme gegevens over engine, taal, duur, aantal tekens en fouttypen. Nooit uw tekst of audio.",
     "translator_offline": "Alleen offline",
     "translator_unknown": "Onbekend",
     "watermark_title": "Onzichtbaar watermerk",
+    "watermark_subtitle": "Standaard aan. Markeert gegenereerde audio als AI-gemaakt zodat het later herkend kan worden. Geldt alleen voor audio die vanaf nu wordt gegenereerd.",
     "change_translator": "Vertaler wijzigen"
   },
   "updates": {

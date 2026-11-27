@@ -73,3 +73,29 @@ it('enables the proxy Save only after the proxy changes', async () => {
   fireEvent.change(input, { target: { value: 'http://other:8080' } });
   expect(save).toBeEnabled();
 });
+
+it('renders only privacy copy that exists in the English catalog', async () => {
+  const { default: en } = await import('@/i18n/locales/en.json');
+  mock.api.mockImplementation((path: string) =>
+    Promise.resolve(
+      path === '/watermark/status'
+        ? { audioseal_available: true, invisible_enabled: true }
+        : path === '/api/settings/analytics'
+          ? { available: true, opted_in: false }
+          : path === '/api/settings/history-retention'
+            ? { cap: 50, default: 50 }
+            : {},
+    ),
+  );
+  renderWith(<PrivacySettings showAnalytics />);
+  expect(await screen.findByText('privacy.watermark_subtitle')).toBeInTheDocument();
+  expect(await screen.findByText('privacy.analytics_subtitle')).toBeInTheDocument();
+  const privacy = (en as { privacy: Record<string, string> }).privacy;
+  for (const key of [
+    'watermark_title',
+    'watermark_subtitle',
+    'analytics_title',
+    'analytics_subtitle',
+  ])
+    expect(privacy[key], key).toBeTruthy();
+});

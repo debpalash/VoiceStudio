@@ -2104,9 +2104,11 @@
   "privacy": {
     "translator_online": "المترجم متصل: {{provider}}",
     "analytics_title": "ساعد في تحسين VoiceStudio",
+    "analytics_subtitle": "معطّل افتراضيًا. إحصاءات مجهولة: المحرك واللغة والمدة وعدد الأحرف وأنواع الأخطاء. لا يُرسل النص أو الصوت.",
     "translator_offline": "دون اتصال فقط",
     "translator_unknown": "غير معروف",
     "watermark_title": "علامة مائية غير مرئية",
+    "watermark_subtitle": "مُفعّلة افتراضيًا. تُعلّم الصوت المُولَّد بأنه من صناعة الذكاء الاصطناعي ليُمكن التعرّف عليه لاحقًا. تؤثر فقط على الصوت المُولَّد من الآن.",
     "change_translator": "تغيير المترجم"
   },
   "updates": {

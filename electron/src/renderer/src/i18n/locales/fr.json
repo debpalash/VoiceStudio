@@ -2054,9 +2054,11 @@
   "privacy": {
     "translator_online": "Le traducteur est en ligne : {{provider}}",
     "analytics_title": "Aider à améliorer VoiceStudio",
+    "analytics_subtitle": "Désactivé par défaut. Données anonymes : moteur, langue, durée, nombre de caractères et types d’erreur. Jamais votre texte ou audio.",
     "translator_offline": "Hors ligne uniquement",
     "translator_unknown": "Inconnu",
     "watermark_title": "Filigrane invisible",
+    "watermark_subtitle": "Activé par défaut. Marque l'audio généré comme créé par IA afin qu'il puisse être identifié plus tard. N'affecte que l'audio généré à partir de maintenant.",
     "change_translator": "Changer de traducteur"
   },
   "updates": {

@@ -2078,9 +2078,11 @@
   "privacy": {
     "translator_online": "Tłumacz jest online: {{provider}}",
     "analytics_title": "Pomóż ulepszyć VoiceStudio",
+    "analytics_subtitle": "Domyślnie wyłączone. Anonimowe dane o silniku, języku, czasie, liczbie znaków i typach błędów. Nigdy tekst ani dźwięk.",
     "translator_offline": "Tylko offline",
     "translator_unknown": "Nieznany",
     "watermark_title": "Niewidoczny znak wodny",
+    "watermark_subtitle": "Domyślnie włączony. Oznacza wygenerowany dźwięk jako utworzony przez AI, aby można go było później rozpoznać. Dotyczy tylko dźwięku wygenerowanego od teraz.",
     "change_translator": "Zmień tłumacza"
   },
   "updates": {

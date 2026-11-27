@@ -2052,9 +2052,11 @@
   "privacy": {
     "translator_online": "Übersetzer ist online: {{provider}}",
     "analytics_title": "VoiceStudio verbessern",
+    "analytics_subtitle": "Standardmäßig aus. Anonyme Daten zu Engine, Sprache, Dauer, Zeichenanzahl und Fehlertypen. Kein Text oder Audio.",
     "translator_offline": "Nur offline",
     "translator_unknown": "Unbekannt",
     "watermark_title": "Unsichtbares Wasserzeichen",
+    "watermark_subtitle": "Standardmäßig aktiv. Kennzeichnet erzeugtes Audio als KI-generiert, damit es später erkannt werden kann. Gilt nur für ab jetzt erzeugtes Audio.",
     "change_translator": "Übersetzer ändern"
   },
   "updates": {

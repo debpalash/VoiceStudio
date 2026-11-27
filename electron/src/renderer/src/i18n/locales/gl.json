@@ -2233,9 +2233,11 @@
   "privacy": {
     "translator_online": "En liña a través de {{provider}}",
     "analytics_title": "Axuda a mellorar VoiceStudio",
+    "analytics_subtitle": "Desactivado predeterminado. Motor anónimo, idioma, duración, reconto de caracteres e tipos de erro. Nunca o teu texto ou audio.",
     "translator_offline": "Só sen conexión",
     "translator_unknown": "Descoñecido",
     "watermark_title": "Marca de auga invisible",
+    "watermark_subtitle": "Activado predeterminado. Marca o audio xerado como feito por intelixencia artificial para que poida ser identificado máis tarde. Só afecta ao audio xerado a partir de agora.",
     "change_translator": "Cambiar tradutor"
   },
   "updates": {
