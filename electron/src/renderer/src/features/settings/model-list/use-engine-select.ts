@@ -56,6 +56,7 @@ const LLM_KEYS = ['llm-skills', 'translation-engines', 'dictation-refinement'] a
 
 /** Select a TTS/ASR/LLM backend, optionally with one of its models. */
 export function useEngineSelect(family: 'tts' | 'asr' | 'llm') {
+  const client = useQueryClient();
   const selection = useSelection(family, [
     ...ENGINE_KEYS,
     ...(family === 'tts' ? ['tts-setup-plan'] : []),
@@ -64,8 +65,8 @@ export function useEngineSelect(family: 'tts' | 'asr' | 'llm') {
   return {
     ...selection,
     select: (backendId: string, modelId?: string) =>
-      selection.run(() =>
-        apiJson<EngineSelectionResult>('/engines/select', {
+      selection.run(async () => {
+        const result = await apiJson<EngineSelectionResult>('/engines/select', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -73,7 +74,10 @@ export function useEngineSelect(family: 'tts' | 'asr' | 'llm') {
             backend_id: backendId,
             ...(modelId ? { model_id: modelId } : {}),
           }),
-        }),
-      ),
+        });
+        // Invalidation alone can reuse an in-flight query with no cached data.
+        if (family === 'tts') await client.cancelQueries({ queryKey: ['tts-setup-plan'] });
+        return result;
+      }),
   };
 }

@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { isImeComposing } from '@/lib/ime';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useHistory } from '@/hooks/use-history';
 import { useProfiles } from '@/hooks/use-profiles';
@@ -22,7 +21,8 @@ import { isMac } from '@/components/bridge';
 import { KeyboardCheatsheet } from '@/components/keyboard-cheatsheet';
 import { useTheme } from '@/hooks/use-theme';
 import { formatRelative } from '@/features/clone/format';
-import { commandMatches, recentTakes, takeLength, type CommandItem } from './command-palette-items';
+import { matchingCommands, recentTakes, takeLength, type CommandItem } from './command-palette-items';
+import { CommandPaletteSearchStatus } from './command-palette-search-status';
 import {
   AudioLinesIcon,
   BlocksIcon,
@@ -86,10 +86,6 @@ export function CommandPaletteDialog({
   const [activeId, setActiveId] = useState<string | null>(null);
   const history = useHistory();
   const profiles = useProfiles();
-  const projectQueries = needle ? [dubs, books] : [];
-  const searchQueries = [history, profiles, ...projectQueries];
-  const failedQueries = searchQueries.filter((query) => query.isError);
-  const projectSearchFailed = projectQueries.some((query) => query.isError);
   const generation = useGenerateClone();
   useEffect(() => {
     setQuery('');
@@ -346,32 +342,32 @@ export function CommandPaletteDialog({
         }
       },
     })),
-    ...(needle
-      ? [
-          ...(dubs.data ?? []).map(({ id, name }) => ({ id: `dub-${id}`, name, kind: 'nav.dub' })),
-          ...(books.data ?? []).map(({ id, name, mode }) => ({
-            id: `${mode}-${id}`,
-            name,
-            kind: mode === 'stories' ? 'nav.stories' : 'audiobook.title',
-          })),
-        ].map((project): CommandItem => ({
-          id: `project-${project.id}`,
-          label: project.name,
-          detail: t(project.kind),
-          keywords: [t('projects.title'), t(project.kind)],
-          group: t('projects.title'),
-          icon: FolderIcon,
-          run: () =>
-            navigate({
-              to: '/projects',
-              search: { q: project.name },
-              replace: project.name === currentProjectSearch,
-              // A new selection must reach the mounted page even when the URL is identical.
-              state: (previous) => ({ ...previous, projectSearchSelection: crypto.randomUUID() }),
-            }),
-        }))
-      : []),
   ];
+  const projectItems: CommandItem[] = needle
+    ? [
+        ...(dubs.data ?? []).map(({ id, name }) => ({ id: `dub-${id}`, name, kind: 'nav.dub' })),
+        ...(books.data ?? []).map(({ id, name, mode }) => ({
+          id: `${mode}-${id}`,
+          name,
+          kind: mode === 'stories' ? 'nav.stories' : 'audiobook.title',
+        })),
+      ].map((project) => ({
+        id: `project-${project.id}`,
+        label: project.name,
+        detail: t(project.kind),
+        keywords: [t('projects.title'), t(project.kind)],
+        group: t('projects.title'),
+        icon: FolderIcon,
+        run: () =>
+          navigate({
+            to: '/projects',
+            search: { q: project.name },
+            replace: project.name === currentProjectSearch,
+            // A new selection must reach the mounted page even when the URL is identical.
+            state: (previous) => ({ ...previous, projectSearchSelection: crypto.randomUUID() }),
+          }),
+      }))
+    : [];
   // Settings pages are searchable but stay out of the default list.
   const settingsItems: CommandItem[] = needle
     ? SETTINGS_ENTRIES.map((entry) => ({
@@ -382,9 +378,7 @@ export function CommandPaletteDialog({
         run: () => navigate({ to: entry.to }),
       }))
     : [];
-  const items = [...source, ...settingsItems]
-    .filter((item) => commandMatches(item, query))
-    .slice(0, 30);
+  const items = matchingCommands([...source, ...settingsItems], projectItems, query);
   const active = Math.max(
     0,
     items.findIndex((item) => item.id === activeId),
@@ -478,30 +472,11 @@ export function CommandPaletteDialog({
               );
             })}
           </div>
-          {failedQueries.length > 0 ? (
-            <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-              <p role="alert" className="text-destructive">
-                {projectSearchFailed && <span className="block">{t('projects.title')}</span>}
-                {t('common.error')}
-              </p>
-              <Button
-                size="xs"
-                variant="ghost"
-                disabled={failedQueries.every((query) => query.isFetching)}
-                onClick={() => {
-                  for (const query of failedQueries) void query.refetch({ cancelRefetch: false });
-                }}
-              >
-                {t('common.retry')}
-              </Button>
-            </div>
-          ) : items.length === 0 ? (
-            <p role="status" className="p-4 text-center text-sm text-muted-foreground">
-              {searchQueries.some((query) => query.isFetching)
-                ? t('common.loading')
-                : t('preferences.no_matches')}
-            </p>
-          ) : null}
+          <CommandPaletteSearchStatus
+            hasResults={items.length > 0}
+            queries={[history, profiles]}
+            projectQueries={needle ? [dubs, books] : []}
+          />
         </DialogContent>
       </Dialog>
       <KeyboardCheatsheet open={shortcutsOpen} onOpenChange={onShortcutsOpenChange} />

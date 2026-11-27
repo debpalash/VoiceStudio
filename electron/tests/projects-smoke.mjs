@@ -50,7 +50,7 @@ try {
       ],
     }),
   );
-  await page.route('**/api/history', (route) =>
+  await page.route(/\/api\/history(?:\?|$)/, (route) =>
     route.fulfill({
       json: [
         {
@@ -60,6 +60,13 @@ try {
           audio_path: 'take.wav',
           created_at: 2,
         },
+        ...Array.from({ length: 30 }, (_, index) => ({
+          id: `project-take-${index}`,
+          text: `Legacy project take ${index}`,
+          mode: 'clone',
+          audio_path: 'take.wav',
+          created_at: 3 + index,
+        })),
       ],
     }),
   );
@@ -106,9 +113,10 @@ try {
   const palette = page.getByRole('dialog');
   await palette.getByRole('combobox').fill('Legacy project');
   await palette.getByRole('alert').filter({ hasText: 'Something went wrong' }).waitFor();
+  await palette.getByRole('option', { name: /Legacy project take/ }).nth(29).waitFor();
   projectsAvailable = true;
   await palette.getByRole('button', { name: 'Retry', exact: true }).click();
-  await palette.getByRole('option', { name: /Legacy project/ }).click();
+  await palette.getByRole('option', { name: /^Legacy project Dubbing$/ }).click();
   await page.waitForURL((url) => url.hash.includes('q=Legacy'));
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll('input[type=search]')).some(
@@ -120,7 +128,7 @@ try {
   await projectSearch.fill('Library');
   await page.keyboard.press('Control+k');
   await palette.getByRole('combobox').fill('Legacy project');
-  await palette.getByRole('option', { name: /Legacy project/ }).click();
+  await palette.getByRole('option', { name: /^Legacy project Dubbing$/ }).click();
   await page.getByRole('button', { name: 'Legacy project', exact: true }).waitFor();
   assert.equal(await projectSearch.inputValue(), 'Legacy project');
   await projectSearch.fill('');

@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isCancelledError, queryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircleIcon, TriangleAlertIcon, WrenchIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -36,16 +36,16 @@ export interface EngineSetup {
   fix: () => Promise<void>;
 }
 
-async function loadTtsSetupPlan() {
-  const engines = await apiJson<EnginesResponse>('/engines');
+async function loadTtsSetupPlan({ signal }: { signal: AbortSignal }) {
+  const engines = await apiJson<EnginesResponse>('/engines', { signal });
   const active = engines.tts?.backends?.find((backend) => backend.id === engines.tts.active);
   const selectedModel = active?.available ? engines.tts.active_model : null;
   if (selectedModel) {
-    const catalogue = await apiJson<ModelCatalogueResponse>('/models');
+    const catalogue = await apiJson<ModelCatalogueResponse>('/models', { signal });
     const entry = catalogue.models?.find((model) => model.repo_id === selectedModel);
     if (entry && (!entry.installed || entry.incomplete)) return { engines, model: entry };
   }
-  const recommendations = await apiJson<ModelRecommendations>('/setup/recommendations');
+  const recommendations = await apiJson<ModelRecommendations>('/setup/recommendations', { signal });
   const model = recommendations.models.find(
     (item) => item.required && item.role.toLowerCase() === 'tts' && !item.installed,
   );
@@ -115,10 +115,11 @@ export function useEngineSetup(operation = 'tts'): EngineSetup {
         method: 'POST',
         body: JSON.stringify({ family: 'tts', backend_id: candidate.id }),
       });
+      await client.cancelQueries({ queryKey: ttsSetupPlanQuery.queryKey });
       await refreshReadiness();
       return true;
     },
-    [refreshReadiness],
+    [client, refreshReadiness],
   );
 
   const install = useModelInstall(undefined, {
@@ -147,10 +148,10 @@ export function useEngineSetup(operation = 'tts'): EngineSetup {
   const fix = async () => {
     setFixing(true);
     try {
-      const { engines, model } =
-        operation === 'clone'
-          ? await client.fetchQuery(ttsSetupPlanQuery)
-          : await loadTtsSetupPlan();
+      const { engines, model } = await client.fetchQuery({
+        ...ttsSetupPlanQuery,
+        staleTime: operation === 'clone' ? ttsSetupPlanQuery.staleTime : 0,
+      });
       if (model) {
         await startInstall(model.repo_id);
         return;
@@ -161,7 +162,7 @@ export function useEngineSetup(operation = 'tts'): EngineSetup {
         );
       }
     } catch (error) {
-      repair(`Automatic model setup failed: ${describeError(error)}`);
+      if (!isCancelledError(error)) repair(`Automatic model setup failed: ${describeError(error)}`);
     } finally {
       setFixing(false);
     }

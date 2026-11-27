@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { HomeIcon } from 'lucide-react';
 import type { HistoryItem } from '@/lib/api/types';
-import { commandMatches, recentTakes, takeLength, type CommandItem } from './command-palette-items';
+import {
+  commandMatches,
+  matchingCommands,
+  recentTakes,
+  takeLength,
+  type CommandItem,
+} from './command-palette-items';
 
 const item = (label: string, keywords: string[] = [], id = 'x'): CommandItem => ({
   id,
@@ -28,6 +34,26 @@ describe('commandMatches', () => {
     expect(commandMatches(projects, 'PROJECT new')).toBe(true);
     expect(commandMatches(item('Paramètres'), 'parametres')).toBe(true);
     expect(commandMatches(projects, 'new story')).toBe(false);
+  });
+});
+
+describe('matchingCommands', () => {
+  it('reserves room for matching projects when takes fill the limit', () => {
+    const takes = Array.from({ length: 30 }, (_, i) => item(`Atlas take ${i}`));
+    const project = item('Atlas');
+    const results = matchingCommands(takes, [item('Unrelated'), project], 'Atlas');
+    expect(results).toHaveLength(30);
+    expect(results.slice(0, 29)).toEqual(takes.slice(0, 29));
+    expect(results.at(-1)).toBe(project);
+  });
+
+  it('uses spare slots for projects when few other commands match', () => {
+    const projects = Array.from({ length: 30 }, (_, i) => item(`Atlas project ${i}`));
+    const command = item('Atlas take');
+    expect(matchingCommands([command], projects, 'Atlas')).toEqual([
+      command,
+      ...projects.slice(0, 29),
+    ]);
   });
 });
 

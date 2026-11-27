@@ -31,6 +31,22 @@ export function commandMatches(item: CommandItem, query: string): boolean {
   return words.every((word) => haystack.includes(word));
 }
 
+const RESULT_LIMIT = 30;
+const PROJECT_SLOTS = 5;
+
+export function matchingCommands(
+  commands: readonly CommandItem[],
+  projects: readonly CommandItem[],
+  query: string,
+): CommandItem[] {
+  const matchingProjects = projects.filter((project) => commandMatches(project, query));
+  const reserved = Math.min(PROJECT_SLOTS, matchingProjects.length);
+  const otherResults = commands
+    .filter((command) => commandMatches(command, query))
+    .slice(0, RESULT_LIMIT - reserved);
+  return [...otherResults, ...matchingProjects.slice(0, RESULT_LIMIT - otherResults.length)];
+}
+
 /** How many recent takes the palette lists; the full list lives in History. */
 export const RECENT_TAKE_LIMIT = 5;
 

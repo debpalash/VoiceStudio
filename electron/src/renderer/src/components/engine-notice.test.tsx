@@ -1,7 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
-import { EngineNotice } from './engine-notice';
+import { EngineNotice, useEngineSetup } from './engine-notice';
 import { useEngineSelect } from '@/features/settings/model-list/use-engine-select';
 
 const mock = vi.hoisted(() => ({
@@ -156,6 +156,64 @@ it('refreshes the download offer after the selected TTS model changes', async ()
       body: JSON.stringify({ repo_id: 'voice/second' }),
     }),
   );
+});
+
+it('discards a pending setup plan when the TTS selection changes', async () => {
+  let releaseOldCatalogue!: () => void;
+  const oldCatalogue = new Promise((resolve) => {
+    releaseOldCatalogue = () => resolve({ models: [{ repo_id: 'voice/first', installed: false }] });
+  });
+  const oldCatalogueRequested = vi.fn();
+  const repair = vi.fn();
+  let selected = 'voice/first';
+  mock.api.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === '/engines/select') {
+      selected = 'voice/second';
+      return { active: 'local' };
+    }
+    if (path === '/engines')
+      return {
+        tts: {
+          active: 'local',
+          active_model: selected,
+          backends: [{ id: 'local', available: true }],
+        },
+      };
+    if (path === '/models' && selected === 'voice/first') {
+      oldCatalogueRequested(init?.signal);
+      return oldCatalogue;
+    }
+    if (path === '/models') return { models: [{ repo_id: selected, installed: false }] };
+    return {};
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { result } = renderHook(
+    () => ({ setup: useEngineSetup('clone'), engine: useEngineSelect('tts') }),
+    { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> },
+  );
+  window.addEventListener('voicestudio:repair-agent-open', repair);
+  try {
+    await waitFor(() => expect(oldCatalogueRequested).toHaveBeenCalledOnce());
+    let fixing!: Promise<void>;
+    act(() => {
+      fixing = result.current.setup.fix();
+    });
+    let selecting!: Promise<void>;
+    act(() => {
+      selecting = result.current.engine.select('local', 'voice/second');
+    });
+    await act(async () => {
+      await waitFor(() => expect(selected).toBe('voice/second'));
+      releaseOldCatalogue();
+      await Promise.all([fixing, selecting]);
+    });
+    await waitFor(() => expect(result.current.setup.download?.repo_id).toBe('voice/second'));
+    expect(oldCatalogueRequested.mock.calls[0][0]?.aborted).toBe(true);
+    expect(mock.api.mock.calls.some(([path]) => path === '/models/install')).toBe(false);
+    expect(repair).not.toHaveBeenCalled();
+  } finally {
+    window.removeEventListener('voicestudio:repair-agent-open', repair);
+  }
 });
 
 it('hands an unexplained readiness failure to the default repair agent', async () => {

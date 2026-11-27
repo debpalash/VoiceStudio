@@ -236,8 +236,9 @@ for failed batch jobs, use Retry to check again. Interrupted dubs with a saved
 checkpoint can resume from the bell.
 
 Use Ctrl/Cmd+K to find saved voices, projects, takes, or settings by name. Project
-results open the Projects library with the matching name filled in, even if you
-changed the search or category after selecting that project earlier. If a search
+results stay available when many takes match. They open the Projects library
+with the matching name filled in, even if you changed the search or category
+after selecting that project earlier. If a search
 source fails to load, use Retry in the palette. In Settings, System groups the
 engine, device, and connection controls. Diagnostics groups logs, diagnostic
 information, and updates.
