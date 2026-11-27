@@ -880,3 +880,29 @@ def test_character_timings_never_download_a_recognition_model(monkeypatch):
     monkeypatch.setattr(asr_backend, "asr_model_missing_error", missing)
     assert asyncio.run(_el()._recognized_words([0.0] * 10, "en")) == ([], "estimated")
     assert seen == {"require_installed": True}
+
+
+def test_unspaced_cjk_sentences_are_ready_without_trailing_space():
+    take = _el().take_ready_text
+    assert take("你好。再见。还", flush=False) == (["你好。", "再见。"], "还")
+    assert take("「好。」然后", flush=False) == (["「好。」"], "然后")
+    # A decimal point is not a sentence end.
+    assert take("Pi is 3.14 today", flush=False) == ([], "Pi is 3.14 today")
+
+
+def test_character_timings_never_let_a_fallback_engine_download(monkeypatch):
+    import asyncio
+
+    from api.routers import openai_compat
+    from services import asr_backend
+
+    seen = {}
+
+    async def transcribe(**kwargs):
+        seen.update(kwargs)
+        return {"words": []}
+
+    monkeypatch.setattr(asr_backend, "asr_model_missing_error", lambda **_k: None)
+    monkeypatch.setattr(openai_compat, "_transcribe_request", transcribe)
+    asyncio.run(_el()._recognized_words([0.0] * 10, "en"))
+    assert seen["require_installed"] is True

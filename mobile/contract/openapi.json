@@ -15096,7 +15096,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Create Dubbing Elevenlabs V1 Dubbing Post",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -15138,7 +15142,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Delete Dubbing Elevenlabs V1 Dubbing  Dubbing Id  Delete",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -15177,7 +15185,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Dubbing Elevenlabs V1 Dubbing  Dubbing Id  Get",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -15308,7 +15320,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response List History Elevenlabs V1 History Get",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -15350,7 +15366,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Delete History Item Elevenlabs V1 History  History Item Id  Delete",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -15389,7 +15409,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get History Item Elevenlabs V1 History  History Item Id  Get",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -16577,7 +16601,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Add Voice Elevenlabs V1 Voices Add Post",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"
@@ -16639,7 +16667,11 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Delete Voice Elevenlabs V1 Voices  Voice Id  Delete",
+         "type": "object"
+        }
        }
       },
       "description": "Successful Response"

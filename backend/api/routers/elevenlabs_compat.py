@@ -29,7 +29,7 @@ import re
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, WebSocket
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -1128,7 +1128,7 @@ async def _dialogue_pcm(body: TextToDialogueRequest) -> bytes:
 async def text_to_dialogue(
     body: TextToDialogueRequest,
     output_format: str = Query(default="mp3_44100_128"),
-):
+) -> Response:
     """One recording of several voices taking turns, each line in its own
     voice profile (or ``default`` / an engine preset)."""
     import numpy as np
@@ -1143,7 +1143,7 @@ async def text_to_dialogue(
 async def text_to_dialogue_stream(
     body: TextToDialogueRequest,
     output_format: str = Query(default="mp3_44100_128"),
-):
+) -> StreamingResponse:
     """The same recording, sent as one chunked response once it is rendered."""
     resp = await text_to_dialogue(body, output_format)
 
@@ -1181,7 +1181,7 @@ async def _recognized_words(samples, language: Optional[str]) -> tuple[list[dict
         result = await _transcribe_request(
             task="transcribe", file=StarletteUpload(buf, filename="take.wav"), model=None,
             language=language, prompt=None, response_format="verbose_json", temperature=None,
-            timestamp_granularities=["word", "segment"],
+            timestamp_granularities=["word", "segment"], require_installed=True,
         )
     except Exception as exc:  # noqa: BLE001 - timings fall back to an estimate
         logger.info("Character timings estimated: recognition failed (%s)", type(exc).__name__)
@@ -1222,7 +1222,7 @@ async def text_to_speech_with_timestamps(
     voice_id: str,
     body: TextToSpeechRequest,
     output_format: str = Query(default="mp3_44100_128"),
-):
+) -> JSONResponse:
     """Speech plus the start and end time of every character of ``text``.
     Timings come from recognizing the take when a speech-recognition model is
     installed (``X-OmniVoice-Alignment: recognized``), else they are estimated
@@ -1235,7 +1235,7 @@ async def text_to_speech_stream_with_timestamps(
     voice_id: str,
     body: TextToSpeechRequest,
     output_format: str = Query(default="mp3_44100_128"),
-):
+) -> StreamingResponse:
     """The same result as one newline-delimited JSON chunk."""
     full = await _speech_with_timestamps(voice_id, body, output_format)
 
@@ -1271,7 +1271,7 @@ async def add_voice(
     description: Optional[str] = Form(default=None, description="Accepted without effect."),
     labels: Optional[str] = Form(default=None, description="JSON object; its 'language' sets the voice's language."),
     remove_background_noise: bool = Form(default=False, description="Accepted without effect."),
-):
+) -> dict:
     """Instant voice cloning: save a recording as a new voice profile, the
     same as adding a cloned voice in the app. VoiceStudio clones from one
     reference recording, the first file sent."""
@@ -1287,7 +1287,7 @@ async def add_voice(
 
 
 @_http.delete("/v1/voices/{voice_id}", dependencies=[Depends(require_admin)])
-async def delete_voice(voice_id: str):
+async def delete_voice(voice_id: str) -> dict:
     """Delete a voice profile (administrator access, as in the app)."""
     import asyncio
 
@@ -1336,7 +1336,7 @@ async def create_dubbing(
     num_speakers: int = Form(default=0, description="Accepted without effect."),
     watermark: bool = Form(default=False, description="Accepted; VoiceStudio always adds its AI watermark."),
     drop_background_audio: bool = Form(default=False),
-):
+) -> dict:
     """Dub a video into ``target_lang`` on the app's batch queue (Batch page).
     Poll ``GET /v1/dubbing/{dubbing_id}`` until ``status`` is ``dubbed``, then
     download it from ``/v1/dubbing/{dubbing_id}/audio/{target_lang}``."""
@@ -1357,7 +1357,7 @@ async def create_dubbing(
 
 
 @_http.get("/v1/dubbing/{dubbing_id}")
-def get_dubbing(dubbing_id: str):
+def get_dubbing(dubbing_id: str) -> dict:
     return _dub_record(_dub_job(dubbing_id))
 
 
@@ -1366,7 +1366,7 @@ def get_dubbing(dubbing_id: str):
     response_class=Response,
     responses={200: {"description": "The dubbed video.", "content": {"video/mp4": {"schema": {"type": "string", "format": "binary"}}}}},
 )
-def get_dubbed_file(dubbing_id: str, language_code: str):
+def get_dubbed_file(dubbing_id: str, language_code: str) -> Response:
     """The dubbed video for ``language_code`` once ``status`` is ``dubbed``."""
     from api.routers.batch import download_batch_output
 
@@ -1380,7 +1380,7 @@ def get_dubbed_file(dubbing_id: str, language_code: str):
 
 
 @_http.delete("/v1/dubbing/{dubbing_id}", dependencies=[Depends(require_admin)])
-def delete_dubbing(dubbing_id: str):
+def delete_dubbing(dubbing_id: str) -> dict:
     """Delete a finished dubbing and its files (administrator access, as on
     the Batch page). Cancel an active one in the app first."""
     from api.routers.batch import delete_batch_job
@@ -1451,7 +1451,7 @@ def list_history(
     page_size: int = Query(default=100, ge=1, le=1000),
     start_after_history_item_id: Optional[str] = Query(default=None),
     voice_id: Optional[str] = Query(default=None),
-):
+) -> dict:
     """Takes generated in the app (Generate, Stories and the other pages that
     save to history), newest first."""
     rows = _history_rows(voice_id)
@@ -1470,7 +1470,7 @@ def list_history(
 
 
 @_http.get("/v1/history/{history_item_id}")
-def get_history_item(history_item_id: str):
+def get_history_item(history_item_id: str) -> dict:
     return _history_item(_history_row(history_item_id))
 
 
@@ -1480,8 +1480,7 @@ def get_history_item(history_item_id: str):
     responses={200: {"description": "The take as WAV.",
                      "content": {"audio/wav": {"schema": {"type": "string", "format": "binary"}}}}},
 )
-def get_history_audio(history_item_id: str):
-    from fastapi.responses import FileResponse
+def get_history_audio(history_item_id: str) -> FileResponse:
 
     from api.routers.generation import _safe_output_path
 
@@ -1490,7 +1489,7 @@ def get_history_audio(history_item_id: str):
 
 
 @_http.delete("/v1/history/{history_item_id}", dependencies=[Depends(require_admin)])
-def delete_history_item(history_item_id: str):
+def delete_history_item(history_item_id: str) -> dict:
     """Delete a take (administrator access, as in the app)."""
     from api.routers.generation import delete_single_history
 
@@ -1505,7 +1504,12 @@ def delete_history_item(history_item_id: str):
 #: (the last value of ElevenLabs' default chunk_length_schedule).
 _WS_MAX_BUFFER = 290
 # Sentence ends, including the full-width ones CJK text uses (\u3002 \uff01 \uff1f \uff1b).
-_SENTENCE_END = re.compile(r"(?<=[.!?;:\u3002\uff01\uff1f\uff1b\u2026])[\"'\u201d\u2019)\]]*\s+")
+_SENTENCE_END = re.compile(
+    # A Latin sentence end needs following whitespace (``3.5`` is not one); a
+    # full-width one ends a sentence on its own, since CJK text is unspaced.
+    r"(?<=[.!?;:\u2026])[\"'\u201d\u2019)\]]*\s+"
+    r"|(?<=[\u3002\uff01\uff1f\uff1b])[\"'\u201d\u2019\u300d\u300f)\]]*\s*"
+)
 
 
 def take_ready_text(buffer: str, *, flush: bool) -> tuple[list[str], str]:
@@ -1586,7 +1590,7 @@ async def text_to_speech_stream_input(
     output_format: str = "mp3_44100_128",
     language_code: Optional[str] = None,
     inactivity_timeout: float = 20.0,
-):
+) -> None:
     """ElevenLabs' input-streaming socket: send text as it is produced (an LLM
     reply, say) and receive audio sentence by sentence. Messages are
     ``{"text": ...}`` (optionally ``"flush": true``); ``{"text": ""}`` ends
