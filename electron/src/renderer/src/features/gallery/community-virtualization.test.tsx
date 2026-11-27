@@ -239,7 +239,9 @@ it('keeps a loading preview mounted when Load more crosses the virtual threshold
   expect(mocks.live?.sourceKey).toBe(communityKey(voices(1)[0]!));
   expect(view.container.querySelectorAll('article').length).toBeGreaterThan(0);
   expect(view.container.querySelectorAll('article').length).toBeLessThan(60);
-});
+  // Renders 200 cards and lazily imports the player: the 5 s default timed out
+  // under a fully loaded local run.
+}, 15_000);
 
 it.each([false, true])(
   'keeps the current owner while a distant replacement loads and is cancelled (paused=%s)',
