@@ -560,12 +560,20 @@ def _apply_to_process(endpoint: Optional[str]) -> None:
         os.environ.pop(AUTO_PROCESS_ENV, None)
     constants = sys.modules.get("huggingface_hub.constants")
     target = mirror or CANONICAL_ENDPOINT
+    left_mirror = constants is not None and not mirror and constants.ENDPOINT != target
     if constants is not None and constants.ENDPOINT != target:
         constants.ENDPOINT = target
         constants.HUGGINGFACE_CO_URL_TEMPLATE = target + "/{repo_id}/resolve/{revision}/{filename}"
-    from services.hf_auth import apply_process_token_policy
+    from services.hf_auth import apply_process_token_policy, implicit_token_disabled
 
     apply_process_token_policy()
+    if left_mirror:
+        # The policy only ever turns the in-process switch on; back on the
+        # official endpoint, follow the environment it just restored, which
+        # keeps a user's own HF_HUB_DISABLE_IMPLICIT_TOKEN.
+        constants.HF_HUB_DISABLE_IMPLICIT_TOKEN = implicit_token_disabled(
+            os.environ.get("HF_HUB_DISABLE_IMPLICIT_TOKEN")
+        )
 
 
 def _sync_process(decision: Optional[dict]) -> None:

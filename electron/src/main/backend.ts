@@ -1978,10 +1978,10 @@ export class BackendSupervisor extends EventEmitter<{
                   : code === TORCH_DLL_INIT_FAILED_CODE
                     ? 'torch_dll_init_failed'
                     : code === RUNTIME_FILES_LOCKED_CODE
-                    ? 'files_locked'
-                    : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
-                      ? 'access'
-                      : undefined;
+                      ? 'files_locked'
+                      : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
+                        ? 'access'
+                        : undefined;
         this.setupRequiredGib =
           code === 'ENOSPC' ? (error as { requiredGib?: number }).requiredGib : undefined;
         this.runtimeRepairFailed = this.repairAttempted;
@@ -2423,6 +2423,7 @@ export class BackendSupervisor extends EventEmitter<{
       ...(typeof this.exitCode === 'number' ? { exitCode: this.exitCode } : {}),
       ...(this.exitSignal ? { signal: String(this.exitSignal) } : {}),
       ...(downloadHost ? { downloadHost } : {}),
+      ...(failedSource?.host ? { failedDownloadHost: failedSource.host } : {}),
       // The transfer total belongs to the progress source, not a different failed archive.
       ...(progress.downloadedBytes && (!failedSource || failedSource.host === progress.downloadHost)
         ? { downloadedBytes: progress.downloadedBytes }

@@ -560,3 +560,21 @@ def test_a_first_run_pick_reaches_this_process_loads(er, clean_env):
 def test_decisions_leave_the_process_alone_until_the_backend_opts_in(er, clean_env):
     _mirror_decision(er)
     assert "HF_ENDPOINT" not in os.environ
+
+
+@pytest.mark.parametrize("user_opt_out", [False, True])
+def test_returning_to_the_official_endpoint_restores_implicit_tokens(er, clean_env, monkeypatch, user_opt_out):
+    """Gated files need the cached token again once the mirror is left."""
+    constants = clean_env
+    constants.ENDPOINT = er.CANONICAL_ENDPOINT
+    constants.HUGGINGFACE_CO_URL_TEMPLATE = er.CANONICAL_ENDPOINT + "/{repo_id}/resolve/{revision}/{filename}"
+    if user_opt_out:
+        monkeypatch.setenv("HF_HUB_DISABLE_IMPLICIT_TOKEN", "1")
+    constants.HF_HUB_DISABLE_IMPLICIT_TOKEN = user_opt_out
+    er.apply_process_default()
+    _mirror_decision(er)
+    assert constants.HF_HUB_DISABLE_IMPLICIT_TOKEN is True
+    prober = make_prober(er, {er.CANONICAL_ENDPOINT: 50, er.COMMUNITY_MIRROR: 60})
+    er.ensure_decision(force=True, prober=prober, throughput_prober=_NO_THROUGHPUT)
+    assert constants.ENDPOINT == er.CANONICAL_ENDPOINT
+    assert constants.HF_HUB_DISABLE_IMPLICIT_TOKEN is user_opt_out

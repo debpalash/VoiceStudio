@@ -686,12 +686,27 @@ it('shows download guidance on a failed setup', () => {
   delete backendStatus.failure;
 });
 
+it('names no host when only the progress source of an interrupted download is known', () => {
+  backendStatus.message = 'Runtime setup exited with code 1';
+  backendStatus.failure = {
+    code: 'RUNTIME_DOWNLOAD_INTERRUPTED',
+    stage: 'setup_required',
+    downloadHost: 'files.pythonhosted.org',
+  };
+
+  renderGate('setup_required');
+
+  expect(screen.queryByTestId('backend-download-host')).not.toBeInTheDocument();
+  delete backendStatus.failure;
+});
+
 it('names the host a failed setup download could not reach (#4502)', () => {
   backendStatus.message = 'Runtime setup exited with code 1';
   backendStatus.failure = {
     code: 'RUNTIME_DOWNLOAD_INTERRUPTED',
     stage: 'setup_required',
     downloadHost: 'github.com',
+    failedDownloadHost: 'github.com',
   };
 
   renderGate('setup_required');

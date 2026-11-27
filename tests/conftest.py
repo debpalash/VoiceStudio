@@ -741,6 +741,16 @@ def _no_real_endpoint_probes():
             os.environ[key] = value
     for key, value in saved_hub.items():
         setattr(hub, key, value)
+    imported = sys.modules.get("huggingface_hub.constants") if hub is None else None
+    if imported is not None:
+        # First imported during the test, possibly under an automatic mirror:
+        # reset it to what a fresh import under the restored environment reads.
+        endpoint = (os.environ.get("HF_ENDPOINT") or "https://huggingface.co").rstrip("/")
+        imported.ENDPOINT = endpoint
+        imported.HUGGINGFACE_CO_URL_TEMPLATE = endpoint + "/{repo_id}/resolve/{revision}/{filename}"
+        imported.HF_HUB_DISABLE_IMPLICIT_TOKEN = (
+            os.environ.get("HF_HUB_DISABLE_IMPLICIT_TOKEN", "").strip().upper() in {"1", "ON", "YES", "TRUE"}
+        )
     # The decision cache lives in prefs; `_isolate_persisted_settings` restores
     # it, so one test's auto pick cannot leak into another's preflight.
 
