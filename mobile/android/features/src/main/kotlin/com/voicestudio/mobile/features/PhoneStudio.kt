@@ -82,6 +82,18 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         val observation=AutomaticDiagnostics.observeConsent()
         try {ModelDownloadJobs.enqueue(application,model,allowMobile)} catch(e:Exception) {failed(e,observation) {download(model,allowMobile)}}
     }
+    /** Explicit per-download choice from the waiting state: proceed on whatever connection is active. */
+    fun downloadNow(model: PhoneModel) {
+        val observation=AutomaticDiagnostics.observeConsent()
+        try {ModelDownloadJobs.enqueue(application,model,true)} catch(e:Exception) {failed(e,observation) {downloadNow(model)}}
+    }
+    /** Flipping the Mobile data setting applies to transfers already parked on the network policy. */
+    fun applyMobilePreference(allowMobile: Boolean) {
+        mutable.value.models.filter {downloads.progress.value[it.id]?.let {p->p.running&&p.stage.startsWith("waiting")}==true}.forEach {
+            val observation=AutomaticDiagnostics.observeConsent()
+            try {ModelDownloadJobs.enqueue(application,it,allowMobile)} catch(e:Exception) {failed(e,observation)}
+        }
+    }
     fun pauseDownload(model: PhoneModel) {val observation=AutomaticDiagnostics.observeConsent();try {ModelDownloadJobs.pause(application,model.id)} catch(e:Exception) {failed(e,observation)}}
     fun cancelDownload(model: PhoneModel) {val observation=AutomaticDiagnostics.observeConsent();try {ModelDownloadJobs.cancel(application,model.id)} catch(e:Exception) {failed(e,observation)}}
     fun delete(model: PhoneModel) {val observation=AutomaticDiagnostics.observeConsent();scope.launch {

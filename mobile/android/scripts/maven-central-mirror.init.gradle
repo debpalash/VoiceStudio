@@ -1,0 +1,17 @@
+// CI only (installed by resolve-dependencies.sh): resolve Maven Central
+// artifacts from Google's mirror of it first. Maven Central answers shared
+// GitHub runner IPs with HTTP 429 for minutes at a time, longer than any retry
+// waits out; the mirror serves the same artifacts. Maven Central stays listed
+// after it, so anything the mirror lacks still resolves from the source.
+def mirrorUrl = "https://maven-central.storage-download.googleapis.com/maven2/"
+def addMirror = { handler ->
+    handler.maven {
+        name = "MavenCentralMirror"
+        url = mirrorUrl
+    }
+}
+beforeSettings { settings ->
+    // Added before settings.gradle.kts runs, so the mirror comes first.
+    addMirror(settings.pluginManagement.repositories)
+    addMirror(settings.dependencyResolutionManagement.repositories)
+}

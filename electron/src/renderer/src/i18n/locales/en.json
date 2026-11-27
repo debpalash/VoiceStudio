@@ -904,6 +904,9 @@
     "deleteTitle": "Delete model",
     "deleteConfirm": "Delete {{repoId}}? You can reinstall it later.",
     "deleted": "Deleted {{repoId}}",
+    "engineDeleteTitle": "Delete engine",
+    "engineDeleteConfirm": "Delete {{name}} and the files VoiceStudio installed for it? Models in the shared download cache are kept. You can install it again later.",
+    "engineDeleteFailed": "Could not delete",
     "reinstall": "Reinstall",
     "reinstallTitle": "Reinstall model",
     "reinstallConfirm": "Reinstall {{repoId}}? This will delete the current copy and download again.",
@@ -1856,6 +1859,10 @@
     "aec_row_title": "Enable echo cancellation for dictation",
     "aec_experimental": "Experimental",
     "aec_hint": "Lets you dictate while a preview, dub or video plays without transcribing the app's own audio. Adds a small amount of processing; leave it off if you do not dictate over playback.",
+    "compact_title": "Compact overlay",
+    "compact_row_title": "Compact overlay for press-and-hold dictation",
+    "compact_description": "While you hold the shortcut, show only a live level meter and a timer instead of the full recorder and transcript. Text is still inserted when you release.",
+    "compact_save_failed": "Couldn't save this setting. Please try again.",
     "cleanup_title": "Text cleanup",
     "spoken_punctuation": "Spoken punctuation",
     "spoken_punctuation_desc": "Say “comma”, “period”, “question mark”, “new line” to type it. English only."
@@ -4238,6 +4245,8 @@
       "speed": "{{speed}}/s",
       "eta": "About {{time}} left",
       "estimating": "Estimating time left…",
+      "waiting_metered": "This Wi-Fi is metered…",
+      "use_connection": "Download on this connection",
       "waiting_network": "Waiting for a connection…"
     }
   },

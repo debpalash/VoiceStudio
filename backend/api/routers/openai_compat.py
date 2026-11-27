@@ -1294,7 +1294,10 @@ async def _transcribe_request(
     language: Optional[str], prompt: Optional[str],
     response_format: str, temperature: Optional[float],
     timestamp_granularities: Optional[list[str]] = None, stream: Optional[bool] = None,
+    require_installed: bool = False,
 ):
+    """``require_installed`` makes every engine the loader tries, fallbacks
+    included, refuse missing weights instead of downloading them."""
     from core import diagnostic_reports
     diagnostic_epoch = diagnostic_reports.inherited_grant()
     from services.asr_backend import (
@@ -1407,7 +1410,7 @@ async def _transcribe_request(
         explicit_engine = model if _is_asr_engine_id(model) else None
 
         def _run():
-            backend = load_active_asr_backend(warm=True)
+            backend = load_active_asr_backend(warm=True, require_installed=require_installed)
             if explicit_engine and getattr(backend, "id", None) != explicit_engine:
                 raise _ModelNotActive(explicit_engine, getattr(backend, "id", "?"))
             extra = _backend_request_kwargs(backend, options)

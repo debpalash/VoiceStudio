@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,6 +9,7 @@ import {
   securityScopedDialogOptions,
   withSecurityScopedBookmark,
 } from './security-scoped-files';
+import { removeTempDir } from './test-support/remove-temp-dir';
 
 it('persists private folder grants, restores them on restart and releases them on quit', () => {
   const root = mkdtempSync(join(tmpdir(), 'folder-grants-'));
@@ -31,7 +32,7 @@ it('persists private folder grants, restores them on restart and releases them o
   } finally {
     first.close();
     second.close();
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });
 
@@ -48,7 +49,7 @@ it('keeps stale selections distinct from a new empty default and tolerates a cor
     const corrupt = new DirectoryBookmarks(file, vi.fn());
     expect(corrupt.restore()).toEqual(['authorization_store_invalid']);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });
 

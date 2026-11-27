@@ -101,4 +101,24 @@ class PhoneDownloadNetworkTest {
         route.callback.onAvailable(old);route.callback.onCapabilitiesChanged(old,route.caps)
         assertFalse(route.observer.wifiAllowed)
     }
+    @Test fun waitingReasonSeparatesMeteredWifiFromNoWifi() {
+        val metered=Route(capabilities(NetworkCapabilities.TRANSPORT_WIFI,false))
+        try {
+            assertFalse(metered.observer.wifiAllowed)
+            assertEquals("A hotspot or user-marked metered Wi-Fi is not 'no Wi-Fi'","waiting_metered",metered.observer.waitingStage)
+            metered.callback.onCapabilitiesChanged(metered.current!!,capabilities(NetworkCapabilities.TRANSPORT_WIFI))
+            assertTrue(metered.observer.wifiAllowed)
+            metered.callback.onCapabilitiesChanged(metered.current!!,capabilities(NetworkCapabilities.TRANSPORT_CELLULAR,false))
+            assertEquals("waiting",metered.observer.waitingStage)
+            metered.callback.onLost(metered.current!!)
+            assertEquals("waiting",metered.observer.waitingStage)
+        } finally { metered.observer.close() }
+        val vpn=Route(capabilities(NetworkCapabilities.TRANSPORT_VPN,false))
+        try {
+            vpn.physical(ConnectivityManager.TYPE_WIFI);vpn.metered=true
+            assertEquals("waiting_metered",vpn.observer.waitingStage)
+            vpn.physical(ConnectivityManager.TYPE_MOBILE)
+            assertEquals("waiting",vpn.observer.waitingStage)
+        } finally { vpn.observer.close() }
+    }
 }

@@ -34,7 +34,7 @@ It runs in its **own subprocess venv** because upstream pins
 **Model Catalogue → Ming-3.0-tts → Install** fetches the pinned upstream source
 into its own folder under VoiceStudio's data directory and builds a Python 3.10
 environment from upstream's `requirements.txt`. Nothing it installs touches
-VoiceStudio or any other engine; **Uninstall** removes only that folder. The
+VoiceStudio or any other engine; **Delete** removes only that folder. The
 ~3 GB of weights download only from the Model
 Catalogue's weights row; generation never downloads them. On Windows and macOS the button is not offered; see
 the manual install below (Windows with an NVIDIA GPU) or pick another engine.

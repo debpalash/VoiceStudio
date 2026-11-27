@@ -98,7 +98,7 @@ function engineItem(ctx: Context, engine: EngineBackend): FamilyItem {
   ) : null;
   const setup: ReactNode = engine.available ? (
     engine.one_click_install ? (
-      <EngineInstall id={engine.id} repairOnly />
+      <EngineInstall id={engine.id} name={engine.display_name} repairOnly />
     ) : null
   ) : licenseId ? (
     <EngineLicense id={licenseId} name={engine.display_name} />

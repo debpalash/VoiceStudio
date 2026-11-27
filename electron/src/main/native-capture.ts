@@ -29,6 +29,20 @@ export function installNativeCapture(
   let recorder: BrowserWindow | null = null;
   let unregister: (() => void) | null = null;
   let capturing = false;
+  // Set from the main window's Settings toggle; applies only to hold sessions.
+  let compactPreferred = false;
+  let sessionCompact = false;
+  const FULL = { width: 480, height: 210 };
+  const COMPACT = { width: 220, height: 56 };
+  const place = (win: BrowserWindow, size: { width: number; height: number }) => {
+    const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+    win.setMinimumSize(size.width, size.height);
+    win.setSize(size.width, size.height);
+    win.setPosition(
+      Math.round(area.x + (area.width - size.width) / 2),
+      area.y + area.height - size.height - 30,
+    );
+  };
   let trayLabels: {
     show: string;
     start: string;
@@ -71,10 +85,10 @@ export function installNativeCapture(
   });
   const capture = new CaptureSession(
     output,
-    () => {
+    (mode) => {
       const win = recorder ?? createRecorder();
-      const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-      win.setPosition(Math.round(area.x + (area.width - 480) / 2), area.y + area.height - 240);
+      sessionCompact = compactPreferred && mode === 'hold';
+      place(win, sessionCompact ? COMPACT : FULL);
       win.showInactive();
     },
     () => {
@@ -123,10 +137,10 @@ export function installNativeCapture(
 
   function createRecorder(): BrowserWindow {
     const win = new BrowserWindow({
-      width: 480,
-      height: 210,
-      minWidth: 480,
-      minHeight: 210,
+      width: FULL.width,
+      height: FULL.height,
+      minWidth: FULL.width,
+      minHeight: FULL.height,
       show: false,
       frame: false,
       resizable: false,
@@ -180,7 +194,11 @@ export function installNativeCapture(
       unregister = capture.listen((event) => {
         capturing = event.action === 'start';
         refreshTrayMenu();
-        sendToLiveWindow(recorder, 'capture:event', event);
+        sendToLiveWindow(
+          recorder,
+          'capture:event',
+          event.action === 'start' ? { ...event, compact: sessionCompact } : event,
+        );
       });
   });
   handle('accept', (_event, id) => capture.accept(Number(id)));
@@ -203,6 +221,10 @@ export function installNativeCapture(
     return capture.cancelFor(id);
   });
   handle('stop', () => capture.stop());
+  handle('expand', () => {
+    sessionCompact = false;
+    if (recorder && !recorder.isDestroyed()) place(recorder, FULL);
+  });
   function assertMain(event: IpcMainInvokeEvent): void {
     assertTrustedMainFrame(event, main(), 'Untrusted shortcut settings');
   }
@@ -226,6 +248,11 @@ export function installNativeCapture(
     const result = await shortcuts.synchronize(enabled, mode);
     refreshTrayMenu();
     return result;
+  });
+  ipcMain.handle('capture:setCompact', (event, compact: unknown) => {
+    assertMain(event);
+    if (typeof compact !== 'boolean') throw new Error('Invalid compact preference');
+    compactPreferred = compact;
   });
   ipcMain.handle('capture:labels', (event, labels: unknown) => {
     assertTrustedMainFrame(event, main(), 'Untrusted tray labels');
@@ -278,6 +305,8 @@ export function installNativeCapture(
       'getShortcut',
       'setShortcut',
       'syncPreferences',
+      'setCompact',
+      'expand',
     ])
       ipcMain.removeHandler(`capture:${name}`);
   };

@@ -22,7 +22,7 @@ crashes and cold init never block the rest of VoiceStudio.
    Or click **Install** in **Model Catalogue → Supertonic-3**. That
    installs the same pinned wheel into the engine's own Python environment
    under VoiceStudio's data directory. Nothing it installs touches VoiceStudio
-   itself or any other engine, and **Uninstall** in the same row removes only
+   itself or any other engine, and **Delete** in the same row removes only
    that folder. An install made with `uv sync` keeps working as it is.
 
 2. **Accept the license in-app.** First use is gated behind an explicit

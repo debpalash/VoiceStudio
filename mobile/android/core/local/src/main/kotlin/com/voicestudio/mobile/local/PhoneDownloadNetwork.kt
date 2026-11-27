@@ -43,6 +43,19 @@ class PhoneDownloadNetwork(private val connectivity: ConnectivityManager) : Auto
         physical || underlying?.let { it.isConnected && it.type in setOf(ConnectivityManager.TYPE_WIFI, ConnectivityManager.TYPE_ETHERNET) } == true
     }
 
+    /** Why a Wi-Fi-only transfer cannot start now: the route is Wi-Fi/Ethernet that Android reports as
+     *  metered (hotspot, user-marked metered), or there is no usable Wi-Fi at all. */
+    @Suppress("DEPRECATION")
+    val waitingStage: String get() = synchronized(lock) {
+        val current=capabilities
+        if(current==null||closed||blocked||network==null||current.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)||
+            !current.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return@synchronized "waiting"
+        val underlying=if(current.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) connectivity.activeNetworkInfo else null
+        val physical=current.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)||current.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)||
+            underlying?.let {it.isConnected&&it.type in setOf(ConnectivityManager.TYPE_WIFI,ConnectivityManager.TYPE_ETHERNET)}==true
+        if(physical&&(!current.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)||connectivity.isActiveNetworkMetered)) "waiting_metered" else "waiting"
+    }
+
     override fun close() {
         val unregister = synchronized(lock) {
             if (closed) false else { closed = true; capabilities = null; true }

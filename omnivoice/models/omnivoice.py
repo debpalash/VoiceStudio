@@ -551,6 +551,12 @@ class OmniVoice(PreTrainedModel):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs):
+        # Windows reads weights with pread, not a memory map (#4142). Processes
+        # that never import backend/main.py (the engine subprocess, scripts)
+        # install it here; idempotent and a no-op off Windows.
+        from omnivoice.utils.safetensors_windows import install as _install_pread
+
+        _install_pread()
         # Explicit local checkpoints never authorize a Hub tokenizer fallback.
         local_checkpoint = os.path.isdir(pretrained_model_name_or_path)
         if os.path.isabs(str(pretrained_model_name_or_path)) and not local_checkpoint:
