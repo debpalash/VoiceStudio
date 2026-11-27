@@ -1047,7 +1047,7 @@
   },
   "common": {
     "stop": "停止",
-    "resume": "恢复",
+    "resume": "继续",
     "paused": "已暂停",
     "open": "打开",
     "cancel": "取消",

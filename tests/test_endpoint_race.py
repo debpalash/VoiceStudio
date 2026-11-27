@@ -465,3 +465,64 @@ def test_probe_defaults_allow_eight_seconds():
         if isinstance(node, ast.FunctionDef) and node.name in ("probe_endpoint", "throughput_probe"):
             defaults[node.name] = ast.unparse(node.args.defaults[-1])
     assert defaults == {"probe_endpoint": "PROBE_TIMEOUT_S", "throughput_probe": "PROBE_TIMEOUT_S"}
+
+
+# ── Process-wide default for model loads (#4503) ────────────────────────────
+
+@pytest.fixture
+def clean_env(monkeypatch):
+    """Record both variables so values the code sets are undone after the test."""
+    for name in ("HF_ENDPOINT", "OMNIVOICE_HF_ENDPOINT_AUTO"):
+        monkeypatch.setenv(name, "")
+        monkeypatch.delenv(name)
+
+
+def _mirror_decision(er):
+    prober = make_prober(er, {er.CANONICAL_ENDPOINT: None, er.COMMUNITY_MIRROR: 200})
+    return er.ensure_decision(force=True, prober=prober, throughput_prober=_NO_THROUGHPUT)
+
+
+def test_remembered_mirror_becomes_the_load_default_and_stays_automatic(er, clean_env):
+    """Loads read HF_ENDPOINT at import; the automatic pick must reach them
+    without turning into an explicit choice."""
+    assert _mirror_decision(er)["endpoint"] == er.COMMUNITY_MIRROR
+    assert er.apply_process_default() == er.COMMUNITY_MIRROR
+    assert os.environ["HF_ENDPOINT"] == er.COMMUNITY_MIRROR
+    assert er.mode() == "auto"
+    assert er.explicit_endpoint() == ""
+    assert er.explicit_mirror() == ""
+
+
+def test_an_explicit_endpoint_is_never_replaced(er, clean_env, monkeypatch):
+    _mirror_decision(er)
+    monkeypatch.setenv("HF_ENDPOINT", "https://huggingface.co")
+    assert er.apply_process_default() is None
+    assert os.environ["HF_ENDPOINT"] == "https://huggingface.co"
+    assert er.mode() == "manual"
+
+
+def test_canonical_pick_sets_nothing_and_clears_an_inherited_auto_value(er, clean_env, monkeypatch):
+    """A child that inherited an old automatic value follows the current pick."""
+    prober = make_prober(er, {er.CANONICAL_ENDPOINT: 50, er.COMMUNITY_MIRROR: 60})
+    er.ensure_decision(force=True, prober=prober, throughput_prober=_NO_THROUGHPUT)
+    monkeypatch.setenv("HF_ENDPOINT", er.COMMUNITY_MIRROR)
+    monkeypatch.setenv(er.AUTO_PROCESS_ENV, er.COMMUNITY_MIRROR)
+    assert er.apply_process_default() is None
+    assert "HF_ENDPOINT" not in os.environ
+    assert er.AUTO_PROCESS_ENV not in os.environ
+
+
+def test_no_decision_yet_leaves_the_library_default(er, clean_env):
+    assert er.apply_process_default() is None
+    assert "HF_ENDPOINT" not in os.environ
+
+
+def test_backend_applies_the_pick_before_huggingface_hub_is_imported():
+    """huggingface_hub fixes its endpoint at import, so the order matters."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    source = open(os.path.join(root, "backend", "main.py"), encoding="utf-8").read()
+    applied = source.index("_apply_auto_hf_endpoint()")
+    assert applied < source.index("_apply_hf_token_policy()")
+    for marker in ("import huggingface_hub", "from huggingface_hub", "import transformers", "from transformers"):
+        if marker in source:
+            assert applied < source.index(marker), marker

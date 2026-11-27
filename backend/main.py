@@ -159,6 +159,13 @@ from omnivoice.utils.safetensors_windows import install as _install_safetensors_
 
 _install_safetensors_pread()
 
+# Model loads use huggingface_hub's default endpoint, fixed from HF_ENDPOINT at
+# import. With nothing chosen explicitly, make the remembered automatic pick
+# (e.g. the mirror where huggingface.co is blocked, #4503) that default too.
+from services.endpoint_race import apply_process_default as _apply_auto_hf_endpoint  # noqa: E402
+
+_apply_auto_hf_endpoint()
+
 # A mirror in HF_ENDPOINT must never receive the Hugging Face token, here or in
 # engine processes that inherit this environment.
 from services.hf_auth import apply_process_token_policy as _apply_hf_token_policy  # noqa: E402

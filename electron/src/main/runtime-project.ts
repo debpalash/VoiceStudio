@@ -359,6 +359,30 @@ export type RuntimeRunner = (
 
 const PYTHON_DOWNLOAD_MIRROR =
   'https://gh-proxy.com/https://github.com/astral-sh/python-build-standalone/releases/download';
+/** The same GitHub proxy, as a prefix for any github.com release-asset URL. */
+export const GITHUB_RELEASE_PROXY = `${new URL(PYTHON_DOWNLOAD_MIRROR).origin}/`;
+
+/**
+ * Route the lock's GitHub release-asset artifacts (packages that exist only as
+ * GitHub release wheels, such as kittentts and en-core-web-sm) through
+ * `proxy` (#4502). Only the URL prefix changes; every sha256 stays pinned, and
+ * other hosts are untouched.
+ */
+export function mirrorGithubReleaseUrls(lock: string, proxy: string): string {
+  return lock.replace(
+    /(\burl = ")(https:\/\/github\.com\/[^/"]+\/[^/"]+\/releases\/download\/)/g,
+    (_match, prefix: string, url: string) => `${prefix}${proxy}${url}`,
+  );
+}
+
+/**
+ * The GitHub proxy for this setup's locked GitHub wheels: set exactly when the
+ * managed Python also downloads through it (a restricted region, or Auto after
+ * GitHub failed). A user-set `UV_PYTHON_INSTALL_MIRROR` keeps GitHub direct.
+ */
+export function githubReleaseProxy(env: NodeJS.ProcessEnv): string | null {
+  return env.UV_PYTHON_INSTALL_MIRROR === PYTHON_DOWNLOAD_MIRROR ? GITHUB_RELEASE_PROXY : null;
+}
 
 async function probeLatency(url: string, signal: AbortSignal): Promise<number | null> {
   const started = performance.now();
@@ -944,7 +968,7 @@ export function outdatedSystemLibraryError(
     return Object.assign(
       new Error(
         `${subject} because Windows could not initialise PyTorch's c10.dll (WinError 1114). The cause ` +
-          'is not established: this Windows system\'s Visual C++ runtime ' +
+          "is not established: this Windows system's Visual C++ runtime " +
           `${msvcp?.version ? `(${msvcp.version}) looks current` : 'version could not be read'}. Installing the latest ` +
           'Microsoft Visual C++ Redistributable (x64) and restarting Windows may help; so may updating the ' +
           'graphics driver or pressing Clean & Retry under More fixes. Send the in-app report if it persists.',
@@ -1190,14 +1214,24 @@ export async function syncLockedWithMirror(
   { log = () => {}, pypiHost = () => {}, allowOriginMirrorFallback = false }: MirrorReporter = {},
   /** Locked artifact URL to the `file://` copy already downloaded and verified (#3411). */
   localUrls: ReadonlyMap<string, string> = new Map(),
+  /** Proxy prefix for GitHub release-asset wheels where github.com is blocked (#4502). */
+  githubProxy: string | null = null,
 ): Promise<void> {
   const lockPath = join(project, 'uv.lock');
-  if (!mirror && !localUrls.size && !allowOriginMirrorFallback) {
+  if (!mirror && !localUrls.size && !allowOriginMirrorFallback && !githubProxy) {
     await sync();
     return;
   }
   const original = await readFile(lockPath, 'utf8');
-  const local = localizeLockUrls(original, localUrls);
+  // Every attempt below keeps the GitHub proxy: retrying PyPI's origin does
+  // not make github.com reachable.
+  const base = githubProxy ? mirrorGithubReleaseUrls(original, githubProxy) : original;
+  if (base !== original) {
+    log(
+      `GitHub-hosted wheels: ${new URL(githubProxy!).host} (proxy of github.com); hashes stay pinned.`,
+    );
+  }
+  const local = localizeLockUrls(base, localUrls);
   const mirrored = mirror ? mirrorLockUrls(local, mirror) : local;
   if (mirrored === original && !allowOriginMirrorFallback) {
     await sync();
@@ -1233,7 +1267,7 @@ export async function syncLockedWithMirror(
         log(
           `Install from the pre-downloaded wheels failed (${errorSummary(error)}); letting uv download them.`,
         );
-        await writeFile(lockPath, original);
+        await writeFile(lockPath, base);
         try {
           await sync();
           return;
@@ -1256,8 +1290,8 @@ export async function syncLockedWithMirror(
         !failedDownloadSource(detail)?.pypiArchive
       )
         throw failure;
-      const fallback = mirrorLockUrls(original, AUTO_PYPI_MIRROR);
-      if (fallback === original) throw failure;
+      const fallback = mirrorLockUrls(base, AUTO_PYPI_MIRROR);
+      if (fallback === base) throw failure;
       log(
         `PyPI download failed at ${origin}; retrying the same hash-pinned files from ${new URL(AUTO_PYPI_MIRROR).host}. Finished downloads are kept.`,
       );
@@ -1468,9 +1502,11 @@ export async function installManagedPython(
   }
 }
 
-
 function errorText(error: unknown): string {
-  return [error instanceof Error ? error.message : String(error), (error as { stderr?: unknown })?.stderr]
+  return [
+    error instanceof Error ? error.message : String(error),
+    (error as { stderr?: unknown })?.stderr,
+  ]
     .filter((part) => typeof part === 'string')
     .join('\n');
 }
@@ -1509,7 +1545,12 @@ export async function recoverMinorVersionLink(
   // Windows interpreters sit at the patch root, POSIX ones under bin/.
   let python: string | null = null;
   for (const candidate of [join(patchDir, 'python.exe'), join(patchDir, 'bin', 'python3')]) {
-    if (await stat(candidate).then(() => true, () => false)) {
+    if (
+      await stat(candidate).then(
+        () => true,
+        () => false,
+      )
+    ) {
       python = candidate;
       break;
     }
@@ -1578,7 +1619,9 @@ async function interpreterCanary(
       } catch (second) {
         signal.throwIfAborted();
         if (!MINOR_LINK_ERROR_RE.test(errorText(second)) || !recovery.python) throw second;
-        downloads.log?.("Using the installed interpreter by path, without uv's minor-version link.");
+        downloads.log?.(
+          "Using the installed interpreter by path, without uv's minor-version link.",
+        );
         direct = recovery.python;
         python = direct;
       }
@@ -1863,6 +1906,7 @@ export async function installRuntime(
         signal,
         { ...downloads, allowOriginMirrorFallback: region === 'auto' },
         localUrls,
+        githubReleaseProxy(env),
       );
     },
     signal,

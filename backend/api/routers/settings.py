@@ -1494,6 +1494,11 @@ def set_hf_mirror(body: _HFMirrorBody):
     previous = (user_env.get_user_env(_HF_ENDPOINT_ENV) or "").strip().rstrip("/")
     changed = url != previous
     try:
+        # A user choice replaces the automatic pick applied at startup, even
+        # when it names the same endpoint.
+        from services.endpoint_race import AUTO_PROCESS_ENV
+
+        os.environ.pop(AUTO_PROCESS_ENV, None)
         if url:
             user_env.set_user_env(_HF_ENDPOINT_ENV, url)
             os.environ[_HF_ENDPOINT_ENV] = url  # best-effort for new downloads this session

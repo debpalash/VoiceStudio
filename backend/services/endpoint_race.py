@@ -287,6 +287,15 @@ def env_opt_out() -> bool:
 _PREF_READ_FAILED = object()
 
 
+# Set beside HF_ENDPOINT when the backend applied the automatic pick at
+# startup, so that value is never mistaken for the user's explicit choice.
+AUTO_PROCESS_ENV = "OMNIVOICE_HF_ENDPOINT_AUTO"
+
+
+def _auto_process_endpoint() -> str:
+    return (os.environ.get(AUTO_PROCESS_ENV) or "").strip().rstrip("/")
+
+
 def explicit_endpoint():
     """The endpoint the user explicitly configured, or "".
 
@@ -297,7 +306,7 @@ def explicit_endpoint():
     endpoint — explicitly choosing huggingface.co is still an explicit
     choice. Never raises."""
     ep = (os.environ.get("HF_ENDPOINT") or "").strip().rstrip("/")
-    if ep:
+    if ep and ep != _auto_process_endpoint():
         return ep
     try:
         from core import prefs
@@ -486,6 +495,40 @@ def effective_endpoint() -> Optional[str]:
     except Exception:
         logger.warning("effective_endpoint failed; using canonical", exc_info=True)
     return None
+
+
+def apply_process_default() -> Optional[str]:
+    """Make the remembered automatic pick this process's Hub default.
+
+    Download paths pass ``endpoint=`` per call, but model loads
+    (``from_pretrained`` / ``snapshot_download`` fallbacks, engine processes
+    that inherit this environment) use huggingface_hub's default, which it
+    fixes from ``HF_ENDPOINT`` at import. Where huggingface.co is blocked those
+    loads failed although setup had used the mirror (#4503). Call before
+    huggingface_hub is imported. An explicit endpoint is left untouched; the
+    value set here is marked so it never counts as one. Never probes, never
+    persists, never raises. Returns the endpoint applied, if any.
+    """
+    try:
+        current = (os.environ.get("HF_ENDPOINT") or "").strip().rstrip("/")
+        auto = (os.environ.pop(AUTO_PROCESS_ENV, None) or "").strip().rstrip("/")
+        if current and current != auto:
+            return None  # the user's explicit endpoint
+        if current:
+            os.environ.pop("HF_ENDPOINT", None)  # an inherited automatic pick
+        if mode() != "auto":
+            return None
+        decision = cached_decision()
+        if not (decision and decision.get("reachable") and decision["endpoint"] != CANONICAL_ENDPOINT):
+            return None
+        endpoint = decision["endpoint"].strip().rstrip("/")
+        os.environ["HF_ENDPOINT"] = endpoint
+        os.environ[AUTO_PROCESS_ENV] = endpoint
+        logger.info("Hugging Face loads use the automatically selected endpoint %s", endpoint)
+        return endpoint
+    except Exception:
+        logger.warning("Could not apply the automatic Hugging Face endpoint", exc_info=True)
+        return None
 
 
 def download_endpoint(*, gated: bool = False) -> Optional[str]:
