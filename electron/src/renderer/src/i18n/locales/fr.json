@@ -2194,6 +2194,7 @@
     "cause_noexec": "Le dossier du moteur n’autorise pas l’exécution de programmes",
     "hint_noexec": "Ce lecteur est monté avec noexec. Choisissez un dossier sur un autre lecteur ou remontez-le sans noexec, puis réessayez.",
     "cause_download": "Le téléchargement s’est arrêté avant la fin de l’installation",
+    "download_failed_host": "Impossible de télécharger depuis {{host}}.",
     "hint_download": "Réessayez pour continuer. S’il s’arrête encore, essayez un autre réseau, désactivez votre VPN ou choisissez une autre région de téléchargement.",
     "cause_illegal_instruction": "Le moteur s’est arrêté sur une instruction que cet ordinateur n’a pas pu exécuter",
     "hint_illegal_instruction": "Il manque peut-être au processeur une fonction requise par les bibliothèques du moteur. Copiez les diagnostics et joignez-les à un rapport avec le modèle de votre processeur.",

@@ -97,7 +97,7 @@ interrupted wheel is kept incomplete rather than published as a finished file.
 
 ### `RUNTIME_DOWNLOAD_INTERRUPTED`
 
-The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats.
+The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats. The setup screen names the host that could not be reached: when it is `github.com`, choose the China, Russia or Restricted download region so GitHub downloads go through its proxy.
 
 ### `DISK_FULL`
 
@@ -1342,8 +1342,12 @@ stall or fail while downloading the managed Python (the setup screen shows
 `cpython-3.11.… (download)`). With the download region on **Auto-detect**,
 setup retries a failed or stalled Python download once from the other source
 (GitHub ↔ the `gh-proxy.com` mirror) and notes the switch in the setup log; a
-region you picked, or your own `UV_PYTHON_INSTALL_MIRROR`, is kept as is. If
-both fail:
+region you picked, or your own `UV_PYTHON_INSTALL_MIRROR`, is kept as is.
+Whenever the Python downloads through `gh-proxy.com` (the China, Russia or
+Restricted region, or Auto-detect after GitHub failed), the two packages that
+exist only as GitHub release wheels (`kittentts` and `en-core-web-sm`) download
+through it too, still checked against their `uv.lock` hashes (#4502). If both
+fail:
 
 1. **Choose the Russia or Restricted download region** under **Options** on the
    setup screen and press Retry: both start from the mirror.

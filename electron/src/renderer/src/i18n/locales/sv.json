@@ -2192,6 +2192,7 @@
     "cause_noexec": "Motormappen tillåter inte att program körs",
     "hint_noexec": "Den här enheten är monterad med noexec. Välj en mapp på en annan enhet eller montera om den utan noexec och försök igen.",
     "cause_download": "Hämtningen stoppades innan installationen var klar",
+    "download_failed_host": "Det gick inte att ladda ned från {{host}}.",
     "hint_download": "Försök igen för att fortsätta. Om den fortsätter att stoppas, prova ett annat nätverk, stäng av VPN eller välj en annan hämtningsregion.",
     "cause_illegal_instruction": "Motorn stoppades av en instruktion som den här datorn inte kunde köra",
     "hint_illegal_instruction": "Processorn kan sakna en funktion som motorns bibliotek behöver. Kopiera diagnostiken och bifoga den i en rapport tillsammans med din processormodell.",
