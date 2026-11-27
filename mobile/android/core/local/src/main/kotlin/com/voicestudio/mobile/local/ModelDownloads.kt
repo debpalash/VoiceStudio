@@ -33,10 +33,12 @@ class ModelDownloads internal constructor(
     private val bundledAssets: ((String)->java.io.InputStream)? = null,
     private val digest: (File, ()->Unit)->String = ::sha256,
     private val retryDelay: suspend (Long)->Unit = {delay(it)},
-    private val chunkSize: Long = 16L*1024*1024
+    private val chunkSize: Long = 16L*1024*1024,
+    private val waitStage: () -> String = {"waiting"}
 ) {
     constructor(root: File, licence: LicenceGate, ramBytes: Long, wifi: () -> Boolean) : this(root,licence,ramBytes,wifi,{root.apply {mkdirs()}.usableSpace})
     constructor(root:File,licence:LicenceGate,ramBytes:Long,bundledAssets:(String)->java.io.InputStream,wifi:()->Boolean):this(root,licence,ramBytes,wifi,{root.apply {mkdirs()}.usableSpace},bundledAssets=bundledAssets)
+    constructor(root:File,licence:LicenceGate,ramBytes:Long,bundledAssets:(String)->java.io.InputStream,wifi:()->Boolean,waitStage:()->String):this(root,licence,ramBytes,wifi,{root.apply {mkdirs()}.usableSpace},bundledAssets=bundledAssets,waitStage=waitStage)
     private data class VerifiedStamp(val size: Long, val modified: Long, val catalogue: String)
     private val verified=ConcurrentHashMap<File,VerifiedStamp>()
     private fun stamp(file: File, catalogue: String)=VerifiedStamp(file.length(),file.lastModified(),catalogue)
@@ -67,7 +69,12 @@ class ModelDownloads internal constructor(
     private fun lock(model: PhoneModel)=locks.getOrPut(model.id) {Mutex()}
     private val mutable=MutableStateFlow<Map<String,DownloadProgress>>(emptyMap())
     val progress=mutable.asStateFlow()
-    fun scheduled(id: String,total: Long,stage: String="waiting") {mutable.update {if(it[id]?.running==true) it else it+(id to (it[id] ?: DownloadProgress(total=total)).copy(total=total,running=true,stage=stage,error=null))}}
+    /** Stage label for a queued transfer: says why it waits, never claims Wi-Fi is missing on a metered one. */
+    fun waitingStage(allowMobile: Boolean): String = if(allowMobile) "waiting_network" else waitStage()
+    /** Queues or re-labels a waiting transfer; an entry that is actually transferring keeps its progress. */
+    fun scheduled(id: String,total: Long,stage: String="waiting") {mutable.update {
+        val current=it[id]
+        if(current?.running==true) {if(current.stage.startsWith("waiting")&&current.stage!=stage) it+(id to current.copy(stage=stage)) else it} else it+(id to (it[id] ?: DownloadProgress(total=total)).copy(total=total,running=true,stage=stage,error=null))}}
     fun paused(id: String,total: Long?=null,error: String?=null) {mutable.update {it+(id to (it[id] ?: DownloadProgress()).let {p ->p.copy(total=total ?: p.total,running=false,stage=if(error==null) "paused" else "failed",error=error,bytesPerSecond=0.0,etaSeconds=null)})}}
     private fun dir(model: PhoneModel)=File(root,model.id)
     private fun identity(model: PhoneModel)=model.revision+model.files.joinToString {it.path+it.sha256+it.size}

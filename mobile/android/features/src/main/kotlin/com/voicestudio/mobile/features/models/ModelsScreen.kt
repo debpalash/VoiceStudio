@@ -20,6 +20,7 @@ import com.voicestudio.mobile.designsystem.*
 import com.voicestudio.mobile.features.*
 import com.voicestudio.mobile.local.*
 import com.voicestudio.mobile.data.modelDownloadDescription
+import com.voicestudio.mobile.data.canUseThisConnection
 
 @Composable fun ModelsScreen(vm: StudioViewModel) {
     val state by vm.phone.state.collectAsState()
@@ -27,7 +28,7 @@ import com.voicestudio.mobile.data.modelDownloadDescription
     Screen {
         ScreenTitle("mobile.local.models")
         Text(tr("mobile.local.storage_used",mapOf("size" to Formatter.formatFileSize(LocalContext.current,state.used))))
-        Toggle("mobile.simple.mobile_data",preferences.allowMobileModels) {allowed -> vm.preference {it.copy(allowMobileModels=allowed)}}
+        Toggle("mobile.simple.mobile_data",preferences.allowMobileModels) {allowed -> vm.preference {it.copy(allowMobileModels=allowed)};vm.phone.applyMobilePreference(allowed)}
         if(state.loading) InlineLoading()
         state.models.forEach {model -> ModelCard(vm,model)}
     }
@@ -60,6 +61,7 @@ import com.voicestudio.mobile.data.modelDownloadDescription
                 p.error?.let {ErrorMessage(it,mapOf("ram" to model.minRamGb))}
             }
             if(downloading) Row(horizontalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
+                if(progress[model.id]?.let(::canUseThisConnection)==true) Secondary("mobile.downloads.use_connection") {vm.phone.downloadNow(model)}
                 Secondary("mobile.downloads.pause") {vm.phone.pauseDownload(model)}
                 Secondary("common.cancel") {vm.phone.cancelDownload(model)}
             }
@@ -217,6 +219,7 @@ import com.voicestudio.mobile.data.modelDownloadDescription
                 needed.forEach {item->progress[item.id]?.takeIf {it.running||it.stage=="paused"}?.let {p->
                     if(needed.size>1) Text(item.name,style=MaterialTheme.typography.labelSmall)
                     Text(modelDownloadDescription(LocalContext.current,LocalL10n.current,p),style=MaterialTheme.typography.bodySmall)
+                    if(canUseThisConnection(p)) TextButton(onClick={vm.phone.downloadNow(item)}) {Text(tr("mobile.downloads.use_connection"))}
                 }}
             }
             if(prominent) {

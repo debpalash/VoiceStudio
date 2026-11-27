@@ -432,4 +432,25 @@ class LocalPolicyTest {
         assertEquals("–", lines.first { it.key == "variants" }.value)
         assertEquals("a: x", lines.first { it.key == "nested" }.value)
     }
+    @Test fun queuedTransferStageSaysWhyItWaits() {
+        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},freeBytes={Long.MAX_VALUE},waitStage={"waiting_metered"})
+        assertEquals("waiting_metered",d.waitingStage(false))
+        assertEquals("Mobile data allowed never claims Wi-Fi is missing","waiting_network",d.waitingStage(true))
+        d.scheduled("fixture",10,d.waitingStage(false))
+        assertEquals("waiting_metered",d.progress.value["fixture"]!!.stage)
+        val plain=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},freeBytes={Long.MAX_VALUE})
+        assertEquals("waiting",plain.waitingStage(false))
+    }
+    @Test fun restoredWaitingEntryIsRelabelledButActiveProgressIsKept() {
+        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},freeBytes={Long.MAX_VALUE})
+        d.scheduled("fixture",10,"waiting_metered")
+        d.scheduled("fixture",10,"waiting")
+        assertEquals("Network moved off metered Wi-Fi: the stale reason must go","waiting",d.progress.value["fixture"]!!.stage)
+        val kind=ModelDownloads::class.java.getDeclaredField("mutable").apply {isAccessible=true}
+        @Suppress("UNCHECKED_CAST") val flow=kind.get(d) as kotlinx.coroutines.flow.MutableStateFlow<Map<String,DownloadProgress>>
+        flow.value=mapOf("fixture" to DownloadProgress(received=5,total=10,running=true,stage="downloading"))
+        d.scheduled("fixture",10,"waiting")
+        assertEquals("downloading",d.progress.value["fixture"]!!.stage)
+        assertEquals(5L,d.progress.value["fixture"]!!.received)
+    }
 }

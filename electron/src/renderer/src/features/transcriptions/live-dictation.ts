@@ -12,6 +12,7 @@ import {
   sherpaSummaryTail,
 } from '@shared/utils/captureProtocol';
 import type { TranscriptEntry } from '@shared/utils/transcriptionsStore';
+import { frameRms, rmsToLevel } from './level-meter';
 import { apiJson } from '@/lib/api/client';
 import { announceModelLicenceRequired } from '@/features/settings/model-license-contract';
 import { backendWebSocketUrl } from '@/lib/api/websocket';
@@ -24,6 +25,8 @@ export interface DictationState {
   modelStage?: string;
   issue?: 'model' | 'microphone' | 'connection' | 'transcription' | 'storage';
   paused: boolean;
+  /** Epoch ms when the microphone started delivering audio. */
+  startedAt?: number;
 }
 interface Frame extends Partial<TranscriptEntry> {
   type: string;
@@ -46,6 +49,7 @@ export class LiveDictation {
   private committed: string[] = [];
   private onResult: (entry: Partial<TranscriptEntry>) => void = () => {};
   private startedAt = 0;
+  private levelListeners = new Set<(level: number) => void>();
   private finishActivity: (() => void) | null = null;
 
   getSnapshot = () => this.state;
@@ -53,6 +57,13 @@ export class LiveDictation {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
+    };
+  };
+  /** Live microphone level (0..1) from the same frames sent to the recogniser. */
+  onLevel = (listener: (level: number) => void) => {
+    this.levelListeners.add(listener);
+    return () => {
+      this.levelListeners.delete(listener);
     };
   };
   private publish(patch: Partial<DictationState>) {
@@ -79,6 +90,7 @@ export class LiveDictation {
       issue: undefined,
       modelStage: undefined,
       paused: false,
+      startedAt: undefined,
     });
     let issue: DictationState['issue'] = 'connection';
     try {
@@ -158,6 +170,10 @@ export class LiveDictation {
         stream,
         (frame) => {
           if (!current() || this.state.paused || this.state.stage !== 'recording') return;
+          if (this.levelListeners.size) {
+            const level = rmsToLevel(frameRms(frame));
+            for (const listener of this.levelListeners) listener(level);
+          }
           if (socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > 1024 * 1024) {
             this.fail('connection');
             return;
@@ -180,7 +196,7 @@ export class LiveDictation {
         });
       }
       this.startedAt = Date.now();
-      this.publish({ stage: 'recording' });
+      this.publish({ stage: 'recording', startedAt: this.startedAt });
     } catch {
       if (current()) this.fail(issue);
     }

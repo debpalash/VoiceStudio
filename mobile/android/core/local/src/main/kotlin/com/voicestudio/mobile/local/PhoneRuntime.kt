@@ -12,9 +12,7 @@ class PhoneRuntime private constructor(context: Context) {
     @Suppress("DEPRECATION")
     val licence=LicenceGate(File(app.noBackupFilesDir,"model-licences.json"),app.packageManager.getPackageInfo(app.packageName,0).versionName.orEmpty())
     private val downloadNetwork=PhoneDownloadNetwork(app.getSystemService(ConnectivityManager::class.java))
-    val downloads=ModelDownloads(File(app.noBackupFilesDir,"models"),licence,ramBytes,{path->app.assets.open(path)}) {
-        downloadNetwork.wifiAllowed
-    }
+    val downloads=ModelDownloads(File(app.noBackupFilesDir,"models"),licence,ramBytes,{path->app.assets.open(path)},{downloadNetwork.wifiAllowed},{downloadNetwork.waitingStage})
     val engine: LocalEngine=PhoneLocalEngine(downloads)
     companion object {
         // Only the application context survives; activities are never retained.

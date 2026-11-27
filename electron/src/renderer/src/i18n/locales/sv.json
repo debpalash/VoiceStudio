@@ -480,6 +480,9 @@
     "deleteTitle": "Ta bort modell",
     "deleteConfirm": "Ta bort {{repoId}}? Du kan installera om det senare.",
     "deleted": "Raderade {{repoId}}",
+    "engineDeleteTitle": "Ta bort motor",
+    "engineDeleteConfirm": "Ta bort {{name}} och filerna som VoiceStudio installerade för den? Modeller i den delade nedladdningscachen behålls. Du kan installera den igen senare.",
+    "engineDeleteFailed": "Det gick inte att ta bort",
     "reinstall": "Installera om",
     "reinstallTitle": "Installera om modellen",
     "reinstallConfirm": "Installera om {{repoId}}? Detta kommer att radera den aktuella kopian och ladda ner igen.",
@@ -1663,6 +1666,10 @@
     "aec_row_title": "Aktivera ekoreducering för diktering",
     "aec_experimental": "Experimentellt",
     "aec_hint": "Låter dig diktera medan en förhandsvisning, dubbning eller video spelas utan att appens ljud transkriberas. Lägger till lite bearbetning; lämna av om du inte dikterar under uppspelning.",
+    "compact_title": "Kompakt överlagring",
+    "compact_row_title": "Kompakt överlagring för diktering med hållen tangent",
+    "compact_description": "Medan du håller ned genvägen visas bara en nivåmätare i realtid och en timer i stället för hela inspelaren och transkriptionen. Texten infogas fortfarande när du släpper.",
+    "compact_save_failed": "Det gick inte att spara den här inställningen. Försök igen.",
     "cleanup_title": "Textstädning",
     "spoken_punctuation": "Uttalad interpunktion",
     "spoken_punctuation_desc": "Säg “comma”, “period”, “question mark”, “new line” för att skriva det. Endast engelska."
@@ -4238,6 +4245,8 @@
       "speed": "{{speed}}/s",
       "eta": "Ungefär {{time}} kvar",
       "estimating": "Beräknar återstående tid…",
+      "waiting_metered": "Det här wifi-nätverket är begränsat…",
+      "use_connection": "Ladda ned med den här anslutningen",
       "waiting_network": "Väntar på anslutning…"
     }
   },

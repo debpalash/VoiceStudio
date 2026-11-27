@@ -30,7 +30,7 @@ pins `transformers>=5.3` — the same isolation primitive used by
 ## One-click install
 
 On Linux and macOS, **Model Catalogue → dots.tts → Install** does the
-steps below for you. It installs into its own folder under VoiceStudio's data directory, with its own Python environment. Nothing it installs touches VoiceStudio itself or any other engine, so you can switch to it and back without breaking what already worked. **Uninstall** in the same row removes only that folder. It is not offered on Windows, where upstream
+steps below for you. It installs into its own folder under VoiceStudio's data directory, with its own Python environment. Nothing it installs touches VoiceStudio itself or any other engine, so you can switch to it and back without breaking what already worked. **Delete** in the same row removes only that folder. It is not offered on Windows, where upstream
 publishes no install. The ~9 GB checkpoint still downloads on first synthesis.
 
 The first synthesis downloads the weights, which takes a while on a slow

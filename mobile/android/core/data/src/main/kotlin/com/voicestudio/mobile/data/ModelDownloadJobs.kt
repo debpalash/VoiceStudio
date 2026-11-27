@@ -76,7 +76,7 @@ object ModelDownloadJobs {
             }
         }.build()
     private fun schedule(context: Context,item: IntentRecord,total: Long) {
-        PhoneRuntime.get(context).downloads.scheduled(item.model,total,if(item.mobile) "waiting_network" else "waiting")
+        PhoneRuntime.get(context).downloads.let {it.scheduled(item.model,total,it.waitingStage(item.mobile))}
         if(Build.VERSION.SDK_INT>=34) {
             val extras=PersistableBundle().apply {putString("model",item.model)}
             val network=requiredNetwork(item.mobile)
@@ -94,7 +94,9 @@ object ModelDownloadJobs {
             val manager=WorkManager.getInstance(context)
             val networkType=if(item.mobile) NetworkType.CONNECTED else NetworkType.UNMETERED
             val request=OneTimeWorkRequestBuilder<ModelDownloadWorker>().setInputData(workDataOf("model" to item.model))
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(networkType).build()).build()
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(networkType).build())
+                // The policy gate can disagree with the OS constraint for a moment; retry soon, not after hours.
+                .setBackoffCriteria(BackoffPolicy.LINEAR,WorkRequest.MIN_BACKOFF_MILLIS,java.util.concurrent.TimeUnit.MILLISECONDS).build()
             val previous=manager.getWorkInfosForUniqueWork("model:${item.model}")
             // Complete on WorkManager's query callback; never block the UI or
             // introduce a separate transfer/network polling owner.
@@ -129,7 +131,7 @@ object ModelDownloadJobs {
                 if(item.paused) {downloads.paused(item.model,model.totalBytes,item.error);continue}
                 if(PhoneRuntime.get(context).downloads.installed(model)) {finished(context,item.model);continue}
                 if(Build.VERSION.SDK_INT<34||scheduler.getPendingJob(item.jobID)?.requiredNetwork!=requiredNetwork(item.mobile)) schedule(context,item,model.totalBytes)
-                else PhoneRuntime.get(context).downloads.scheduled(item.model,model.totalBytes,if(item.mobile) "waiting_network" else "waiting")
+                else downloads.scheduled(item.model,model.totalBytes,downloads.waitingStage(item.mobile))
             } catch(e:CancellationException) {throw e}
             catch(e:Exception) {onFailure(e as? ClientFailure ?: ClientFailure("mobile.local.download_failed"))}
         }
@@ -160,7 +162,7 @@ object ModelDownloadJobs {
     internal fun waiting(context: Context,id: String) {
         val item=read(context).firstOrNull {it.model==id&&!it.paused} ?: return
         val downloads=PhoneRuntime.get(context).downloads
-        downloads.scheduled(id,downloads.progress.value[id]?.total ?: 0,if(item.mobile) "waiting_network" else "waiting")
+        downloads.scheduled(id,downloads.progress.value[id]?.total ?: 0,downloads.waitingStage(item.mobile))
     }
     internal suspend fun run(context: Context,id: String) {
         val job=currentCoroutineContext().job
@@ -222,7 +224,7 @@ class ModelDownloadService: JobService() {
             catch(e:CancellationException) {ModelDownloadJobs.waiting(this@ModelDownloadService,id);throw e}
             catch(e:Exception) {
                 if(e is ClientFailure&&e.key=="mobile.local.wifi_required") {
-                    PhoneRuntime.get(this@ModelDownloadService).downloads.scheduled(id,PhoneRuntime.get(this@ModelDownloadService).downloads.progress.value[id]?.total ?: 0)
+                    PhoneRuntime.get(this@ModelDownloadService).downloads.let {it.scheduled(id,it.progress.value[id]?.total ?: 0,it.waitingStage(false))}
                     jobFinished(params,true)
                 } else {ModelDownloadJobs.pauseInBackground(this@ModelDownloadService,id,(e as? ClientFailure)?.key ?: "mobile.local.download_failed");jobFinished(params,false)}
             }

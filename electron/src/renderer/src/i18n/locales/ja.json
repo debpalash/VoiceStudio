@@ -480,6 +480,9 @@
     "deleteTitle": "モデルの削除",
     "deleteConfirm": "{{repoId}} を削除しますか?後で再インストールできます。",
     "deleted": "{{repoId}} を削除しました",
+    "engineDeleteTitle": "エンジンを削除",
+    "engineDeleteConfirm": "{{name}} と、VoiceStudio がそのためにインストールしたファイルを削除しますか？共有ダウンロードキャッシュ内のモデルは残ります。後で再インストールできます。",
+    "engineDeleteFailed": "削除できませんでした",
     "reinstall": "再インストール",
     "reinstallTitle": "モデルを再インストールする",
     "reinstallConfirm": "{{repoId}} を再インストールしますか?これにより、現在のコピーが削除され、再度ダウンロードされます。",
@@ -1663,6 +1666,10 @@
     "aec_row_title": "音声入力のエコーキャンセルを有効化",
     "aec_experimental": "試験的",
     "aec_hint": "プレビュー、吹き替え、動画の再生中でも、アプリ自身の音声を文字起こしせずに音声入力できます。処理が少し増えるため、再生中に入力しない場合はオフのままにしてください。",
+    "compact_title": "コンパクト表示",
+    "compact_row_title": "押し続けるディクテーション用のコンパクト表示",
+    "compact_description": "ショートカットを押している間、完全なレコーダーと文字起こしの代わりに、リアルタイムのレベルメーターとタイマーだけを表示します。離すと、これまでどおりテキストが挿入されます。",
+    "compact_save_failed": "この設定を保存できませんでした。もう一度お試しください。",
     "cleanup_title": "テキストの整形",
     "spoken_punctuation": "音声による句読点",
     "spoken_punctuation_desc": "“comma”, “period”, “question mark”, “new line” と言うと入力されます。英語のみ。"
@@ -4238,6 +4245,8 @@
       "speed": "{{speed}}/秒",
       "eta": "残り約{{time}}",
       "estimating": "残り時間を推定中…",
+      "waiting_metered": "このWi-Fiは従量制です…",
+      "use_connection": "この接続でダウンロード",
       "waiting_network": "接続を待っています…"
     }
   },

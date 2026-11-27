@@ -47,7 +47,8 @@ lives in **Tools → Sound effects**.
 
 The engine installs into its own folder and Python 3.12 environment (upstream
 pins `numpy==1.26.4` and `transformers==4.57.1`, which cannot share an
-interpreter with the app). **Uninstall** removes only that folder.
+interpreter with the app). **Delete**, at the top of **Tools → Sound effects**
+once it is installed, removes that folder, including the ~11 GB of weights.
 
 ## API
 

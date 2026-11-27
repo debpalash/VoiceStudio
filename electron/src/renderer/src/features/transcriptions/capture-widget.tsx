@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import { isBackendReachable } from '@shared/utils/backendStage';
 import { dictationSeparator } from '@shared/utils/captureProtocol';
+import { CompactOverlay } from './compact-overlay';
 import { LiveDictation } from './live-dictation';
 import { addTranscription } from '@shared/utils/transcriptionsStore';
 
@@ -15,6 +16,7 @@ export function CaptureWidget() {
   const state = useSyncExternalStore(live.subscribe, live.getSnapshot);
   const backend = useBackendStatus();
   const [delivery, setDelivery] = useState<'copied' | 'failed' | null>(null);
+  const [compact, setCompact] = useState(false);
   const session = useRef<number | null>(null);
   const stopRequested = useRef(false);
   const output = useRef<Promise<unknown>>(Promise.resolve());
@@ -49,6 +51,7 @@ export function CaptureWidget() {
       if (session.current !== null) return;
       session.current = event.session;
       stopRequested.current = false;
+      setCompact(event.compact === true);
       setDelivery(null);
       output.current = Promise.resolve();
       let sequence = 0;
@@ -145,6 +148,17 @@ export function CaptureWidget() {
     live.cancel();
     void api?.cancel(id).catch(() => {});
   };
+  // Compact hides the transcript, so anything the user must read (a failure or
+  // clipboard-only delivery) restores the full recorder at its normal size.
+  // An empty final (no speech) never finishes the session, so it needs the full view too.
+  const showCompact =
+    compact &&
+    delivery === null &&
+    state.stage !== 'error' &&
+    !(state.stage === 'done' && !state.text);
+  useEffect(() => {
+    if (compact && !showCompact) void api?.expand().catch(() => {});
+  }, [api, compact, showCompact]);
   const label =
     delivery === 'failed'
       ? t('common.error')
@@ -165,6 +179,22 @@ export function CaptureWidget() {
                     : state.paused
                       ? t('common.paused')
                       : t('capture.listening_label');
+  if (showCompact) {
+    return (
+      <main
+        className="h-screen overflow-hidden rounded-xl border border-border bg-background"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') cancel();
+        }}
+      >
+        <CompactOverlay
+          onLevel={live.onLevel}
+          startedAt={state.startedAt}
+          live={state.stage === 'recording' && !state.paused}
+        />
+      </main>
+    );
+  }
   return (
     <main
       className="flex h-screen flex-col gap-3 rounded-xl border border-border bg-background p-4 text-foreground"

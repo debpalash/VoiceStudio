@@ -175,6 +175,8 @@ const bridge: VoiceStudioBridge = {
     finish: (session) => ipcRenderer.invoke('capture:finish', session),
     cancel: (session) => ipcRenderer.invoke('capture:cancel', session),
     stop: () => ipcRenderer.invoke('capture:stop'),
+    expand: () => ipcRenderer.invoke('capture:expand'),
+    setCompact: (compact) => ipcRenderer.invoke('capture:setCompact', compact),
     labels: (labels) => ipcRenderer.invoke('capture:labels', labels),
     onEvent: (callback) => subscribe('capture:event', callback),
   },

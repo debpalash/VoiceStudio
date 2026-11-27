@@ -482,6 +482,9 @@
     "deleteTitle": "Supprimer le modèle",
     "deleteConfirm": "Supprimer {{repoId}} ? Vous pourrez le réinstaller plus tard.",
     "deleted": "Supprimé {{repoId}}",
+    "engineDeleteTitle": "Supprimer le moteur",
+    "engineDeleteConfirm": "Supprimer {{name}} et les fichiers que VoiceStudio a installés pour lui ? Les modèles du cache de téléchargement partagé sont conservés. Vous pourrez le réinstaller plus tard.",
+    "engineDeleteFailed": "Suppression impossible",
     "reinstall": "Réinstaller",
     "reinstallTitle": "Réinstaller le modèle",
     "reinstallConfirm": "Réinstaller {{repoId}} ? Cela supprimera la copie actuelle et la téléchargera à nouveau.",
@@ -1665,6 +1668,10 @@
     "aec_row_title": "Activer l’annulation d’écho pour la dictée",
     "aec_experimental": "Expérimental",
     "aec_hint": "Permet de dicter pendant une préécoute, un doublage ou une vidéo sans transcrire le son de l’application. Ajoute un léger traitement ; laissez désactivé si vous ne dictez pas pendant la lecture.",
+    "compact_title": "Surimpression compacte",
+    "compact_row_title": "Surimpression compacte pour la dictée maintenue",
+    "compact_description": "Tant que vous maintenez le raccourci, affiche seulement un indicateur de niveau en direct et un minuteur au lieu de l'enregistreur complet et de la transcription. Le texte est toujours inséré au relâchement.",
+    "compact_save_failed": "Impossible d'enregistrer ce réglage. Veuillez réessayer.",
     "cleanup_title": "Nettoyage du texte",
     "spoken_punctuation": "Ponctuation dictée",
     "spoken_punctuation_desc": "Dites “comma”, “period”, “question mark”, “new line” pour la saisir. Anglais uniquement."
@@ -4240,6 +4247,8 @@
       "speed": "{{speed}}/s",
       "eta": "Encore environ {{time}}",
       "estimating": "Estimation du temps restant…",
+      "waiting_metered": "Ce Wi-Fi est limité…",
+      "use_connection": "Télécharger avec cette connexion",
       "waiting_network": "En attente de connexion…"
     }
   },

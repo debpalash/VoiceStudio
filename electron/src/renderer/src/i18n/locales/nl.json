@@ -480,6 +480,9 @@
     "deleteTitle": "Model verwijderen",
     "deleteConfirm": "{{repoId}} verwijderen? U kunt het later opnieuw installeren.",
     "deleted": "Verwijderd {{repoId}}",
+    "engineDeleteTitle": "Engine verwijderen",
+    "engineDeleteConfirm": "{{name}} en de bestanden die VoiceStudio ervoor heeft geïnstalleerd verwijderen? Modellen in de gedeelde downloadcache blijven bewaard. Je kunt de engine later opnieuw installeren.",
+    "engineDeleteFailed": "Verwijderen mislukt",
     "reinstall": "Opnieuw installeren",
     "reinstallTitle": "Installeer het model opnieuw",
     "reinstallConfirm": "{{repoId}} opnieuw installeren? Hiermee wordt de huidige kopie verwijderd en opnieuw gedownload.",
@@ -1663,6 +1666,10 @@
     "aec_row_title": "Echo-onderdrukking voor dicteren inschakelen",
     "aec_experimental": "Experimenteel",
     "aec_hint": "Laat je dicteren tijdens een voorbeeld, dub of video zonder de audio van de app te transcriberen. Voegt enige verwerking toe; laat uit als je niet tijdens afspelen dicteert.",
+    "compact_title": "Compacte overlay",
+    "compact_row_title": "Compacte overlay voor dicteren met ingedrukt houden",
+    "compact_description": "Zolang je de sneltoets ingedrukt houdt, zie je alleen een live niveaumeter en een timer in plaats van de volledige recorder en transcriptie. De tekst wordt bij loslaten nog steeds ingevoegd.",
+    "compact_save_failed": "Deze instelling kon niet worden opgeslagen. Probeer het opnieuw.",
     "cleanup_title": "Tekst opschonen",
     "spoken_punctuation": "Gesproken leestekens",
     "spoken_punctuation_desc": "Zeg “comma”, “period”, “question mark”, “new line” om het te typen. Alleen Engels."
@@ -4238,6 +4245,8 @@
       "speed": "{{speed}}/s",
       "eta": "Nog ongeveer {{time}}",
       "estimating": "Resterende tijd schatten…",
+      "waiting_metered": "Dit wifi-netwerk is beperkt…",
+      "use_connection": "Downloaden via deze verbinding",
       "waiting_network": "Wachten op verbinding…"
     }
   },
