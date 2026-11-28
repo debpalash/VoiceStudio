@@ -1745,6 +1745,7 @@ it('passes voice-only preparation and retains target-language subtitle intent th
     subtitleTargetLang: 'en',
     phase: 'editing',
   });
+  expect(dubSession.state.exportOptions?.excluded).toBeUndefined();
   expect(dubSession.state.segments[0].translations).toEqual({ en: 'Already translated' });
   expect(vi.mocked(consumeTaskStream).mock.calls).toHaveLength(1);
 });
