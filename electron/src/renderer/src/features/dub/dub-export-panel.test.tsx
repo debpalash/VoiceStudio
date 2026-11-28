@@ -10,7 +10,10 @@ vi.mock('@/lib/api/client', () => ({
   describeError: (error: unknown) => (error instanceof Error ? error.message : String(error)),
   errorFromResponse: vi.fn(),
 }));
-vi.mock('./dub-session', () => ({ setDubExportPreferences: mocks.preferences }));
+vi.mock('./dub-session', () => ({
+  setDubExportPreferences: mocks.preferences,
+  recordDubSavedFile: vi.fn(),
+}));
 vi.mock('@/components/pipeline-failure', () => ({
   PipelineFailure: ({ fallback }: { fallback: string }) => <p role="alert">{fallback}</p>,
 }));
@@ -32,6 +35,44 @@ beforeEach(() => {
   mocks.api.mockResolvedValue({ ok: true });
 });
 afterEach(cleanup);
+
+it('saves a subtitled MP4 with original audio before a dub by default', async () => {
+  render(<DubExportPanel session={session({ exportOptions: { burn: true } })} disabled={false} />);
+
+  const save = screen.getByRole('button', { name: 'dub.flow_save' });
+  expect(save).toBeEnabled();
+  expect(screen.getByRole('switch', { name: 'exportModal.original' })).toBeChecked();
+  fireEvent.click(save);
+
+  await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
+  expect(mocks.api.mock.calls[0][0]).toBe('/dub/sync-transcript/job');
+  expect(JSON.parse(mocks.api.mock.calls[0][1].body).segments[0].text).toBe('Edited & complete');
+  const url = new URL(mocks.save.mock.calls[0][0].url, 'http://localhost');
+  expect(url.pathname).toBe('/api/dub/download/job');
+  expect(url.searchParams.get('include_tracks')).toBe('original');
+  expect(url.searchParams.get('default_track')).toBe('original');
+  expect(url.searchParams.get('burn_subs')).toBe('true');
+});
+
+it('respects an explicitly excluded original track before a dub', () => {
+  render(
+    <DubExportPanel
+      session={session({ exportOptions: { excluded: ['original'] } })}
+      disabled={false}
+    />,
+  );
+  expect(screen.getByRole('switch', { name: 'exportModal.original' })).not.toBeChecked();
+  expect(screen.getByRole('button', { name: 'dub.flow_save' })).toBeDisabled();
+});
+
+it('still selects dubbed audio by default when there is a generated track', () => {
+  render(
+    <DubExportPanel session={session({ tracks: ['fr'], exportOptions: {} })} disabled={false} />,
+  );
+  expect(screen.getByRole('switch', { name: 'exportModal.original' })).not.toBeChecked();
+  expect(screen.getByRole('button', { name: 'FR' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'dub.flow_save' })).toBeEnabled();
+});
 
 it('offers plain text before a dub, syncs the complete edited transcript and opens native Save As', async () => {
   render(<DubExportPanel session={session()} disabled={false} />);
