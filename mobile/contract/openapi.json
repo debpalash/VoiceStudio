@@ -1217,6 +1217,31 @@
     "title": "Body_dub_from_srt_dub_from_srt_post",
     "type": "object"
    },
+   "Body_dub_import_paired_srt_dub_import_paired_srt__job_id__post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     },
+     "target": {
+      "title": "Target",
+      "type": "string"
+     },
+     "translated": {
+      "contentMediaType": "application/octet-stream",
+      "title": "Translated",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file",
+     "translated",
+     "target"
+    ],
+    "title": "Body_dub_import_paired_srt_dub_import_paired_srt__job_id__post",
+    "type": "object"
+   },
    "Body_dub_import_srt_dub_import_srt__job_id__post": {
     "properties": {
      "file": {
@@ -1288,6 +1313,18 @@
       "contentMediaType": "application/octet-stream",
       "title": "File",
       "type": "string"
+     },
+     "translated": {
+      "anyOf": [
+       {
+        "contentMediaType": "application/octet-stream",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Translated"
      }
     },
     "required": [
@@ -13606,6 +13643,54 @@
      }
     },
     "summary": "Delete Single Dub History"
+   }
+  },
+  "/dub/import-paired-srt/{job_id}": {
+   "post": {
+    "description": "Import corresponding source and translated cues against prepared media.",
+    "operationId": "dub_import_paired_srt_dub_import_paired_srt__job_id__post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_dub_import_paired_srt_dub_import_paired_srt__job_id__post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dub Import Paired Srt"
    }
   },
   "/dub/import-srt/{job_id}": {

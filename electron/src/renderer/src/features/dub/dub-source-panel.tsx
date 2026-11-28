@@ -97,7 +97,13 @@ export function DubSourcePanel({
   };
   const choose = (file: File) => {
     if (/\.(srt|vtt)$/i.test(file.name))
-      setDubInputSelection({ captions: file, srtChoice: true, srtLanguageChosen: false, step: 2 });
+      setDubInputSelection({
+        captions: file,
+        translatedCaptions: undefined,
+        srtChoice: true,
+        srtLanguageChosen: false,
+        step: 2,
+      });
     else setDubInputSelection({ media: file, step: 1 });
   };
   const linkForm = (
@@ -171,6 +177,9 @@ export function DubSourcePanel({
         <div>
           <dt className="text-muted-foreground">{t('dub.flow_subtitles')}</dt>
           <dd className="break-all">{captions.name}</dd>
+          {selected.translatedCaptions && (
+            <dd className="break-all">{selected.translatedCaptions.name}</dd>
+          )}
         </div>
       )}
       <div>
@@ -188,9 +197,14 @@ export function DubSourcePanel({
       <div>
         <dt className="text-muted-foreground">{t('dub.guide_text')}</dt>
         <dd>
-          {t(captions && subtitlesInTarget ? 'dub.srt_target_hint' : 'dub.srt_source_hint', {
-            language: session.target,
-          })}
+          {t(
+            captions && (subtitlesInTarget || selected.translatedCaptions)
+              ? 'dub.srt_target_hint'
+              : 'dub.srt_source_hint',
+            {
+              language: session.target,
+            },
+          )}
         </dd>
       </div>
       <div>
@@ -343,6 +357,7 @@ export function DubSourcePanel({
                   setDubInputSelection({
                     srtChoice: false,
                     captions: undefined,
+                    translatedCaptions: undefined,
                     subtitlesInTarget: false,
                     srtLanguageChosen: false,
                   }),
@@ -402,7 +417,43 @@ export function DubSourcePanel({
                 selected.srtLanguageChosen === true && subtitlesInTarget === true,
                 t('dub.flow_srt_target', { language: session.target }),
                 t('dub.srt_target_hint', { language: session.target }),
-                () => setDubInputSelection({ subtitlesInTarget: true, srtLanguageChosen: true }),
+                () =>
+                  setDubInputSelection({
+                    translatedCaptions: undefined,
+                    subtitlesInTarget: true,
+                    srtLanguageChosen: true,
+                  }),
+              )}
+              {media && selected.srtLanguageChosen && !subtitlesInTarget && (
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium">
+                    {t('dub.flow_srt_target', { language: session.target })}
+                    <input
+                      type="file"
+                      accept=".srt,application/x-subrip"
+                      disabled={locked}
+                      className="mt-1 block w-full text-xs"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) setDubInputSelection({ translatedCaptions: file });
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                  {selected.translatedCaptions && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="break-all">{selected.translatedCaptions.name}</span>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={locked}
+                        onClick={() => setDubInputSelection({ translatedCaptions: undefined })}
+                      >
+                        {t('common.clear')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -510,6 +561,7 @@ export function DubSourcePanel({
               setDubInputSelection({
                 media: undefined,
                 captions: undefined,
+                translatedCaptions: undefined,
                 step: 0,
                 srtChoice: undefined,
                 srtLanguageChosen: false,

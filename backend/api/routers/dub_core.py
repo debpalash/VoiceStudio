@@ -325,11 +325,92 @@ async def _read_subtitle_upload(file: UploadFile):
     return result
 
 
+async def _paired_subtitle_rows(source, translated):
+    target = await _read_subtitle_upload(translated)
+    if (source.skipped_cues or target.skipped_cues or
+            len(source.segments) != len(target.segments)):
+        raise HTTPException(422, "Both subtitle files need one valid cue per line.")
+    rows = []
+    for original, translation in zip(source.segments, target.segments):
+        if min(original["end"], translation["end"]) <= max(original["start"], translation["start"]):
+            raise HTTPException(422, "Each translated cue must overlap its corresponding source cue.")
+        rows.append({**original, "text": translation["text"]})
+    return rows
+
+
+@router.post("/dub/import-paired-srt/{job_id}", dependencies=[Depends(require_admin)])
+async def dub_import_paired_srt(job_id: str, file: UploadFile = File(...),
+                                translated: UploadFile = File(...), target: str = Form(...)):
+    """Import corresponding source and translated cues against prepared media."""
+    from services.speaker_clone import (
+        MAX_REF_DURATION_S, MIN_SEGMENT_REF_DURATION_S, auto_profile_id, build_cast_sources,
+    )
+
+    _safe_lang_or_400(target)
+    job = _get_job(job_id)
+    directory = _safe_job_dir(job_id)
+    if not job or not directory or not os.path.isdir(directory):
+        raise HTTPException(404, "Prepared media not found.")
+    revision = segments_revision(job)
+    rows = await _paired_subtitle_rows(await _read_subtitle_upload(file), translated)
+    audio = next((p for p in (job.get("vocals_path"), job.get("audio_path"))
+                  if p and os.path.isfile(p)), None)
+    if not audio:
+        raise HTTPException(409, "The original audio is unavailable.")
+
+    def prepare():
+        # Seek directly to each cue so long recordings need only one clip in memory.
+        run_dir = dub_pipeline.new_reference_run_dir(directory)
+        refs = {}
+        try:
+            with sf.SoundFile(audio) as source:
+                for row in rows:
+                    start = round(row["start"] * source.samplerate)
+                    end = round(row["end"] * source.samplerate)
+                    if end > len(source) + round(source.samplerate / 1000):
+                        raise HTTPException(422, "A subtitle cue extends beyond the original audio.")
+                    row["translations"] = {target: row["text"]}
+                    duration = row["end"] - row["start"]
+                    if not MIN_SEGMENT_REF_DURATION_S <= duration <= MAX_REF_DURATION_S:
+                        continue
+                    source.seek(start)
+                    samples = source.read(end - start, dtype="float32", always_2d=True)
+                    key = str(row["id"])
+                    path = os.path.join(run_dir, f"seg_ref_{key}.wav")
+                    sf.write(path, samples.mean(axis=1), source.samplerate)
+                    refs[key] = {"ref_audio": path, "ref_text": row["text_original"], "duration": duration}
+                    row["profile_id"] = auto_profile_id(row["speaker_id"])
+            with dub_pipeline._dub_jobs_lock:
+                if _dub_jobs.get(job_id) is not job or segments_revision(job) != revision:
+                    raise HTTPException(409, "The source changed during subtitle import.")
+                candidate = dict(job)
+                replace_source_segments(candidate, rows)
+                candidate.update(segment_clones=refs, speaker_clones={},
+                                 cast_sources=build_cast_sources(rows, None, refs))
+                previous_run = candidate.pop("ref_run", None)
+                if refs:
+                    candidate["ref_run"] = os.path.basename(run_dir)
+                _save_job(job_id, candidate, strict=True)
+                job.update(candidate)
+                if not refs:
+                    job.pop("ref_run", None)
+            if previous_run:
+                previous_dir = os.path.join(os.path.dirname(run_dir), os.path.basename(previous_run))
+                dub_pipeline.discard_reference_run(previous_dir, job)
+        finally:
+            dub_pipeline.discard_reference_run(run_dir, job)
+
+    await asyncio.to_thread(prepare)
+    return {"segments": rows, "stats": {"imported": len(rows)}}
+
+
 @router.post("/dub/validate-srt", dependencies=[Depends(require_admin)])
-async def dub_validate_srt(file: UploadFile = File(...)):
+async def dub_validate_srt(file: UploadFile = File(...), translated: Optional[UploadFile] = None):
     """Validate a selected subtitle file without starting or changing a job."""
     try:
         result = await _read_subtitle_upload(file)
+        if translated is not None:
+            await _paired_subtitle_rows(result, translated)
         return {"imported": len(result.segments)}
     finally:
         await file.close()

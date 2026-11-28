@@ -1507,7 +1507,12 @@ async function useDownloadedCaptions(
 /** The SRT chosen with a media upload, kept for that job until it imports: a
  * preparation stream that drops can then resume into the import. A reload
  * loses the File; the project then asks for the SRT again. */
-let stagedSubtitles: { jobId: string; file: File; profileId?: string } | null = null;
+let stagedSubtitles: {
+  jobId: string;
+  file: File;
+  profileId?: string;
+  translatedCaptions?: File;
+} | null = null;
 
 async function finishPreparation(
   jobId: string,
@@ -1551,6 +1556,7 @@ async function finishPreparation(
       profileId ?? staged?.profileId,
       {
         subtitlesInTarget: Boolean(dubSession.state.subtitleTargetLang),
+        translatedCaptions: staged?.translatedCaptions,
       },
       observeRequest,
     );
@@ -1589,13 +1595,18 @@ export async function uploadDub(
     subtitles && options?.subtitlesInTarget
       ? translationTargetCode(dubSession.state.target)
       : undefined;
-  if (subtitles && options?.subtitlesInTarget && !subtitleTarget)
+  if (
+    subtitles &&
+    ((options?.subtitlesInTarget && !subtitleTarget) ||
+      (options?.translatedCaptions && !translationTargetCode(dubSession.state.target)))
+  )
     throw new Error(tr('languagePicker.chooseSupported'));
   // Validate replacement subtitles before discarding the open project: a
   // rejected SRT must leave the current work (and its undo history) intact.
   if (subtitles && file.size > 0) {
     const validation = new FormData();
     validation.set('file', subtitles);
+    if (options?.translatedCaptions) validation.set('translated', options.translatedCaptions);
     await apiJson('/dub/validate-srt', { method: 'POST', body: validation });
     if (controller || cancelling || dubSession.state.recovery) return false;
   }
@@ -1653,7 +1664,14 @@ export async function uploadDub(
       signal,
     });
     patch({ jobId: upload.job_id, taskId: upload.task_id });
-    stagedSubtitles = subtitles ? { jobId: upload.job_id, file: subtitles, profileId } : null;
+    stagedSubtitles = subtitles
+      ? {
+          jobId: upload.job_id,
+          file: subtitles,
+          profileId,
+          translatedCaptions: options?.translatedCaptions,
+        }
+      : null;
     await finishPreparation(
       upload.job_id,
       upload.task_id,
@@ -2787,6 +2805,16 @@ async function loadDubSubtitles(
   body.set('file', file);
   if (!snapshot.jobId && (importedTarget || snapshot.sourceLanguage))
     body.set('source_lang', importedTarget || snapshot.sourceLanguage!);
+  let path = snapshot.jobId
+    ? '/dub/import-srt/' + encodeURIComponent(snapshot.jobId)
+    : '/dub/from-srt';
+  if (options?.translatedCaptions && snapshot.jobId) {
+    const target = translationTargetCode(snapshot.target);
+    if (!target) throw new Error(tr('languagePicker.chooseSupported'));
+    body.set('translated', options.translatedCaptions);
+    body.set('target', target);
+    path = '/dub/import-paired-srt/' + encodeURIComponent(snapshot.jobId);
+  }
   observeRequest();
   const result = await apiJson<{
     job_id?: string;
@@ -2795,7 +2823,7 @@ async function loadDubSubtitles(
     source_lang?: string;
     segments: DubSegment[];
     stats: Record<string, number>;
-  }>(snapshot.jobId ? '/dub/import-srt/' + encodeURIComponent(snapshot.jobId) : '/dub/from-srt', {
+  }>(path, {
     method: 'POST',
     body,
     signal,

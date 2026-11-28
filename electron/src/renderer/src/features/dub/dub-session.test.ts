@@ -1990,3 +1990,33 @@ it('does not leave a finished preparation to replay when the paired SRT import f
   expect(dubSession.state).toMatchObject({ jobId: 'paired-job', taskId: null, recovery: null });
   expect(dubSession.state.error).toBeTruthy();
 });
+
+it('sends both subtitles with the selected target and keeps the source reference', async () => {
+  resetDubSession();
+  setDubProduction({ sourceLanguage: 'es' });
+  setDubTarget('English', 'en');
+  const original = new File(['source'], 'source.srt');
+  const translated = new File(['translation'], 'english.srt');
+  vi.mocked(apiJson).mockReset()
+    .mockResolvedValueOnce({ imported: 1 })
+    .mockResolvedValueOnce({ job_id: 'paired', task_id: 'prep' })
+    .mockResolvedValueOnce({
+      segments: [{ id: 0, start: 0, end: 4, text_original: 'Hola', text: 'Hello',
+        profile_id: 'auto:speaker_1', translations: { en: 'Hello' } }], stats: { imported: 1 },
+    });
+  vi.mocked(consumeTaskStream).mockReset().mockImplementationOnce(async (_path, emit) => {
+    emit({ type: 'ready', duration: 5 });
+  });
+  await uploadDub(new File(['audio'], 'audio.wav'), original, '', { translatedCaptions: translated });
+  const calls = vi.mocked(apiJson).mock.calls;
+  expect(calls.map(([path]) => path)).toEqual(['/dub/validate-srt', '/dub/upload', '/dub/import-paired-srt/paired']);
+  for (const index of [0, 2]) {
+    const body = calls[index][1]?.body as FormData;
+    expect(body.get('translated')).toBe(translated);
+    expect(body.get('file')).toBe(original);
+  }
+  expect((calls[2][1]?.body as FormData).get('target')).toBe('en');
+  expect(dubSession.state.segments[0]).toMatchObject({
+    profile_id: 'auto:speaker_1', text_original: 'Hola', translations: { en: 'Hello' },
+  });
+});
