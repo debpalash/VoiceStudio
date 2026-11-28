@@ -71,7 +71,7 @@ describe('theme preferences', () => {
           expect(colors?.[role], `${theme.id}/${mode}/${role}`).toEqual(expect.any(String));
       }
     expect(paletteColors('heritage', 'dark')?.canvas).toBe('#1b181d');
-    expect(paletteColors('heritage', 'dark')?.messageAction).toBe('#d3869b');
+    expect(paletteColors('heritage', 'dark')?.messageAction).toBe('#b8a2d6');
     expect(parseThemePreferences('{"dark":"heritage"}').dark).toBe('heritage');
     expect(paletteColors('default', 'dark')).toBeNull();
     expect(colorVariable('sidebarRowHover')).toBe('--app-theme-sidebar-row-hover');
