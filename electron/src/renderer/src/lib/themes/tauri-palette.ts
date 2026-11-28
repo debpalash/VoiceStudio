@@ -1,8 +1,7 @@
 import { GROVE_THEME, type ThemeColors, type ThemeDefinition } from './t3-palettes';
 
 // VoiceStudio Classic: a warm near-black canvas with a low dark-purple tint,
-// warm off-white text and the rose action. Surfaces and borders stay close to
-// neutral so the rose reads as the one accent, not a wash over the whole app.
+// warm off-white text and muted lavender actions.
 // The light variant is a complementary adaptation; the original default is dark.
 function colors(light: boolean): ThemeColors {
   const canvas = light ? '#f8f6f4' : '#1b181d';
@@ -10,7 +9,7 @@ function colors(light: boolean): ThemeColors {
   const surface = light ? '#fffdfb' : '#252128';
   const text = light ? '#2e2a30' : '#ece8e4';
   const muted = light ? '#6f6870' : '#a69ea4';
-  const action = light ? '#8f3f71' : '#d3869b';
+  const action = light ? '#8f3f71' : '#b8a2d6';
   const border = light ? 'rgb(60 45 70 / 12%)' : 'rgb(236 225 240 / 9%)';
   const hover = light ? '#ebe6e8' : '#322d35';
   return {
@@ -55,7 +54,7 @@ function colors(light: boolean): ThemeColors {
     messageForeground: text,
     messageAction: action,
     messageActionForeground: light ? '#ffffff' : '#1d2021',
-    messageActionHover: light ? '#7b305e' : '#b16286',
+    messageActionHover: light ? '#7b305e' : '#a58ac6',
     codeBackground: chrome,
     codeForeground: text,
     sidebar: chrome,
