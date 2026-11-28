@@ -81,6 +81,13 @@ app.whenReady().then(async () => {
   // packageCli removed its build folder: the shipped copy must not link into it
   // (v0.5.8-beta.4's macOS _internal/Python did, and signing failed).
   assertBundleSymlinks(root);
+  if (process.platform === 'linux') {
+    const runtime = join(resources, 'cli', '_internal', 'libpython3.11.so.1.0');
+    const { stdout } = await promisify(execFile)('readelf', ['-Wl', runtime]);
+    const stack = stdout.split('\n').find((line) => line.includes('GNU_STACK'));
+    assert.ok(stack, 'Bundled Python has a GNU_STACK program header');
+    assert.doesNotMatch(stack, /\b[RW]*E\b/, 'Bundled Python must use a non-executable stack');
+  }
   const command = join(
     resources,
     'cli',
