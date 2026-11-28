@@ -8,12 +8,13 @@ Default Track control when the source audio should play first instead.
 ## Exporting before a dub exists
 
 A transcribed video can be exported without generating a dub. SRT and VTT
-export the transcript, or its translation when you have translated it, and
-MP4 keeps the original audio; turn on **Burn subtitles into picture** to draw
-the transcript onto the video. The editor's current lines are sent to the
-backend first (`POST /dub/sync-transcript/{job_id}`), so your edits are
-included. Once a dub exists, exports use the lines that dub was rendered from
-and that call is refused. Audio-only projects still need a dub to export.
+export the transcript, or its translation when you have translated it. With no
+saved track selection, MP4 includes **Original** before a dub exists. Turn on
+**Burn subtitles into picture** to draw the transcript onto the video. The
+editor sends its current lines to the backend first
+(`POST /dub/sync-transcript/{job_id}`), so your edits are included. Once a dub
+exists, exports use the lines it was rendered from and that call is refused.
+Audio-only projects still need a dub to export.
 
 ## Background volume
 

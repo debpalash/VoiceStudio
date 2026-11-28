@@ -117,3 +117,9 @@ it('opens projects that only store modern export preferences', () => {
   const saved = projectPayload(session, 'Updated');
   expect(projectSession({ id: 'saved', ...saved }, defaults).exportOptions).toMatchObject(exportOptions);
 });
+
+it.each([{ excluded: undefined }, { excluded: [] }, { excluded: ['original'] }])('round-trips the MP4 exclusion preference $excluded', ({ excluded }) => {
+  const session = { ...defaults, jobId: 'job', tracks: ['fr'], exportOptions: { excluded } };
+  const saved = JSON.parse(JSON.stringify(projectPayload(session, 'Dub')));
+  expect(projectSession({ ...saved, id: 'job' }, defaults).exportOptions?.excluded).toEqual(excluded);
+});

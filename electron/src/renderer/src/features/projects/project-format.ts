@@ -112,11 +112,13 @@ export function projectPayload(session: DubSession, name: string) {
             burnSubs: session.exportOptions.burn,
             dualSubs: session.exportOptions.dual,
             karaokeSubs: session.exportOptions.karaoke,
-            exportTracks: Object.fromEntries(
-              ['original', ...session.tracks, ...(session.exportOptions.excluded || [])].map(
-                (code) => [code, !session.exportOptions?.excluded?.includes(code)],
-              ),
-            ),
+            exportTracks: session.exportOptions.excluded
+              ? Object.fromEntries(
+                  ['original', ...session.tracks, ...session.exportOptions.excluded].map(
+                    (code) => [code, !session.exportOptions?.excluded?.includes(code)],
+                  ),
+                )
+              : undefined,
           }
         : {}),
       fitOptions: session.fitOptions,

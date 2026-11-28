@@ -1584,6 +1584,8 @@ it('validates supplied subtitles before upload and skips transcription', async (
   ]);
   expect(dubSession.state.segments[0].text).toBe('Hola');
   expect(dubSession.state.phase).toBe('editing');
+  expect(dubSession.state.tracks).toEqual([]);
+  expect(dubSession.state.exportOptions?.excluded).toBeUndefined();
 });
 
 it('does not prepare media or start ASR when supplied subtitles are invalid', async () => {
