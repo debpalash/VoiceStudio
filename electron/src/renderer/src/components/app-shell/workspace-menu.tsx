@@ -167,6 +167,7 @@ function NavigationGroup({
   const [expanded, setExpanded] = useState(active);
   const [popupOpen, setPopupOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const pressPointer = useRef('');
   const popupRef = useRef<HTMLDivElement>(null);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -239,10 +240,13 @@ function NavigationGroup({
               if (popupOpen) scheduleClose();
             }
           }}
+          onPointerDownCapture={(event) => {
+            pressPointer.current = event.pointerType;
+          }}
           onClickCapture={(event) => {
             // A press on an already hover-open trigger should keep the flyout
             // available. Keyboard and touch presses retain Base UI's toggle.
-            if (popupOpen && event.detail > 0) event.stopPropagation();
+            if (popupOpen && event.detail > 0 && pressPointer.current === 'mouse') event.stopPropagation();
           }}
         >
           <Icon
