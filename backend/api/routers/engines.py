@@ -32,6 +32,7 @@ from core import prefs
 from core.engine_licenses import LICENSE_GATED_ENGINES
 from services import tts_backend, asr_backend, llm_backend, translation_engines
 from services.audio_dsp import list_effect_presets
+from services.performance_readiness import inventory_only
 from api.schemas import EffectPresetsResponse
 from api.public_engine_metadata import public_backends, public_unavailability
 
@@ -145,7 +146,10 @@ def _request_install_capability(payload, request):
 
 
 @router.get("/engines")
+@inventory_only
 def list_all_engines(request: Request):
+    # Page inventory must not wait for unrelated engines' native import probes.
+    # Selection and runtime health checks still verify the chosen engine.
     return {
         "tts": _request_install_capability(_family_payload("tts", tts_backend), request),
         "asr": _family_payload("asr", asr_backend),
