@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, type MouseEvent } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { PanelLeftIcon, PanelLeftOpenIcon, SettingsIcon } from 'lucide-react';
@@ -28,6 +29,19 @@ export function WorkspaceSidebar() {
   const { libraryOpen } = useWorkspace();
   const { compact, compactViewport, forceExpanded, secondaryWorkspace, setOpen } =
     useWorkspaceSidebarState();
+  const railPointer = useRef('mouse');
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const restoreToggleFocus = useRef(false);
+  const toggleSidebar = (event: MouseEvent<HTMLButtonElement>) => {
+    restoreToggleFocus.current = event.detail === 0;
+    setOpen(compact);
+  };
+  useLayoutEffect(() => {
+    if (restoreToggleFocus.current) {
+      toggleRef.current?.focus();
+      restoreToggleFocus.current = false;
+    }
+  }, [compact]);
   const sidebarResize = usePaneResize({
     storageKey: 'voicestudio.nav-width',
     side: 'left',
@@ -43,7 +57,12 @@ export function WorkspaceSidebar() {
         <aside
           aria-label={t('clone.saved_profiles')}
           data-slot="compact-main-sidebar"
-          onDoubleClick={() => setOpen(true)}
+          onPointerDownCapture={(event) => {
+            railPointer.current = event.pointerType;
+          }}
+          onDoubleClick={() => {
+            if (railPointer.current === 'mouse') setOpen(true);
+          }}
           className={cn(
             'brand-sidebar relative isolate grid h-full min-h-0 shrink-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden',
             mac ? 'w-16' : 'w-12',
@@ -61,7 +80,8 @@ export function WorkspaceSidebar() {
               aria-label={t('clone.toggle_sidebar')}
               title={t('clone.toggle_sidebar')}
               aria-expanded={false}
-              onClick={() => setOpen(true)}
+              ref={toggleRef}
+              onClick={toggleSidebar}
               className="group/rail relative"
             >
               <img
@@ -138,7 +158,8 @@ export function WorkspaceSidebar() {
               size="icon-sm"
               aria-label={t('common.close')}
               title={t('common.close')}
-              onClick={() => setOpen(false)}
+              ref={toggleRef}
+              onClick={toggleSidebar}
             >
               <PanelLeftIcon aria-hidden="true" />
             </Button>

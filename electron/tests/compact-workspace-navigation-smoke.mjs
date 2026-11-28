@@ -49,6 +49,20 @@ try {
       '/api/longform/jobs': { jobs: [] },
     },
   });
+  const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 1200, height: 800 } });
+  try {
+    const touchPage = await touchContext.newPage();
+    await touchPage.addInitScript(() => localStorage.setItem('voicestudio.setup.complete.v1', '1'));
+    await touchPage.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3912') + '/#/design');
+    const group = touchPage.getByRole('button', { name: 'Voice', exact: true });
+    const destination = touchPage.getByRole('link', { name: 'Clone', exact: true });
+    await group.tap();
+    await destination.waitFor();
+    await group.tap();
+    await destination.waitFor({ state: 'hidden', timeout: 3000 });
+  } finally {
+    await touchContext.close();
+  }
   const routes = [
     ['Voice', 'Clone', '/clone'],
     ['Voice', 'Design', '/design'],
@@ -142,6 +156,13 @@ try {
   await page.keyboard.press('ArrowLeft');
   await clone.waitFor({ state: 'hidden' });
   await expectFocus(page, voice);
+  const toggle = rail.getByRole('button', { name: 'Toggle sidebar', exact: true });
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  const close = page.locator('.brand-sidebar').getByRole('button', { name: 'Close', exact: true });
+  await expectFocus(page, close);
+  await page.keyboard.press('Space');
+  await expectFocus(page, toggle);
   await voice.dblclick();
   await rail.waitFor({ state: 'hidden' });
   const expanded = page.locator('.brand-sidebar:not([data-slot=compact-main-sidebar])');
