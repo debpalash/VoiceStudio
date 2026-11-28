@@ -68,7 +68,7 @@ metadata and the backend fallback mirror it.
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Docs
@@ -155,12 +155,12 @@ metadata and the backend fallback mirror it.
 - Dictation on Linux ROCm keeps using the HIP GPU instead of silently transcribing on the CPU (#4327)
 - Clicking a voice card's photo on the clone page now chooses the voice; only the camera badge changes the photo (#4325)
 - Model Catalogue no longer shows a model as installed while one of its files is still downloading or was cut off (#4324)
-- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address — thanks @DeryFerd! (#4303)
-- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings — thanks @DeryFerd! (#4299)
-- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable — thanks @DeryFerd! (#4298)
-- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls — thanks @DeryFerd! (#4293)
-- Links opened from the app now open only web and mail links; a local file path can no longer launch a file — thanks @DeryFerd! (#4292)
-- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list — thanks @DeryFerd! (#4290)
+- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address (#4303) — thanks @DeryFerd!
+- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings (#4299) — thanks @DeryFerd!
+- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable (#4298) — thanks @DeryFerd!
+- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls (#4293) — thanks @DeryFerd!
+- Links opened from the app now open only web and mail links; a local file path can no longer launch a file (#4292) — thanks @DeryFerd!
+- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list (#4290) — thanks @DeryFerd!
 - Stories and Audiobook now show the finished result when the render connection drops just before completion on a long render — thanks [laurelbridles on Discord](https://discord.com/channels/1497926884707799144/1497926886020354102/1571543200575787159)! (#4286)
 - Setup no longer warns "ROCm not configured" on laptops with an AMD iGPU plus an NVIDIA GPU running CUDA (#4285) — thanks @d7p!
 - Cloned voices with a long reference recording no longer start each clip with a clipped sound from that recording (#4272)
@@ -255,9 +255,9 @@ metadata and the backend fallback mirror it.
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -381,7 +381,7 @@ metadata and the backend fallback mirror it.
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Docs
@@ -468,12 +468,12 @@ metadata and the backend fallback mirror it.
 - Dictation on Linux ROCm keeps using the HIP GPU instead of silently transcribing on the CPU (#4327)
 - Clicking a voice card's photo on the clone page now chooses the voice; only the camera badge changes the photo (#4325)
 - Model Catalogue no longer shows a model as installed while one of its files is still downloading or was cut off (#4324)
-- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address — thanks @DeryFerd! (#4303)
-- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings — thanks @DeryFerd! (#4299)
-- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable — thanks @DeryFerd! (#4298)
-- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls — thanks @DeryFerd! (#4293)
-- Links opened from the app now open only web and mail links; a local file path can no longer launch a file — thanks @DeryFerd! (#4292)
-- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list — thanks @DeryFerd! (#4290)
+- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address (#4303) — thanks @DeryFerd!
+- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings (#4299) — thanks @DeryFerd!
+- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable (#4298) — thanks @DeryFerd!
+- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls (#4293) — thanks @DeryFerd!
+- Links opened from the app now open only web and mail links; a local file path can no longer launch a file (#4292) — thanks @DeryFerd!
+- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list (#4290) — thanks @DeryFerd!
 - Stories and Audiobook now show the finished result when the render connection drops just before completion on a long render — thanks [laurelbridles on Discord](https://discord.com/channels/1497926884707799144/1497926886020354102/1571543200575787159)! (#4286)
 - Setup no longer warns "ROCm not configured" on laptops with an AMD iGPU plus an NVIDIA GPU running CUDA (#4285) — thanks @d7p!
 - Cloned voices with a long reference recording no longer start each clip with a clipped sound from that recording (#4272)
@@ -568,9 +568,9 @@ metadata and the backend fallback mirror it.
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -693,7 +693,7 @@ metadata and the backend fallback mirror it.
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Docs
@@ -776,12 +776,12 @@ metadata and the backend fallback mirror it.
 - Dictation on Linux ROCm keeps using the HIP GPU instead of silently transcribing on the CPU (#4327)
 - Clicking a voice card's photo on the clone page now chooses the voice; only the camera badge changes the photo (#4325)
 - Model Catalogue no longer shows a model as installed while one of its files is still downloading or was cut off (#4324)
-- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address — thanks @DeryFerd! (#4303)
-- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings — thanks @DeryFerd! (#4299)
-- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable — thanks @DeryFerd! (#4298)
-- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls — thanks @DeryFerd! (#4293)
-- Links opened from the app now open only web and mail links; a local file path can no longer launch a file — thanks @DeryFerd! (#4292)
-- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list — thanks @DeryFerd! (#4290)
+- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address (#4303) — thanks @DeryFerd!
+- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings (#4299) — thanks @DeryFerd!
+- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable (#4298) — thanks @DeryFerd!
+- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls (#4293) — thanks @DeryFerd!
+- Links opened from the app now open only web and mail links; a local file path can no longer launch a file (#4292) — thanks @DeryFerd!
+- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list (#4290) — thanks @DeryFerd!
 - Stories and Audiobook now show the finished result when the render connection drops just before completion on a long render — thanks [laurelbridles on Discord](https://discord.com/channels/1497926884707799144/1497926886020354102/1571543200575787159)! (#4286)
 - Setup no longer warns "ROCm not configured" on laptops with an AMD iGPU plus an NVIDIA GPU running CUDA (#4285) — thanks @d7p!
 - Cloned voices with a long reference recording no longer start each clip with a clipped sound from that recording (#4272)
@@ -876,9 +876,9 @@ metadata and the backend fallback mirror it.
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -995,7 +995,7 @@ metadata and the backend fallback mirror it.
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Docs
@@ -1047,12 +1047,12 @@ metadata and the backend fallback mirror it.
 - Dictation on Linux ROCm keeps using the HIP GPU instead of silently transcribing on the CPU (#4327)
 - Clicking a voice card's photo on the clone page now chooses the voice; only the camera badge changes the photo (#4325)
 - Model Catalogue no longer shows a model as installed while one of its files is still downloading or was cut off (#4324)
-- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address — thanks @DeryFerd! (#4303)
-- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings — thanks @DeryFerd! (#4299)
-- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable — thanks @DeryFerd! (#4298)
-- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls — thanks @DeryFerd! (#4293)
-- Links opened from the app now open only web and mail links; a local file path can no longer launch a file — thanks @DeryFerd! (#4292)
-- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list — thanks @DeryFerd! (#4290)
+- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address (#4303) — thanks @DeryFerd!
+- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings (#4299) — thanks @DeryFerd!
+- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable (#4298) — thanks @DeryFerd!
+- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls (#4293) — thanks @DeryFerd!
+- Links opened from the app now open only web and mail links; a local file path can no longer launch a file (#4292) — thanks @DeryFerd!
+- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list (#4290) — thanks @DeryFerd!
 - Stories and Audiobook now show the finished result when the render connection drops just before completion on a long render — thanks [laurelbridles on Discord](https://discord.com/channels/1497926884707799144/1497926886020354102/1571543200575787159)! (#4286)
 - Setup no longer warns "ROCm not configured" on laptops with an AMD iGPU plus an NVIDIA GPU running CUDA (#4285) — thanks @d7p!
 - Cloned voices with a long reference recording no longer start each clip with a clipped sound from that recording (#4272)
@@ -1147,9 +1147,9 @@ metadata and the backend fallback mirror it.
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -1257,7 +1257,7 @@ metadata and the backend fallback mirror it.
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Docs
@@ -1290,12 +1290,12 @@ metadata and the backend fallback mirror it.
 - Dictation on Linux ROCm keeps using the HIP GPU instead of silently transcribing on the CPU (#4327)
 - Clicking a voice card's photo on the clone page now chooses the voice; only the camera badge changes the photo (#4325)
 - Model Catalogue no longer shows a model as installed while one of its files is still downloading or was cut off (#4324)
-- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address — thanks @DeryFerd! (#4303)
-- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings — thanks @DeryFerd! (#4299)
-- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable — thanks @DeryFerd! (#4298)
-- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls — thanks @DeryFerd! (#4293)
-- Links opened from the app now open only web and mail links; a local file path can no longer launch a file — thanks @DeryFerd! (#4292)
-- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list — thanks @DeryFerd! (#4290)
+- A delegated in-process MCP call no longer inherits the desktop's admin and file access on the strength of its loopback address (#4303) — thanks @DeryFerd!
+- prefs.json and the per-user env file are now written atomically and flushed to disk before they are published, so a crash or power loss is far less likely to lose settings (#4299) — thanks @DeryFerd!
+- Diagnostic text and the engine-install log redact credentials carried inside a URL, and withhold a line if redaction is unavailable (#4298) — thanks @DeryFerd!
+- Offline evaluation checkpoints load with torch's safe unpickler, closing the last two bare torch.load calls (#4293) — thanks @DeryFerd!
+- Links opened from the app now open only web and mail links; a local file path can no longer launch a file (#4292) — thanks @DeryFerd!
+- Searchable pickers with a recents list no longer crash the window when the saved recents value is not a list (#4290) — thanks @DeryFerd!
 - Stories and Audiobook now show the finished result when the render connection drops just before completion on a long render — thanks [laurelbridles on Discord](https://discord.com/channels/1497926884707799144/1497926886020354102/1571543200575787159)! (#4286)
 - Setup no longer warns "ROCm not configured" on laptops with an AMD iGPU plus an NVIDIA GPU running CUDA (#4285) — thanks @d7p!
 - Cloned voices with a long reference recording no longer start each clip with a clipped sound from that recording (#4272)
@@ -1390,9 +1390,9 @@ metadata and the backend fallback mirror it.
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -1490,7 +1490,7 @@ metadata and the backend fallback mirror it.
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Docs
@@ -1595,9 +1595,9 @@ metadata and the backend fallback mirror it.
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -1683,7 +1683,7 @@ metadata and the backend fallback mirror it.
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Docs
@@ -1769,9 +1769,9 @@ metadata and the backend fallback mirror it.
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -1846,7 +1846,7 @@ This beta adds separately opted-in automatic error reports, so failures can reac
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Docs
@@ -1914,9 +1914,9 @@ This beta adds separately opted-in automatic error reports, so failures can reac
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -2100,7 +2100,7 @@ Setup and model downloads recover more reliably after interrupted transfers, low
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Fixed
@@ -2116,9 +2116,9 @@ Setup and model downloads recover more reliably after interrupted transfers, low
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -2168,7 +2168,7 @@ Setup and model downloads recover more reliably after interrupted transfers, low
 
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
-- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another (#4064) — thanks @ItzSudhan!
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
 ### Fixed
@@ -2176,9 +2176,9 @@ Setup and model downloads recover more reliably after interrupted transfers, low
 - OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
 - Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
 - Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
-- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
-- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
-- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy (#4069) — thanks @hkarmoush!
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error (#4059) — thanks @blutuxyz!
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing (#4053) — thanks @b84330808!
 - When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
 - Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
 - SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
@@ -6340,7 +6340,7 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 ### Changed
 
 - Gallery personas now preview through the local backend, retain their complete voice-design recipe, and open directly in Voice, Stories, or Audiobook. (#1542)
-- Typing and large workspace edits no longer serialize and rewrite persisted documents on every input; writes are coalesced off the interaction path — thanks @bultodepapas! (#1541)
+- Typing and large workspace edits no longer serialize and rewrite persisted documents on every input; writes are coalesced off the interaction path (#1541) — thanks @bultodepapas!
 - Support amount choices now use every theme's shared card, accent and focus tokens. (#1530)
 - Sponsoring, commercial licensing and getting in touch are one page now. They answered the same question between them and each used to live somewhere else, so they are three sections on a single scroll — the footer heart, the commercial-licence links and Contact all land on it, at the section you asked for. (#1522)
 - Model Catalogue switches panes with tabs instead of a two-state toggle, and the Engine Compatibility Matrix's TTS / ASR / LLM switcher is now tabs too — arrow-key navigable, and each tab still shows the engine it would use. (#1522)
@@ -6358,7 +6358,7 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 - Dubbing's Generate Dub, Verify, and Export actions now use a compact hierarchy with visible labels, responsive reflow, and motion-safe feedback. (#1493)
 - The Dub workspace now has a compact production command bar, responsive flag-based language cards, media previews in Dub History, and a narrower Projects rail. (#1489)
 - VoiceStudio now uses one waveform-and-spark mark across the title bar, About screen, README, browser favicon, and every desktop/platform icon. (#1487)
-- PocketTTS now asks you to review its code license, model license and gated-access conditions before first use, and explains how to unlock the model instead of showing a raw download failure — thanks @paoloantinori! (#1442)
+- PocketTTS now asks you to review its code license, model license and gated-access conditions before first use, and explains how to unlock the model instead of showing a raw download failure (#1442) — thanks @paoloantinori!
 - The repository moved to github.com/debpalash/VoiceStudio. Every link in the app, docs and scripts now points there; GitHub redirects the old URLs, and the Docker image paths, the app bundle identifier and your data folder are all deliberately unchanged. (#1394)
 - The app is now **VoiceStudio** (previously OmniVoice-Studio). Only the name you see changes — your data folder, settings and the Docker image paths stay put, so upgrading needs nothing from you. On Linux the .deb is now `voicestudio`; remove the old `omnivoice-studio` package once.
 - macOS floor raised to 13.3 (Ventura) — the frontend has required Safari 16.4 for some time, so macOS 12 was a promise the stack could not keep (#1268)
@@ -6379,14 +6379,14 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 - Remote GPU model downloads now use the normal Models install flow and show per-worker progress. (#1478)
 - Settings → System → **Remote workers** sends individual jobs to GPUs on your other machines while everything else stays here. Off by default; each machine is added with a single-use token and approved before any audio reaches it.
 - First-run setup now recommends a screen-aware interface scale, with compact controls available throughout setup. (#1502)
-- OrcaRouter is now available as a named OpenAI-compatible LLM provider — thanks @Marc-oss-hub! (#1499)
+- OrcaRouter is now available as a named OpenAI-compatible LLM provider (#1499) — thanks @Marc-oss-hub!
 - IndexTTS 2.5 is available as a pinned one-click sidecar with five-language dubbing, expressive cloning, and backward-compatible IndexTTS-2 support. (#1482) — thanks @marwanlhabti5-coder!
 - Voice recording now offers microphone and channel selection with a live input-level meter on every desktop platform. (#1481)
 - Settings → Appearance → **Navigation style** switches the workspace switcher between the icon rail down the window edge and browser-style tabs across the title bar. Both offer the same workspaces; the choice sticks across launches, and the rail stays the default. Tab labels fold down to icons when the title bar runs out of room — the workspace you're in keeps its name. (#1412)
 - Portable mode lets you choose the folder — press **Change…** on the first-run setup screen and put the whole install on an external drive. It also stops being greyed out after a default Program Files install. (#766)
 - Settings → Privacy now has an **Invisible watermark** toggle. On by default, available to everyone, and it only affects audio generated after the change. (#1308)
-- A new opt-in crash-isolated TTS engine, so a native crash takes down the sidecar instead of the whole backend — thanks @paoloantinori! (#1292, #1298, #1304)
-- **PocketTTS** (Kyutai), an opt-in CPU-only engine for fast, low-latency renders in six languages (en/fr/de/pt/it/es) with zero-shot cloning from a reference clip. Enable in Settings → Engines — thanks @paoloantinori! (#1306, #1328)
+- A new opt-in crash-isolated TTS engine, so a native crash takes down the sidecar instead of the whole backend (#1292, #1298, #1304) — thanks @paoloantinori!
+- **PocketTTS** (Kyutai), an opt-in CPU-only engine for fast, low-latency renders in six languages (en/fr/de/pt/it/es) with zero-shot cloning from a reference clip. Enable in Settings → Engines (#1306, #1328) — thanks @paoloantinori!
 - A warning before a slow generation, rather than after a five-minute wait. (#1280)
 
 ### Docs
@@ -6394,7 +6394,7 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 - Engine acceptance: new `docs/engine-acceptance.md` documents the job map, the bar a new engine must clear, and the out-of-tree path (#1306)
 - macOS install notes and the README support table now state the real floor (#1268)
 - Contact: the project X account is listed alongside Discord (#1313)
-- `OMNIVOICE_ALLOWED_ORIGINS` is finally documented: a browser loading the UI from another machine's origin needs the backend's CORS allow-list, which neither server mode nor trusted networks touches — thanks @vanderlpp! (#1348)
+- `OMNIVOICE_ALLOWED_ORIGINS` is finally documented: a browser loading the UI from another machine's origin needs the backend's CORS allow-list, which neither server mode nor trusted networks touches (#1348) — thanks @vanderlpp!
 
 ### Fixed
 
@@ -6423,7 +6423,7 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 - Remote GPU model labels now survive registration, legacy blank model IDs share one capacity slot, long jobs retain bounded leases, and idle cleanup cannot evict a live local render. (#1478)
 - Remote GPU jobs now stop before dispatch when that worker lacks the model, offer the download there, and refresh scheduling as soon as it finishes. (#1478)
 - Leaving a screen while its waveform is still loading no longer opens a bug-report prompt for a normal cancelled request. (#1498)
-- An unreachable remote backend now opens a retryable recovery screen instead of sending the app into local model setup, with clear TLS, CORS, network, HTTP, and wrong-port guidance — thanks @debpalash! (#1501)
+- An unreachable remote backend now opens a retryable recovery screen instead of sending the app into local model setup, with clear TLS, CORS, network, HTTP, and wrong-port guidance (#1501) — thanks @debpalash!
 - Linux production test launches now stop their own extracted AppImage before resetting SQLite and logs. (#1494)
 - Restored the pre-release version to 0.4.2 while the next release remains in preparation. (#1488)
 - Large multi-language dubbing batches now use compact searchable language and track managers instead of overflowing the editor. (#1492)
@@ -6476,8 +6476,8 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 - A long render on modest hardware is no longer abandoned as "too heavy for the available compute" while it is visibly working. A generate that keeps finishing chunks now extends its own deadline (bounded), the way a model download already could; one that stops producing anything still fails on time. (#1338, #1348, #1391)
 - A backend that dies while loading its own Python dependencies is no longer reported as a memory problem. The crash notice now says the environment is incomplete and points at "Clean & Retry", instead of sending users to flush a model that had nothing to do with it. (#1282, #1376)
 - A UI whose API requests land on the wrong host — a rehosted frontend, or a reverse proxy with no API route — no longer echoes that host's raw 404 page as the error. It now says the responding server is not a VoiceStudio backend and points at the Backend URL setting and the proxy route. (#1385)
-- Building the GGUF engine from source produced a binary that died on its very first spawn ("libggml.so.0: cannot open shared object file") — the build script deleted the shared libraries it had just linked against. It now ships them next to the binary on every platform, and the backend puts that folder on the loader path — thanks @vanderlpp! (#1348)
-- The GGUF engine's hard 120-second per-render kill switch — which was reaping legitimate CPU-only renders mid-synthesis — is now 600s, tunable via `OMNIVOICE_GGUF_GENERATE_TIMEOUT_S`, and the timeout error names that setting — thanks @vanderlpp! (#1348)
+- Building the GGUF engine from source produced a binary that died on its very first spawn ("libggml.so.0: cannot open shared object file") — the build script deleted the shared libraries it had just linked against. It now ships them next to the binary on every platform, and the backend puts that folder on the loader path (#1348) — thanks @vanderlpp!
+- The GGUF engine's hard 120-second per-render kill switch — which was reaping legitimate CPU-only renders mid-synthesis — is now 600s, tunable via `OMNIVOICE_GGUF_GENERATE_TIMEOUT_S`, and the timeout error names that setting (#1348) — thanks @vanderlpp!
 - Every subprocess TTS engine would have turned a stereo render into noise: the mono downmix always averaged axis 0, which is time rather than channels for channels-last audio. Unreachable today since every engine returns mono, fixed in all five before it isn't. (#1328)
 - First-run wizard: the Continue button and the Hugging Face token box were pushed below the window with no way to scroll to them — a layout container grew to the full model list's height, defeating every scroll clamp inside it. The pinned row now stays on screen at every UI scale, with the model list scrolling under it. (#1382, #1383)
 - Dubbing the same video twice no longer ties the second job's cloned voices to the first job's files — deleting the older dub from history was silently turning the newer one's single-segment regens into a default voice. (#1331)
@@ -6503,27 +6503,27 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 - macOS Preview updates work again — the updater bundle had been colliding with itself since early July. (#1281)
 - A dub whose transcription stream is cut by a reverse proxy now says so, instead of blaming the ASR model. (#1317)
 - The dev backend going quiet under `--reload` is named as auto-reload rather than reported as a crash. (#1261)
-- Building from source: `bun run desktop-prod:run`, documented as a re-launch, wiped the app's data every time — voice profiles, projects and outputs included. It now keeps them — thanks @Kakuzen93! (#1333)
-- Audiobook: a chapter that fails to render now shows the reason in the chapter list and in the final error, instead of a red row whose cause existed only in the backend log — thanks @Reaksa-Cambodia! (#1321)
+- Building from source: `bun run desktop-prod:run`, documented as a re-launch, wiped the app's data every time — voice profiles, projects and outputs included. It now keeps them (#1333) — thanks @Kakuzen93!
+- Audiobook: a chapter that fails to render now shows the reason in the chapter list and in the final error, instead of a red row whose cause existed only in the backend log (#1321) — thanks @Reaksa-Cambodia!
 - Audiobook: an engine that stops without producing audio no longer stalls the render forever with no error and no timeout. (#1321)
 - Linux AppImage: a permanently blank window on Mesa 26.1+ hosts (Arch/CachyOS and other rolling distros) — the bundled WebKit ran against a newer system Mesa than it was built for, and no environment variable could help because the failure precedes every rendering flag; the launcher now lets a newer system WebKitGTK take precedence — thanks @rvasilev and @HannaLovvold! (#1258, #1244)
 - Linux AppImage: `OMNIVOICE_PREFER_SYSTEM_WEBKIT=1` forces your own WebKitGTK for hosts where its version can't be read automatically (no `pkg-config`), and `=0` forces the bundled one (#1258)
-- Dubbing: the transcription overlay said "Transcribing with Whisper…" whatever ASR engine was actually running — it now names the stage, in all 21 languages — thanks @paoloantinori! (#1352)
+- Dubbing: the transcription overlay said "Transcribing with Whisper…" whatever ASR engine was actually running — it now names the stage, in all 21 languages (#1352) — thanks @paoloantinori!
 - Error messages no longer arrive with terminal colour codes spliced into the sentence (`download: ^[[0;31mERROR:^[[0m …`) — every surfaced failure is cleaned now, whichever tool produced it. (#1344)
-- Linux AppImage: recording failed with "No microphone found" on hosts whose GStreamer is newer than the build runner's, even with a verified-healthy audio stack — your own GStreamer now takes precedence, and the plugin cache is app-private so it can neither be confused by nor corrupt the one other apps use — thanks @Kakuzen93! (#1333)
+- Linux AppImage: recording failed with "No microphone found" on hosts whose GStreamer is newer than the build runner's, even with a verified-healthy audio stack — your own GStreamer now takes precedence, and the plugin cache is app-private so it can neither be confused by nor corrupt the one other apps use (#1333) — thanks @Kakuzen93!
 - Linux AppImage: that GStreamer preference actually takes effect — the check guarding it could never pass, so it had been silently doing nothing. (#1333)
 - A TTS job abandoned for exceeding its compute budget now records where it was actually stuck, so a hang stops being reported as a machine that is merely too slow. (#1338, #1329, #1348)
-- Translation through LM Studio works. The built-in model name was the placeholder `local-model`, which LM Studio rejects because it serves whatever you have loaded — VoiceStudio now asks it, and a 404 from a local server names the models that ARE loaded instead of telling you to check a URL that was fine — thanks @biga73! (#1332)
+- Translation through LM Studio works. The built-in model name was the placeholder `local-model`, which LM Studio rejects because it serves whatever you have loaded — VoiceStudio now asks it, and a 404 from a local server names the models that ARE loaded instead of telling you to check a URL that was fine (#1332) — thanks @biga73!
 - Generation that silently dropped the end of the input now says so. When an engine returns no audio for part of the text the result sounds clean and is simply short, so the only way to notice was to read along; the backend log now names the sentences that produced nothing. (#1330)
 - Dubbing: a re-rendered line that quietly came back in a default voice instead of the cloned one now says why in the backend log — the clone clips are extracted per job and a saved dub outlives them, so regenerating after cleanup loses the reference with no error. (#1331)
 - RTX 40-series GPUs are used again instead of being sent to the CPU. (#1289)
-- Apple Silicon: transcription no longer fails when ffmpeg isn't installed on the system, as the docs always promised — thanks @gambletan! (#1436)
+- Apple Silicon: transcription no longer fails when ffmpeg isn't installed on the system, as the docs always promised (#1436) — thanks @gambletan!
 - A failed audiobook chapter says why, instead of turning red and saying nothing. (#1325)
 
 ### CI
 
 - Windows CI falls back to a static ffmpeg build when the Chocolatey feed is down, instead of failing the run. (#1542)
-- The stdio wire protocol every engine sidecar speaks is now tested once across all nine of them, instead of against a single engine — a bug in any one sidecar's copy gets caught — thanks @paoloantinori! (#1408)
+- The stdio wire protocol every engine sidecar speaks is now tested once across all nine of them, instead of against a single engine — a bug in any one sidecar's copy gets caught (#1408) — thanks @paoloantinori!
 - Windows smoke tests stopped silently passing a broken ffmpeg install, and every smoke leg is now budgeted for a cold dependency install. (#1290)
 - Test suites no longer leak config paths or model-manager shutdown state into one another, which had been failing unrelated pull requests. (#1269)
 - The nightly preview build stopped refusing to publish its own healthy updater manifest when the macOS legs finished a few minutes ahead of the slowest one — Preview-channel users were silently left without new builds. 
@@ -6584,30 +6584,30 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 
 ### Fixed
 
-- Deleting a dub while it was still importing crashed the import with the toast `ingest: 'mgw39lx3'` — a dict key and nothing else — and the delete could then be undone by the job's own pending write, in history or mid-render; both are fixed, and no failure can present itself as a bare value again — thanks @dustmaker124-ui! (#1252, #1253)
-- macOS 12 (Monterey): the app threw on startup and never started the backend — it called a Safari 16 method on the WebView that macOS ships. It launches and works now; some styling still needs a newer WebView (tracked in #1268) — thanks @singhrahat! (#1245)
-- Settings → Engines: Unload failed with `400 Unknown model id: engine:kittentts` on any in-process engine — the panel offered the button for ids the backend never accepted; the warm dictation model had the same gap — thanks @JavaxmI! (#1247)
-- Picking a language the active engine can't speak recited 23 codes without saying which engine refused or that switching engine was the fix — thanks @pulananave! (#1257)
-- A YouTube import that failed as "DRM protected" and then worked on a manual retry now escalates the player client automatically, and a genuinely undownloadable video says so — thanks @gysahlgreene! (#1254)
-- Exporting a voice profile, persona, dub, subtitle or stem whose name is Chinese, Japanese, Korean, Cyrillic, Greek, Hebrew or emoji failed with a `'latin-1' codec` 500 — every download endpoint now sends the name correctly, and browsers get the real one back — thanks @zvxzdx! (#1262)
-- A synth that failed because ffmpeg/ffprobe wasn't on the system path said "an error VoiceStudio doesn't recognize"; it now names the media engine and points at Settings → Audio tools, and the app's own copy is published on PATH so dependencies find it in the first place — thanks @Heuvelsma! (#1256)
-- Windows "The paging file is too small" arrived as a bare 500; it now explains that this is a virtual-memory setting, not full RAM, and gives the steps to raise it — thanks @trankeny545-sudo! (#1251)
-- AMD/ROCm: every ROCm host was silently force-routed to the CPU — the compatibility gate compared a CUDA `sm_` tag against a ROCm build's `gfx` list, which can never match — thanks @simmessa! (#1228)
+- Deleting a dub while it was still importing crashed the import with the toast `ingest: 'mgw39lx3'` — a dict key and nothing else — and the delete could then be undone by the job's own pending write, in history or mid-render; both are fixed, and no failure can present itself as a bare value again (#1252, #1253) — thanks @dustmaker124-ui!
+- macOS 12 (Monterey): the app threw on startup and never started the backend — it called a Safari 16 method on the WebView that macOS ships. It launches and works now; some styling still needs a newer WebView (tracked in #1268) (#1245) — thanks @singhrahat!
+- Settings → Engines: Unload failed with `400 Unknown model id: engine:kittentts` on any in-process engine — the panel offered the button for ids the backend never accepted; the warm dictation model had the same gap (#1247) — thanks @JavaxmI!
+- Picking a language the active engine can't speak recited 23 codes without saying which engine refused or that switching engine was the fix (#1257) — thanks @pulananave!
+- A YouTube import that failed as "DRM protected" and then worked on a manual retry now escalates the player client automatically, and a genuinely undownloadable video says so (#1254) — thanks @gysahlgreene!
+- Exporting a voice profile, persona, dub, subtitle or stem whose name is Chinese, Japanese, Korean, Cyrillic, Greek, Hebrew or emoji failed with a `'latin-1' codec` 500 — every download endpoint now sends the name correctly, and browsers get the real one back (#1262) — thanks @zvxzdx!
+- A synth that failed because ffmpeg/ffprobe wasn't on the system path said "an error VoiceStudio doesn't recognize"; it now names the media engine and points at Settings → Audio tools, and the app's own copy is published on PATH so dependencies find it in the first place (#1256) — thanks @Heuvelsma!
+- Windows "The paging file is too small" arrived as a bare 500; it now explains that this is a virtual-memory setting, not full RAM, and gives the steps to raise it (#1251) — thanks @trankeny545-sudo!
+- AMD/ROCm: every ROCm host was silently force-routed to the CPU — the compatibility gate compared a CUDA `sm_` tag against a ROCm build's `gfx` list, which can never match (#1228) — thanks @simmessa!
 - AMD/ROCm: `torch.compile` was disabled on all AMD hosts by the same mismatched comparison (#1228)
 - AMD/ROCm: `HSA_OVERRIDE_GFX_VERSION` is auto-set only when your card genuinely needs it and the remap target exists in your build; gfx1150/gfx1151 (Strix Point/Halo) added to the map (#1228)
-- Windows blocking an engine file (Smart App Control, WDAC, or AppLocker) is now named, with the fix for personal and managed PCs — thanks @AdityaHemantBhat! (#1227)
-- A failed audio write (`LibsndfileError: System error.`) now names the target file, its folder's writability and the drive's free space — thanks @morozov28061995-boop! (#1221)
-- Dub URL ingest: a disk error now names the job folder, its writability and the drive's free space, instead of pointing at the system TEMP folder it never used — thanks @dustmaker124-ui! (#1225)
+- Windows blocking an engine file (Smart App Control, WDAC, or AppLocker) is now named, with the fix for personal and managed PCs (#1227) — thanks @AdityaHemantBhat!
+- A failed audio write (`LibsndfileError: System error.`) now names the target file, its folder's writability and the drive's free space (#1221) — thanks @morozov28061995-boop!
+- Dub URL ingest: a disk error now names the job folder, its writability and the drive's free space, instead of pointing at the system TEMP folder it never used (#1225) — thanks @dustmaker124-ui!
 - Dub URL ingest fails immediately when the job folder is missing or unwritable, instead of starting a download that can only fail (#1225)
-- The backend no longer dies at startup when transformers can't resolve its audio tokenizer (a missing or mismatched torchaudio, common on Google Colab) — it starts, and the error arrives with a repair hint — thanks @Navdeep-Chauhan-777! (#1229)
-- Importing `omnivoice.utils.*` no longer drags in torch, torchaudio, transformers and the full model definition — thanks @Navdeep-Chauhan-777! (#1229)
-- Colab notebook: the install cell now catches a broken environment with the real error, instead of a 5-minute health timeout two cells later — thanks @Navdeep-Chauhan-777! (#1229)
+- The backend no longer dies at startup when transformers can't resolve its audio tokenizer (a missing or mismatched torchaudio, common on Google Colab) — it starts, and the error arrives with a repair hint (#1229) — thanks @Navdeep-Chauhan-777!
+- Importing `omnivoice.utils.*` no longer drags in torch, torchaudio, transformers and the full model definition (#1229) — thanks @Navdeep-Chauhan-777!
+- Colab notebook: the install cell now catches a broken environment with the real error, instead of a 5-minute health timeout two cells later (#1229) — thanks @Navdeep-Chauhan-777!
 - A GPU with less VRAM than the chosen engine needs is flagged in Settings → Engines before you generate, instead of showing a clean green "accelerated" until the job times out — thanks @AdityaHemantBhat and @beingavais! (#1226, #1222)
 - A generation timeout now names your actual card and its VRAM and recommends a lighter engine (#1226, #1222)
 - First run: Continue and the Hugging Face token box rendered underneath the status bar, off the bottom of the window — the wizard laid itself out against the viewport instead of its own frame (#1241)
-- A busy port 3900 now reports a port conflict instead of "Backend died (exit code 1)", in every language — thanks @xipb14! (#1223)
+- A busy port 3900 now reports a port conflict instead of "Backend died (exit code 1)", in every language (#1223) — thanks @xipb14!
 - The app verifies it actually freed the port before starting the backend, rather than assuming the kill worked (#1223)
-- A model download truncated near the end is now retried and resumed instead of aborting the whole install — thanks @Reaksa-Cambodia! (#1224)
+- A model download truncated near the end is now retried and resumed instead of aborting the whole install (#1224) — thanks @Reaksa-Cambodia!
 - Engine first-use downloads (VoxCPM2, MOSS-TTS-Nano) retry transient network failures instead of failing the load outright (#1224)
 - A backend killed by the OS mid-stream now leaves a low-memory trail in the crash report (#1224)
 
@@ -6650,12 +6650,12 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 - First-run downloads race the direct GitHub path against the mirror and use whichever answers fastest (#1179)
 - First-run consent question for the existing opt-in analytics (two equal buttons, skip = no)
 - First run: when the app auto-opens in a non-English system language, a one-time, dismissible banner offers to switch the UI to English — shown only until you pick a language, never for English systems (#1215)
-- Source builds carry the publishable analytics token and get the same first-run consent ask as installers; opt-in events now note the install channel (installer / docker / source) — thanks @agudmund! (#1193)
+- Source builds carry the publishable analytics token and get the same first-run consent ask as installers; opt-in events now note the install channel (installer / docker / source) (#1193) — thanks @agudmund!
 - Official Google Colab notebook (`notebooks/VoiceStudio_Studio_Colab.ipynb`) — full app + API feature tour on a free T4
 - ROCm Docker image `ghcr.io/debpalash/omnivoice-studio:rocm` (+ `:stable-rocm`, `:X.Y.Z-rocm`) (#1165)
 - `OMNIVOICE_TRUSTED_NETWORKS` — comma-separated CIDRs exempted from the consumption auth gates (share PIN / API key / dictation WS); admin routes stay loopback-only (#1170)
-- Info/warn system notifications are dismissible and stay dismissed across restarts; error-level notices can't be dismissed, and the unclean-shutdown notice is now acknowledged server-side — thanks @agudmund! (#1192)
-- `clone_voice` MCP tool — AI agents can clone a new voice from a base64 reference audio sample; returns a `profile_id` immediately usable with `generate_speech` — thanks @paoloantinori! (#1194)
+- Info/warn system notifications are dismissible and stay dismissed across restarts; error-level notices can't be dismissed, and the unclean-shutdown notice is now acknowledged server-side (#1192) — thanks @agudmund!
+- `clone_voice` MCP tool — AI agents can clone a new voice from a base64 reference audio sample; returns a `profile_id` immediately usable with `generate_speech` (#1194) — thanks @paoloantinori!
 - Dub tab: **Paste Translation** — paste a translation made elsewhere (ChatGPT, DeepL, a human) as subtitles, numbered lines, or plain lines; it maps onto the existing segments with a before→after preview, keeping timings and the source transcript intact (#1203)
 - Audiobook tab: **Production Overrides** (position/class temperature, steps, guidance, postprocess, seed) for expressive narration, plus IndexTTS2 emotion controls and a "vary repeated lines" toggle — defaults reproduce today's renders exactly (#1208)
 - Audiobook tab: a **Load sample** button that fills the editor with a demo story — chapters, per-character `[voice:]`, `[pause]`, `[slow]`/`[fast]`/`[emphasis]`/`[spell]`, and reaction tags — so first-timers can hit Create and hear every capability before their real work (#1214)
@@ -6721,17 +6721,17 @@ v0.5.3 is also the final Tauri update. The Tauri updater will not switch you to 
 - FunASR/SenseVoice: no more crash or speaker-identity swaps across 30 s chunks with inline diarization (#182)
 - Provenance watermark now applied on every synthetic-audio route via one chokepoint (#1169)
 - "Can't reach the local backend" reports unclean backend deaths with evidence in dev/Docker/LAN too (#1164)
-- "Setup failed" screen renders instead of crashing — thanks @bultodepapas! (#1159)
-- Backend error logs keep stack traces (swept across 20 sites) — thanks @bultodepapas! (#1160)
-- Reference-clip uploads can't hang on a stuck audio probe (10 s timeout) — thanks @bultodepapas! (#1162)
-- Malformed EPUB chapters import partially instead of vanishing — thanks @bultodepapas! (#1161)
-- Failed sidebar fetches are logged instead of silently showing stale/empty lists — thanks @bultodepapas! (#1158)
+- "Setup failed" screen renders instead of crashing (#1159) — thanks @bultodepapas!
+- Backend error logs keep stack traces (swept across 20 sites) (#1160) — thanks @bultodepapas!
+- Reference-clip uploads can't hang on a stuck audio probe (10 s timeout) (#1162) — thanks @bultodepapas!
+- Malformed EPUB chapters import partially instead of vanishing (#1161) — thanks @bultodepapas!
+- Failed sidebar fetches are logged instead of silently showing stale/empty lists (#1158) — thanks @bultodepapas!
 - A missing/broken `mcp` package degrades to "/mcp disabled" instead of killing the backend at startup (#1156)
 - "Setup failed" auto-dismisses when the backend recovers; relaunching retries instead of refocusing a dead window (#1156)
 - Ended the `forrtl: error (200)` mid-session Windows crashes (math-runtime console handler) (#1153)
 - Non-Latin text can't crash synthesis on Windows (backend forced to UTF-8) (#1155)
 - Video-export errors diagnose the real cause (Windows 32k command-line limit; big filter graphs go via a script file) with per-mode advice (#1152)
-- Remote backends with an API key get an API-key prompt (durable per-browser, one-shot `#api_key=` link) instead of an unpassable PIN form — thanks @paoloantinori! (#1154)
+- Remote backends with an API key get an API-key prompt (durable per-browser, one-shot `#api_key=` link) instead of an unpassable PIN form (#1154) — thanks @paoloantinori!
 
 ## [0.3.22] — 2026-07-14
 
