@@ -11,6 +11,11 @@ message stays deliberately generic — an availability probe can carry local
 paths or credentials, so it is never shown verbatim — and the page below is
 where the actual requirements and setup steps live.
 
+The combined engine list uses installed-package inventory so opening the TTS
+page does not wait for unrelated speech-recognition runtime imports. An engine
+can appear installed before its runtime is verified; selection and health checks
+still validate the selected engine and report runtime failures.
+
 The compute device (CUDA/ROCm/MPS/CPU) is auto-detected; pin it under
 **Settings → Performance & Device** (or `OMNIVOICE_DEVICE`) if auto-detect
 picks wrong — see [performance](../performance.md).

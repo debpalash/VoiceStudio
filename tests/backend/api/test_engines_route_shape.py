@@ -109,6 +109,62 @@ def test_engines_response_marks_environment_pinned_families(fresh_app, monkeypat
     assert body["tts"]["env_override"] is False
 
 
+def test_engine_inventory_does_not_probe_unrelated_asr_runtime(fresh_app, monkeypatch):
+    """Opening TTS must not wait for Whisper, but explicit checks stay deep."""
+    from api.routers import engines
+    from core import device_caps, prefs
+    from services import performance_probe, performance_readiness
+
+    monkeypatch.setenv("OMNIVOICE_ASR_BACKEND", "pytorch-whisper")
+    monkeypatch.setattr(
+        device_caps, "detect_host_caps",
+        lambda: device_caps.HostCaps(family="cpu", available_families=("cpu",)),
+    )
+    monkeypatch.setattr(performance_readiness, "package_available", lambda _name: True)
+    monkeypatch.setattr(
+        engines.asr_backend, "_REGISTRY",
+        {"pytorch-whisper": engines.asr_backend.PyTorchWhisperBackend},
+    )
+    monkeypatch.setattr(engines.asr_backend, "_DEEP_IMPORT_BROKEN", {})
+    # Other families have no installed engines in this isolated catalogue.
+    for module, selected in ((engines.tts_backend, "none"), (engines.llm_backend, "off")):
+        monkeypatch.setattr(module, "active_backend_id", lambda selected=selected: selected)
+        monkeypatch.setattr(module, "list_backends", lambda: [])
+
+    probes = []
+
+    def unavailable_runtime(engine):
+        probes.append((engine, performance_readiness.inventory_active()))
+        return False
+
+    monkeypatch.setattr(
+        performance_probe, "isolated_asr_import_ready", unavailable_runtime,
+    )
+    client = _client(fresh_app)
+
+    response = client.get("/engines")
+
+    assert response.status_code == 200, response.text
+    assert set(response.json()) == {"tts", "asr", "llm"}
+    assert probes == [], "Page inventory launched an unrelated ASR import"
+    assert response.json()["asr"]["active"] == "pytorch-whisper"
+    assert response.json()["asr"]["env_override"] is True
+    assert response.json()["asr"]["backends"][0]["available"] is True
+    assert not performance_readiness.inventory_active()
+
+    # Inventory mode must end with the request: runtime failures still prevent
+    # an explicit health check or engine selection from reporting success.
+    health = client.get("/engines/pytorch-whisper/health")
+    assert health.status_code == 200, health.text
+    assert health.json()["ok"] is False
+    selected = client.post(
+        "/engines/select", json={"family": "asr", "backend_id": "pytorch-whisper"},
+    )
+    assert selected.status_code == 400, selected.text
+    assert prefs.get("asr_backend") is None
+    assert probes == [("pytorch-whisper", False), ("pytorch-whisper", False)]
+
+
 def test_all_families_share_the_11_key_shape(fresh_app):
     client = _client(fresh_app)
     body = client.get("/engines").json()
