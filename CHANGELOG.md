@@ -323,11 +323,11 @@ metadata and the backend fallback mirror it.
 
 **Highlights**
 
-- Optional automatic error reports stay off until separately allowed in Privacy
-- Android Stories and Audiobook keep long manuscripts scrollable and recover drafts through activity recreation
-- Stories can merge adjacent lines with compatible speaker and voice settings
-- Linux ROCm setup preserves its installed PyTorch stack, and GPU readiness reflects failed self-tests
-- Phone dub exports check available space and avoid false low-space errors on iOS
+- Pick, upload or record a voice on one screen, with clearer take actions, task recovery and search (#4511)
+- A warm dark default theme with a low purple tint, replacing the pink wash (#4513)
+- The model download button stays on one readable line (#4512)
+- Settings → Privacy shows its descriptions again (#4510)
+- The packaged Linux CLI starts on newer glibc systems (#4514)
 
 ### Changed
 
