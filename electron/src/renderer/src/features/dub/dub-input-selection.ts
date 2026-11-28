@@ -3,6 +3,7 @@ import { Store } from '@tanstack/store';
 export interface DubInputOptions {
   separateBackground?: boolean;
   subtitlesInTarget?: boolean;
+  translatedCaptions?: File;
   narrationWanted?: boolean;
 }
 
@@ -66,6 +67,9 @@ export async function submitDubInput(
   try {
     const accepted = selected.media
       ? await onFile(selected.media, selected.captions, selected.profileId, {
+          ...(selected.translatedCaptions && !selected.subtitlesInTarget && selected.captions
+            ? { translatedCaptions: selected.translatedCaptions }
+            : {}),
           separateBackground: selected.separateBackground !== false,
           subtitlesInTarget: selected.subtitlesInTarget === true,
           narrationWanted: selected.narrationWanted === true,
@@ -79,11 +83,13 @@ export async function submitDubInput(
     if (
       accepted === true &&
       dubInputSelection.state.media === selected.media &&
+      dubInputSelection.state.translatedCaptions === selected.translatedCaptions &&
       dubInputSelection.state.captions === selected.captions
     ) {
       setDubInputSelection({
         media: undefined,
         captions: undefined,
+        translatedCaptions: undefined,
         step: 0,
         srtChoice: undefined,
         srtLanguageChosen: false,

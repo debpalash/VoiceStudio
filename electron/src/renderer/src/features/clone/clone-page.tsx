@@ -11,11 +11,11 @@ import { openTake, useSelectedTake } from '@/lib/store/takes';
 import { TakeDetails } from './take-details';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { HistoryIcon, AudioLinesIcon, ChevronDownIcon, PencilIcon, SearchIcon } from 'lucide-react';
 import { isMac } from '@/components/bridge';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { WorkspacePane } from '@/components/workspace-pane';
 import { useProfiles } from '@/hooks/use-profiles';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
@@ -170,6 +170,9 @@ export function ClonePage() {
               >
                 <SearchIcon />
               </Button>
+              <Link to="/dub" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+                {t('dub.import_srt')}
+              </Link>
               <Button
                 variant="ghost"
                 size="sm"

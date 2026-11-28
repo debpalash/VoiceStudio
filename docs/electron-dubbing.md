@@ -42,6 +42,20 @@ generation. Voice choice is deferred until after material import. Subtitle-only
 imports use the same choices without media extraction or separation; a saved
 voice is needed to generate speech because subtitles contain no voice reference.
 
+### Clone from an original and a translated SRT
+
+From **Voice cloning**, choose **Import .srt** to open Dubbing. Select the
+original recording and its source SRT. Mark the SRT as original, choose the
+target language, then select the translated SRT in the second file input.
+Use one translated cue per source cue, in the same order with overlapping
+timestamps. Review both filenames before preparing the project.
+
+VoiceStudio uses the original timestamps and transcript to cut a voice
+reference for each eligible line (3–15 seconds). For other lines, choose a
+saved voice in the editor. You can edit a line, audition it and regenerate it
+individually. After generation, choose **Per-segment clips (.zip)** in Export
+to download the current rendered clips together.
+
 The five indicators now follow material → target text → voice/script → audio →
 listen/save. A chosen natural-script preference is saved but consolidation is an
 explicit operation after target text is ready. Translator/dialect/quality settings

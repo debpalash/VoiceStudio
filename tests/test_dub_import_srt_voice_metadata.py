@@ -189,3 +189,51 @@ def test_import_srt_scopes_matched_speaker_clone_to_the_matched_cue(monkeypatch)
     assert job["segment_clones"] == {"0": speaker_clone}
     assert "1" not in job["segment_clones"]
     assert job["cast_sources"]["Speaker 1"]["kind"] == "segment"
+
+
+def test_paired_subtitles_cut_source_audio_and_keep_both_texts(tmp_path, monkeypatch):
+    import numpy as np
+    import soundfile as sf
+    from api.routers import dub_core
+
+    audio = tmp_path / "source.wav"
+    sf.write(audio, np.linspace(-0.5, 0.5, 5000), 1000)
+    job = {"audio_path": str(audio), "duration": 5}
+    monkeypatch.setitem(dub_core._dub_jobs, "paired", job)
+    monkeypatch.setattr(dub_core, "_safe_job_dir", lambda _: str(tmp_path))
+    monkeypatch.setattr(dub_core, "_save_job", lambda *_, **kwargs: None)
+
+    def subtitle(text, end="04"):
+        return UploadFile(filename="line.srt", file=io.BytesIO(
+            f"1\n00:00:01,000 --> 00:00:{end},000\n{text}\n".encode()
+        ))
+
+    response = asyncio.run(dub_core.dub_import_paired_srt(
+        "paired", subtitle("Hello"), subtitle("Bonjour"), "fr",
+    ))
+    line, = response["segments"]
+    assert (line["text_original"], line["text"], line["translations"]) == (
+        "Hello", "Bonjour", {"fr": "Bonjour"},
+    )
+    ref = job["segment_clones"][str(line["id"])]
+    assert line["profile_id"] == "auto:speaker_1"
+    assert ref["ref_text"] == "Hello"
+    samples, rate = sf.read(ref["ref_audio"])
+    original, _ = sf.read(audio)
+    assert rate == 1000
+    np.testing.assert_allclose(samples, original[1000:4000], atol=1e-4)
+
+
+def test_paired_subtitle_validation_rejects_unrelated_translation():
+    import pytest
+    from fastapi import HTTPException
+    from api.routers import dub_core
+
+    def subtitle(start, end):
+        return UploadFile(filename="cue.srt", file=io.BytesIO(
+            f"1\n00:00:{start},000 --> 00:00:{end},000\nVoice\n".encode()
+        ))
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(dub_core.dub_validate_srt(subtitle("01", "04"), subtitle("05", "08")))
+    assert error.value.status_code == 422

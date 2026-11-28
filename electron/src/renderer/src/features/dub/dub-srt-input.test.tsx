@@ -197,3 +197,21 @@ it('shows the loaded project summary without next-import switches', () => {
   expect(screen.queryByRole('radio')).toBeNull();
   expect(screen.queryByText('dub.next_srt_import')).toBeNull();
 });
+
+it('submits both subtitle files with media and shows both names before preparation', async () => {
+  const { container, onFile } = setup();
+  const media = pick(container, 'media');
+  const original = pick(container, 'srt');
+  fireEvent.click(screen.getByRole('radio', { name: /dub.flow_srt_original/ }));
+  const translated = new File(['translation'], 'translated.srt');
+  fireEvent.change(screen.getByLabelText('dub.flow_srt_target', { selector: 'input[type=file]' }), {
+    target: { files: [translated] },
+  });
+  toSummary();
+  expect(screen.getByText('translated.srt')).toBeVisible();
+  expect(screen.getByText('captions.srt')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'dub.prepare_project' }));
+  await waitFor(() => expect(onFile).toHaveBeenCalledWith(media, original, '', expect.objectContaining({
+    translatedCaptions: translated, subtitlesInTarget: false,
+  })));
+});
