@@ -327,14 +327,15 @@ async def _read_subtitle_upload(file: UploadFile):
 
 async def _paired_subtitle_rows(source, translated):
     target = await _read_subtitle_upload(translated)
-    if (source.skipped_cues or target.skipped_cues or
+    if (source.skipped_cues or target.skipped_cues or source.dropped_overlaps or target.dropped_overlaps or
             len(source.segments) != len(target.segments)):
         raise HTTPException(422, "Both subtitle files need one valid cue per line.")
     rows = []
     for original, translation in zip(source.segments, target.segments):
         if min(original["end"], translation["end"]) <= max(original["start"], translation["start"]):
             raise HTTPException(422, "Each translated cue must overlap its corresponding source cue.")
-        rows.append({**original, "text": translation["text"]})
+        rows.append({**translation, "start": original["start"], "end": original["end"],
+                     "text_original": original["text"]})
     return rows
 
 
