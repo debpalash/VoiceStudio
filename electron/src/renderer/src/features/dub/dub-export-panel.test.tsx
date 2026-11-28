@@ -73,9 +73,7 @@ it('keeps cancellation quiet, then lets the same transcript be saved on retry', 
   await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
   expect(mocks.api.mock.calls.some(([path]) => path === '/export/record')).toBe(false);
   expect(screen.queryByRole('alert')).toBeNull();
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'dub.flow_save' })).toBeEnabled(),
-  );
+  await waitFor(() => expect(screen.getByRole('button', { name: 'dub.flow_save' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'dub.flow_save' }));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(2));
 });
@@ -115,3 +113,31 @@ it('exports the transcript before narration audio exists, but not narration audi
   );
   expect(screen.getByRole('button', { name: 'dub.flow_save' })).toBeDisabled();
 });
+
+it.each([
+  [[], undefined, true, true],
+  [[], ['original'], false, false],
+  [['fr'], undefined, false, true],
+  [['fr'], [], true, true],
+] as const)(
+  'uses available MP4 tracks unless the user saved an exclusion (%j, %j)',
+  (tracks, excluded, original, ready) => {
+    render(
+      <DubExportPanel
+        disabled={false}
+        session={session({
+          tracks: [...tracks],
+          exportOptions: { format: 'mp4', excluded: excluded && [...excluded] },
+        })}
+      />,
+    );
+    expect(screen.getByRole('switch', { name: 'exportModal.original' })).toHaveAttribute(
+      'aria-checked',
+      String(original),
+    );
+    expect(screen.getByRole('button', { name: 'dub.flow_save' })).toHaveProperty(
+      'disabled',
+      !ready,
+    );
+  },
+);

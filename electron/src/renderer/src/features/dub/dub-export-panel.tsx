@@ -35,7 +35,8 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const setFormat = (format: DubExportFormat) => setDubExportPreferences({ format });
   const trackChoice = preferences.track || '';
   const setTrack = (track: string) => setDubExportPreferences({ track });
-  const excluded = preferences.excluded || ['original'];
+  const undubbed = session.tracks.length === 0;
+  const excluded = preferences.excluded ?? (undubbed ? [] : ['original']);
   const setExcluded = (excluded: string[]) => setDubExportPreferences({ excluded });
   const preserveBg = dubPreservesBackground(session);
   const backgroundUnavailable = session.subtitleOnly || session.separateBackground === false;
@@ -59,7 +60,6 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const selected = tracks.filter((code) => !excluded.includes(code));
   // Before any dub, the transcript still exports: as subtitles, or burned into
   // the original video with its own audio (#3393).
-  const undubbed = session.tracks.length === 0;
   const choices = format === 'mp4' ? selected : undubbed ? ['original'] : session.tracks;
   const track = choices.includes(trackChoice)
     ? trackChoice

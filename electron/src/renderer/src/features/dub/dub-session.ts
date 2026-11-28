@@ -1634,7 +1634,7 @@ export async function uploadDub(
     skipTranscription: Boolean(subtitles),
     separateBackground: options?.separateBackground !== false,
     narrationWanted: options?.narrationWanted === true,
-    exportOptions: { preserveBg: options?.separateBackground !== false, excluded: ['original'] },
+    exportOptions: { preserveBg: options?.separateBackground !== false },
     subtitleTargetLang: subtitleTarget,
   }));
   // An empty file has nothing to upload; the file row asks for another one.
